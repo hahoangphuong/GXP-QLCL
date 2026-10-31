@@ -1987,6 +1987,22 @@ tr:focus-visible {
   line-height: 1.35;
 }
 
+.reassessment-context-grid .reassessment-source-context {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.case-lifecycle-actions .panel-actions { flex-wrap: wrap; margin-left: 0; }
+.case-lifecycle-actions button {
+  height: auto;
+  min-height: var(--control-height);
+  max-width: 100%;
+  padding-block: 0.25rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .reassessment-form {
   gap: 0.7rem;
 }

@@ -3436,16 +3436,18 @@ describe("App Slice A.4 search workspace", () => {
     { trigger: "timer", operation: "plan" },
     { trigger: "window-focus", operation: "plan" },
     { trigger: "visibility", operation: "approval" },
+    { trigger: "timer", operation: "transition" },
+    { trigger: "timer", operation: "reassessment" },
   ] as const)("expires an idle $operation session on $trigger and rejects its late completion", async ({ trigger, operation }) => {
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
-    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ inspection: {
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ action_readiness: buildWorkspace().action_readiness.map(item => operation === "reassessment" && item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ transition_actions: [{ action_key: "expiry-transition", label: "Expiry transition", target_state: "certified", available: true, expected_version: 8, reason_code: null, required_permissions: [] }], inspection: {
       ...buildCaseWorkspace().inspection,
       approval_submissions: [{ approval_submission_id: "pct-session", case_id: "case-1", row_version: 2, stage: "PCT", round_no: 1, completed_on: null }],
       approval_actions: [{ action_key: "complete_approval:pct-session", available: true, expected_version: 2, label: "Hoàn tất PCT", required_permissions: [] }],
     } }));
     let resolveSave!: (value: Record<string, unknown>) => void;
-    const mutation = operation === "plan" ? apiMocks.upsertInspectionPlan : apiMocks.completeInspectionApprovalSubmission;
+    const mutation = operation === "plan" ? apiMocks.upsertInspectionPlan : operation === "transition" ? apiMocks.transitionCase : operation === "reassessment" ? apiMocks.createInspectionCase : apiMocks.completeInspectionApprovalSubmission;
     mutation.mockImplementation(() => new Promise(resolve => { resolveSave = resolve; }));
     const view = await renderOidcSearch();
     await act(async () => { view.credentialCallback({ credential: "synthetic-A" }); });
@@ -3473,6 +3475,12 @@ describe("App Slice A.4 search workspace", () => {
         fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
         fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "Pending before expiry" } });
         fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
+      } else if (operation === "transition") {
+        fireEvent.change(screen.getByLabelText("Lý do chuyển trạng thái"), { target: { value: "Pending intent" } });
+        fireEvent.click(screen.getByRole("button", { name: "Expiry transition" }));
+      } else if (operation === "reassessment") {
+        fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
       } else {
         fireEvent.change(screen.getByLabelText("Ngày hoàn tất trình"), { target: { value: "2026-10-31" } });
         fireEvent.click(screen.getByRole("button", { name: "Hoàn tất PCT" }));
@@ -3489,6 +3497,8 @@ describe("App Slice A.4 search workspace", () => {
       } else await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
       expect(screen.queryByLabelText("Số/Tham chiếu QĐKT")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Ngày hoàn tất trình")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Lý do chuyển trạng thái")).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Đăng xuất" })).not.toBeInTheDocument();
       expect(clearOidcSession).toHaveBeenCalled();
       await act(async () => { resolveSave({ case_id: "case-1", row_version: 4 }); });
@@ -3529,6 +3539,208 @@ describe("App Slice A.4 search workspace", () => {
     } finally {
       view.unmount(); timerSpy.mockRestore(); clock.mockRestore();
     }
+  });
+
+  it.each([1, 2])("preserves selected history and draft when the same canonical master row is activated %s times", async activations => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "planned" }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id } }));
+    const { container } = renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-B"));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Unsaved B dossier" } });
+    const reads = apiMocks.getCaseWorkspace.mock.calls.length;
+    const master = container.querySelector<HTMLTableRowElement>(".facility-table tbody tr")!;
+    for (let i = 0; i < activations; i++) fireEvent.click(master);
+    await flushSearchUrlSync();
+    expect(screen.getByRole("row", { name: /Case B/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Unsaved B dossier");
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(reads);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
+    expect(apiMocks.upsertCaseApplication).not.toHaveBeenCalled();
+  });
+
+  it.each(["success", "conflict"] as const)("keeps a replaced transition %s from refreshing Case A after A → B → A", async result => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "planned" }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({
+      case_summary: { ...buildCaseWorkspace().case_summary, id },
+      inspection: { ...buildCaseWorkspace().inspection, plan_decision_reference: `Plan ${id}` },
+      transition_actions: [{ action_key: "transition-test", label: "Transition test", target_state: "planned", available: true, expected_version: 8, reason_code: null, required_permissions: [] }],
+    }));
+    let resolve!: (value: Record<string, unknown>) => void;
+    let reject!: (value: Error) => void;
+    apiMocks.transitionCase.mockImplementation(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Transition test" }));
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Plan case-B"));
+    fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Plan case-A"));
+    const reads = apiMocks.getCaseWorkspace.mock.calls.length;
+    await act(async () => { if (result === "success") resolve({ case_id: "case-A", row_version: 9 }); else reject(buildApiError("Old conflict", 409)); });
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(reads);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("serializes reassessment form submissions even before React commits pending state", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.createInspectionCase.mockImplementation(() => new Promise(() => {}));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    const dialog = screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
+    const form = within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }).closest("form")!;
+    act(() => { fireEvent.submit(form); fireEvent.submit(form); });
+    expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
+    await flushSearchUrlSync();
+  });
+
+  it("does not expose reassessment activation before the initial history owner is selected", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    const snapshots: boolean[] = [];
+    contextCommit.observe.mockImplementation(() => {
+      const action = document.querySelector<HTMLButtonElement>('button[aria-label="Tái đánh giá"]');
+      if (document.querySelector('.history-table tbody tr[aria-selected]') && action && !action.disabled) snapshots.push(Boolean(document.querySelector('.history-table tbody tr[aria-selected="true"]')));
+    });
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots.every(Boolean)).toBe(true);
+  });
+
+  it("keeps backend-authorized creation without a source when the history is empty", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [], action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.createInspectionCase.mockRejectedValue(buildApiError("Controlled create rejection", 409));
+    renderApp(["/search"]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Không chọn hồ sơ nguồn")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "User entered standard" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+    await within(dialog).findByRole("alert");
+    expect(apiMocks.createInspectionCase.mock.calls[0][1]).toEqual(expect.objectContaining({ source_case_id: null, applicable_standard: "User entered standard", production_line_id: "line-uuid-1" }));
+    expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
+    expect(within(dialog).getByLabelText("Tiêu chuẩn áp dụng")).toHaveValue("User entered standard");
+  });
+
+  it("contains reassessment keyboard and programmatic focus, including pending with no enabled control", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.createInspectionCase.mockImplementation(() => new Promise(() => {}));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    const trigger = screen.getByRole("button", { name: "Tái đánh giá" });
+    trigger.focus(); fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    const input = within(dialog).getByLabelText("Tiêu chuẩn áp dụng");
+    const cancel = within(dialog).getByRole("button", { name: "Hủy" });
+    expect(input).toHaveFocus();
+    cancel.focus(); fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(input).toHaveFocus();
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+    expect(cancel).toHaveFocus();
+    const background = screen.getByPlaceholderText("Lọc theo tên...");
+    background.focus(); expect(dialog.contains(document.activeElement)).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
+    await flushSearchUrlSync();
+  });
+
+  it("closes a reassessment intent when its explicitly selected source Case changes", async () => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "closed" }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history, action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id } }));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "Draft for A" } });
+    // External history navigation is possible even while a modal is open.
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await flushSearchUrlSync();
+    expect(screen.queryByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+    expect(apiMocks.createInspectionCase).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    const dialog = screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
+    expect(within(dialog).getByLabelText("Tiêu chuẩn áp dụng")).toHaveValue("");
+  });
+
+  it("does not let an old reassessment readback reset externally selected tabs or select the created Case", async () => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "closed" }));
+    const ready = buildWorkspace({ history, action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    let resolveRead!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValue(ready).mockResolvedValueOnce(ready).mockImplementationOnce(() => new Promise(resolve => { resolveRead = resolve; }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id } }));
+    apiMocks.createInspectionCase.mockResolvedValue({ case_id: "created-from-A" });
+    render(<MemoryRouter initialEntries={["/search"]}><SearchRouteNavigator to="/search?gxp_type=GMP&result_key=site-1%3AGMP%3AA&history_id=case-B&facility_tab=Thông+tin+chung" /><App /></MemoryRouter>);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Đi tới ngữ cảnh khác" }));
+    await flushSearchUrlSync();
+    await act(async () => resolveRead(ready));
+    await screen.findByRole("row", { name: /Case B/ });
+    expect(screen.getByRole("row", { name: /Case B/ })).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.getCaseWorkspace.mock.calls.every(call => call[0] !== "created-from-A")).toBe(true);
+    expect(screen.getByRole("tab", { name: "Thông tin chung" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it.each(["success", "failure"])("isolates reassessment %s from a new dialog after source A → B → A", async result => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "closed" }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history, action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id } }));
+    let resolve!: (value: Record<string, unknown>) => void;
+    let reject!: (value: Error) => void;
+    apiMocks.createInspectionCase.mockImplementation(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-B"));
+    fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-A"));
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "New A draft" } });
+    await act(async () => { if (result === "success") resolve({ case_id: "created-from-old-A" }); else reject(buildApiError("Old create failure", 409)); });
+    expect(within(screen.getByRole("dialog")).getByLabelText("Tiêu chuẩn áp dụng")).toHaveValue("New A draft");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
   });
 
   it.each(["plan", "approval"] as const)("does not start a replaced %s command's readback after Case A → B → A", async operation => {

@@ -1937,3 +1937,57 @@ Validation: full frontend603PASS/0FAIL/0SKIP,39files; targeted42PASS twice;
 new session4PASS repeated; typecheck/lint/buildPASS; backend contracts139PASS.
 Backend Issue236 actual-HTTP probe remains RED outside the project suite and is
 not counted as a passing integration case. No timeout increase or test disabled.
+
+### Master / Case lifecycle / history owner closure — 2026-10-31
+
+Baselinec3168aa; reportv1.5 records the source audit and per-dimension acceptance.
+No master/history/summary layout, filter row, certificate owner or backend policy
+changed. Existing focus/async/reorder behavior that passes is retained.
+
+Proven RED gaps: SearchPage cleared history/dossier draft on same-row activation
+(single/repeated unit and native double-click browser); transition refreshed token
+replaced reviewed intent; old transition success/409 started late A readback;
+reassessment changed source under an open dialog and allowed pre-render duplicate
+POST. Initial history selection also had an enabled-action window before its
+owner settled. Each is corrected at SearchPage/CaseLifecycleActions, with canonical
+UUID, existing server readiness and numeric version. Source_case_id is captured
+and displayed explicitly; null source remains allowed for backend-ready empty
+history. No latest/filename/KHKT-derived Case source. Local Cancel reviews the
+new transition token rather than silently upgrading a retained reason.
+
+A small ReassessmentDialog owns focus only, reusing the unchanged existing focus
+hook. Boundary Tab/Shift+Tab/programmatic focus and all-disabled pending remain
+inside; close restores trigger after inert cleanup. Source metadata spans a new
+row without changing the existing three context fields. These are minimal web
+identity/concurrency controls, not claims about an unseen legacy UserForm.
+
+FIXTURE_VERIFIED full-App Edge1366x768/1920x1080/390x844: widths match viewport;
+same-Site different line and cross-Site summary, external URL Back/Forward,
+held old search response, empty/503, history reorder, one Tab entry/group,
+focus-only0requests, same-row double-click, reviewed token/409, A-B-A pending
+transition, source/line create payload and modal pending/error keys.68requests,
+four intentional POST attempts per viewport. Internal selections remain REPLACE;
+a pushed-history assumption in an early fixture was corrected without product
+navigation changes. No new ancestor overflow hiding.
+
+DISPOSABLE_API_VERIFIED actual FastAPI + typed API + full browser, synthetic
+SQLite/header_stub: Case create/GET/reload, new user-entered dossier, numeric
+transition/GET/reload; real reader403/source mismatch422/stale409/duplicate409.
+DB readback:3oldCases+1newCase,3structured audit events, rejected writes add no
+Case. No claim that local header_stub equals authenticated Google A/B; no
+populated-source scope-copy or Word binary acceptance inferred.
+
+Issue236 OPEN / backend PR238 OPEN at this checkpoint; Approval readback is still
+BLOCKED, with no frontend rescue. PR235/206 untouched. OIDC, native speech,
+original VBA runtime, Word/NAS and production UAT NOT_EXECUTED; typed legal-output
+and Issues74/144 gates unchanged. Evidence lives outside Git under
+`.codex/evidence/master-lifecycle-history-20261031/`.
+Browser Range regression additionally catches and corrects wrapping of the new
+local transition Cancel control: scoped lifecycle action buttons fit their text
+at all three viewports without changing master/history/header or hiding overflow.
+Validation: final full631PASS/0FAIL/0SKIP,39files; targeted51PASS twice and
+parent/session22PASS twice; typecheck/lint/buildPASS; backend contracts108PASS.
+Earlier timed-out/RPC-error runs are preserved as failed diagnostics, not PASS;
+no timeout/assertion/skip changes. Commit-level initial-owner RED is independent
+of those timing failures. Local source swap for creation A-B-A RED restored the
+working file byte-for-byte before final validation.

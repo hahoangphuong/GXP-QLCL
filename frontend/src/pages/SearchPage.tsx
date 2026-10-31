@@ -1,4 +1,5 @@
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
+import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
 import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
@@ -589,6 +590,10 @@ export function SearchPage({
   const eventContext = ownedWorkspace ?? (ownedRequest && ownedRequest.status !== "ready" ? ownedRequest.previous : null);
   const selectedHistory = deepLinkError ? null : eventContext?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const caseOperationOwner = useRef({ context: selectedContext, historyId: selectedHistory?.id ?? null });
+  const approvalWrites = useRef(new Map<string, object>());
+  const [approvalPhases, setApprovalPhases] = useState<Record<string, "pending" | "review">>({});
+  const approvalKey = selectedContext && selectedHistory?.source_type === "case" ? JSON.stringify([accessGeneration, useStubAuth, selectedHistory.id]) : null;
+  const approvalPhase = approvalKey ? approvalPhases[approvalKey] : undefined;
   useLayoutEffect(() => {
     const current = caseOperationOwner.current;
     if (current.context !== selectedContext || current.historyId !== (selectedHistory?.id ?? null)) {
@@ -1773,21 +1778,39 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
+  async function runSelectedApprovalMutation<T>(caseId: string, operationOwner: typeof caseOperationOwner.current, write: () => Promise<T>): Promise<T> {
+    const key = JSON.stringify([accessGeneration, useStubAuth, caseId]);
+    if (approvalWrites.current.has(key)) throw new ApprovalMutationRecoveryError("Thao tác trình đang chờ xử lý hoặc cần tải lại hồ sơ để xác minh.");
+    const operation = {};
+    approvalWrites.current.set(key, operation);
+    setApprovalPhases(current => ({ ...current, [key]: "pending" }));
+    try {
+      const response = await runApprovalMutation(write, () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner));
+      approvalWrites.current.delete(key);
+      setApprovalPhases(current => { const next = { ...current }; delete next[key]; return next; });
+      return response;
+    } catch (error) {
+      if (error instanceof ApprovalMutationRecoveryError) setApprovalPhases(current => ({ ...current, [key]: "review" }));
+      else {
+        approvalWrites.current.delete(key);
+        setApprovalPhases(current => { const next = { ...current }; delete next[key]; return next; });
+      }
+      throw error;
+    }
+  }
+
   async function handleCreateApprovalSubmission(stage: "PCT" | "CT", payload: import("../types").InspectionApprovalSubmissionCreateRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để tạo trình phê duyệt.");
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    const response = await createInspectionApprovalSubmission(caseId, stage, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
-    return response;
+    return runSelectedApprovalMutation(caseId, operationOwner, () => createInspectionApprovalSubmission(caseId, stage, payload, auth, useStubAuth, bearerToken));
   }
 
   async function handleCompleteApprovalSubmission(submissionId: string, payload: import("../types").InspectionApprovalSubmissionCompleteRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để hoàn tất trình phê duyệt.");
     const operationOwner = caseOperationOwner.current;
-    const response = await completeInspectionApprovalSubmission(submissionId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(selectedHistory.id, undefined, operationOwner);
-    return response;
+    const caseId = selectedHistory.id;
+    return runSelectedApprovalMutation(caseId, operationOwner, () => completeInspectionApprovalSubmission(submissionId, payload, auth, useStubAuth, bearerToken));
   }
 
   async function handleCaseTransition(payload: import("../types").CaseTransitionRequest) {
@@ -2463,6 +2486,7 @@ export function SearchPage({
         ) : null}
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
+            <ApprovalMutationContext.Provider value={{ pending: approvalPhase === "pending", requiresReview: approvalPhase === "review" }}>
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}
               caseWorkspace={selectedCaseWorkspace}
@@ -2560,6 +2584,7 @@ export function SearchPage({
               selectedRemediationCycleId={selectedRemediationCycleId}
               summary={retainedWorkspace.summary}
             />
+            </ApprovalMutationContext.Provider>
             {selectedHistory?.source_type === "case" && canLoadSecureApi ? (
               <QdKtCaseReadinessPanel
                 key={`${selectedHistory.id}:${accessGeneration}`}

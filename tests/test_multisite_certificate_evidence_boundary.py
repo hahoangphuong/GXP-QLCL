@@ -16,23 +16,39 @@ from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 
 
-@pytest.mark.parametrize("cross_site", [False, True])
-def test_linked_certificate_requires_primary_site_until_coverage_is_reviewed(cross_site):
+@pytest.mark.parametrize(
+    ("case_site_relation", "case_gxp", "expected_valid"),
+    [
+        ("primary", "GMP", True),
+        ("same_company", "GMP", False),
+        ("different_company", "GMP", False),
+        ("primary", "GLP", False),
+        ("same_company", "GLP", False),
+    ],
+)
+def test_linked_certificate_requires_evidenced_site_and_gxp(
+    case_site_relation, case_gxp, expected_valid
+):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     try:
         with Session(engine) as session:
             company = Company(legal_name="Legacy source boundary")
-            session.add(company)
+            foreign_company = Company(legal_name="Unrelated owner")
+            session.add_all([company, foreign_company])
             session.flush()
             primary = Site(company_id=company.id, site_name="Primary")
-            other = Site(company_id=company.id, site_name="Other same-company Site")
-            session.add_all([primary, other])
+            additional = Site(company_id=company.id, site_name="Other same-company Site")
+            unrelated = Site(company_id=foreign_company.id, site_name="Foreign Site")
+            session.add_all([primary, additional, unrelated])
             session.flush()
+            case_site = {
+                "primary": primary,
+                "same_company": additional,
+                "different_company": unrelated,
+            }[case_site_relation]
             linked_case = Case(
-                site_id=other.id if cross_site else primary.id,
-                gxp_type="GMP",
-                state=CaseState.DRAFT,
+                site_id=case_site.id, gxp_type=case_gxp, state=CaseState.DRAFT,
             )
             session.add(linked_case)
             session.flush()
@@ -42,12 +58,12 @@ def test_linked_certificate_requires_primary_site_until_coverage_is_reviewed(cro
             )
             session.add(cert)
             session.flush()
-            if cross_site:
+            if not expected_valid:
                 with pytest.raises(HTTPException) as exc:
                     CaseWorkflowService._validate_certificate_linked_case(session, cert)
                 assert exc.value.status_code == 409
                 assert "invalid linked Case" in str(exc.value.detail)
-                # Historical latest_flag=False must not bypass the global read guard.
+                # Even historical records cannot evade unscoped search validation.
                 with pytest.raises(HTTPException) as search_error:
                     CatalogReadService().search_facilities(session, gxp_type="GMP")
                 assert search_error.value.status_code == 409

@@ -23,6 +23,39 @@ function renderWorkspace(onIssue = vi.fn().mockResolvedValue(undefined), action 
 }
 
 describe("CaseCertificateIssueWorkspace", () => {
+  it("submits only once before pending renders", async () => {
+    let finish!: () => void;
+    const issue = renderWorkspace(vi.fn(() => new Promise<void>(resolve => { finish = resolve; })));
+    fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+    const button = screen.getByRole("button", { name: "Cấp giấy chứng nhận" });
+    act(() => { button.click(); button.click(); });
+    expect(issue).toHaveBeenCalledOnce();
+    await act(async () => finish());
+  });
+  it("keeps an issue intent bound to its original type and discards it when the Case changes", () => {
+    const issue = vi.fn();
+    const { rerender } = render(<CaseCertificateIssueWorkspace caseId="case-1" readiness={readiness()} onIssue={issue} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+    fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "original intent" } });
+    rerender(<CaseCertificateIssueWorkspace caseId="case-1" readiness={{ ...readiness(), certificate_type: "GLP" }} onIssue={issue} />);
+    expect(screen.getByLabelText("Loại GxP")).toHaveTextContent("GMP");
+    expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+    rerender(<CaseCertificateIssueWorkspace caseId="case-2" readiness={readiness()} onIssue={issue} />);
+    rerender(<CaseCertificateIssueWorkspace caseId="case-1" readiness={readiness()} onIssue={issue} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(issue).not.toHaveBeenCalled();
+  });
+  it("retains the issue draft but blocks submission when readiness is withdrawn", () => {
+    const issue = vi.fn();
+    const { rerender } = render(<CaseCertificateIssueWorkspace caseId="case-1" readiness={readiness()} onIssue={issue} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+    fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "retained" } });
+    rerender(<CaseCertificateIssueWorkspace caseId="case-1" readiness={readiness(false)} onIssue={issue} />);
+    expect(screen.getByLabelText("Số GCN")).toHaveValue("retained");
+    expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+    expect(issue).not.toHaveBeenCalled();
+  });
   it("keeps keyboard focus within issuance while every control is pending", async () => {
     let reject!: (error: Error) => void;
     const issue = renderWorkspace(vi.fn(() => new Promise<void>((_, fail) => { reject = fail; })));

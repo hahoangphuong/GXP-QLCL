@@ -376,6 +376,7 @@ export function SearchPage({
   const eligibilityDetailRequestSequence = useRef(0);
   const eligibilityBasisRequestSequence = useRef(0);
   const certificateOwnerRef = useRef<{ gxpList: string | null; eligibilityList: string | null }>({ gxpList: null, eligibilityList: null });
+  const certificatePromotionsInFlight = useRef(new Set<string>());
   const committedAccessGenerationRef = useRef(accessGeneration);
   const accessTransitionPending = committedAccessGenerationRef.current !== accessGeneration;
   const reassessmentTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -384,13 +385,27 @@ export function SearchPage({
   const latestSearchSignatureRef = useRef(searchSignature);
   const latestLocationKeyRef = useRef(location.key);
   const certificateSelectionRef = useRef({
+    gxpGeneration: 0,
+    eligibilityGeneration: 0,
     gxp: selectedGxpCertificateIdState,
     gxpOwner: selectedGxpCertificateOwner,
     eligibility: selectedEligibilityCertificateIdState,
     eligibilityOwner: selectedEligibilityCertificateOwner,
   });
   useLayoutEffect(() => {
+    const previous = certificateSelectionRef.current;
+    // UUID equality alone cannot identify the new A after A -> B -> A.
+    if (previous.gxp !== selectedGxpCertificateIdState || previous.gxpOwner !== selectedGxpCertificateOwner) {
+      setGxpCertificatePromotionPending(false);
+      setGxpPromotionFailure(null);
+    }
+    if (previous.eligibility !== selectedEligibilityCertificateIdState || previous.eligibilityOwner !== selectedEligibilityCertificateOwner) {
+      setEligibilityPromotionPending(false);
+      setEligibilityPromotionFailure(null);
+    }
     certificateSelectionRef.current = {
+      gxpGeneration: previous.gxpGeneration + Number(previous.gxp !== selectedGxpCertificateIdState || previous.gxpOwner !== selectedGxpCertificateOwner),
+      eligibilityGeneration: previous.eligibilityGeneration + Number(previous.eligibility !== selectedEligibilityCertificateIdState || previous.eligibilityOwner !== selectedEligibilityCertificateOwner),
       gxp: selectedGxpCertificateIdState,
       gxpOwner: selectedGxpCertificateOwner,
       eligibility: selectedEligibilityCertificateIdState,
@@ -1917,7 +1932,7 @@ export function SearchPage({
     await refreshSelectedCaseWorkspace(caseId, cycleId);
   }
 
-  async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued = false) {
+  async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued: boolean, selectionGeneration: number) {
     if (!selectedResult || !isCurrentContext() || !eligibilityListOwner) return;
     const listOwner = eligibilityListOwner;
     const detailOwner = JSON.stringify(["eligibility-detail", listOwner, certificateId]);
@@ -1925,7 +1940,7 @@ export function SearchPage({
       getBusinessEligibilityDetail(certificateId, auth, useStubAuth, bearerToken),
       listSiteBusinessEligibilityCertificates(selectedResult.site_id, auth, useStubAuth, bearerToken),
     ]);
-    if (!isCurrentContext() || certificateOwnerRef.current.eligibilityList !== listOwner) return;
+    if (!isCurrentContext() || certificateOwnerRef.current.eligibilityList !== listOwner || certificateSelectionRef.current.eligibilityGeneration !== selectionGeneration) return;
     if (!selectIssued && (certificateSelectionRef.current.eligibilityOwner !== listOwner || certificateSelectionRef.current.eligibility !== certificateId)) return;
     setSelectedEligibilityCertificateOwner(listOwner);
     setSelectedEligibilityCertificateId(certificateId);
@@ -1941,14 +1956,17 @@ export function SearchPage({
     if (!selectedResult) {
       throw new Error("Chưa chọn cơ sở để cấp GCN đủ điều kiện.");
     }
+    const generation = certificateSelectionRef.current.eligibilityGeneration;
     const result = await issueBusinessEligibility(selectedResult.site_id, payload, auth, useStubAuth, bearerToken);
-    await refreshBusinessEligibilityAfterMutation(result.business_eligibility_certificate_id, true);
+    await refreshBusinessEligibilityAfterMutation(result.business_eligibility_certificate_id, true, generation);
   }
 
   async function handleBusinessEligibilityLatestVersionUpdate(payload: BusinessEligibilityLatestVersionUpsertRequest) {
     if (!selectedEligibilityCertificateId) {
       throw new Error("Chưa chọn GCN đủ điều kiện để cập nhật.");
     }
+    const generation = certificateSelectionRef.current.eligibilityGeneration;
+    let mutationAccepted = false;
     try {
       await upsertBusinessEligibilityLatestVersion(
         selectedEligibilityCertificateId,
@@ -1957,12 +1975,13 @@ export function SearchPage({
         useStubAuth,
         bearerToken,
       );
-      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+      mutationAccepted = true;
+      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
     } catch (error) {
       const apiError = error as Error & { status?: number };
-      if (apiError.status === 409) {
+      if (apiError.status === 409 && !mutationAccepted) {
         try {
-          await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+          await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
         } catch {
           // Preserve the mutation conflict as the actionable error when refresh also fails.
         }
@@ -1980,6 +1999,11 @@ export function SearchPage({
     }
     const detailOwner = expectedEligibilityDetailOwner;
     const listOwner = eligibilityListOwner;
+    const generation = certificateSelectionRef.current.eligibilityGeneration;
+    const operation = JSON.stringify(["eligibility-promote", detailOwner, generation]);
+    if (certificatePromotionsInFlight.current.has(operation)) return;
+    certificatePromotionsInFlight.current.add(operation);
+    let mutationAccepted = false;
     setEligibilityPromotionOwner(detailOwner);
     setEligibilityPromotionPending(true);
     setEligibilityPromotionFailure(null);
@@ -1991,19 +2015,21 @@ export function SearchPage({
         useStubAuth,
         bearerToken,
       );
-      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+      mutationAccepted = true;
+      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
     } catch (error) {
       const apiError = error as Error & { status?: number };
-      if (apiError.status === 409 && selectedEligibilityCertificateId) {
+      if (apiError.status === 409 && !mutationAccepted && selectedEligibilityCertificateId) {
         try {
-          await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+          await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
         } catch {
           // Keep the original promotion conflict as the actionable error.
         }
       }
-      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner) setEligibilityPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành." });
+      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) setEligibilityPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành." });
     } finally {
-      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner) setEligibilityPromotionPending(false);
+      certificatePromotionsInFlight.current.delete(operation);
+      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) setEligibilityPromotionPending(false);
     }
   }
 
@@ -2013,6 +2039,10 @@ export function SearchPage({
     }
     const listOwner = gxpListOwner;
     const detailOwner = expectedGxpDetailOwner;
+    const generation = certificateSelectionRef.current.gxpGeneration;
+    const operation = JSON.stringify(["gxp-promote", detailOwner, generation]);
+    if (certificatePromotionsInFlight.current.has(operation)) return;
+    certificatePromotionsInFlight.current.add(operation);
     setGxpPromotionOwner(detailOwner);
     setGxpCertificatePromotionPending(true);
     setGxpPromotionFailure(null);
@@ -2030,15 +2060,16 @@ export function SearchPage({
           selectedResult.production_line_id,
         ),
       ]);
-      if (!isCurrentContext() || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+      if (!isCurrentContext() || certificateSelectionRef.current.gxpGeneration !== generation || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
       setGxpCertificateDetailOwner(detailOwner);
       setGxpCertificateDetail(detailPayload);
       setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
     } catch (error) {
-      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner) setGxpPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành." });
+      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner && certificateSelectionRef.current.gxpGeneration === generation) setGxpPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành." });
     } finally {
-      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner) setGxpCertificatePromotionPending(false);
+      certificatePromotionsInFlight.current.delete(operation);
+      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner && certificateSelectionRef.current.gxpGeneration === generation) setGxpCertificatePromotionPending(false);
     }
   }
 
@@ -2048,8 +2079,11 @@ export function SearchPage({
     }
     const listOwner = gxpListOwner;
     const detailOwner = expectedGxpDetailOwner;
+    const generation = certificateSelectionRef.current.gxpGeneration;
+    let mutationAccepted = false;
     try {
       await upsertGxpCertificateLatestVersion(selectedGxpCertificateId, payload, auth, useStubAuth, bearerToken);
+      mutationAccepted = true;
       const [detailPayload, listPayload] = await Promise.all([
         getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken),
         listSiteGxpCertificates(
@@ -2062,7 +2096,7 @@ export function SearchPage({
           selectedResult.production_line_id,
         ),
       ]);
-      if (!isCurrentContext() || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+      if (!isCurrentContext() || certificateSelectionRef.current.gxpGeneration !== generation || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
       setGxpCertificateDetailOwner(detailOwner);
       setGxpCertificateDetail(detailPayload);
       setGxpCertificatesOwner(listOwner);
@@ -2070,10 +2104,10 @@ export function SearchPage({
       setGxpCertificateDetailFailure(null);
     } catch (error) {
       const apiError = error as Error & { status?: number };
-      if (apiError.status === 409) {
+      if (apiError.status === 409 && !mutationAccepted) {
         try {
           const detailPayload = await getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken);
-          if (!isCurrentContext() || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+          if (!isCurrentContext() || certificateSelectionRef.current.gxpGeneration !== generation || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
           setGxpCertificateDetailOwner(detailOwner);
           setGxpCertificateDetail(detailPayload);
           setGxpCertificateDetailFailure(null);

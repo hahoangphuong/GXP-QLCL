@@ -36,6 +36,36 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
   return onEditLatestVersion;
 }
 
+it("discards an editor on A to B to A and ignores its late completion", async () => {
+  let finish!: () => void;
+  const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const props = { detail: detail(), detailError: null, detailLoading: false, items, listError: null, listLoading: false,
+    onEditLatestVersion: save, onPromoteCurrent: vi.fn(), onSelectCertificate: vi.fn(),
+    promotionError: null, promotionPending: false, selectedCertificateId: "cert-1" };
+  const { rerender } = render(<GxpCertificateWorkspace {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Số GCN" }), { target: { value: "old A draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+  rerender(<GxpCertificateWorkspace {...props} selectedCertificateId="cert-2" detail={{ ...detail(), certificate_id: "cert-2" }} />);
+  rerender(<GxpCertificateWorkspace {...props} />);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Số GCN" }), { target: { value: "new A draft" } });
+  await act(async () => finish());
+  expect(screen.getByRole("textbox", { name: "Số GCN" })).toHaveValue("new A draft");
+  expect(save).toHaveBeenCalledOnce();
+});
+
+it("submits only once when two activations arrive before pending renders", async () => {
+  let finish!: () => void;
+  const save = renderWorkspace(vi.fn(() => new Promise<void>(resolve => { finish = resolve; })));
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  const button = screen.getByRole("button", { name: "Lưu thay đổi" });
+  act(() => { button.click(); button.click(); });
+  expect(save).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
 it("mounts persisted snapshots separately without changing current detail, draft or write token", async () => {
   const onEdit = vi.fn().mockResolvedValue(undefined);
   const onSelect = vi.fn();

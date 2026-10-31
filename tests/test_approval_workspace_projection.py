@@ -43,6 +43,8 @@ def test_workspace_projection_preserves_case_owned_pct_ct_rounds_on_reload():
                 case_id=other_case.id, stage="PCT", round_no=1, reference="OTHER",
             )
             session.add_all([ct, foreign])
+            session.flush()
+            pct1_id, pct2_id, ct_id = pct1.id, pct2.id, ct.id
             session.commit()
 
         service = CatalogReadService()
@@ -52,7 +54,7 @@ def test_workspace_projection_preserves_case_owned_pct_ct_rounds_on_reload():
                 approvals = workspace.inspection.approval_submissions
                 assert len(approvals) == 3
                 assert all(item.case_id == case_id for item in approvals)
-                assert {item.approval_submission_id for item in approvals} == {pct1.id, pct2.id, ct.id}
-                assert next(item for item in approvals if item.approval_submission_id == ct.id).pct_submission_id == pct1.id
+                assert {item.approval_submission_id for item in approvals} == {pct1_id, pct2_id, ct_id}
+                assert next(item for item in approvals if item.approval_submission_id == ct_id).pct_submission_id == pct1_id
     finally:
         engine.dispose()

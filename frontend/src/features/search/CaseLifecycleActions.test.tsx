@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
+import { CaseDraftSession } from "./CaseDraftSession";
 import { CaseLifecycleActions } from "./CaseLifecycleActions";
 
 function workspace(actions: CaseWorkspace["transition_actions"]): CaseWorkspace {
@@ -126,4 +127,23 @@ describe("CaseLifecycleActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Bị chặn" }));
     expect(onTransition).not.toHaveBeenCalled();
   });
+});
+
+
+it("keeps reviewed lifecycle intent and the pending guard across same-Case pane unmount", async () => {
+  let resolve!: () => void;
+  const onTransition = vi.fn(() => new Promise<void>(done => { resolve = done; }));
+  const actions = [{ action_key: "transition", label: "Transition", available: true, expected_version: 18, target_state: "planned", reason_code: null, required_permissions: [] }];
+  const editor = (show: boolean, version = 18) => <CaseDraftSession identity="case-A">{show ? <CaseLifecycleActions caseWorkspace={workspace(actions.map(a => ({ ...a, expected_version: version })))} onTransition={onTransition} /> : null}</CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.change(screen.getByLabelText("Lý do chuyển trạng thái"), { target: { value: "Reviewed reason" } });
+  view.rerender(editor(false));view.rerender(editor(true, 19));
+  expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("Reviewed reason");
+  fireEvent.click(screen.getByRole("button", { name: "Transition" }));
+  view.rerender(editor(false));view.rerender(editor(true, 19));
+  expect(screen.getByRole("button", { name: "Đang chuyển..." })).toBeDisabled();
+  expect(onTransition).toHaveBeenCalledWith({ expected_version: 18, target_state: "planned", reason: "Reviewed reason" });
+  await act(async () => resolve());
+  expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("");
+  expect(onTransition).toHaveBeenCalledOnce();
 });

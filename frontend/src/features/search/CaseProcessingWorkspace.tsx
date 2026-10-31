@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { useCaseDraftState } from "./CaseDraftSession";
+import { useEffect, useMemo } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { formatCompactDate } from "../../lib/presentation";
@@ -76,11 +78,12 @@ export function CaseProcessingWorkspace({
   view?: "assessment" | "timeline";
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
-  const [draft, setDraft] = useState<ProcessingDraft>(currentDraft);
-  const [editingField, setEditingField] = useState<keyof ProcessingDraft | null>(null);
-  const [draftVersion, setDraftVersion] = useState(caseWorkspace.processing.row_version);
-  const [pending, setPending] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draft, setDraft] = useCaseDraftState<ProcessingDraft>("assessment.draft", currentDraft);
+  const [editingField, setEditingField] = useCaseDraftState<keyof ProcessingDraft | null>("assessment.editingField", null);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("assessment.draftVersion", caseWorkspace.processing.row_version);
+  const [pending, setPending] = useCaseDraftState("assessment.pending", false);
+  const [requiresReview, setRequiresReview] = useCaseDraftState("assessment.requiresReview", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("assessment.errorMessage", null);
 
   useEffect(() => {
     if (!editingField) {
@@ -90,7 +93,7 @@ export function CaseProcessingWorkspace({
   }, [currentDraft, editingField]);
 
   async function saveField() {
-    if (!editingField || pending) {
+    if (!editingField || pending || requiresReview) {
       return;
     }
     setPending(true);
@@ -105,6 +108,7 @@ export function CaseProcessingWorkspace({
       });
       setEditingField(null);
     } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) setRequiresReview(true);
       const nextError = error instanceof Error ? error : new Error("Không lưu được bước xử lý.");
       setErrorMessage(getErrorMessage(nextError));
     } finally {
@@ -120,6 +124,7 @@ export function CaseProcessingWorkspace({
 
   return (
     <div className={`event-step-stack${view === "assessment" ? " case-assessment-stack" : view === "timeline" ? " processing-timeline" : ""}`}>
+      {requiresReview ? <p className="form-error" role="alert">Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ.</p> : null}
       {view !== "timeline" ? <section className="workspace-section case-assessment-section">
         <h4 className={view === "assessment" ? "sr-only" : undefined}>{view === "assessment" ? "Thẩm định hồ sơ" : "Thông tin xử lý"}</h4>
         <div className="case-assessment-grid">
@@ -137,6 +142,7 @@ export function CaseProcessingWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
+            saveDisabled={requiresReview}
             value={formatCompactDate(caseWorkspace.processing.assessed_on)}
           >
             <input
@@ -161,6 +167,7 @@ export function CaseProcessingWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
+            saveDisabled={requiresReview}
             value={caseWorkspace.processing.assessor_name}
           >
             <input
@@ -187,6 +194,7 @@ export function CaseProcessingWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
+            saveDisabled={requiresReview}
             value={caseWorkspace.processing.assessment_result}
           >
             <textarea

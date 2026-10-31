@@ -2086,3 +2086,56 @@ backend110PASS on13670d9. RED logs include duplicate activation, actual committe
 PCT/GET503 replay, ambiguous-response recovery and tab-remount bypass. One earlier
 targeted Plan timeout remains a diagnostic failure, not a relaxed test.125 final
 synthetic audit events include all controlled probes; no production/storage data.
+
+
+## Active Case draft lifetime — 2026-11-01 (v1.8)
+
+Baseline8b171ae, after audited PR248 test-only main drift. Scope: inline drafts
+at the existing owner; master/history/rail/action panel/two filters, six workflow
+steps and document owner/layout are unchanged. Owner/state matrix and exclusions
+are in `docs/LEGACY_VBA_EXCEL_PARITY_STATUS.md` v1.8.
+
+RED: Application/Assessment/Plan/Outcome/CAPA/Approval lose input after tab
+unmount; Application/Assessment fabricate confirmation when post-write GET fails.
+The active Case/access/line session now retains editor values, edit intent,
+original concurrency token and pending/error through workflow and Facility tabs.
+It does not mount hidden workspaces, cache other Cases, use browser draft storage,
+upgrade a dirty token from refreshed props, or save because of navigation. Cancel
+still resets the editor; a new Case/access/line generation cannot receive late
+callbacks from the old session. CAPA's own cycle-generation reset is preserved.
+Application/Assessment require authoritative GET and block uncertain-write replay
+through remount/Cancel. Approval PR247 pending/recovery logic remains unchanged.
+Certificate and reassessment dialog retention policies remain unchanged.
+
+Evidence classes: UNIT_VERIFIED for named regression; disposable API and browser
+at1366×768/1920×1080/390×844 are separate from authenticated Google. Real local
+HTTP acceptance166 checks/68 initial command-audit events; actual React browser
+keeps drafts/pending, sends original tokens to a real409, and blocks replay after
+an accepted PUT with injected GET503 at all three widths. client=scroll1366/1920/
+390. Focus-only0GET/mutations and IME Enter0writes. Synthetic session fixture
+checks Case A-B-A, old response, expiry, roleB403 and logout at all widths.
+
+EVIDENCE_MISSING: Excel runtime draft retention across navigation; original VBA
+pixel/runtime execution; native speech; signed binary/Word/NAS output. Google A/B
+is NOT_EXECUTED/BLOCKED_BY_ENVIRONMENT (Issue8, missing two authorized accounts and
+current permitted synthetic URL). Cross-Case/certificate/reload draft retention
+is BLOCKED_BY_BUSINESS_DECISION; no new policy/persistent cache is inferred.
+PR206/74/144/legal output barriers remain. This is no whole-module parity upgrade.
+
+CAPA readback ownership also had a proven A-B-A race: a replaced command adopted
+its readback owner only after await and started a fourth GET in the new A session
+(RED expected3, received4). All four CAPA callbacks now capture the Case operation
+owner before the command. GREEN and browser fixtures prove no late Case GET or
+draft replacement. Back/Forward across the dashboard unmounts SearchPage and
+starts a clean draft session on return; preserving drafts across that route is
+also BLOCKED_BY_BUSINESS_DECISION, distinct from same-Case workspace tab retention.
+
+Final local validation:675PASS/0FAIL/0SKIP in39 frontend files, no act/unhandled
+warnings; parent regression20PASS twice and component86PASS twice. Typecheck,
+lint and production buildPASS (existing bundle-size advisory). Relevant backend
+contracts134PASS (40 lifecycle/Approval/period/team +94 workflow mutations).
+The first670PASS diagnostic run had pending test-act warnings; async Router
+work is now awaited, without changing assertions/timeouts or suppressing warnings.
+Disposable API has77 final audit events:68 initial commands plus9 successful
+browser/external-writer commands; three browser409s add no audit writes. Browser
+composition events are synthetic IME probes, not a native IME certification.

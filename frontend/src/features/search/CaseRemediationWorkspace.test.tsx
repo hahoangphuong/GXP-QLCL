@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace, CaseWorkspaceRemediationCycle, LifecycleActionReadiness } from "../../types";
+import { CaseDraftSession } from "./CaseDraftSession";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 
 function cycle(overrides: Partial<CaseWorkspaceRemediationCycle> = {}): CaseWorkspaceRemediationCycle {
@@ -493,4 +494,25 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     expect(screen.getByText("Third cycle")).toBeInTheDocument();
     expect(view.handlers.onUpdateCycle).not.toHaveBeenCalled();
   });
+});
+
+
+it("settles the original CAPA operation through tab unmount without losing its draft/token or enabling duplicate writes", async () => {
+  let reject!: (error: Error) => void;
+  const onUpdateCycle = vi.fn(() => new Promise<void>((_, rejectPromise) => { reject = rejectPromise; }));
+  const props = { onUpdateCycle, onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onSubmitCycle: vi.fn(), onAssessCycle: vi.fn() };
+  const editor = (show: boolean) => <CaseDraftSession identity="case-A">{show ? <CaseRemediationWorkspace caseWorkspace={workspace([cycle()], [action("update_capa_cycle:capa-1")])} selectedCycleId="capa-1" {...props} /> : null}</CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số tham chiếu đến" }));
+  fireEvent.change(screen.getByLabelText("Số tham chiếu đến"), { target: { value: "Pending CAPA" } });
+  fireEvent.click(screen.getByRole("button", { name: "Lưu Số CV đến" }));
+  view.rerender(editor(false));view.rerender(editor(true));
+  expect(screen.getByLabelText("Số tham chiếu đến")).toHaveValue("Pending CAPA");
+  expect(screen.getByRole("button", { name: "Lưu Số CV đến" })).toBeDisabled();
+  await act(async () => reject(Object.assign(new Error("Conflict"), { status: 409 })));
+  expect(screen.getByLabelText("Số tham chiếu đến")).toBeEnabled();
+  expect(screen.getByLabelText("Số tham chiếu đến")).toHaveValue("Pending CAPA");
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+  expect(onUpdateCycle).toHaveBeenCalledOnce();
+  expect(onUpdateCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2 }));
 });

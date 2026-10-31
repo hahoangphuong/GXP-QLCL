@@ -114,7 +114,7 @@ def test_inspection_stage_competing_creation_serialized_before_dml(kind, loser_t
             assert getattr(stages[0], field) == "winner"
             assert stages[0].row_version == winner["row_version"]
             assert verify.scalar(select(func.count(AuditEvent.id))) == 1
-            assert verify.scalar(select(func.count(InspectionEvent.id))) == 0
+            assert verify.scalar(select(func.count(InspectionEvent.id))) == (1 if kind == "outcome" else 0)
     finally:
         for session in (second, first):
             if session is not None:

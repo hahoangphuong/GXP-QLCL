@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import (
-    AppUser, Case, Certificate, CertificateVersion, GmpCoverageReviewEvent, Site,
+    AppUser, AppUserRole, RbacPermission, RbacRolePermission,
+    Case, Certificate, CertificateVersion, GmpCoverageReviewEvent, Site,
 )
 
 
@@ -58,6 +60,19 @@ def append_unresolved_review_event(
     user = session.get(AppUser, actor_id)
     if user is None or not user.is_active:
         raise ValueError("Active authenticated AppUser required.")
+    # Permission is read from canonical DB grants, not a caller-supplied role.
+    # Fail closed until an administrator explicitly provisions this permission.
+    permitted = session.execute(
+        select(AppUserRole.id)
+        .join(RbacRolePermission, AppUserRole.rbac_role_id == RbacRolePermission.rbac_role_id)
+        .join(RbacPermission, RbacRolePermission.rbac_permission_id == RbacPermission.id)
+        .where(
+            AppUserRole.app_user_id == actor_id,
+            RbacPermission.permission_code == "gmp.coverage_evidence.intake",
+        ).limit(1)
+    ).scalar_one_or_none()
+    if permitted is None:
+        raise PermissionError("GMP evidence intake permission required.")
     version = session.get(CertificateVersion, _uuid(evidence.certificate_version_id))
     site = session.get(Site, _uuid(evidence.site_id))
     if version is None or site is None:

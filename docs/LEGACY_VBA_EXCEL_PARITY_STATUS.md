@@ -823,12 +823,30 @@ draft replacement. Back/Forward across the dashboard unmounts SearchPage and
 starts a clean draft session on return; preserving drafts across that route is
 also BLOCKED_BY_BUSINESS_DECISION, distinct from same-Case workspace tab retention.
 
-Final local validation:675PASS/0FAIL/0SKIP in39 frontend files, no act/unhandled
-warnings; parent regression20PASS twice and component86PASS twice. Typecheck,
+Final local validation:676PASS/0FAIL/0SKIP in39 frontend files, no act/unhandled
+warnings; parent regression24PASS twice and component87PASS twice. Typecheck,
 lint and production buildPASS (existing bundle-size advisory). Relevant backend
-contracts134PASS (40 lifecycle/Approval/period/team +94 workflow mutations).
+contracts136PASS (40 lifecycle/Approval/period/team +94 workflow mutations +2 audited main source-boundary tests).
 The first670PASS diagnostic run had pending test-act warnings; async Router
 work is now awaited, without changing assertions/timeouts or suppressing warnings.
-Disposable API has77 final audit events:68 initial commands plus9 successful
-browser/external-writer commands; three browser409s add no audit writes. Browser
+Disposable API has95 final audit events:68 initial commands plus27 successful
+browser/external-writer commands; nine browser409s add no audit writes. Browser
 composition events are synthetic IME probes, not a native IME certification.
+
+Self-review also reproduced speculative React navigation closing a still-visible
+A session before suspended B committed. red-suspended-owner.log proves typing in
+A was ignored. Session retirement now occurs in layout cleanup at actual commit/
+unmount; the committed editor remains writable while B is suspended. No draft is
+published into B. The additional regression passes without changing timeouts.
+Main81df311 drift was audited: PR249 adds only a GMP evidence document and two
+fail-closed source-boundary tests; no runtime or frontend change. An existing
+legacy-unlinked test waited for an API call, then clicked an uncommitted tab; the
+failed full-run diagnostic is retained. It now awaits the actual tab, preserving
+all UUID assertions. No production fallback or timing workaround was added.
+
+Keyboard focus-path evidence at all three widths: F2 opens the editor, Tab
+reaches the input in one step, keyboard typing/Escape issues0writes. Existing
+inline F2/Escape leaves activeElement=BODY on DOM replacement; automatic
+input/trigger focus restoration is NOT claimed. Legacy automatic-return policy
+is EVIDENCE_MISSING; this separate affordance is recorded, not changed by draft
+lifetime work. Certificate modal focus behavior remains covered by existing tests.

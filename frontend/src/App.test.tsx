@@ -1828,11 +1828,11 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("legacy-A")).toBeInTheDocument();
     fireEvent.click(screen.getByText("legacy-A"));
     await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
-    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận GPs" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Giấy chứng nhận GPs" }));
     await waitFor(() => expect(apiMocks.listSiteGxpCertificates.mock.calls.at(-1)?.[6]).toBeNull());
     fireEvent.click(screen.getByText("facility"));
     await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
-    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận GPs" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Giấy chứng nhận GPs" }));
     await waitFor(() => expect(apiMocks.listSiteGxpCertificates.mock.calls.at(-1)?.[6]).toBeNull());
   });
 

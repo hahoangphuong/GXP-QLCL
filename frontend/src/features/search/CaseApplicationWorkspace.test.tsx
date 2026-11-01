@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { Suspense, startTransition, useState } from "react";
 
 import type { CaseWorkspace, InspectionFolderLookup } from "../../types";
 import { CaseDraftSession } from "./CaseDraftSession";
@@ -382,4 +383,21 @@ describe("Case-scoped application draft lifetime", () => {
     expect(screen.getByLabelText("Mã hồ sơ")).toBeEnabled();
     expect(onSave).toHaveBeenCalledOnce();
   });
+});
+
+
+it("keeps the committed draft writable while a new owner render is suspended and has not committed", async () => {
+  const never = new Promise<void>(() => {});
+  function Suspend(): null { throw never; }
+  function Harness() {
+    const [identity, setIdentity] = useState("A");
+    return <><button onClick={() => startTransition(() => setIdentity("B"))}>Begin suspended navigation</button><Suspense fallback={<p>Loading next owner</p>}><CaseDraftSession identity={identity}><CaseApplicationWorkspace caseWorkspace={workspace} onSave={vi.fn()} onResolveInspectionFolder={vi.fn()} />{identity === "B" ? <Suspend /> : null}</CaseDraftSession></Suspense></>;
+  }
+  render(<Harness />);
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+  fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Committed A" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Begin suspended navigation" })); });
+  expect(screen.queryByText("Loading next owner")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Still editing A" } });
+  expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Still editing A");
 });

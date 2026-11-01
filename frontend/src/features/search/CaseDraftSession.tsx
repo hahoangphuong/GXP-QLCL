@@ -34,9 +34,10 @@ const Context = createContext<ReturnType<typeof createSession> | null>(null);
 export function CaseDraftSession({ identity, children }: { identity: string | null; children: ReactNode }) {
   const [owner, setOwner] = useState(() => ({ identity, session: createSession() }));
   if (owner.identity !== identity) {
-    owner.session.close();
     setOwner({ identity, session: createSession() });
   }
+  // An interrupted render must not retire the still-committed editor session.
+  // Cleanup runs when a replacement actually commits (or this owner unmounts).
   useLayoutEffect(() => {
     owner.session.activate();
     return () => owner.session.close();

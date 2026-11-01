@@ -1448,3 +1448,42 @@ Index(
     unique=True,
     postgresql_where=text("is_current IS TRUE"),
 ).ddl_if(dialect="postgresql")
+
+
+class GmpCoverageReviewEvent(UUIDPrimaryKeyMixin, Base):
+    """Append-only version/Site/Case review event; not a live coverage grant."""
+
+    __tablename__ = "gmp_coverage_review_event"
+
+    certificate_version_id: Mapped[str] = mapped_column(
+        ForeignKey("certificate_version.id"), nullable=False,
+    )
+    site_id: Mapped[str] = mapped_column(ForeignKey("site.id"), nullable=False)
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("case.id"))
+    decision_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    decision_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_document_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_page_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    reviewer_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), nullable=False)
+    recorded_by_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
+    )
+    __table_args__ = (
+        Index("ix_gmp_coverage_review_version_site", "certificate_version_id", "site_id"),
+        Index("ix_gmp_coverage_review_case", "case_id"),
+        CheckConstraint("decision_kind IN ('SITE_COVERAGE', 'CASE_LINK')", name="gmp_coverage_review_kind"),
+        CheckConstraint("decision_status IN ('VERIFIED', 'REJECTED', 'UNRESOLVED')", name="gmp_coverage_review_status"),
+        CheckConstraint(
+            "(decision_kind = 'SITE_COVERAGE' AND case_id IS NULL) OR "
+            "(decision_kind = 'CASE_LINK' AND case_id IS NOT NULL)",
+            name="gmp_coverage_review_case_shape",
+        ),
+        CheckConstraint("length(source_snapshot_sha256) = 64 AND length(source_document_sha256) = 64",
+                        name="gmp_coverage_review_digest_lengths"),
+        CheckConstraint("length(trim(source_page_reference)) > 0 AND length(trim(rationale)) > 0",
+                        name="gmp_coverage_review_source_nonblank"),
+    )

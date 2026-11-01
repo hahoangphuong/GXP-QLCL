@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
@@ -7,32 +7,28 @@ import { getAdminSystemStatus } from "../lib/api";
 import type { AppStatus } from "../types";
 
 export function AdminSystemStatusPage({ access }: { access: ApiAccess }) {
-  const [status, setStatus] = useState<AppStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const { auth, bearerToken, canLoadSecureApi, useStubAuth } = access;
+  const { auth, bearerToken, canLoadSecureApi, useStubAuth, accessGeneration } = access;
+  const owner = useMemo(() => ({}), [accessGeneration, auth, bearerToken, canLoadSecureApi, useStubAuth]);
+  const [result, setResult] = useState<{ owner: object; status: AppStatus | null; error: string | null } | null>(null);
+  const current = canLoadSecureApi && result?.owner === owner ? result : null;
+  const status = current?.status ?? null;
+  const error = current?.error ?? null;
 
   useEffect(() => {
     if (!canLoadSecureApi) {
-      setStatus(null);
+      setResult(null);
       return;
     }
     let cancelled = false;
     void getAdminSystemStatus(auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) {
-          setStatus(payload);
-          setError(null);
-        }
+        if (!cancelled) setResult({ owner, status: payload, error: null });
       })
       .catch((nextError: Error) => {
-        if (!cancelled) {
-          setError(nextError.message);
-        }
+        if (!cancelled) setResult({ owner, status: null, error: nextError.message });
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [auth, bearerToken, canLoadSecureApi, useStubAuth]);
+    return () => { cancelled = true; };
+  }, [auth, bearerToken, canLoadSecureApi, owner, useStubAuth]);
 
   if (!canLoadSecureApi) {
     return <EmptyState title="Cần đăng nhập" description="Đăng nhập để xem trạng thái hệ thống được phân quyền." />;

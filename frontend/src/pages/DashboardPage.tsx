@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
@@ -60,36 +60,29 @@ export function DashboardPage({
   access: ApiAccess;
   statusError: string | null;
 }) {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { auth, bearerToken, canLoadSecureApi, useStubAuth, accessGeneration } = access;
+  const owner = useMemo(() => ({}), [accessGeneration, auth, bearerToken, canLoadSecureApi, useStubAuth]);
+  const [result, setResult] = useState<{ owner: object; summary: DashboardSummary | null; error: string | null } | null>(null);
+  const current = canLoadSecureApi && result?.owner === owner ? result : null;
+  const summary = current?.summary ?? null;
+  const error = current?.error ?? null;
+  const loading = current === null;
 
   useEffect(() => {
-    if (!access.canLoadSecureApi) {
-      setLoading(false);
-      setSummary(null);
+    if (!canLoadSecureApi) {
+      setResult(null);
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    void getDashboardSummary(access.auth, access.useStubAuth, access.bearerToken)
+    void getDashboardSummary(auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) {
-          setSummary(payload);
-          setError(null);
-          setLoading(false);
-        }
+        if (!cancelled) setResult({ owner, summary: payload, error: null });
       })
       .catch((nextError: Error) => {
-        if (!cancelled) {
-          setError(nextError.message);
-          setLoading(false);
-        }
+        if (!cancelled) setResult({ owner, summary: null, error: nextError.message });
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [access]);
+    return () => { cancelled = true; };
+  }, [auth, bearerToken, canLoadSecureApi, owner, useStubAuth]);
 
   if (statusError) {
     return <ErrorState message={statusError} />;

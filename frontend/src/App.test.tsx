@@ -992,7 +992,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByRole("img", { name: "GXP QLCL" })).toHaveAttribute("src", "/gxp-qlcl-logo.png");
     expect(screen.queryByText("GxP QLCL")).not.toBeInTheDocument();
     expect(screen.queryByText("Tra cứu và điều phối nghiệp vụ")).not.toBeInTheDocument();
-    expect(screen.getByText("operator.local (inspector)")).toBeInTheDocument();
+    // The logo is also present while the authentication-mode request is pending.
+    expect(await screen.findByText("operator.local (inspector)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
     expect(screen.getByText("Quản lý GxP")).toBeInTheDocument();
     expect(screen.getByText("Cơ sở sản xuất, kinh doanh dược phẩm")).toBeInTheDocument();
@@ -1003,6 +1004,20 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".topbar > .primary-nav")).not.toBeNull();
     expect(container.querySelector(".topbar > .header-identity-group")).not.toBeNull();
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Liên kết pháp lý công khai" })).not.toBeInTheDocument());
+  });
+
+  it.each(["A-to-B", "same-credential-refresh"])("revalidates admin navigation for every accepted access owner: %s", async scenario => {
+    const privileged = { username: "synthetic-A", email: null, subject: "synthetic-A", role_codes: ["admin"], permissions: ["admin.users"] };
+    let resolveNext!: (value: typeof privileged) => void;
+    apiMocks.getCurrentIdentity.mockResolvedValueOnce(privileged).mockImplementation(() => new Promise(resolve => { resolveNext = resolve; }));
+    const view = await renderOidcSearch("/");
+    await act(async () => { view.credentialCallback({ credential: "synthetic-A" }); });
+    await screen.findByRole("link", { name: "Quản trị" });
+    await act(async () => { view.credentialCallback({ credential: scenario === "A-to-B" ? "synthetic-B" : "synthetic-A" }); });
+    expect(apiMocks.getCurrentIdentity).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
+    await act(async () => resolveNext({ ...privileged, username: "synthetic-B", permissions: ["case.view"], role_codes: ["reader"] }));
+    expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
   });
 
   it("uses backend identity permissions, not local role state, for admin navigation", async () => {
@@ -3385,8 +3400,13 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
 
     expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
-    fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đã nhận hồ sơ" } });
+    // Complete each controlled-input commit before dispatching the next edit.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đã nhận hồ sơ" } });
+    });
     const submitButton = screen.getByRole("button", { name: "Ghi nhận tiếp nhận" });
     expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-05");
     expect(submitButton).toBeEnabled();
@@ -3438,9 +3458,15 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
 
     expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
-    fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
-    fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đạt yêu cầu" } });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đạt yêu cầu" } });
+    });
     const assessButton = screen.getByRole("button", { name: "Đánh giá" });
     expect(screen.getByLabelText("Ngày đánh giá khắc phục")).toHaveValue("2026-09-06");
     expect(screen.getByLabelText("Kết quả đánh giá khắc phục")).toHaveValue("accepted");

@@ -145,7 +145,7 @@ export function App() {
   const [accessGeneration, setAccessGeneration] = useState(0);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
-  const [identity, setIdentity] = useState<AuthenticatedIdentity | null>(null);
+  const [ownedIdentity, setIdentity] = useState<{ generation: number; value: AuthenticatedIdentity } | null>(null);
 
   useEffect(() => {
     if (location.pathname === "/privacy") {
@@ -220,6 +220,8 @@ export function App() {
   const useStubAuth = status?.auth_mode === "header_stub";
   const canLoadSecureApi = status !== null && (useStubAuth || Boolean(oidcSession?.token));
 
+  const identity = canLoadSecureApi && ownedIdentity?.generation === accessGeneration ? ownedIdentity.value : null;
+
   useEffect(() => {
     if (!canLoadSecureApi) {
       setIdentity(null);
@@ -229,7 +231,7 @@ export function App() {
     void getCurrentIdentity(auth, useStubAuth, oidcSession?.token)
       .then((payload) => {
         if (!cancelled) {
-          setIdentity(payload);
+          setIdentity({ generation: accessGeneration, value: payload });
         }
       })
       .catch(() => {
@@ -240,7 +242,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [auth, canLoadSecureApi, oidcSession?.token, useStubAuth]);
+  }, [accessGeneration, auth, canLoadSecureApi, oidcSession?.token, useStubAuth]);
 
   const acceptOidcSession = useCallback((session: OidcSession) => {
     // There is no authoritative browser-visible authorization revision. Treat

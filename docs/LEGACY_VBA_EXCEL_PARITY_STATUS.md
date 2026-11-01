@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.8 — 2026-11-01**. Historical inventory baseline main
+Version: **1.9 — 2026-11-01**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -850,3 +850,44 @@ inline F2/Escape leaves activeElement=BODY on DOM replacement; automatic
 input/trigger focus restoration is NOT claimed. Legacy automatic-return policy
 is EVIDENCE_MISSING; this separate affordance is recorded, not changed by draft
 lifetime work. Certificate modal focus behavior remains covered by existing tests.
+
+
+## v1.9 — OIDC acceptance readiness and access-bound overview reads
+
+Starting main e15bfd0; audited PR252 main011dc59 adds only SQL/service parity
+assertions. Acceptance and release matrix: `frontend/qa/OIDC_AB_ACCEPTANCE.md`.
+This does not promote any legacy business module to IMPLEMENTED_VERIFIED.
+
+Proven frontend defects: stale `/auth/me` admin permissions across accepted access
+owners (including same-credential refresh); old system-status data/error in a new
+owner's first commit; dashboard access-wrapper rerenders causing duplicate GETs.
+Last correct was the response's original access owner; first incorrect was
+rendering retained unowned state or keying only on credential text. App's identity
+now carries access generation; overview readers carry opaque request owners and
+hide mismatched payload/error before effects. Existing cancellation is preserved.
+No role map, backend authorization, draft policy, mutation or layout change.
+
+RED7FAIL/3PASS; GREEN10PASS twice. Full frontend686PASS/0FAIL/0SKIP in40files;
+typecheck/lint/buildPASS; backend auth/identity/status/workflow198PASS and audited
+main boundary5PASS. API211checks, including inspector writes that are legitimately
+allowed,403/409/422 negatives with unchanged whole-DB hash/audit count, and global
+case.view cross-Site reads. Header_stub is not Google or tenant isolation proof.
+
+Production-build browser at1366×768/1920×1080/390×844 has equal client/scroll widths,
+no inherited admin metadata/privileges, one dashboard read, safe same-credential
+refresh and logout/Back/Forward/reload. Synthetic GIS/clock plus real disposable
+POST proves expiry while a committed response is pending, no A draft in B and
+zero late readbacks. Existing PR247/250 uncertainty/draft behavior passes with
+real409 and injected canonical GET503; no blind replay.
+
+Fresh unauthenticated HTTPS browser observes gxp.qlcl-dav.cc and loaded GIS, not
+proof of authorized Google issuance. Native current-tab inspection is blocked by
+computer-use kernel failure. Google A/B=AUTHENTICATED_OIDC_NOT_EXECUTED;
+BLOCKED_BY_ENVIRONMENT pending permitted accounts/origin/records. No live tokens,
+cookies or email identities were read or recorded. Real environment writes remain
+forbidden. Runtime reports97182e58/schema0023; source expects0026; served JS differs
+and six candidate paths are absent from live OpenAPI. Executable/frontend Git
+provenance is unverified. HOLD_DEPLOY; no deployment/migration/backup/restore.
+
+QĐKT206/74/144/legal barriers, NAS/Word output limitations, native speech and
+cross-Case/reload/account draft/focus policy evidence gaps remain unchanged.

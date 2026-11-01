@@ -2157,3 +2157,31 @@ inline F2/Escape leaves activeElement=BODY on DOM replacement; automatic
 input/trigger focus restoration is NOT claimed. Legacy automatic-return policy
 is EVIDENCE_MISSING; this separate affordance is recorded, not changed by draft
 lifetime work. Certificate modal focus behavior remains covered by existing tests.
+
+
+## Authentication/overview owner boundary — 2026-11-01 (v1.9)
+
+See `frontend/qa/OIDC_AB_ACCEPTANCE.md` for the account/HTTP/evidence and release
+matrix. Source frome15bfd0, audited main011dc59 test-only drift. This slice fixes
+only proven App identity, DashboardPage and AdminSystemStatusPage ownership.
+
+RED7FAIL/3PASS: retained admin permission/data/error could cross access generations;
+same credential refresh skipped canonical identity lookup; dashboard read repeated
+on wrapper-only rerender. GREEN10PASS twice: bind identity to generation and
+responses/errors to opaque owner before render; retain existing late cancellation.
+Full686PASS/40files; typecheck/lint/buildPASS; backend198+5PASS. All PR250 draft,
+mutation/concurrency and Case/Line UUID contracts/layouts remain unchanged.
+
+Candidate production browser1366/1920/390 has client=scroll, one dashboard read,
+first-owner hiding, synthetic identity refresh, logout/Back/Forward/reload and
+pending-expiry isolation. Actual disposable API211checks and whole-DB/audit
+negative checks are separate from Google. Reader/inspector permission differences
+come from backend ROLE_PERMISSIONS; do not label every B write forbidden.
+
+AUTHENTICATED_OIDC_NOT_EXECUTED/BLOCKED_BY_ENVIRONMENT: two accounts, approved
+origin and record scope missing. Fresh live HTTPS origin/GIS observed without
+login; native existing-tab inspection failed tooling. Live reported SHA/schema,
+served bundle and OpenAPI differ from candidate; old live390px overflow is not a
+candidate regression. HOLD_DEPLOY. No remote write, OAuth configuration, database,
+NAS or legal-output operation. Native reader, Word/binary output, original VBA
+runtime and automatic inline focus-return remain EVIDENCE_MISSING/NOT_EXECUTED.

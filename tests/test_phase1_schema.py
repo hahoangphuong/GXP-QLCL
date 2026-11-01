@@ -150,7 +150,7 @@ def test_unapplied_period_state_migration_does_not_label_existing_rows_missing()
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20261025_0026"
+    assert expected_alembic_head_revision() == "20261101_0027"
 
 
 def test_document_version_current_uniqueness_migration_fails_closed_on_existing_duplicates():

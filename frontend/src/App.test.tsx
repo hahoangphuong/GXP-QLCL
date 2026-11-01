@@ -894,6 +894,14 @@ async function renderOidcSearch(route = "/search") {
   return { ...rendered, credentialCallback };
 }
 
+// Editor state is an external Case session: activation must include React's
+// commit/subscription work before synchronous DOM/value assertions run.
+async function activateInlineEditor(name: string) {
+  await act(async () => {
+    fireEvent.doubleClick(screen.getByRole("button", { name }));
+  });
+}
+
 async function flushSearchUrlSync() {
   // SearchPage deliberately defers state -> URL ownership by one microtask so
   // a sibling navigation committed in the same turn wins. Keep that boundary
@@ -944,7 +952,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ remediation: { cycles: [buildRemediationCycle()], actions: [buildCapaAction("update_capa_cycle:capa-1", true)] } }));
     renderApp(["/search"]);await screen.findByText("HS-001");
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: step })); });
-    if (trigger) fireEvent.doubleClick(screen.getByRole("button", { name: trigger }));
+    if (trigger) await activateInlineEditor(trigger);
     fireEvent.change(screen.getByLabelText(field, { exact: true }), { target: { value: `Unsaved ${owner}` } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: step === "Kiểm tra thực tế" ? "Hồ sơ đăng ký" : "Kiểm tra thực tế" })); });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: step })); });
@@ -2682,7 +2690,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
     await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })); await screen.findByText("Exact selected document");
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+    await activateInlineEditor("Sửa Kết quả thẩm định");
     fireEvent.change(screen.getByLabelText("Kết quả thẩm định"), { target: { value: "unsaved processing draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Tạo Quyết định cấp CC" }));
     await screen.findByText("Đang tải workspace");
@@ -3158,7 +3166,7 @@ describe("App Slice A.4 search workspace", () => {
       expect(screen.getAllByText(field).length).toBeGreaterThan(0);
     }
     expect(screen.queryByRole("button", { name: "Chỉnh sửa" })).not.toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    await activateInlineEditor("Sửa Mã hồ sơ");
 
     expect(screen.queryByLabelText("Ngày nộp")).not.toBeInTheDocument();
     expect(await screen.findByLabelText("Mã hồ sơ")).toHaveValue("HS-001");
@@ -3187,7 +3195,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
     const activator = screen.getByRole("button", { name: "Sửa Mã hồ sơ" });
     activator.focus();
-    fireEvent.keyDown(activator, { key: "Enter" });
+    await act(async () => { fireEvent.keyDown(activator, { key: "Enter" }); });
 
     expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("HS-001");
     expect(screen.queryByRole("button", { name: "Chỉnh sửa" })).not.toBeInTheDocument();
@@ -3248,7 +3256,7 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
 
     expect(await screen.findByText("Lịch sử khắc phục")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" })); });
     fireEvent.change(screen.getByLabelText("Ngày yêu cầu"), { target: { value: "2026-09-02" } });
     fireEvent.change(screen.getByLabelText("Ghi chú"), { target: { value: "Yêu cầu vòng 1" } });
     fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
@@ -3302,7 +3310,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
 
     expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Ghi chú" }));
+    await activateInlineEditor("Sửa Ghi chú");
     fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Bản nháp mới" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Ghi chú" }));
 
@@ -3498,7 +3506,7 @@ describe("App Slice A.4 search workspace", () => {
       fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
       await flushSearchUrlSync();
       if (operation === "plan") {
-        fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+        await activateInlineEditor("Sửa Số/Tham chiếu QĐKT");
         fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "Pending before expiry" } });
         fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
       } else if (operation === "transition") {
@@ -3577,7 +3585,7 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByText("HS-001");
     fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-B"));
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    await activateInlineEditor("Sửa Mã hồ sơ");
     fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Unsaved B dossier" } });
     const reads = apiMocks.getCaseWorkspace.mock.calls.length;
     const master = container.querySelector<HTMLTableRowElement>(".facility-table tbody tr")!;
@@ -3787,18 +3795,18 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
     await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
     if (operation === "plan") {
-      fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+      await activateInlineEditor("Sửa Số/Tham chiếu QĐKT");
       fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "A draft" } });
       fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
     } else if (operation === "approval") fireEvent.click(screen.getByRole("button", { name: "Tạo trình PCT" }));
     else if (operation === "capa") {
       fireEvent.click(screen.getByRole("button", { name: "Báo cáo khắc phục" }));
-      fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" })); });
       fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
     } else {
       fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" }));
       const field = operation === "application" ? "Mã hồ sơ" : "Kết quả thẩm định";
-      fireEvent.doubleClick(screen.getByRole("button", { name: `Sửa ${field}` }));
+      await activateInlineEditor(`Sửa ${field}`);
       fireEvent.change(screen.getByLabelText(field), { target: { value: "A original draft" } });
       fireEvent.click(screen.getByRole("button", { name: `Lưu ${field}` }));
     }
@@ -3829,11 +3837,11 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByText("HS-001");
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
     await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+    await activateInlineEditor("Sửa Số/Tham chiếu QĐKT");
     fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "Plan draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
     await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2));
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" }));
+    await activateInlineEditor("Sửa Kết quả kiểm tra");
     fireEvent.change(screen.getByLabelText("Kết quả kiểm tra"), { target: { value: "New outcome" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Đánh giá kết quả" }));
     await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
@@ -3855,7 +3863,7 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
     await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
     await flushSearchUrlSync();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+    await activateInlineEditor("Sửa Số/Tham chiếu QĐKT");
     fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
     old.unmount();
     renderApp(["/search"]);
@@ -3881,7 +3889,7 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByText("HS-001");
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
     await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+    await activateInlineEditor("Sửa Số/Tham chiếu QĐKT");
     fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "Retained draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("không khớp hồ sơ");
@@ -3902,7 +3910,7 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByRole("button", { name: "Sửa Mã hồ sơ" });
     const edit = section === "application" ? "Sửa Mã hồ sơ" : "Sửa Kết quả thẩm định";
     const input = section === "application" ? "Mã hồ sơ" : "Kết quả thẩm định";
-    fireEvent.doubleClick(screen.getByRole("button", { name: edit }));
+    await activateInlineEditor(edit);
     fireEvent.change(screen.getByLabelText(input), { target: { value: "Retained local draft" } });
     fireEvent.click(screen.getByRole("button", { name: section === "application" ? "Lưu Mã hồ sơ" : "Lưu Kết quả thẩm định" }));
     expect(await screen.findByText(/Máy chủ đã nhận thao tác nhưng không tải lại được workspace/)).toBeInTheDocument();
@@ -3930,7 +3938,7 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
     const edit = section === "plan" ? "Sửa Số/Tham chiếu QĐKT" : "Sửa Kết quả kiểm tra";
     const input = section === "plan" ? "Số/Tham chiếu QĐKT" : "Kết quả kiểm tra";
-    fireEvent.doubleClick(screen.getByRole("button", { name: edit }));
+    await activateInlineEditor(edit);
     fireEvent.change(screen.getByLabelText(input), { target: { value: "Retained local draft" } });
     fireEvent.click(screen.getByRole("button", { name: section === "plan" ? "Lưu Số/Tham chiếu QĐKT" : "Lưu Đánh giá kết quả" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("không tải lại được workspace");
@@ -4040,7 +4048,7 @@ describe("App Slice A.4 search workspace", () => {
 
     expect(await screen.findByText("Kế hoạch kiểm tra")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Kiểm tra thực tế" })).toHaveAttribute("aria-current", "step");
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Từ ngày kế hoạch" }));
+    await activateInlineEditor("Sửa Từ ngày kế hoạch");
     fireEvent.change(screen.getByLabelText("Từ ngày kế hoạch"), { target: { value: "2026-09-01" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Từ ngày" }));
 
@@ -4108,7 +4116,7 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search"]);
 
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    await activateInlineEditor("Sửa Mã hồ sơ");
     expect(screen.queryByLabelText("Ngày nộp")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "HS-2026-31" } });
     fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" });
@@ -4195,7 +4203,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
 
     expect(await screen.findByText("Thực hiện & kết quả")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" }));
+    await activateInlineEditor("Sửa Kết quả kiểm tra");
     fireEvent.change(screen.getByLabelText("Kết quả kiểm tra"), { target: { value: "Kết quả draft mới" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Đánh giá kết quả" }));
 
@@ -4252,7 +4260,7 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
 
     expect(await screen.findByText("Thực hiện & kết quả")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" })); });
     fireEvent.click(screen.getByRole("button", { name: "Thêm lần kiểm tra" }));
     fireEvent.change(screen.getByLabelText("Từ ngày lần 1"), { target: { value: "2026-09-03" } });
     fireEvent.change(screen.getByLabelText("Đến ngày lần 1"), { target: { value: "2026-09-04" } });
@@ -4298,7 +4306,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
 
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    await activateInlineEditor("Sửa Mã hồ sơ");
     fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "HS-CONFLICT" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Mã hồ sơ" }));
 
@@ -4323,7 +4331,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
 
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    await activateInlineEditor("Sửa Mã hồ sơ");
     fireEvent.click(screen.getByRole("button", { name: "Lưu Mã hồ sơ" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Bạn không có quyền cập nhật hồ sơ này.");
 
@@ -4361,7 +4369,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
 
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    await activateInlineEditor("Sửa Mã hồ sơ");
     const submitButton = screen.getByRole("button", { name: "Lưu Mã hồ sơ" });
     fireEvent.click(submitButton);
     fireEvent.click(submitButton);
@@ -4409,7 +4417,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByText("Các mốc xử lý hành chính")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Ghi chú")).not.toBeInTheDocument();
 
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Người thẩm định" }));
+    await activateInlineEditor("Sửa Người thẩm định");
     expect(screen.queryByLabelText("Ngày thẩm định")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Người thẩm định")).toHaveValue("Chuyên viên B");
     fireEvent.change(screen.getByLabelText("Người thẩm định"), { target: { value: "Chuyên viên C" } });
@@ -4533,7 +4541,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?event_tab=H%E1%BB%93+s%C6%A1"]);
 
     expect(await screen.findByRole("button", { name: "Sửa Người thẩm định" })).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+    await activateInlineEditor("Sửa Kết quả thẩm định");
     fireEvent.change(screen.getByLabelText("Kết quả thẩm định"), { target: { value: "Đề xuất trình ký" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
 

@@ -40,7 +40,7 @@ def test_preflight_stable_digest_and_counts():
     lambda b: replace(b, certificate_version_id=""),
     lambda b: replace(b, coverage=(replace(b.coverage[0], decision=ReviewDecision.UNRESOLVED),)),
     lambda b: replace(b, links=(replace(b.links[0], case_link_decision=ReviewDecision.REJECTED),)),
-    lambda b: replace(b, links=(replace(b.links[0], case_id="wrong"),), coverage=()),
+    lambda b: replace(b, links=(replace(b.links[0], site_id="wrong-site"),)),
     lambda b: replace(b, links=(replace(b.links[0], reviewed_at_iso="naive"),)),
 ])
 def test_incomplete_bundle_cannot_prepare_persistence(change):

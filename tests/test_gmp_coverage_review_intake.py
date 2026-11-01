@@ -1,5 +1,4 @@
 """UNRESOLVED intake must never confer reviewed GMP coverage authority."""
-from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -56,3 +55,13 @@ def test_unresolved_intake_bound_to_active_actor_and_real_site():
             assert session.scalars(select(GmpCoverageReviewEvent)).all() == []
     finally:
         engine.dispose()
+
+
+def test_intake_requires_canonical_actor_uuid_before_database_access():
+    from backend.app.services.gmp_coverage_review_intake import _uuid
+    generated = str(uuid4())
+    assert _uuid(generated) == generated
+    with pytest.raises(ValueError, match="Version 4"):
+        _uuid("00000000-0000-0000-0000-000000000001")
+    with pytest.raises(ValueError):
+        _uuid("not-an-identity")

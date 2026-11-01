@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.base import Base
@@ -58,6 +58,15 @@ def test_linked_certificate_requires_evidenced_site_and_gxp(
             )
             session.add(cert)
             session.flush()
+            # Keep SQL-based current-peer selection aligned with the direct
+            # service validation; never let one path accept a cross-site link
+            # while another rejects it.
+            sql_valid_certificate_ids = set(session.scalars(
+                select(Certificate.id).where(
+                    CaseWorkflowService._certificate_valid_linked_case_sql()
+                )
+            ))
+            assert (cert.id in sql_valid_certificate_ids) is expected_valid
             if not expected_valid:
                 with pytest.raises(HTTPException) as exc:
                     CaseWorkflowService._validate_certificate_linked_case(session, cert)

@@ -7,10 +7,9 @@ certificate link, current flag, or adjudication is modified.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import (
@@ -30,7 +29,10 @@ class UnresolvedReviewInput:
 
 
 def _uuid(value: str) -> str:
-    return str(UUID(value))
+    parsed = UUID(value)
+    if parsed.version != 4:
+        raise ValueError('Version 4 UUID required for canonical identity.')
+    return str(parsed)
 
 
 def _digest(value: str) -> str:
@@ -51,6 +53,8 @@ def append_unresolved_review_event(
     authenticated user cannot issue a VERIFIED decision through this method.
     """
     actor_id = _uuid(authenticated_user_id)
+    if actor_id != authenticated_user_id:
+        raise ValueError('Authenticated identity must be canonical UUID.')
     user = session.get(AppUser, actor_id)
     if user is None or not user.is_active:
         raise ValueError("Active authenticated AppUser required.")
@@ -80,7 +84,7 @@ def append_unresolved_review_event(
         rationale=evidence.rationale,
         reviewer_user_id=actor_id,
         recorded_by_user_id=actor_id,
-        reviewed_at=datetime.now().astimezone(),
+        reviewed_at=datetime.now(timezone.utc),
     )
     session.add(row)
     session.flush()

@@ -72,6 +72,19 @@ Controlled RED:7FAIL/3PASS. GREEN:10PASS, repeated twice. Full frontend686PASS
 in40files. Typecheck/lint/buildPASS; backend identity/auth/status/workflow
 contracts198PASS plus5audited main-boundary tests. No timeout/assertion relaxation.
 
+CI follow-up: initial PR run41268142328 had685PASS/1FAIL in the existing CAPA
+submit interaction, while the same SHA's push run passed. Local baseline stress
+passed20/20; no CAPA product defect was reproduced. Await each controlled-input
+commit in that test, preserving every assertion, payload and request count;
+input-commit stress passed20/20. This is test synchronization, not a CAPA runtime
+fix or proof that an intermittent failure cannot recur. Final CI remains a gate.
+The first local follow-up full run recorded683PASS/3FAIL: the analogous assess
+date assertion plus two unrelated navigation timeouts. Assess input commits are
+also awaited explicitly; no timeout is increased or assertion removed. The final
+full run must pass separately before merge; failed logs remain in local evidence.
+Audited main PR254 adds an isolated pure evidence module/tests only; its18tests
+pass. No backend owner file is modified by this slice.
+
 Production-build browser at1366×768,1920×1080,390×844: client=scroll at all widths;
 one dashboard GET, same-credential identity revalidation, first-owner hiding,
 logout/Back/Forward/reload isolation, canonical Case/Line selection, pending expiry,

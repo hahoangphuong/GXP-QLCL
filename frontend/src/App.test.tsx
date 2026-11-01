@@ -3399,8 +3399,13 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
 
     expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
-    fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đã nhận hồ sơ" } });
+    // Complete each controlled-input commit before dispatching the next edit.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đã nhận hồ sơ" } });
+    });
     const submitButton = screen.getByRole("button", { name: "Ghi nhận tiếp nhận" });
     expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-05");
     expect(submitButton).toBeEnabled();
@@ -3452,9 +3457,15 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
 
     expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
-    fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
-    fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đạt yêu cầu" } });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đạt yêu cầu" } });
+    });
     const assessButton = screen.getByRole("button", { name: "Đánh giá" });
     expect(screen.getByLabelText("Ngày đánh giá khắc phục")).toHaveValue("2026-09-06");
     expect(screen.getByLabelText("Kết quả đánh giá khắc phục")).toHaveValue("accepted");

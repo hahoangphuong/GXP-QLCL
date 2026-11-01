@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.7 — 2026-11-01**. Historical inventory baseline main
+Version: **1.8 — 2026-11-01**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -754,3 +754,99 @@ Earlier intentional REDs and a targeted unrelated Plan5s timeout are retained,
 not counted as PASS; no timeout/assertion/skip changes. Final disposable DB has
 125 structured audit events including controlled RED and browser probes; initial
 serial acceptance has68 events for68 successful commands. No remote DB/NAS/GCS.
+
+
+## v1.8 — Active Case draft lifetime and OIDC acceptance readiness
+
+Starting main73dcf5a; audited/fast-forwarded main8b171ae (PR248 adds only
+PostgreSQL inspection race tests). Runtime backend behavior was not changed.
+The last correct boundary was editing a field while its component remained
+mounted. The first incorrect boundary was workflow/Facility tab unmount: values,
+edit intent and the captured version were discarded. A second defect existed in
+Application/Assessment post-write GET failure: mutation response fields were
+merged into an old workspace and treated as confirmation.
+
+`CaseDraftSession` now belongs to the active access/Site/GxP/ProductionLine/Case
+context at SearchPage. It stores only this active Case's editor state in memory;
+there is no global multi-Case history cache and no draft browser storage. Actual
+panes still unmount; no hidden duplicate document workspace or extra identity
+lookup is introduced. Each feature retains ownership of its input, reset rules,
+readiness, captured token and command. CAPA operation generation survives a tab
+unmount but still invalidates on cycle changes. Approval's PR247 pending/review
+coordinator remains authoritative and unchanged.
+
+| Editor / state owner | Same-Case tabs | Case/access/line change, logout, expiry, full reload | Cancel / fresh edit | Pending / conflict / canonical readback |
+| --- | --- | --- | --- | --- |
+| Application + Assessment | Values, editing field, original token and errors retained | Discard session; old setters cannot publish | Discard values; reopen captures current canonical token | Pending retained;403/409/422 retain existing errors/input; unknown write/failed canonical GET blocks Save through remount and Cancel until authoritative reload |
+| Inspection Plan + Outcome | Draft/edit field/token/pending retained | Discard | Existing Cancel resets; explicit reopen reviews new token | Existing readiness/errors/concurrency rules unchanged; no fabricated readback |
+| Period replacement + Team | Structured segments/members, options, token and pending retained | Discard | Existing Cancel retained | No second options GET on remount; source-owned/unavailable readiness still blocks writes |
+| Final evaluation | Input and readiness token captured on first change retained | Discard | Existing explicit Cancel resets token | Pending and original token retained; readiness remains backend-owned |
+| CAPA | Only selected cycle editor/command draft retained, with its operation generation | Discard; changing cycle also resets existing cycle state, never a per-cycle cache | Existing reset semantics retained | Original cycle token/create Case token retained; create/update/submit/assess409 policies unchanged; no implicit replay |
+| Approval create + completion UUID | Draft/error and completion token retained | Draft discarded; PR247 write/review coordinator has its own lifetime | Existing Cancel for completion retained | PR247 duplicate/pending/accepted-unverified/unknown-commit barrier unchanged; canonical GET only |
+| Case lifecycle | Reason, reviewed action/token snapshot and pending guard retained | Discard | Existing Cancel clears reviewed intent | Existing readiness/409 behavior unchanged |
+| GxP/ĐĐK/Case issuance dialogs | Existing owner/lifetime unchanged; no modal cache | Existing identity invalidation discards; PR244 A-B-A protections retained | Existing Cancel/close discards and restores focus | Existing certificate pending/recovery/conflict/version policies retained |
+| Reassessment | Existing SearchPage intent/dialog owner unchanged | Existing invalidation applies | Existing Cancel applies | Existing pending/late-response contract retained |
+
+State interpretation: CLEAN hydrates canonical data; DIRTY keeps the reviewed
+version; PENDING cannot be restarted on tab remount; CONFLICT never silently
+upgrades that token. READ_ONLY/REVOKED uses existing permission/readiness owners,
+not a client permission map. Application/Assessment ACCEPTED_UNVERIFIED now
+keeps readable draft and blocks replay, as does the existing Approval owner.
+Other command-specific recovery rules are preserved rather than generalized.
+
+Legacy TextForm.GetText returns trimmed input only after OK; Cancel sets Canceled
+and hides the form. This establishes commit/cancel, not cross-tab retention.
+Same-Case in-memory preservation is an explicit browser safety improvement under
+this task, not proven Excel runtime parity. Retention across Case/certificate
+switches, full reload or authenticated account changes remains
+BLOCKED_BY_BUSINESS_DECISION; no persistence was added for those boundaries.
+
+Google Issue8 remains OPEN. No two authorized Google A/B accounts and current
+approved synthetic URL were supplied. AUTHENTICATED_OIDC_VERIFIED=NOT_EXECUTED /
+BLOCKED_BY_ENVIRONMENT. Synthetic session fixtures and real disposable
+FastAPI/SQLite/header_stub are separate evidence classes, never Google acceptance.
+No OAuth configuration/account provisioning/deployment or remote writes occurred.
+Native screen reader, original VBA execution, signed binary/Word/NAS output and
+production UAT remain NOT_EXECUTED. PR206/Issues74/144 and ready_to_render=False
+remain unchanged. No module is promoted to fully IMPLEMENTED_VERIFIED.
+
+Evidence: `.codex/evidence/draft-lifecycle-20261101/` (outside Git): controlled
+RED, scoped regression, canonical readback/409/pending browser probes, disposable
+HTTP acceptance and synthetic session expiry/A-B-A/role403/logout. Final command
+counts and CI are recorded in the completion report after validation.
+
+CAPA readback ownership also had a proven A-B-A race: a replaced command adopted
+its readback owner only after await and started a fourth GET in the new A session
+(RED expected3, received4). All four CAPA callbacks now capture the Case operation
+owner before the command. GREEN and browser fixtures prove no late Case GET or
+draft replacement. Back/Forward across the dashboard unmounts SearchPage and
+starts a clean draft session on return; preserving drafts across that route is
+also BLOCKED_BY_BUSINESS_DECISION, distinct from same-Case workspace tab retention.
+
+Final local validation:676PASS/0FAIL/0SKIP in39 frontend files, no act/unhandled
+warnings; parent regression24PASS twice and component87PASS twice. Typecheck,
+lint and production buildPASS (existing bundle-size advisory). Relevant backend
+contracts136PASS (40 lifecycle/Approval/period/team +94 workflow mutations +2 audited main source-boundary tests).
+The first670PASS diagnostic run had pending test-act warnings; async Router
+work is now awaited, without changing assertions/timeouts or suppressing warnings.
+Disposable API has95 final audit events:68 initial commands plus27 successful
+browser/external-writer commands; nine browser409s add no audit writes. Browser
+composition events are synthetic IME probes, not a native IME certification.
+
+Self-review also reproduced speculative React navigation closing a still-visible
+A session before suspended B committed. red-suspended-owner.log proves typing in
+A was ignored. Session retirement now occurs in layout cleanup at actual commit/
+unmount; the committed editor remains writable while B is suspended. No draft is
+published into B. The additional regression passes without changing timeouts.
+Main81df311 drift was audited: PR249 adds only a GMP evidence document and two
+fail-closed source-boundary tests; no runtime or frontend change. An existing
+legacy-unlinked test waited for an API call, then clicked an uncommitted tab; the
+failed full-run diagnostic is retained. It now awaits the actual tab, preserving
+all UUID assertions. No production fallback or timing workaround was added.
+
+Keyboard focus-path evidence at all three widths: F2 opens the editor, Tab
+reaches the input in one step, keyboard typing/Escape issues0writes. Existing
+inline F2/Escape leaves activeElement=BODY on DOM replacement; automatic
+input/trigger focus restoration is NOT claimed. Legacy automatic-return policy
+is EVIDENCE_MISSING; this separate affordance is recorded, not changed by draft
+lifetime work. Certificate modal focus behavior remains covered by existing tests.

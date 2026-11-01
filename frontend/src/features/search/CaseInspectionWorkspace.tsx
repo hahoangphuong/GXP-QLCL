@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCaseDraftState } from "./CaseDraftSession";
+import { useEffect, useMemo } from "react";
 
 import { formatCompactDate } from "../../lib/presentation";
 import type {
@@ -90,12 +91,12 @@ function formatInspectionPeriods(segments: InspectionPeriodSegmentsUpsertRequest
 }
 
 function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: CaseWorkspace; onSave: (payload: InspectionPeriodSegmentsUpsertRequest) => Promise<void> }) {
-  const [segments, setSegments] = useState<InspectionPeriodSegmentsUpsertRequest["segments"]>([]);
-  const [editing, setEditing] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [segments, setSegments] = useCaseDraftState<InspectionPeriodSegmentsUpsertRequest["segments"]>("period.segments", []);
+  const [editing, setEditing] = useCaseDraftState("period.editing", false);
+  const [pending, setPending] = useCaseDraftState("period.pending", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("period.errorMessage", null);
   const readiness = caseWorkspace.inspection.inspection_period_edit_readiness;
-  const [draftVersion, setDraftVersion] = useState<number | null>(null);
+  const [draftVersion, setDraftVersion] = useCaseDraftState<number | null>("period.draftVersion", null);
   useEffect(() => {
     if (!editing) setSegments((caseWorkspace.inspection.inspection_period_segments ?? []).map(({ ordinal, started_on, ended_on }) => ({ ordinal, started_on: normalizeDateInputValue(started_on), ended_on: normalizeDateInputValue(ended_on) })));
   }, [caseWorkspace.inspection.inspection_period_segments, editing]);
@@ -132,11 +133,11 @@ function InspectionPlanSection({
   onSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
 }) {
   const currentDraft = useMemo(() => buildPlanDraft(caseWorkspace), [caseWorkspace]);
-  const [draft, setDraft] = useState<InspectionPlanDraft>(currentDraft);
-  const [draftVersion, setDraftVersion] = useState(caseWorkspace.inspection.plan_row_version);
-  const [editingField, setEditingField] = useState<"plan_start_on" | "plan_end_on" | "decision_reference" | "decision_date" | null>(null);
-  const [pending, setPending] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draft, setDraft] = useCaseDraftState<InspectionPlanDraft>("plan.draft", currentDraft);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("plan.draftVersion", caseWorkspace.inspection.plan_row_version);
+  const [editingField, setEditingField] = useCaseDraftState<"plan_start_on" | "plan_end_on" | "decision_reference" | "decision_date" | null>("plan.editingField", null);
+  const [pending, setPending] = useCaseDraftState("plan.pending", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("plan.errorMessage", null);
 
   useEffect(() => {
     if (!editingField) {
@@ -284,13 +285,13 @@ function InspectionTeamSection({
     expected_version: null,
     mode: null,
   };
-  const [editing, setEditing] = useState(false);
-  const [options, setOptions] = useState<InspectionTeamIdentityOption[]>([]);
-  const [members, setMembers] = useState<InspectionTeamUpsertRequest["members"]>([]);
-  const [pending, setPending] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [editing, setEditing] = useCaseDraftState("team.editing", false);
+  const [options, setOptions] = useCaseDraftState<InspectionTeamIdentityOption[]>("team.options", []);
+  const [members, setMembers] = useCaseDraftState<InspectionTeamUpsertRequest["members"]>("team.members", []);
+  const [pending, setPending] = useCaseDraftState("team.pending", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("team.errorMessage", null);
 
-  const [draftVersion, setDraftVersion] = useState<number | null>(null);
+  const [draftVersion, setDraftVersion] = useCaseDraftState<number | null>("team.draftVersion", null);
 
   useEffect(() => {
     if (!editing && !pending) {
@@ -429,13 +430,13 @@ function InspectionOutcomeSection({
   onSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
 }) {
   const currentDraft = useMemo(() => buildOutcomeDraft(caseWorkspace), [caseWorkspace]);
-  const [draft, setDraft] = useState<InspectionOutcomeDraft>(currentDraft);
-  const [draftVersion, setDraftVersion] = useState(caseWorkspace.inspection.outcome_row_version);
-  const [editingField, setEditingField] = useState<
+  const [draft, setDraft] = useCaseDraftState<InspectionOutcomeDraft>("outcome.draft", currentDraft);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("outcome.draftVersion", caseWorkspace.inspection.outcome_row_version);
+  const [editingField, setEditingField] = useCaseDraftState<
     "outcome_result" | "minutes_recorded_on" | "minutes_recorded_time" | "compliance_due_on" | null
-  >(null);
-  const [pending, setPending] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  >("outcome.editingField", null);
+  const [pending, setPending] = useCaseDraftState("outcome.pending", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("outcome.errorMessage", null);
 
   useEffect(() => {
     if (!editingField) {
@@ -551,10 +552,10 @@ function CaseInspectionEditor({
   onCompleteApprovalSubmission: (submissionId: string, payload: InspectionApprovalSubmissionCompleteRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
   onTransitionCase: (payload: CaseTransitionRequest) => Promise<void>;
 }) {
-  const [finalEvaluation, setFinalEvaluation] = useState("");
-  const [finalDraftVersion, setFinalDraftVersion] = useState<number | null | undefined>();
-  const [finalizationError, setFinalizationError] = useState<string | null>(null);
-  const [finalizationPending, setFinalizationPending] = useState(false);
+  const [finalEvaluation, setFinalEvaluation] = useCaseDraftState("inspection.finalEvaluation", "");
+  const [finalDraftVersion, setFinalDraftVersion] = useCaseDraftState<number | null | undefined>("inspection.finalDraftVersion", undefined);
+  const [finalizationError, setFinalizationError] = useCaseDraftState<string | null>("inspection.finalizationError", null);
+  const [finalizationPending, setFinalizationPending] = useCaseDraftState("inspection.finalizationPending", false);
   const finalization = caseWorkspace.inspection.final_evaluation_readiness ?? {
     action_key: "finalize_inspection_outcome",
     label: "Chốt đánh giá cuối cùng",

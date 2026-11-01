@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
+import { CaseDraftSession } from "./CaseDraftSession";
 import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
 
 function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWorkspace {
@@ -102,4 +103,26 @@ describe("CaseInspectionWorkspace canonical period editor", () => {
     render(<CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: 6, inspection_period_state: null, inspection_period_edit_readiness: { action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", available: false, reason_code: "legacy_period_state_unclassified", required_permissions: ["inspection.edit"], expected_version: 6, mode: null } })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" })).toBeDisabled();
   });
+});
+
+
+it("retains structured periods, team and final evaluation across tab remount without a second identity lookup", async () => {
+  const loadOptions = vi.fn().mockResolvedValue([{ identity_kind: "inspector_profile", inspector_profile_id: "profile-1", person_id: null, display_name: "Thanh tra A", is_active: true }]);
+  const onPeriod = vi.fn().mockResolvedValue(undefined), onFinalize = vi.fn().mockResolvedValue(undefined);
+  const editor = (show: boolean, version = 6) => <CaseDraftSession identity="case-A">{show ? <CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: version, final_evaluation: null, final_evaluation_readiness: { action_key: "finalize_inspection_outcome", label: "Chốt đánh giá cuối cùng", available: true, expected_version: version, reason_code: null, required_permissions: [] }, inspection_period_segments: [{ id: "period-1", ordinal: 1, started_on: "2026-10-01", ended_on: "2026-10-02" }] })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={onPeriod} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={loadOptions} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} onFinalizeInspectionOutcome={onFinalize} /> : null}</CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.click(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" }));
+  fireEvent.change(screen.getByLabelText("Từ ngày lần 1"), { target: { value: "2026-09-30" } });
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" }));
+  await screen.findByLabelText("Định danh thành viên 1");
+  fireEvent.change(screen.getByLabelText("Đánh giá cuối cùng"), { target: { value: "Retained final" } });
+  view.rerender(editor(false));view.rerender(editor(true, 9));
+  expect(screen.getByLabelText("Từ ngày lần 1")).toHaveValue("2026-09-30");
+  expect(screen.getByLabelText("Định danh thành viên 1")).toBeInTheDocument();
+  expect(screen.getByLabelText("Đánh giá cuối cùng")).toHaveValue("Retained final");
+  expect(loadOptions).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Lưu các đợt kiểm tra" }));
+  await waitFor(() => expect(onPeriod).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 6 })));
+  fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
+  await waitFor(() => expect(onFinalize).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 6, final_evaluation: "Retained final" })));
 });

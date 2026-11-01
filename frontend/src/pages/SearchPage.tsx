@@ -1,4 +1,6 @@
+import { runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
+import { CaseDraftSession } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
 import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
@@ -1707,28 +1709,12 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
-    const currentCaseWorkspace = selectedCaseWorkspace;
-    const response = await upsertCaseApplication(caseId, payload, auth, useStubAuth, bearerToken);
-    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
-      if (!currentCaseWorkspace) {
-        throw new Error("Đã lưu nhưng không tải lại được workspace hồ sơ.");
-      }
-      return {
-        ...currentCaseWorkspace,
-        application: {
-          ...currentCaseWorkspace.application,
-          row_version: response.row_version,
-          submitted_on: response.submitted_on,
-          dossier_code: response.dossier_code,
-          dossier_reference: response.dossier_reference,
-          applicant_name: response.applicant_name,
-        },
-      };
-    });
-    if (!isCurrentContext()) return;
-    setSelectedCaseWorkspace(refreshedCaseWorkspace);
-    setCaseWorkspaceError(null);
-    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+    const operationOwner = caseOperationOwner.current;
+    await runCaseFieldMutation(
+      () => upsertCaseApplication(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
+    if (isCurrentCaseOperation(operationOwner)) await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
   async function handleResolveInspectionFolder() {
@@ -1878,27 +1864,11 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
-    const currentCaseWorkspace = selectedCaseWorkspace;
-    const response = await upsertCaseAssessment(caseId, payload, auth, useStubAuth, bearerToken);
-    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
-      if (!currentCaseWorkspace) {
-        throw new Error("Đã lưu nhưng không tải lại được workspace xử lý.");
-      }
-      return {
-        ...currentCaseWorkspace,
-        processing: {
-          ...currentCaseWorkspace.processing,
-          row_version: response.row_version,
-          assessed_on: response.assessed_on,
-          assessor_name: response.assessor_name,
-          assessment_result: response.assessment_result,
-          notes: response.notes,
-        },
-      };
-    });
-    if (!isCurrentContext()) return;
-    setSelectedCaseWorkspace(refreshedCaseWorkspace);
-    setCaseWorkspaceError(null);
+    const operationOwner = caseOperationOwner.current;
+    await runCaseFieldMutation(
+      () => upsertCaseAssessment(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
   }
 
   async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null, operationOwner = caseOperationOwner.current) {
@@ -1924,8 +1894,9 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     const response = await createCapaCycle(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, response.capa_cycle_id);
+    await refreshSelectedCaseWorkspace(caseId, response.capa_cycle_id, operationOwner);
   }
 
   async function handleUpdateCapaCycle(cycleId: string, payload: CapaCycleUpdateRequest) {
@@ -1933,8 +1904,9 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     await updateCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, cycleId);
+    await refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner);
   }
 
   async function handleSubmitCapaCycle(cycleId: string, payload: CapaCycleSubmitRequest) {
@@ -1942,8 +1914,9 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     await submitCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, cycleId);
+    await refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner);
   }
 
   async function handleAssessCapaCycle(cycleId: string, payload: CapaCycleAssessRequest) {
@@ -1951,8 +1924,9 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     await assessCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, cycleId);
+    await refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner);
   }
 
   async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued: boolean, selectionGeneration: number) {
@@ -2486,6 +2460,7 @@ export function SearchPage({
         ) : null}
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
+            <CaseDraftSession identity={selectedContext && selectedHistory?.source_type === "case" ? JSON.stringify([selectedContext, selectedHistory.id]) : null}>
             <ApprovalMutationContext.Provider value={{ pending: approvalPhase === "pending", requiresReview: approvalPhase === "review" }}>
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}
@@ -2585,6 +2560,7 @@ export function SearchPage({
               summary={retainedWorkspace.summary}
             />
             </ApprovalMutationContext.Provider>
+            </CaseDraftSession>
             {selectedHistory?.source_type === "case" && canLoadSecureApi ? (
               <QdKtCaseReadinessPanel
                 key={`${selectedHistory.id}:${accessGeneration}`}

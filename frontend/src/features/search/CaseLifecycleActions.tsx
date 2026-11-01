@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCaseDraftState, useCaseDraftRef } from "./CaseDraftSession";
 
 import type { CaseTransitionRequest, CaseWorkspace } from "../../types";
 
@@ -9,11 +9,11 @@ function numericVersion(value: number | null | undefined): value is number {
 }
 
 function CaseLifecycleEditor({ caseWorkspace, onTransition }: Props) {
-  const [reason, setReason] = useState("");
-  const [intent, setIntent] = useState<Action[] | null>(null);
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const inFlight = useRef(false);
-  const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useCaseDraftState("lifecycle.reason", "");
+  const [intent, setIntent] = useCaseDraftState<Action[] | null>("lifecycle.intent", null);
+  const [pendingKey, setPendingKey] = useCaseDraftState<string | null>("lifecycle.pendingKey", null);
+  const inFlight = useCaseDraftRef("lifecycle.inFlight", false);
+  const [error, setError] = useCaseDraftState<string | null>("lifecycle.error", null);
   function reviewedAction(action: Action) {
     return intent === null ? action : intent.find(item => item.action_key === action.action_key && item.target_state === action.target_state);
   }

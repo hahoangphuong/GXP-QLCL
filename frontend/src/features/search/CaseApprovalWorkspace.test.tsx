@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
+import { CaseDraftSession } from "./CaseDraftSession";
 import { CaseApprovalWorkspace } from "./CaseApprovalWorkspace";
 
 function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWorkspace {
@@ -92,4 +93,18 @@ describe("CaseApprovalWorkspace", () => {
     expect(screen.getByText("Giờ hoàn tất: 14:05")).toBeInTheDocument();
     expect(screen.getByText("PCT: pct-1")).toBeInTheDocument();
   });
+});
+
+
+it("keeps completion input and reviewed submission version across tab unmount and refresh", async () => {
+  const onComplete = vi.fn().mockResolvedValue({});
+  const item = { approval_submission_id: "pct-draft", case_id: "case-1", row_version: 4, stage: "PCT", round_no: 1, reference: null, submitted_on: null, submitted_time: null, completed_on: null, completed_time: null, pct_submission_id: null };
+  const editor = (show: boolean, version = 4) => <CaseDraftSession identity="case-A">{show ? <CaseApprovalWorkspace caseWorkspace={workspace({ approval_actions: [available("complete_approval:pct-draft", version)], approval_submissions: [{ ...item, stage: "PCT", row_version: version }] })} onCreate={vi.fn()} onComplete={onComplete} /> : null}</CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.change(screen.getByLabelText("Ngày hoàn tất trình"), { target: { value: "2026-11-01" } });
+  view.rerender(editor(false));view.rerender(editor(true, 9));
+  expect(screen.getByLabelText("Ngày hoàn tất trình")).toHaveValue("2026-11-01");
+  fireEvent.click(screen.getByRole("button", { name: "Hoàn tất PCT" }));
+  await waitFor(() => expect(onComplete).toHaveBeenCalledWith("pct-draft", expect.objectContaining({ expected_version: 4, completed_on: "2026-11-01" })));
+  await waitFor(() => expect(screen.getByLabelText("Ngày hoàn tất trình")).toHaveValue(""));
 });

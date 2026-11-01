@@ -1,3 +1,4 @@
+import { useCaseDraftState } from "./CaseDraftSession";
 import { useContext, useMemo, useRef, useState } from "react";
 
 import { formatCompactDate } from "../../lib/presentation";
@@ -19,9 +20,9 @@ function ApprovalCompletionEditor({ item, readiness, pending, requiresReview, on
   requiresReview: boolean;
   onComplete: (id: string, payload: InspectionApprovalSubmissionCompleteRequest) => Promise<boolean>;
 }) {
-  const [draft, setDraft] = useState({ date: "", time: "", reason: "" });
-  const [version, setVersion] = useState<number | null | undefined>();
-  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useCaseDraftState(`approval.complete.${item.approval_submission_id}.draft`, { date: "", time: "", reason: "" });
+  const [version, setVersion] = useCaseDraftState<number | null | undefined>(`approval.complete.${item.approval_submission_id}.version`, undefined);
+  const [error, setError] = useCaseDraftState<string | null>(`approval.complete.${item.approval_submission_id}.error`, null);
   function change(field: keyof typeof draft, value: string) {
     setVersion((current) => current === undefined ? readiness?.expected_version ?? null : current);
     setDraft((current) => ({ ...current, [field]: value }));
@@ -64,15 +65,15 @@ function CaseApprovalEditor({
   onCreate: (stage: "PCT" | "CT", payload: InspectionApprovalSubmissionCreateRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
   onComplete: (id: string, payload: InspectionApprovalSubmissionCompleteRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
 }) {
-  const [reference, setReference] = useState("");
-  const [submittedOn, setSubmittedOn] = useState("");
-  const [submittedTime, setSubmittedTime] = useState("");
-  const [createReason, setCreateReason] = useState("");
-  const [parentId, setParentId] = useState("");
+  const [reference, setReference] = useCaseDraftState("approval.create.reference", "");
+  const [submittedOn, setSubmittedOn] = useCaseDraftState("approval.create.submittedOn", "");
+  const [submittedTime, setSubmittedTime] = useCaseDraftState("approval.create.submittedTime", "");
+  const [createReason, setCreateReason] = useCaseDraftState("approval.create.createReason", "");
+  const [parentId, setParentId] = useCaseDraftState("approval.create.parentId", "");
   const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
   const { pending: ownerPending, requiresReview } = useContext(ApprovalMutationContext);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useCaseDraftState<string | null>("approval.create.error", null);
 
   const submissions = useMemo(
     () => [...(caseWorkspace.inspection.approval_submissions ?? [])].sort(

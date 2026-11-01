@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCaseDraftState, useCaseDraftRef, useCaseDraftSession } from "./CaseDraftSession";
+import { useEffect, useLayoutEffect, useMemo, type FormEvent } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -161,16 +162,17 @@ export function CaseRemediationWorkspace({
     () => buildCycleDraft(selectedCycle),
     [selectedCycle?.capa_cycle_id, selectedCycle?.row_version],
   );
-  const [draft, setDraft] = useState<CycleDraft>(currentDraft);
-  const [isCreating, setIsCreating] = useState(false);
-  const [editingField, setEditingField] = useState<"incoming_reference" | "requested_on" | "notes" | null>(null);
-  const [pendingAction, setPendingAction] = useState<"create" | "update" | "submit" | "assess" | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [draftVersion, setDraftVersion] = useState(selectedCycle?.row_version ?? null);
-  const [createCaseVersion, setCreateCaseVersion] = useState(caseWorkspace.case_summary.row_version);
-  const [draftChanged, setDraftChanged] = useState(false);
-  const hydratedCycleVersionKey = useRef(selectedCycleVersionKey);
-  const cycleOperationOwner = useRef({ key: cycleIdentityKey, generation: 0 });
+  const [draft, setDraft] = useCaseDraftState<CycleDraft>("capa.draft", currentDraft);
+  const [isCreating, setIsCreating] = useCaseDraftState("capa.isCreating", false);
+  const [editingField, setEditingField] = useCaseDraftState<"incoming_reference" | "requested_on" | "notes" | null>("capa.editingField", null);
+  const [pendingAction, setPendingAction] = useCaseDraftState<"create" | "update" | "submit" | "assess" | null>("capa.pendingAction", null);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("capa.errorMessage", null);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("capa.draftVersion", selectedCycle?.row_version ?? null);
+  const [createCaseVersion, setCreateCaseVersion] = useCaseDraftState("capa.createCaseVersion", caseWorkspace.case_summary.row_version);
+  const [draftChanged, setDraftChanged] = useCaseDraftState("capa.draftChanged", false);
+  const session = useCaseDraftSession();
+  const hydratedCycleVersionKey = useCaseDraftRef("capa.hydratedVersion", selectedCycleVersionKey);
+  const cycleOperationOwner = useCaseDraftRef("capa.operationOwner", { key: cycleIdentityKey, generation: 0 });
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -205,8 +207,8 @@ export function CaseRemediationWorkspace({
   }, [currentDraft, cycleIdentityKey, draftChanged, editingField, isCreating, pendingAction, selectedCycle?.row_version, selectedCycleVersionKey]);
 
   useLayoutEffect(() => () => {
-    cycleOperationOwner.current = { ...cycleOperationOwner.current, generation: cycleOperationOwner.current.generation + 1 };
-  }, []);
+    if (!session) cycleOperationOwner.current = { ...cycleOperationOwner.current, generation: cycleOperationOwner.current.generation + 1 };
+  }, [session, cycleOperationOwner]);
 
   function changeDraft(field: keyof CycleDraft, value: string) {
     setDraftChanged(true);
@@ -214,7 +216,7 @@ export function CaseRemediationWorkspace({
   }
 
   function isCurrentCycleOperation(owner: { key: string; generation: number }): boolean {
-    return cycleOperationOwner.current === owner;
+    return (!session || session.isLive()) && cycleOperationOwner.current === owner;
   }
 
   const createAvailable = isActionAvailable(caseWorkspace, "create_capa_cycle");

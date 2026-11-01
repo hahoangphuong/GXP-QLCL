@@ -1,3 +1,5 @@
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { useCaseDraftState } from "./CaseDraftSession";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
@@ -83,11 +85,12 @@ export function CaseApplicationWorkspace({
   assessment?: ReactNode;
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
-  const [draft, setDraft] = useState<FormDraft>(currentDraft);
-  const [draftVersion, setDraftVersion] = useState(caseWorkspace.application.row_version);
-  const [editingField, setEditingField] = useState<"submitted_on" | "dossier_code" | null>(null);
-  const [pending, setPending] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draft, setDraft] = useCaseDraftState<FormDraft>("application.draft", currentDraft);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("application.draftVersion", caseWorkspace.application.row_version);
+  const [editingField, setEditingField] = useCaseDraftState<"submitted_on" | "dossier_code" | null>("application.editingField", null);
+  const [pending, setPending] = useCaseDraftState("application.pending", false);
+  const [requiresReview, setRequiresReview] = useCaseDraftState("application.requiresReview", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("application.errorMessage", null);
   const folderLookupIdentity = JSON.stringify([
     accessGeneration,
     caseWorkspace.case_summary.id,
@@ -138,7 +141,7 @@ export function CaseApplicationWorkspace({
   }, [currentDraft, editingField]);
 
   async function saveField() {
-    if (!editingField || pending) {
+    if (!editingField || pending || requiresReview) {
       return;
     }
     if (draftVersion === null && caseWorkspace.application.row_version !== null) {
@@ -154,6 +157,7 @@ export function CaseApplicationWorkspace({
       await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) setRequiresReview(true);
       const nextError = error instanceof Error ? error : new Error("Không lưu được thông tin hồ sơ.");
       setErrorMessage(getErrorMessage(nextError));
     } finally {
@@ -208,6 +212,7 @@ export function CaseApplicationWorkspace({
 
   return (
     <div className="event-step-stack">
+      {requiresReview ? <p className="form-error" role="alert">Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ.</p> : null}
       <section className={`workspace-section case-application-section${assessment ? " legacy-dossier-section" : ""}`}>
         <h4 className={assessment ? "sr-only" : undefined}>Thông tin hồ sơ</h4>
         <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-primary">
@@ -224,6 +229,7 @@ export function CaseApplicationWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
+            saveDisabled={requiresReview}
             value={formatCompactDate(caseWorkspace.application.submitted_on)}
           >
             <input
@@ -248,6 +254,7 @@ export function CaseApplicationWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
+            saveDisabled={requiresReview}
             value={caseWorkspace.application.dossier_code}
           >
             <input

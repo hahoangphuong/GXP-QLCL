@@ -5,6 +5,7 @@ No rehearsal/production connection allowed; all rows rolled back.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -52,7 +53,7 @@ def test_postgres_0027_rejects_update_delete_and_rolls_back_all_rows():
                     source_snapshot_sha256="a" * 64, source_document_sha256="b" * 64,
                     source_page_reference="synthetic p1", rationale="synthetic only",
                     reviewer_user_id=reviewer, recorded_by_user_id=recorder,
-                    reviewed_at="2026-11-01T09:00:00+07:00",
+                    reviewed_at=datetime.fromisoformat("2026-11-01T09:00:00+07:00"),
                 ))
                 assert conn.execute(
                     select(GmpCoverageReviewEvent.id).where(GmpCoverageReviewEvent.id == event)

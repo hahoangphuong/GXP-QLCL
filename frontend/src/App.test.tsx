@@ -1005,6 +1005,20 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Liên kết pháp lý công khai" })).not.toBeInTheDocument());
   });
 
+  it.each(["A-to-B", "same-credential-refresh"])("revalidates admin navigation for every accepted access owner: %s", async scenario => {
+    const privileged = { username: "synthetic-A", email: null, subject: "synthetic-A", role_codes: ["admin"], permissions: ["admin.users"] };
+    let resolveNext!: (value: typeof privileged) => void;
+    apiMocks.getCurrentIdentity.mockResolvedValueOnce(privileged).mockImplementation(() => new Promise(resolve => { resolveNext = resolve; }));
+    const view = await renderOidcSearch("/");
+    await act(async () => { view.credentialCallback({ credential: "synthetic-A" }); });
+    await screen.findByRole("link", { name: "Quản trị" });
+    await act(async () => { view.credentialCallback({ credential: scenario === "A-to-B" ? "synthetic-B" : "synthetic-A" }); });
+    expect(apiMocks.getCurrentIdentity).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
+    await act(async () => resolveNext({ ...privileged, username: "synthetic-B", permissions: ["case.view"], role_codes: ["reader"] }));
+    expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
+  });
+
   it("uses backend identity permissions, not local role state, for admin navigation", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.getCurrentIdentity.mockResolvedValue({

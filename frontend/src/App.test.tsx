@@ -3161,7 +3161,7 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
 
     expect(screen.queryByLabelText("Ngày nộp")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("HS-001");
+    expect(await screen.findByLabelText("Mã hồ sơ")).toHaveValue("HS-001");
     expect(screen.queryByLabelText("Tham chiếu hồ sơ")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Người nộp hồ sơ")).not.toBeInTheDocument();
     const dossierCodeInput = screen.getByLabelText("Mã hồ sơ");

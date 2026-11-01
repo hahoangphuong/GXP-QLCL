@@ -82,6 +82,10 @@ The first local follow-up full run recorded683PASS/3FAIL: the analogous assess
 date assertion plus two unrelated navigation timeouts. Assess input commits are
 also awaited explicitly; no timeout is increased or assertion removed. The final
 full run must pass separately before merge; failed logs remain in local evidence.
+After main255 integration, CI run41295109360 recorded685PASS/1FAIL in the header
+test: the public logo appeared before `/app/status` selected header_stub. Await
+the required signed-in identity before checking authenticated chrome; retain all
+header assertions. This is a test readiness barrier, not a production header fix.
 Audited main PR254 adds an isolated pure evidence module/tests only; its18tests
 pass. No backend owner file is modified by this slice.
 

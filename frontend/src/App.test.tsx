@@ -992,7 +992,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByRole("img", { name: "GXP QLCL" })).toHaveAttribute("src", "/gxp-qlcl-logo.png");
     expect(screen.queryByText("GxP QLCL")).not.toBeInTheDocument();
     expect(screen.queryByText("Tra cứu và điều phối nghiệp vụ")).not.toBeInTheDocument();
-    expect(screen.getByText("operator.local (inspector)")).toBeInTheDocument();
+    // The logo is also present while the authentication-mode request is pending.
+    expect(await screen.findByText("operator.local (inspector)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
     expect(screen.getByText("Quản lý GxP")).toBeInTheDocument();
     expect(screen.getByText("Cơ sở sản xuất, kinh doanh dược phẩm")).toBeInTheDocument();

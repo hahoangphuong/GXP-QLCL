@@ -3649,7 +3649,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(reads);
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    if (result === "success") {
+      expect(screen.getByRole("alert")).toHaveTextContent("Chưa xác minh");
+      expect(screen.getByRole("button", { name: "Transition test" })).toBeDisabled();
+    } else expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("serializes reassessment form submissions even before React commits pending state", async () => {

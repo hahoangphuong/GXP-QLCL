@@ -6389,6 +6389,88 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Stale certificate update.");
   });
 
+  it.each(["old-first", "new-first", "old-409", "old-network", "new-409"] as const)("keeps Change Request loading and results owned by the current generation (%s)", async order => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    let resolveOld!: (value: ReturnType<typeof buildChangeRequestWorkspace>) => void;
+    let rejectOld!: (error: Error) => void;
+    let resolveNew!: (value: ReturnType<typeof buildChangeRequestWorkspace>) => void;
+    let rejectNew!: (error: Error) => void;
+    apiMocks.getChangeRequestWorkspace.mockImplementationOnce(() => new Promise((resolve, reject) => { resolveOld = resolve; rejectOld = reject; }))
+      .mockImplementationOnce(() => new Promise((resolve, reject) => { resolveNew = resolve; rejectNew = reject; }));
+    const { container } = renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    const row = () => within(container.querySelector(".history-panel") as HTMLElement);
+    fireEvent.click(row().getByText("Thay đổi"));
+    await screen.findByText("Đang tải workspace thay đổi");
+    fireEvent.click(row().getByText("Định kỳ"));
+    await screen.findByText("HS-001");
+    fireEvent.click(row().getByText("Thay đổi"));
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Đang tải workspace thay đổi")).toBeInTheDocument();
+    if (order === "new-first") {
+      await act(async () => resolveNew(buildChangeRequestWorkspace({ description: "New generation" })));
+      await screen.findByText("New generation");
+      await act(async () => resolveOld(buildChangeRequestWorkspace({ description: "Old generation" })));
+      expect(screen.getByText("New generation")).toBeInTheDocument();
+    } else {
+      await act(async () => {
+        if (order === "old-409") rejectOld(buildApiError("Old conflict", 409));
+        else if (order === "old-network") rejectOld(new Error("Old network failure"));
+        else resolveOld(buildChangeRequestWorkspace({ description: "Old generation" }));
+      });
+      expect(screen.getByText("Đang tải workspace thay đổi")).toBeInTheDocument();
+      expect(screen.queryByText("Old generation")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Old conflict|Old network failure/)).not.toBeInTheDocument();
+      if (order === "new-409") {
+        await act(async () => rejectNew(buildApiError("Current conflict", 409)));
+        expect(await screen.findByText("Current conflict")).toBeInTheDocument();
+      } else {
+        await act(async () => resolveNew(buildChangeRequestWorkspace({ description: "New generation" })));
+        await screen.findByText("New generation");
+      }
+    }
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2);
+    expect(apiMocks.updateChangeRequest).not.toHaveBeenCalled();
+  });
+
+  it.each((["success", "conflict"] as const).flatMap(outcome => [false, true].map(returnToChange => ({ outcome, returnToChange }))))("does not refresh replaced Change Request after navigation ($outcome, return $returnToChange)", async ({ outcome, returnToChange }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    let resolve!: (value: unknown) => void;
+    let reject!: (error: Error) => void;
+    apiMocks.updateChangeRequest.mockImplementation(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+    const { container } = renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    await screen.findByText("Điều chỉnh địa chỉ kho bảo quản");
+    fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Phạm vi thay đổi" }), { target: { value: "A draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu đề nghị" }));
+    expect(apiMocks.updateChangeRequest).toHaveBeenCalledOnce();
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Định kỳ"));
+    await screen.findByText("HS-001");
+    if (returnToChange) {
+      fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+      await screen.findByText("Điều chỉnh địa chỉ kho bảo quản");
+      fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Phạm vi thay đổi" }), { target: { value: "New A draft" } });
+    }
+    const changeReads = apiMocks.getChangeRequestWorkspace.mock.calls.length;
+    const facilityReads = apiMocks.getFacilityWorkspace.mock.calls.length;
+    await act(async () => { if (outcome === "success") resolve({}); else reject(buildApiError("Old conflict", 409)); });
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(changeReads);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(facilityReads);
+    if (returnToChange) expect(screen.getByRole("textbox", { name: "Phạm vi thay đổi" })).toHaveValue("New A draft");
+    else expect(screen.getByText("HS-001")).toBeInTheDocument();
+    expect(apiMocks.updateChangeRequest).toHaveBeenCalledOnce();
+  });
+
   it("refreshes change-request and facility workspaces once after a stale 409 without retrying mutation", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

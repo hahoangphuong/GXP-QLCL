@@ -336,6 +336,7 @@ export function SearchPage({
   const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
   const [caseWorkspaceError, setCaseWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
   const caseRequestSequence = useRef(0);
+  const changeRequestSequence = useRef(0);
   const [inspectionPlanReadiness, setInspectionPlanReadiness] = useState<CaseInspectionPlanReadinessState | null>(null);
   const [inspectionPlanReadinessRetry, setInspectionPlanReadinessRetry] = useState(0);
   const inspectionPlanReadinessSequence = useRef(0);
@@ -1171,6 +1172,8 @@ export function SearchPage({
   ]);
 
   useEffect(() => {
+    const requestId = ++changeRequestSequence.current;
+    const operationOwner = caseOperationOwner.current;
     setSelectedChangeRequestWorkspace(null);
     setChangeRequestWorkspaceError(null);
     setChangeRequestWorkspaceLoading(false);
@@ -1181,14 +1184,14 @@ export function SearchPage({
     setChangeRequestWorkspaceLoading(true);
     void getChangeRequestWorkspace(selectedHistoryId, auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) {
+        if (!cancelled && isCurrentCaseOperation(operationOwner) && changeRequestSequence.current === requestId) {
           setSelectedChangeRequestWorkspace(payload);
           setChangeRequestWorkspaceError(null);
           setChangeRequestWorkspaceLoading(false);
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
+        if (!cancelled && isCurrentCaseOperation(operationOwner) && changeRequestSequence.current === requestId) {
           setSelectedChangeRequestWorkspace(null);
           setChangeRequestWorkspaceError({ historyId: selectedHistoryId, message: error.message });
           setChangeRequestWorkspaceLoading(false);
@@ -1523,10 +1526,11 @@ export function SearchPage({
     }
   }
 
-  async function refreshSelectedChangeRequestWorkspace(changeRequestId: string) {
-    if (!isCurrentContext()) return null;
+  async function refreshSelectedChangeRequestWorkspace(changeRequestId: string, operationOwner: typeof caseOperationOwner.current) {
+    if (!isCurrentCaseOperation(operationOwner)) return null;
+    const requestId = ++changeRequestSequence.current;
     const payload = await getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken);
-    if (!isCurrentContext()) return payload;
+    if (!isCurrentCaseOperation(operationOwner) || changeRequestSequence.current !== requestId) return null;
     setSelectedChangeRequestWorkspace(payload);
     setChangeRequestWorkspaceError(null);
     return payload;
@@ -1539,21 +1543,22 @@ export function SearchPage({
       throw new Error("Chưa chọn yêu cầu thay đổi để cập nhật.");
     }
     const changeRequestId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     try {
       await mutation(changeRequestId);
     } catch (error) {
       const status = (error as Error & { status?: number }).status;
       if (status === 409) {
         await Promise.all([
-          refreshSelectedChangeRequestWorkspace(changeRequestId).catch(() => undefined),
-          refreshSelectedFacilityWorkspace(changeRequestId).catch(() => undefined),
+          refreshSelectedChangeRequestWorkspace(changeRequestId, operationOwner).catch(() => undefined),
+          refreshSelectedFacilityWorkspace(changeRequestId, operationOwner).catch(() => undefined),
         ]);
       }
       throw error;
     }
     await Promise.all([
-      refreshSelectedChangeRequestWorkspace(changeRequestId),
-      refreshSelectedFacilityWorkspace(changeRequestId).catch(() => undefined),
+      refreshSelectedChangeRequestWorkspace(changeRequestId, operationOwner),
+      refreshSelectedFacilityWorkspace(changeRequestId, operationOwner).catch(() => undefined),
     ]);
   }
 

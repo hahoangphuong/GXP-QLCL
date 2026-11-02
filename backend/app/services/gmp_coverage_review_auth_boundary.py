@@ -30,8 +30,17 @@ def append_unresolved_from_authenticated_context(
     # before the OIDC lookup, not just in the downstream intake service.
     if session.new or session.dirty or session.deleted:
         raise ValueError("GMP evidence intake requires a clean Session.")
-    if authenticated.auth_mode != "google_oidc" or not authenticated.subject:
+    if (
+        not isinstance(authenticated, AuthenticatedUser)
+        or authenticated.auth_mode != "google_oidc"
+        or not isinstance(authenticated.subject, str)
+        or not authenticated.subject.strip()
+    ):
         raise PermissionError("Verified Google OIDC subject required for GMP intake.")
+    if authenticated.email is not None and (
+        not isinstance(authenticated.email, str) or not authenticated.email.strip()
+    ):
+        raise PermissionError("Valid OIDC email required for GMP intake.")
     matches = session.scalars(
         select(AppUser).where(
             AppUser.external_subject == authenticated.subject,

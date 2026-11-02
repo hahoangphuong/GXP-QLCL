@@ -481,3 +481,17 @@ it("synchronously serializes duplicate Change Request saves", async () => {
   expect(handlers.onUpdateHeader).toHaveBeenCalledOnce();
   await act(async () => finish());
 });
+
+
+it.each(["gxp", "business"] as const)("blocks %s certificate dialog resubmit after an unverified write", async kind => {
+  const handlers = buildHandlers();
+  const save = kind === "gxp" ? handlers.onEditIssuedCertificate : handlers.onEditIssuedBusinessEligibility;
+  vi.mocked(save).mockRejectedValue(new CaseFieldMutationRecoveryError("unverified"));
+  render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+  fireEvent.click(screen.getByRole("button", { name: kind === "gxp" ? "Cập nhật chứng nhận" : "Cập nhật GCN đủ điều kiện" }));
+  const dialog = await screen.findByRole("dialog", { name: kind === "gxp" ? "Sửa giấy chứng nhận GxP" : "Cập nhật GCN đủ điều kiện" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+  await within(dialog).findByRole("alert");
+  expect(within(dialog).getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+  expect(save).toHaveBeenCalledOnce();
+});

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { FACILITY_TAB_LABELS, type FacilityTab } from "./features/search/facilityTabs";
 import { CASE_EVENT_LABELS } from "./features/search/EventWorkspace";
-import { clearOidcSession, saveOidcSession } from "./lib/storage";
+import { clearOidcSession } from "./lib/storage";
 import type { FacilitySearchPage, FacilitySearchResult, OidcSession } from "./types";
 
 const apiMocks = vi.hoisted(() => ({
@@ -3590,7 +3590,8 @@ describe("App Slice A.4 search workspace", () => {
       clock.mockReturnValue(now + 30_001);
       await act(async () => { callbacks[0](); window.dispatchEvent(new Event("focus")); });
       expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
-      expect(saveOidcSession).toHaveBeenLastCalledWith(expect.objectContaining({ token: "refreshed" }));
+      expect(window.sessionStorage.getItem("gxp-operator-shell-oidc")).toBeNull();
+      expect(window.localStorage.getItem("gxp-operator-shell-oidc")).toBeNull();
       const clears = vi.mocked(clearOidcSession).mock.calls.length;
       view.unmount();
       clock.mockReturnValue(now + 90_001);

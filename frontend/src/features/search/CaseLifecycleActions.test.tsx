@@ -1,3 +1,4 @@
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +13,16 @@ function workspace(actions: CaseWorkspace["transition_actions"]): CaseWorkspace 
 
 describe("CaseLifecycleActions", () => {
   const action = (version = 18) => ({ action_key: "opaque-transition", label: "Chuyển theo policy", target_state: "planned", available: true, expected_version: version, reason_code: null, required_permissions: ["case.edit"] });
+
+  it("blocks another transition when the result cannot be verified", async () => {
+    const onTransition = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("unverified"));
+    render(<CaseLifecycleActions caseWorkspace={workspace([action()])} onTransition={onTransition} />);
+    fireEvent.change(screen.getByLabelText("Lý do chuyển trạng thái"), { target: { value: "Draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển theo policy" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Chuyển theo policy" })).toBeDisabled();
+    expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("Draft");
+  });
 
   it("serializes repeated activation before the pending render", () => {
     const onTransition = vi.fn(() => new Promise<void>(() => {}));

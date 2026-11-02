@@ -38,7 +38,6 @@ function response(body: unknown, status = 200) {
 }
 
 function setup(change?: (path: string, body: unknown) => ReturnType<typeof response>) {
-  sessionStorage.setItem("gxp-operator-shell-oidc", JSON.stringify({ token: "secret-test-token", expires_at_epoch_seconds: Date.now() / 1000 + 3600 }));
   return vi.fn(async (url: string, init: RequestInit) => {
     expect(init.method).toBe("GET");
     expect(init.body).toBeUndefined();
@@ -47,12 +46,17 @@ function setup(change?: (path: string, body: unknown) => ReturnType<typeof respo
   });
 }
 
+const runSmoke = (options: Parameters<typeof runRehearsalSmoke>[0] = {}) => runRehearsalSmoke({
+  session: { token: "secret-test-token", email: null, name: null, subject: null, expires_at_epoch_seconds: Date.now() / 1000 + 3600 },
+  ...options,
+});
+
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
 
 describe("bounded rehearsal probe using the real API client", () => {
   it("reads distinct UUIDs sharing filenames/numbers once, forwards canonical line and redacts its report", async () => {
     const fetch = setup(); vi.stubGlobal("fetch", fetch);
-    const report = await runRehearsalSmoke({ fixture: true });
+    const report = await runSmoke({ fixture: true });
     expect(report.verification).toBe("FIXTURE_ONLY");
     expect(report.checks.every(check => check.outcome === "PASS")).toBe(true);
     expect(report.reads).toBe(17);
@@ -67,7 +71,7 @@ describe("bounded rehearsal probe using the real API client", () => {
   it.each([401, 403, 409, 422])("records HTTP %s without retry or server detail", async status => {
     const fetch = setup((path, body) => path === "/api/auth/me" ? response({ detail: "sensitive dossier and token" }, status) : response(body));
     vi.stubGlobal("fetch", fetch);
-    const report = await runRehearsalSmoke();
+    const report = await runSmoke();
     expect(report.verification).toBe("BLOCKED");
     expect(report.checks.at(-1)).toEqual({ name: "authenticated-identity", outcome: "FAIL", httpStatus: status });
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -77,12 +81,12 @@ describe("bounded rehearsal probe using the real API client", () => {
   it("fails closed on header_stub for live mode", async () => {
     const fetch = setup((path, body) => response(path === "/api/app/status" ? { auth_mode: "header_stub" } : body));
     vi.stubGlobal("fetch", fetch);
-    expect((await runRehearsalSmoke()).verification).toBe("BLOCKED");
+    expect((await runSmoke()).verification).toBe("BLOCKED");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("does not authenticate anonymously after a successful identity response", async () => {
-    const fetch = setup(); sessionStorage.clear(); vi.stubGlobal("fetch", fetch);
+    const fetch = setup(); vi.stubGlobal("fetch", fetch);
     expect((await runRehearsalSmoke()).verification).toBe("BLOCKED");
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[1][1].headers).not.toHaveProperty("Authorization");
@@ -91,14 +95,14 @@ describe("bounded rehearsal probe using the real API client", () => {
   it("keeps empty data and a stale exact target unverified", async () => {
     const fetch = setup((path, body) => response(path === "/api/search/facilities" ? { items: [] } : body));
     vi.stubGlobal("fetch", fetch);
-    expect((await runRehearsalSmoke()).checks.at(-1)?.outcome).toBe("SKIPPED");
-    expect((await runRehearsalSmoke({ resultKey: "missing" })).checks.at(-1)?.outcome).toBe("FAIL");
+    expect((await runSmoke()).checks.at(-1)?.outcome).toBe("SKIPPED");
+    expect((await runSmoke({ resultKey: "missing" })).checks.at(-1)?.outcome).toBe("FAIL");
   });
 
   it("rejects mismatched identity without declaring read verification", async () => {
     const fetch = setup((path, body) => response(path.startsWith("/api/certificates/") ? { certificate_id: "wrong", site_id: site } : body));
     vi.stubGlobal("fetch", fetch);
-    expect((await runRehearsalSmoke()).verification).toBe("BLOCKED");
+    expect((await runSmoke()).verification).toBe("BLOCKED");
   });
 
   it("rejects mismatched or semantically conflated persisted histories", async () => {
@@ -109,7 +113,7 @@ describe("bounded rehearsal probe using the real API client", () => {
           canonical_link_status: "stored_fk_only_not_validated", versions: [] }
         : body));
     vi.stubGlobal("fetch", fetch);
-    const report = await runRehearsalSmoke({ fixture: true });
+    const report = await runSmoke({ fixture: true });
     expect(report.passed).toBe(false);
     expect(report.checks.find(item => item.name === "gps-history-identity-1")?.outcome).toBe("FAIL");
     expect(report.checks.find(item => item.name === "ddk-history-contract-1")?.outcome).toBe("FAIL");
@@ -119,7 +123,7 @@ describe("bounded rehearsal probe using the real API client", () => {
     const fetch = setup((path, body) => response(path.startsWith("/api/documents/")
       ? { document_id: path.split("/").pop(), variants: [{ id: "conflated", versions: [{ id: "conflated" }] }] } : body));
     vi.stubGlobal("fetch", fetch);
-    const report = await runRehearsalSmoke({ fixture: true });
+    const report = await runSmoke({ fixture: true });
     expect(report.passed).toBe(false);
     expect(report.checks.find(item => item.name === "document-rendition-version-identity-1")?.outcome).toBe("FAIL");
   });
@@ -127,13 +131,13 @@ describe("bounded rehearsal probe using the real API client", () => {
   it("stops before following a mismatched facility's history", async () => {
     const fetch = setup((path, body) => response(path.endsWith("/workspace") ? { summary: { site_id: "other-site", selected_production_line_id: line } } : body));
     vi.stubGlobal("fetch", fetch);
-    expect((await runRehearsalSmoke()).verification).toBe("BLOCKED");
+    expect((await runSmoke()).verification).toBe("BLOCKED");
     expect(fetch).toHaveBeenCalledTimes(4);
   });
 
   it("does not leak a network exception or retry it", async () => {
     const fetch = vi.fn().mockRejectedValue(new Error("private hostname/token")); vi.stubGlobal("fetch", fetch);
-    const report = await runRehearsalSmoke();
+    const report = await runSmoke();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(report.checks).toEqual([{ name: "app-status", outcome: "FAIL" }]);
   });
@@ -141,11 +145,11 @@ describe("bounded rehearsal probe using the real API client", () => {
   it("prevents overlapping probe runs and releases ownership after completion", async () => {
     let release!: (value: ReturnType<typeof response>) => void;
     vi.stubGlobal("fetch", vi.fn(() => new Promise(resolve => { release = resolve; })));
-    const first = runRehearsalSmoke();
-    await expect(runRehearsalSmoke()).rejects.toThrow("already running");
+    const first = runSmoke();
+    await expect(runSmoke()).rejects.toThrow("already running");
     release(response({ auth_mode: "unsupported" })); await first;
     vi.stubGlobal("fetch", setup());
-    expect((await runRehearsalSmoke({ fixture: true })).verification).toBe("FIXTURE_ONLY");
+    expect((await runSmoke({ fixture: true })).verification).toBe("FIXTURE_ONLY");
   });
 });
 

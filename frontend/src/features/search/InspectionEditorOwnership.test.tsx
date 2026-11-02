@@ -58,6 +58,17 @@ describe("Inspection editor identity and token ownership", () => {
     return { callback: view.handlers.onFinalizeInspectionOutcome, input: "Đánh giá cuối cùng", save: "Chốt đánh giá cuối cùng", value: "Final draft" };
   }
 
+  it.each(["period", "team", "final"] as const)("blocks %s after an unverified write", async section => {
+    const view = setup();
+    const editor = await openSection(view, section);
+    editor.callback.mockRejectedValue(new CaseFieldMutationRecoveryError("readback unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: editor.save }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: editor.save })).toBeDisabled();
+    expect(screen.getByLabelText(editor.input)).toHaveValue(editor.value);
+    expect(editor.callback).toHaveBeenCalledOnce();
+  });
+
   it.each([403, 404, 409, 422, undefined])("keeps each owner's error contract for status %s without retry", async status => {
     for (const section of ["plan", "outcome", "period", "team", "final"] as const) {
       const view = setup();

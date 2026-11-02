@@ -95,6 +95,7 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   const [segments, setSegments] = useCaseDraftState<InspectionPeriodSegmentsUpsertRequest["segments"]>("period.segments", []);
   const [editing, setEditing] = useCaseDraftState("period.editing", false);
   const [pending, setPending] = useCaseDraftState("period.pending", false);
+  const commandLock = useCaseCommandLock("inspection.period");
   const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("period.errorMessage", null);
   const readiness = caseWorkspace.inspection.inspection_period_edit_readiness;
   const [draftVersion, setDraftVersion] = useCaseDraftState<number | null>("period.draftVersion", null);
@@ -104,10 +105,12 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   const renumber = (next: InspectionPeriodSegmentsUpsertRequest["segments"]) => next.map((segment, index) => ({ ...segment, ordinal: index + 1 }));
   async function save() {
     if (pending || !readiness?.available) return;
+    const command = commandLock.acquire();
+    if (!command) return;
     setPending(true); setErrorMessage(null);
     try { await onSave({ expected_version: draftVersion, segments: renumber(segments) }); setEditing(false); }
-    catch (error) { setErrorMessage(getSectionErrorMessage(error instanceof Error ? error : new Error("Không lưu được các đợt kiểm tra."), "các đợt kiểm tra")); }
-    finally { setPending(false); }
+    catch (error) { if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command); setErrorMessage(getSectionErrorMessage(error instanceof Error ? error : new Error("Không lưu được các đợt kiểm tra."), "các đợt kiểm tra")); }
+    finally { commandLock.release(command); setPending(false); }
   }
   return <section className="workspace-section inspection-period-section">
     <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || pending || editing} onClick={() => { setDraftVersion(readiness?.expected_version ?? null); setEditing(true); setErrorMessage(null); }} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
@@ -120,9 +123,9 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
         <button disabled={pending || index === segments.length - 1} onClick={() => setSegments((current) => { const next=[...current]; [next[index + 1], next[index]]=[next[index], next[index + 1]]; return renumber(next); })} type="button">Xuống</button>
         <button disabled={pending} onClick={() => setSegments((current) => renumber(current.filter((_, itemIndex) => itemIndex !== index)))} type="button">Xóa</button>
       </div>)}
-      <div className="panel-actions"><button disabled={pending} onClick={() => setSegments((current) => [...current, { ordinal: current.length + 1, started_on: "", ended_on: "" }])} type="button">Thêm lần kiểm tra</button><button disabled={pending} onClick={() => void save()} type="button">Lưu các đợt kiểm tra</button><button disabled={pending} onClick={() => setEditing(false)} type="button">Hủy</button></div>
+      <div className="panel-actions"><button disabled={pending} onClick={() => setSegments((current) => [...current, { ordinal: current.length + 1, started_on: "", ended_on: "" }])} type="button">Thêm lần kiểm tra</button><button disabled={pending || commandLock.pending || commandLock.requiresReview} onClick={() => void save()} type="button">Lưu các đợt kiểm tra</button><button disabled={pending} onClick={() => setEditing(false)} type="button">Hủy</button></div>
     </div>}
-    {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+    {errorMessage || commandLock.requiresReview ? <p className="form-error" role="alert">{errorMessage ?? "Chưa xác minh kết quả lưu. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
   </section>;
 }
 
@@ -296,6 +299,7 @@ function InspectionTeamSection({
   const [options, setOptions] = useCaseDraftState<InspectionTeamIdentityOption[]>("team.options", []);
   const [members, setMembers] = useCaseDraftState<InspectionTeamUpsertRequest["members"]>("team.members", []);
   const [pending, setPending] = useCaseDraftState("team.pending", false);
+  const commandLock = useCaseCommandLock("inspection.team");
   const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("team.errorMessage", null);
 
   const [draftVersion, setDraftVersion] = useCaseDraftState<number | null>("team.draftVersion", null);
@@ -362,6 +366,8 @@ function InspectionTeamSection({
 
   async function save() {
     if (pending || !readiness.available || members.length === 0 || members.some((member) => !identityValue(member))) return;
+    const command = commandLock.acquire();
+    if (!command) return;
     setPending(true);
     setErrorMessage(null);
     try {
@@ -375,6 +381,7 @@ function InspectionTeamSection({
       });
       setEditing(false);
     } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       const nextError = error instanceof Error ? error : new Error("Không lưu được đoàn kiểm tra.");
       if (getErrorStatus(nextError) === 409) {
         setEditing(false);
@@ -389,6 +396,7 @@ function InspectionTeamSection({
       }
       setErrorMessage(getSectionErrorMessage(nextError, "đoàn kiểm tra"));
     } finally {
+      commandLock.release(command);
       setPending(false);
     }
   }
@@ -404,7 +412,7 @@ function InspectionTeamSection({
         {member.identity_status === "unresolved" ? <span className="form-error">Không thể round-trip định danh này.</span> : null}
       </div>)}
       {!readiness.available && readiness.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
-      {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+      {errorMessage || commandLock.requiresReview ? <p className="form-error" role="alert">{errorMessage ?? "Chưa xác minh kết quả lưu. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
       {editing ? <div className="inspection-team-editor">
         <p className="workspace-note">Lưu sẽ thay toàn bộ danh sách từ dữ liệu có cấu trúc này. Mô tả legacy chỉ đọc, không được dùng để tạo thành viên.</p>
         {/* Editable roles are positional slots; changing their participant must not replace the focused select. */}
@@ -422,7 +430,7 @@ function InspectionTeamSection({
         </div>)}
         <div className="panel-actions">
           <button disabled={pending} onClick={() => setMembers((current) => [...current, { inspector_profile_id: null, person_id: null, role_code: current.length === 0 ? "LEADER" : current.length === 1 ? "SECRETARY" : "MEMBER", sort_order: current.length + 1 }])} type="button">Thêm thành viên</button>
-          <button disabled={pending || members.length === 0 || members.some((member) => !identityValue(member))} onClick={() => void save()} type="button">{pending ? "Đang lưu..." : "Lưu đoàn kiểm tra"}</button>
+          <button disabled={pending || commandLock.pending || commandLock.requiresReview || members.length === 0 || members.some((member) => !identityValue(member))} onClick={() => void save()} type="button">{pending ? "Đang lưu..." : "Lưu đoàn kiểm tra"}</button>
           <button disabled={pending} onClick={() => setEditing(false)} type="button">Hủy</button>
         </div>
       </div> : null}
@@ -570,6 +578,7 @@ function CaseInspectionEditor({
   const [finalDraftVersion, setFinalDraftVersion] = useCaseDraftState<number | null | undefined>("inspection.finalDraftVersion", undefined);
   const [finalizationError, setFinalizationError] = useCaseDraftState<string | null>("inspection.finalizationError", null);
   const [finalizationPending, setFinalizationPending] = useCaseDraftState("inspection.finalizationPending", false);
+  const finalLock = useCaseCommandLock("inspection.finalization");
   const finalization = caseWorkspace.inspection.final_evaluation_readiness ?? {
     action_key: "finalize_inspection_outcome",
     label: "Chốt đánh giá cuối cùng",
@@ -581,6 +590,8 @@ function CaseInspectionEditor({
 
   async function finalize() {
     if (finalizationPending || !onFinalizeInspectionOutcome || !finalization.available || !finalEvaluation.trim() || finalDraftVersion == null) return;
+    const command = finalLock.acquire();
+    if (!command) return;
     setFinalizationPending(true);
     setFinalizationError(null);
     try {
@@ -588,8 +599,10 @@ function CaseInspectionEditor({
       setFinalEvaluation("");
       setFinalDraftVersion(undefined);
     } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) finalLock.requireReview(command);
       setFinalizationError(getSectionErrorMessage(error instanceof Error ? error : new Error("Không thể chốt đánh giá."), "đánh giá cuối cùng"));
     } finally {
+      finalLock.release(command);
       setFinalizationPending(false);
     }
   }
@@ -608,14 +621,14 @@ function CaseInspectionEditor({
           {caseWorkspace.inspection.final_evaluation === null || finalDraftVersion !== undefined ? (
             <div aria-label="Chốt đánh giá cuối cùng" className="panel-actions panel-actions-tight inspection-final-actions" role="group">
               <input aria-label="Đánh giá cuối cùng" disabled={!finalization.available || finalizationPending} onChange={(event) => { if (finalDraftVersion === undefined) setFinalDraftVersion(finalization.expected_version); setFinalEvaluation(event.target.value); }} value={finalEvaluation} />
-              <button disabled={!onFinalizeInspectionOutcome || !finalization.available || finalizationPending || finalDraftVersion == null || !finalEvaluation.trim()} onClick={() => void finalize()} type="button">
+              <button disabled={!onFinalizeInspectionOutcome || !finalization.available || finalizationPending || finalLock.pending || finalLock.requiresReview || finalDraftVersion == null || !finalEvaluation.trim()} onClick={() => void finalize()} type="button">
                 {finalizationPending ? "Đang chốt..." : finalization.label}
               </button>
               {finalDraftVersion !== undefined ? <button disabled={finalizationPending} onClick={() => { setFinalEvaluation(""); setFinalDraftVersion(undefined); setFinalizationError(null); }} type="button">Hủy nhập đánh giá</button> : null}
             </div>
           ) : null}
           {!finalization.available && finalization.reason_code ? <p className="workspace-note">Không thể chốt: {finalization.reason_code}.</p> : null}
-          {finalizationError ? <p className="form-error" role="alert">{finalizationError}</p> : null}
+          {finalizationError || finalLock.requiresReview ? <p className="form-error" role="alert">{finalizationError ?? "Chưa xác minh kết quả chốt. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
         </section>
       </div>
     </div>

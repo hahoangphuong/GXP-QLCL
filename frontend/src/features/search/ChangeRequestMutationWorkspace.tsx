@@ -342,14 +342,24 @@ export function ChangeRequestMutationWorkspace({
     }
   }
 
+  async function runDialogMutation(mutation: () => Promise<void>) {
+    const command = commandLock.acquire();
+    if (!command) throw new CaseFieldMutationRecoveryError("Chưa xác minh kết quả thao tác trước; không gửi lại.");
+    try { await mutation(); }
+    catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      throw error;
+    } finally { commandLock.release(command); }
+  }
+
   async function saveIssuedGxpEdit(payload: CertificateLatestVersionUpsertRequest) {
     if (!issuedGxpEdit) {
       return;
     }
-    await handlers.onEditIssuedCertificate(
+    await runDialogMutation(() => handlers.onEditIssuedCertificate(
       issuedGxpEdit.detail.certificate_id,
       payload,
-    );
+    ));
   }
 
   async function openIssuedBusinessEligibilityEdit(issuedArtifactLinkId: string) {
@@ -393,10 +403,10 @@ export function ChangeRequestMutationWorkspace({
     if (!issuedBusinessEligibilityEdit) {
       return;
     }
-    await handlers.onEditIssuedBusinessEligibility(
+    await runDialogMutation(() => handlers.onEditIssuedBusinessEligibility(
       issuedBusinessEligibilityEdit.detail.business_eligibility_certificate_id,
       payload,
-    );
+    ));
   }
 
   async function promoteIssuedArtifact(issuedArtifactLinkId: string) {
@@ -607,6 +617,7 @@ export function ChangeRequestMutationWorkspace({
           <GxpCertificateEditDialog
             detail={issuedGxpEdit.detail}
             expectedVersion={issuedGxpEdit.expectedVersion}
+            saveAvailable={!commandLock.pending && !commandLock.requiresReview}
             onClose={() => setIssuedGxpEdit(null)}
             onSave={saveIssuedGxpEdit}
             onStaleConflict={(message) => {
@@ -622,6 +633,7 @@ export function ChangeRequestMutationWorkspace({
             basisLoading={false}
             detail={issuedBusinessEligibilityEdit.detail}
             expectedVersion={issuedBusinessEligibilityEdit.expectedVersion}
+            saveAvailable={!commandLock.pending && !commandLock.requiresReview}
             mode="edit"
             onClose={() => setIssuedBusinessEligibilityEdit(null)}
             onEdit={saveIssuedBusinessEligibilityEdit}

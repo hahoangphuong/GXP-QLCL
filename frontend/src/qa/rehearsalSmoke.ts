@@ -4,7 +4,7 @@ import {
   getGxpCertificateVersionHistory, listSiteBusinessEligibilityCertificates,
   getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory, getDocumentDetail,
 } from "../lib/api";
-import { loadOidcSession } from "../lib/storage";
+import type { OidcSession } from "../types";
 import { isOidcSessionValid } from "../lib/oidc";
 
 export type SmokeCheck = {
@@ -31,6 +31,7 @@ let running = false;
 export async function runRehearsalSmoke(options: {
   fixture?: boolean;
   resultKey?: string;
+  session?: OidcSession | null;
 } = {}): Promise<RehearsalSmokeReport> {
   if (running) throw new Error("Rehearsal probe already running");
   running = true;
@@ -63,7 +64,7 @@ export async function runRehearsalSmoke(options: {
     const stub = options.fixture === true && status.auth_mode === "header_stub";
     check("supported-auth", stub || status.auth_mode === "google_oidc");
     if (!stub && status.auth_mode !== "google_oidc") return report;
-    const session = loadOidcSession();
+    const session = options.session ?? null;
     const token = !stub && isOidcSessionValid(session) ? session?.token : null;
     // Also exercise the real unauthenticated 401/403 boundary when no session exists.
     const auth = { username: "fixture.reader", role: "reader" as const };

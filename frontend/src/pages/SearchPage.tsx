@@ -1776,8 +1776,10 @@ export function SearchPage({
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để cập nhật các đợt kiểm tra.");
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await upsertInspectionPeriodSegments(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      () => upsertInspectionPeriodSegments(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
@@ -1820,19 +1822,20 @@ export function SearchPage({
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để chuyển trạng thái.");
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    try {
-      await transitionCase(caseId, payload, auth, useStubAuth, bearerToken);
-    } catch (error) {
-      const status = (error as Error & { status?: number }).status;
-      if (status === 409) {
-        await Promise.all([
-          refreshSelectedCaseWorkspace(caseId, undefined, operationOwner).catch(() => undefined),
-          refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined),
-        ]);
-      }
-      throw error;
-    }
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      async () => {
+        try { await transitionCase(caseId, payload, auth, useStubAuth, bearerToken); }
+        catch (error) {
+          const status = (error as Error & { status?: number }).status;
+          if (status === 409) await Promise.all([
+            refreshSelectedCaseWorkspace(caseId, undefined, operationOwner).catch(() => undefined),
+            refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined),
+          ]);
+          throw error;
+        }
+      },
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
@@ -1842,8 +1845,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await finalizeInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      () => finalizeInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
@@ -1853,14 +1858,17 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    try {
-      await upsertInspectionTeam(caseId, payload, auth, useStubAuth, bearerToken);
-    } catch (error) {
-      const status = (error as Error & { status?: number }).status;
-      if (status === 409) await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner).catch(() => undefined);
-      throw error;
-    }
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      async () => {
+        try { await upsertInspectionTeam(caseId, payload, auth, useStubAuth, bearerToken); }
+        catch (error) {
+          const status = (error as Error & { status?: number }).status;
+          if (status === 409) await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner).catch(() => undefined);
+          throw error;
+        }
+      },
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
   }
 
   function handleLoadInspectionTeamIdentityOptions(): Promise<InspectionTeamIdentityOption[]> {

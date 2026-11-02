@@ -69,7 +69,7 @@ def append_unresolved_review_event(
     # Lock the actor row until the intake transaction commits or rolls back.
     # PostgreSQL deactivation updates must then serialize with this intake.
     user = session.scalars(
-        select(AppUser).where(AppUser.id == actor_id).with_for_update(of=AppUser)
+        select(AppUser).where(AppUser.id == actor_id).with_for_update(of=AppUser).execution_options(populate_existing=True)
     ).one_or_none()
     if user is None or not user.is_active:
         raise ValueError("Active authenticated AppUser required.")
@@ -97,25 +97,25 @@ def append_unresolved_review_event(
     version = session.scalars(
         select(CertificateVersion).where(
             CertificateVersion.id == _uuid(evidence.certificate_version_id)
-        ).with_for_update(of=CertificateVersion)
+        ).with_for_update(of=CertificateVersion).execution_options(populate_existing=True)
     ).one_or_none()
     # Keep the evidenced Site identity stable until the intake transaction ends.
     site = session.scalars(
         select(Site).where(Site.id == _uuid(evidence.site_id))
-        .with_for_update(of=Site)
+        .with_for_update(of=Site).execution_options(populate_existing=True)
     ).one_or_none()
     if version is None or site is None:
         raise ValueError("Certificate version and Site must exist.")
     certificate = session.scalars(
         select(Certificate).where(Certificate.id == version.certificate_id)
-        .with_for_update(of=Certificate)
+        .with_for_update(of=Certificate).execution_options(populate_existing=True)
     ).one_or_none()
     if certificate is None or certificate.certificate_type != "GMP":
         raise ValueError("GMP CertificateVersion required.")
     case_id = _uuid(evidence.case_id) if evidence.case_id is not None else None
     if case_id is not None:
         linked_case = session.scalars(
-            select(Case).where(Case.id == case_id).with_for_update(of=Case)
+            select(Case).where(Case.id == case_id).with_for_update(of=Case).execution_options(populate_existing=True)
         ).one_or_none()
         if linked_case is None or linked_case.site_id != site.id or linked_case.gxp_type != "GMP":
             raise ValueError("Case must belong to the evidenced GMP Site.")

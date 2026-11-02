@@ -51,7 +51,7 @@ def append_reviewed_evidence(
     This is a persistence primitive, NOT an authenticated approval endpoint.
     It cannot authorize Case links. Flush only; caller controls commit/rollback.
     """
-    if not actor_id.strip():
+    if not isinstance(actor_id, str) or not actor_id.strip():
         raise ValueError("Actor identity required.")
     preflight = prepare_coverage_persistence(bundle)
     # Capture the evidence exactly as supplied; no magic reconciliation.

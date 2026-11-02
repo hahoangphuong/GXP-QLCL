@@ -74,7 +74,7 @@ def test_ledger_duplicate_digest_fails_closed():
         engine.dispose()
 
 
-@pytest.mark.parametrize("actor", ["", "   "])
+@pytest.mark.parametrize("actor", ["", "   ", None, 42, [], {}, b"operator"])
 def test_ledger_never_accepts_blank_actor(actor):
     engine = create_engine("sqlite:///:memory:", future=True)
     ledger_metadata.create_all(engine)

@@ -26,7 +26,7 @@ def append_unresolved_from_authenticated_context(
     No caller-supplied database user id is allowed across this boundary.
     The lower-level service enforces the current DB RBAC grant in the same session.
     """
-    if authenticated.auth_mode != "google_oidc" or not authenticated.subject:
+    # ORM SELECT triggers autoflush by default. Reject unrelated pending\n    # state *before* the OIDC lookup, not just in the downstream intake.\n    if session.new or session.dirty or session.deleted:\n        raise ValueError("GMP evidence intake requires a clean Session.")\n    if authenticated.auth_mode != "google_oidc" or not authenticated.subject:
         raise PermissionError("Verified Google OIDC subject required for GMP intake.")
     matches = session.scalars(
         select(AppUser).where(

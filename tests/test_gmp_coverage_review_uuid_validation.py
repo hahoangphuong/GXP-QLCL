@@ -47,3 +47,69 @@ def test_invalid_actor_identity_executes_no_sql(invalid_actor):
     finally:
         event.remove(engine, "before_cursor_execute", capture)
         engine.dispose()
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("certificate_version_id", None),
+    ("certificate_version_id", "not-a-uuid"),
+    ("site_id", 42),
+    ("site_id", "not-a-uuid"),
+    ("case_id", "not-a-uuid"),
+    ("source_snapshot_sha256", "x" * 64),
+    ("source_document_sha256", None),
+    ("source_page_reference", 123),
+    ("source_page_reference", "  "),
+    ("rationale", []),
+    ("rationale", "  "),
+])
+def test_malformed_evidence_rejected_before_any_sql(field, bad):
+    """Invalid input must not take locks or query RBAC/record identities."""
+    from dataclasses import replace
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    statements = []
+
+    def capture(_conn, _cursor, statement, _params, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        valid = UnresolvedReviewInput(
+            certificate_version_id=str(uuid4()), site_id=str(uuid4()),
+            case_id=None, source_snapshot_sha256="a" * 64,
+            source_document_sha256="b" * 64,
+            source_page_reference="synthetic page",
+            rationale="synthetic unresolved review",
+        )
+        with Session(engine) as session:
+            with pytest.raises(ValueError):
+                append_unresolved_review_event(
+                    session, authenticated_user_id=str(uuid4()),
+                    evidence=replace(valid, **{field: bad}),
+                )
+        assert statements == []
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+        engine.dispose()
+
+
+@pytest.mark.parametrize("invalid_evidence", [None, 42, {}, [], "not an input"])
+def test_non_evidence_object_rejected_before_any_sql(invalid_evidence):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    statements = []
+
+    def capture(_conn, _cursor, statement, _params, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        with Session(engine) as session:
+            with pytest.raises(ValueError, match="evidence input"):
+                append_unresolved_review_event(
+                    session, authenticated_user_id=str(uuid4()),
+                    evidence=invalid_evidence,
+                )
+        assert statements == []
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+        engine.dispose()

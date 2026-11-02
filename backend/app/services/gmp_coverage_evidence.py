@@ -40,12 +40,20 @@ class LinkedCaseEvidence:
     reviewed_at_iso: str | None = None
 
 
-def _complete_review(*, decision: ReviewDecision, reviewer: str | None, when: str | None) -> bool:
+def _has_text(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _sha256_hex(value: object) -> bool:
     return (
-        decision == ReviewDecision.VERIFIED
-        and bool(reviewer and reviewer.strip())
-        and bool(when and when.strip())
+        isinstance(value, str)
+        and len(value) == 64
+        and all(char in "0123456789abcdefABCDEF" for char in value)
     )
+
+
+def _complete_review(*, decision: ReviewDecision, reviewer: str | None, when: str | None) -> bool:
+    return decision == ReviewDecision.VERIFIED and _has_text(reviewer) and _has_text(when)
 
 
 def has_verified_site_coverage(
@@ -63,12 +71,10 @@ def has_verified_site_coverage(
             reviewer=evidence.reviewer_id,
             when=evidence.reviewed_at_iso,
         )
-        and len(evidence.source_snapshot_sha256) == 64
-        and len(evidence.source_document_sha256) == 64
-        and all(ch in "0123456789abcdefABCDEF" for ch in evidence.source_snapshot_sha256)
-        and all(ch in "0123456789abcdefABCDEF" for ch in evidence.source_document_sha256)
-        and bool(evidence.source_page_reference.strip())
-        and bool(evidence.rationale and evidence.rationale.strip())
+        and _sha256_hex(evidence.source_snapshot_sha256)
+        and _sha256_hex(evidence.source_document_sha256)
+        and _has_text(evidence.source_page_reference)
+        and _has_text(evidence.rationale)
     )
 
 

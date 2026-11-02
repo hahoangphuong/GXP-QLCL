@@ -1,6 +1,46 @@
 # Google OIDC A/B acceptance — evidence matrix
 
-Version1.0,2026-11-01. Starting main `e15bfd06eb86789976d3cfc863f2b63124be8dff`;
+Version1.2,2026-11-02. Consolidation audit base
+`7c226ad53e4dcaa05886a7f0e77ee8f9ce79974f`; final exact tested/merged documentation
+candidate and trees are recorded in the session completion manifest, not inferred
+from this base hash. See [Gate0–6 operator package](RELEASE_COMPATIBILITY_ACCEPTANCE.md).
+Historical evidence below is retained. No frontend feature or authentication
+policy is changed by this documentation consolidation.
+
+Fresh probes still report runtime97182e58/schema0023 versus required0027,
+different JS and61runtime/67candidate paths. Physical/executable provenance,
+OAuth Web client/authorized origin, two accounts/role matrix and synthetic write
+scope are unapproved or NOT_VERIFIED. **AUTHENTICATED_UAT_BLOCKED**; no real
+credential or authenticated protected record was accessed. No deploy/migration,
+backup/restore, timer, OAuth or real data operation was performed.
+
+PR262/263 canonical actor/UTC and DB-backed `gmp.coverage_evidence.intake` checks
+are preserved. No default grant, intake HTTP route, VERIFIED approval API or
+frontend activation exists. Synthetic role/clock/GIS results remain separate
+from Google authentication and real DB role revocation. Cutover is NO_GO with
+BLOCKED_PENDING_OPERATOR_EVIDENCE, even after exact-source CI success.
+
+## Historical Version1.1 evidence — 2026-11-01
+
+Version1.1,2026-11-01. Current release audit:
+[operator package](RELEASE_COMPATIBILITY_ACCEPTANCE.md), candidate main
+`1ed3c40e6cd25ca2f9a7f538e4f0108d46f7d315`, Alembic head `20261101_0027`.
+Owner explicitly confirmed that real Google A/B and write scope are not approved.
+**AUTHENTICATED_UAT_BLOCKED**, with `BLOCKED_BY_TEST_ACCOUNTS`,
+`BLOCKED_BY_OAUTH_INFRASTRUCTURE` (client/origin not attested), and runtime drift.
+No new frontend defect was reproduced. Fresh local API211 checks and browser
+fixtures at1366/1920/390 pass; they remain separate from Google authentication.
+The executable local acceptance plan records16 real scenarios NOT_EXECUTED.
+
+The sections below preserve the Version1.0 engineering evidence. Its source
+revision0026 is historical; current source requires0027. Fresh HTTPS probes
+still report runtime97182e58/database gxp_legacy_rehearsal/revision0023, different
+entry JS and six missing candidate routes. Physical DB/executable Git provenance
+is not attested. No authenticated real record or credential was accessed.
+
+## Historical Version1.0 evidence
+
+Starting main `e15bfd06eb86789976d3cfc863f2b63124be8dff`;
 audited main `011dc59a103a18bd868fca0bbb4f062c4191cd8b` adds only PR252 SQL/service
 parity assertions. This document does not authorize deployment, provisioning,
 OAuth changes, migrations or writes to rehearsal/production/NAS/GCS.

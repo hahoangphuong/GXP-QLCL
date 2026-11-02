@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.9 — 2026-11-01**. Historical inventory baseline main
+Version: **1.11 — 2026-11-02**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -891,3 +891,47 @@ provenance is unverified. HOLD_DEPLOY; no deployment/migration/backup/restore.
 
 QĐKT206/74/144/legal barriers, NAS/Word output limitations, native speech and
 cross-Case/reload/account draft/focus policy evidence gaps remain unchanged.
+
+## Release compatibility follow-up — v1.10
+
+Current audit candidate main1ed3c40 includes additive GMP review schema0027,
+its dedicated PostgreSQL immutability test and an unrouted UNRESOLVED intake
+service. No new frontend action/coverage grant follows from that service.
+Frontend is unchanged from PR253;
+no new UI defect or implementation completion is claimed. Operator package:
+`frontend/qa/RELEASE_COMPATIBILITY_ACCEPTANCE.md`; fresh local evidence:
+`.codex/evidence/release-compatibility-oidc-ab-20261101/`.
+
+Fresh disposable211checks and browser1366/1920/390 cover role-aware allowed/denied
+writes, owner/session isolation, pending responses, expiry,409 and accepted-write
+readback503 recovery. Source/browser evidence is separate from actual Google.
+Owner confirmed no approved real A/B accounts, role matrix or write records;
+all16 real scenarios remain AUTHENTICATED_UAT_BLOCKED/NOT_EXECUTED.
+
+Fresh read-only HTTPS still reports runtime97182e58/database gxp_legacy_rehearsal/
+revision0023, while repository-derived head is0027. Six candidate routes are
+missing and the served JS differs. DB/source metadata is not physical/executable
+attestation. Deployment remains blocked; no deploy/migrate/backup/restore,
+OAuth/RBAC change or real database/storage mutation occurred. Existing legal,
+native reader, original VBA/Word, binary/NAS and production UAT gaps remain.
+
+## Managed release documentation — v1.11
+
+Local documentation423a46c is preserved and reconciled from current audited
+main7c226ad into a separate consolidation PR. No new application/backend change
+or frontend defect is claimed. Exact tested/merge SHA and full source trees,
+including changed frontend QA documentation, are recorded in the current session
+completion manifest; the base SHA is not a deployment approval.
+
+`frontend/qa/RELEASE_COMPATIBILITY_ACCEPTANCE.md` now provides Gate0–6 source,
+environment, backup/restore, schema, pairing, A/B and go/no-go evidence with abort
+conditions. PR262/263 canonical identity/UTC/database permission checks remain
+backend-owned and unexposed through HTTP/UI. No VERIFIED approval/default grant
+or coverage-link relaxation. Required source schema remains0027; fresh public
+runtime still reports0023/97182e58 and a different bundle/missing routes.
+
+Cutover NO_GO / BLOCKED_PENDING_OPERATOR_EVIDENCE; actual Google A/B remains
+AUTHENTICATED_UAT_BLOCKED. Fixture/CI is not production/Google/Word/NAS acceptance.
+No deploy, migration, backup/restore, timer activation, OAuth change or real write.
+Current local source contracts90PASS; remaining exact-session validation is
+recorded in `.codex/evidence/release-candidate-consolidation-20261102/completion.md`.

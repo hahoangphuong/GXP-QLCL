@@ -38,7 +38,7 @@ def _uuid(value: str) -> str:
 
 
 def _digest(value: str) -> str:
-    if len(value) != 64 or any(c not in "0123456789abcdefABCDEF" for c in value):
+    if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdefABCDEF" for c in value):
         raise ValueError("Evidence requires a SHA256 hexadecimal digest.")
     return value.lower()
 
@@ -98,7 +98,10 @@ def append_unresolved_review_event(
         linked_case = session.get(Case, case_id)
         if linked_case is None or linked_case.site_id != site.id or linked_case.gxp_type != "GMP":
             raise ValueError("Case must belong to the evidenced GMP Site.")
-    if not evidence.source_page_reference.strip() or not evidence.rationale.strip():
+    if (not isinstance(evidence.source_page_reference, str)
+            or not isinstance(evidence.rationale, str)
+            or not evidence.source_page_reference.strip()
+            or not evidence.rationale.strip()):
         raise ValueError("Source page and rationale required.")
     row = GmpCoverageReviewEvent(
         certificate_version_id=version.id,

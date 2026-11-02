@@ -38,6 +38,43 @@ exact-source gate. The final tested/merge manifest is recorded outside Git at
 `.codex/evidence/release-candidate-consolidation-20261102/completion.md` to avoid
 self-referential commit hashes. Any later source drift requires a fresh review.
 
+The backend source gate compares **all tracked non-frontend paths**, not only
+`backend/`. This PR also changes `docs/LEGACY_VBA_EXCEL_PARITY_STATUS.md`; keeping
+the base backend pin can therefore fail even with an unchanged backend subtree.
+Both complete source pins require review for the final candidate. Read-only
+diagnostics confirmed rejection of an old frontend pin and an old non-frontend
+pin; self-comparison matches but is explicitly **not operator approval**.
+
+### Operator receipt and read-only commands
+
+Keep a sanitized receipt containing: exact candidate/tested/merge SHA and CI URL;
+candidate frontend/backend/full trees; approved frontend and backend source SHAs;
+reviewer/approval reference (aliases, no identities/secrets); environment alias,
+reported and independently attested runtime/physical DB/schema; asset digest;
+backup freshness/checksum/restore evidence references; Gate0–6 results and explicit
+permitted UAT actions. Empty or conflicting approval fields keep the gate blocked.
+
+From a reviewed checkout, these are read-only command templates. Populate the
+three SHA arguments from an actual operator approval; never treat a self-pin
+diagnostic, a base hash in this document or a CI overlay as that approval:
+
+```bash
+python -m tools.verify_rehearsal_release_sources --repo "$REVIEWED_REPO" \
+  --target-sha "$CANDIDATE_SHA" \
+  --approved-backend-sha "$APPROVED_BACKEND_SHA" \
+  --approved-frontend-sha "$APPROVED_FRONTEND_SHA"
+```
+
+Require exit0 and `REHEARSAL_SOURCE_EXACT_MATCH`; any failure is STOP, never an
+instruction to change the gate. Separately, on the authorized VM or a complete
+operator snapshot, the existing active-baseline tool accepts
+`python -m tools.audit_active_release_baseline_readonly --root "$VM_ROOT" --expected-sha "$EXPECTED_ACTIVE_SHA"`.
+It inspects source metadata/symlinks/artifacts only and cannot certify DB restore.
+For an already provided local dump/sidecar, the existing offline checker accepts
+`python -m tools.audit_existing_pg_backup_pair_readonly --backup "$EXISTING_DUMP"`.
+Do not download a dump, access GCS/NAS or run restore under this audit. These last
+two checks were not run against VM/real backup files; operator evidence is absent.
+
 ## Backend changes preserved; no frontend feature activation
 
 PR259 schema0027, PR260 PostgreSQL immutability, PR261 UNRESOLVED intake, PR262

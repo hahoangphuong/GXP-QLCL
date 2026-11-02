@@ -1855,8 +1855,9 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     await upsertEvaluationScope(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
   }
 
   async function handleCaseAssessmentSave(payload: CaseAssessmentUpsertRequest) {
@@ -1871,7 +1872,8 @@ export function SearchPage({
     );
   }
 
-  async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null, operationOwner = caseOperationOwner.current) {
+  // Every command must carry its original committed owner across the await.
+  async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId: string | null | undefined, operationOwner: typeof caseOperationOwner.current) {
     if (!isCurrentCaseOperation(operationOwner) || documentContextRef.current.historyId !== caseId) return null;
     const requestId = ++caseRequestSequence.current;
     let payload: CaseWorkspace;
@@ -2126,8 +2128,10 @@ export function SearchPage({
     if (payload.case_id !== selectedCaseWorkspace.case_summary.id) {
       throw new Error("Ngữ cảnh hồ sơ cấp chứng nhận không còn hợp lệ.");
     }
+    const operationOwner = caseOperationOwner.current;
     const result = await issueGxpCertificate(selectedCaseWorkspace.case_summary.site_id, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(payload.case_id);
+    await refreshSelectedCaseWorkspace(payload.case_id, undefined, operationOwner);
+    if (!isCurrentCaseOperation(operationOwner)) return;
     if (selectedFacilityTab === "Giấy chứng nhận GxP") {
       if (!gxpListOwner) return;
       const listOwner = gxpListOwner;
@@ -2136,7 +2140,7 @@ export function SearchPage({
         getGxpCertificateDetail(result.certificate_id, auth, useStubAuth, bearerToken),
         listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken, selectedResult.production_line_id),
       ]);
-      if (!isCurrentContext() || certificateOwnerRef.current.gxpList !== listOwner) return;
+      if (!isCurrentCaseOperation(operationOwner) || certificateOwnerRef.current.gxpList !== listOwner) return;
       setSelectedGxpCertificateOwner(listOwner);
       setSelectedGxpCertificateId(result.certificate_id);
       setGxpCertificateDetailOwner(detailOwner);
@@ -2177,6 +2181,7 @@ export function SearchPage({
     ) {
       throw new Error("Backend chưa xác nhận runtime readiness cho Kế hoạch kiểm tra hiện tại.");
     }
+    const operationOwner = caseOperationOwner.current;
     await renderCaseInspectionPlan(
       action.create_endpoint,
       {},
@@ -2184,8 +2189,8 @@ export function SearchPage({
       useStubAuth,
       bearerToken,
     );
-    await refreshSelectedCaseWorkspace(caseId);
-    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
   async function handleOpenDocument(caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean): Promise<void> {

@@ -3803,6 +3803,90 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
   });
 
+  it("reads back a current evaluation-scope command exactly once using its reviewed version", async () => {
+    const scope = { id: "scope-1", row_version: 3, editable: true, summary_source: "canonical_projection", summary_text: "Original canonical scope", limitation_text: null, blocks: [{ id: "block-1", ordinal: 1, name: "Scope one", note: null, selections: [], unkeyed_entries: [] }], taxonomy_nodes: [] };
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(buildCaseWorkspace({ evaluation_scope: scope }))
+      .mockResolvedValue(buildCaseWorkspace({ evaluation_scope: { ...scope, row_version: 4, summary_text: "Confirmed canonical scope", limitation_text: "Reviewed scope" } }));
+    apiMocks.upsertEvaluationScope.mockResolvedValue({ row_version: 4 });
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    fireEvent.change(screen.getByLabelText("Giới hạn"), { target: { value: "Reviewed scope" } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Lưu$/ }));
+    await screen.findByText("Confirmed canonical scope");
+    expect(apiMocks.upsertEvaluationScope).toHaveBeenCalledWith("case-1", { expected_version: 3, limitation_text: "Reviewed scope", blocks: [{ name: "Scope one", note: null, selections: [] }] }, expect.any(Object), true, null);
+    expect(apiMocks.upsertEvaluationScope).toHaveBeenCalledOnce();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it.each((["scope", "certificate", "khkt"] as const).flatMap(operation =>
+    (["success", 403, 409, 503] as const).map(outcome => ({ operation, outcome })),
+  ))("does not adopt a replaced $operation command owner after external Case A → B → A ($outcome)", async ({ operation, outcome }) => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "awaiting_certificate_decision" }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseInspectionPlanRuntimeReadiness.mockImplementation(async (id: string) => ({ case_id: id, family_code: "INSPECTION_KE_HOACH_KT", gxp_type: "GMP", canonical_input_status: "ready", template_binary_status: "ready", inspection_folder_status: "ready", ready_to_attempt_render: true, blocked_reasons: [] }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({
+      case_summary: { ...buildCaseWorkspace().case_summary, id },
+      inspection: { ...buildCaseWorkspace().inspection, plan_decision_reference: `Plan ${id}` },
+      evaluation_scope: { id: `scope-${id}`, row_version: 3, editable: true, summary_source: "canonical_projection", summary_text: `Scope ${id}`, limitation_text: null, blocks: [{ id: `block-${id}`, ordinal: 1, name: "Canonical scope", note: null, selections: [], unkeyed_entries: [] }], taxonomy_nodes: [] },
+      certificate_issue_readiness: { action_key: "issue_certificate", label: "Cấp chứng nhận GxP", available: true, reason_code: null, required_permissions: ["certificate.issue"], certificate_type: "GMP", issuance_basis: "inspection_case" },
+      contextual_document_actions: [{ ...buildCaseWorkspace().contextual_document_actions[0], checklist_key: `case:${id}:INSPECTION_KE_HOACH_KT`, family_code: "INSPECTION_KE_HOACH_KT", label: "Kế hoạch kiểm tra", workflow_step: "Kiểm tra", parent_id: id, actions: [{ action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: ["document.write"], family_code: "INSPECTION_KE_HOACH_KT", parent_scope: "case", parent_id: id, create_endpoint: `/cases/${id}/documents/inspection-ke-hoach-kt/render`, create_http_method: "POST", create_input_readiness: "CANONICAL_INPUT_READY", create_input_blocked_reason: null }] }],
+    }));
+    let resolveSave!: (value: Record<string, unknown>) => void;
+    let rejectSave!: (error: Error) => void;
+    const mutation = { scope: apiMocks.upsertEvaluationScope, certificate: apiMocks.issueGxpCertificate, khkt: apiMocks.renderCaseInspectionPlan }[operation];
+    mutation.mockImplementation(() => new Promise((resolve, reject) => { resolveSave = resolve; rejectSave = reject; }));
+    let navigate!: ReturnType<typeof useNavigate>;
+    function NavigationControl() { navigate = useNavigate(); return null; }
+    render(<MemoryRouter initialEntries={["/search?gxp_type=GMP&history_id=case-A"]}><NavigationControl /><App /></MemoryRouter>);
+    await screen.findByText("HS-001");
+    if (operation === "scope") {
+      fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+      fireEvent.change(screen.getByLabelText("Giới hạn"), { target: { value: "Old A scope draft" } });
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Lưu$/ }));
+    } else if (operation === "certificate") {
+      fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GPs" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+      fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "OLD-A" } });
+      fireEvent.click(screen.getByRole("button", { name: /^Cấp giấy chứng nhận$/ }));
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+      const create = await screen.findByRole("button", { name: "Tạo Kế hoạch kiểm tra" });
+      await waitFor(() => expect(create).toBeEnabled());
+      fireEvent.click(create);
+    }
+    expect(mutation).toHaveBeenCalledOnce();
+    if (operation === "scope") expect(mutation.mock.calls[0]).toEqual(["case-A", expect.objectContaining({ expected_version: 3, limitation_text: "Old A scope draft" }), expect.any(Object), true, null]);
+    else if (operation === "certificate") expect(mutation.mock.calls[0]).toEqual(["site-1", expect.objectContaining({ case_id: "case-A", certificate_number: "OLD-A", scopes: [] }), expect.any(Object), true, null]);
+    else expect(mutation.mock.calls[0]).toEqual(["/cases/case-A/documents/inspection-ke-hoach-kt/render", {}, expect.any(Object), true, null]);
+    await flushSearchUrlSync();
+    // External URL/Back navigation is possible even while a modal makes page controls inert.
+    await act(async () => navigate("/search?gxp_type=GMP&history_id=case-B&event_tab=Kiểm+tra"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Plan case-B"));
+    await act(async () => navigate("/search?gxp_type=GMP&history_id=case-A&event_tab=Kiểm+tra"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Plan case-A"));
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(3);
+    await activateInlineEditor("Sửa Số/Tham chiếu QĐKT");
+    fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "New A unsaved draft" } });
+    const facilityReads = apiMocks.getFacilityWorkspace.mock.calls.length;
+    await act(async () => {
+      if (outcome === "success") resolveSave({ case_id: "case-A", certificate_id: "certificate-old-A", row_version: 4 });
+      else rejectSave(buildApiError("Old A command failure", outcome));
+    });
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(3);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(facilityReads);
+    expect(screen.getByLabelText("Số/Tham chiếu QĐKT")).toHaveValue("New A unsaved draft");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(mutation).toHaveBeenCalledOnce();
+  });
+
   it.each(["plan", "approval", "application", "assessment", "capa"] as const)("does not start a replaced %s command's readback after Case A → B → A", async operation => {
     const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "inspection_scheduled" }));
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));

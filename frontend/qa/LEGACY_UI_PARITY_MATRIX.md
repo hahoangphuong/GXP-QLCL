@@ -2255,3 +2255,35 @@ this change preserves an active native input and does not invent that policy.
 No changes to legacy layout, ownership, RBAC, certificate exceptions, document
 identity, state transitions or QDkt gates. Screen reader/native VBA/Word/NAS and
 real Google A/B UAT remain NOT_EXECUTED; cutover remains NO_GO.
+
+## Case command readback generation ownership — 2026-11-02 (v1.13)
+
+Confirmed frontend state-integrity defect: evaluation-scope save, Case GxP issue
+and KHKT create callbacks awaited their command, then called Case readback with
+an implicit *current* owner. After external Case A-B-A navigation this adopted
+the new A generation: RED observed a fourth Case GET instead of three. KHKT
+could also refresh Facility/history under the replacement selection.
+
+SearchPage now captures the committed operation owner before each command and
+passes it explicitly to Case/Facility readback. The Case readback helper requires
+an owner argument, preventing silent adoption in future callers. GxP follow-up
+list/detail handling also checks the captured owner. No downstream rescue,
+forced remount, retry, new identity source or mutation payload change is added.
+Existing Inspection/CAPA/Approval guards and the v1.12 team focus fix remain.
+
+Regression covers all three replaced commands with late success/403/409/503,
+exact original Case/Site/endpoint/token payloads, no extra GET/mutation, retained
+new A draft and no stale error. Positive current-scope readback and existing
+current certificate/KHKT readback tests protect normal successful behavior.
+
+Browser fixture covers 27 combinations: three commands x late200/409/503 x
+1366x768/1920x1080/390x844. Client/scroll widths are equal; external popstate
+A-B-A preserves new draft/focus, with one command and zero late reads. Command
+responses, scope/certificate/KHKT data/readiness are explicit fixtures around a
+disposable API shell. No renderer, storage lookup or certificate issuance runs.
+This is FIXTURE_VERIFIED, not real Google OIDC or legal issuance acceptance.
+
+Canonical business identity, permissions, expected_version, historical certificate
+exceptions and all VBA layouts/semantics remain unchanged. Legacy automatic focus
+return and original VBA runtime remain EVIDENCE_MISSING/NOT_EXECUTED. Google A/B,
+screen reader, Word/NAS and production UAT remain unverified; cutover NO_GO.

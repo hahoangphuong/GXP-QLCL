@@ -80,6 +80,7 @@ def test_case_rebind_and_certificate_reparent_wait_for_unresolved_intake():
                     )
                     assert session.get(GmpCoverageReviewEvent, event_id) is not None
                     for model, predicate, values in (
+                        (Site, Site.id == ids["site"], {"site_name": "Concurrent rename"}),
                         (Case, Case.id == ids["case"], {"site_id": ids["other_site"]}),
                         (Certificate, Certificate.id == ids["cert"], {"site_id": ids["other_site"]}),
                         (CertificateVersion, CertificateVersion.id == ids["version"], {"version_no": 2}),

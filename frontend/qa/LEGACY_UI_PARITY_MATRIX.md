@@ -2294,7 +2294,8 @@ A CAPA submit could be invoked twice before React committed its pending state:
 the baseline regression observed two calls where one was expected. The same
 pending-state pattern guarded create, update, submit and assess. A synchronous
 in-flight command registry now serializes those actions by access/Case/cycle
-identity, including while switching Case A → B → A, while preserving the
+identity, including while switching Case A → B → A; create commands use the
+Case identity even when the selected cycle changes. This preserves the
 existing cycle-generation owner and reviewed version. Drafts remain session-owned.
 When an old cycle settles,
 it can release only its own token; it cannot release a newer cycle's command.

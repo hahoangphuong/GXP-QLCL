@@ -614,3 +614,17 @@ it("keeps a readback recovery lock across Case A → B → A without losing a ne
   expect(screen.getByText(/Chưa thể xác minh kết quả thao tác/)).toBeInTheDocument();
   expect(handlers.onSubmitCycle).toHaveBeenCalledOnce();
 });
+
+
+it("blocks a second create after the selected cycle changes while create is pending", async () => {
+  const request = deferred<void>();
+  const initial = workspace([cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2 })], [action("create_capa_cycle", true, 8)]);
+  const view = renderWorkspace(initial, "capa-1");
+  view.handlers.onCreateCycle.mockReturnValue(request.promise);
+  fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
+  view.rerender(<CaseRemediationWorkspace caseWorkspace={initial} selectedCycleId="capa-2" {...view.handlers} />);
+  fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+  expect(screen.getByRole("button", { name: "Tạo vòng khắc phục" })).toBeDisabled();
+  await act(async () => request.resolve());
+});

@@ -175,6 +175,7 @@ export function CaseRemediationWorkspace({
   const hydratedCycleVersionKey = useCaseDraftRef("capa.hydratedVersion", selectedCycleVersionKey);
   const cycleOperationOwner = useCaseDraftRef("capa.operationOwner", { key: cycleIdentityKey, generation: 0 });
   const commandLock = useCaseCommandLock(`capa:${cycleIdentityKey}`);
+  const createLock = useCaseCommandLock(`capa-create:${caseWorkspace.case_summary.id}`);
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -227,7 +228,7 @@ export function CaseRemediationWorkspace({
   const assessAvailable = isActionAvailable(caseWorkspace, "assess_capa_cycle", selectedCycle?.capa_cycle_id);
   const hasOpenEditor = isCreating || editingField !== null;
   const isPending = pendingAction !== null;
-  const isCommandBlocked = isPending || commandLock.pending || commandLock.requiresReview;
+  const isCommandBlocked = isPending || commandLock.pending || commandLock.requiresReview || createLock.pending || createLock.requiresReview;
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -235,7 +236,7 @@ export function CaseRemediationWorkspace({
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = commandLock.acquire();
+    const command = createLock.acquire();
     if (!command) return;
     setPendingAction("create");
     setErrorMessage(null);
@@ -251,13 +252,13 @@ export function CaseRemediationWorkspace({
         setDraftChanged(false);
       }
     } catch (error) {
-      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      if (error instanceof CaseFieldMutationRecoveryError) createLock.requireReview(command);
       if (!(error instanceof CaseFieldMutationRecoveryError) && isCurrentCycleOperation(operationOwner)) {
         const nextError = error instanceof Error ? error : new Error("Không tạo được vòng khắc phục.");
         setErrorMessage(getCreateErrorMessage(nextError));
       }
     } finally {
-      commandLock.release(command);
+      createLock.release(command);
       if (isCurrentCycleOperation(operationOwner)) setPendingAction(null);
     }
   }
@@ -443,7 +444,7 @@ export function CaseRemediationWorkspace({
         )}
       </section>
 
-      {commandLock.requiresReview ? <p className="form-error" role="alert">Chưa thể xác minh kết quả thao tác. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra.</p> : null}
+      {commandLock.requiresReview || createLock.requiresReview ? <p className="form-error" role="alert">Chưa thể xác minh kết quả thao tác. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra.</p> : null}
 
       {isCreating ? (
         <section className="workspace-section">

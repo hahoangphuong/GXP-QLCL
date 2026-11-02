@@ -77,3 +77,58 @@ def test_preloaded_case_must_refresh_after_database_rebind(tmp_path):
             intake.rollback()
     finally:
         engine.dispose()
+
+
+def test_preloaded_oidc_email_must_refresh_before_authenticated_handoff(tmp_path, monkeypatch):
+    from backend.app.auth import AuthenticatedUser
+    from backend.app.services import gmp_coverage_review_auth_boundary as boundary
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'oidc-refresh.db'}", future=True)
+    Base.metadata.create_all(engine)
+    try:
+        subject = f"synthetic-{uuid4().hex}"
+        with Session(engine) as setup:
+            actor = AppUser(
+                username=subject, external_subject=subject,
+                external_email="original@example.test", is_active=True,
+            )
+            setup.add(actor)
+            setup.commit()
+            actor_id = actor.id
+
+        with Session(engine, expire_on_commit=False) as session:
+            cached = session.get(AppUser, actor_id)
+            assert cached.external_email == "original@example.test"
+            with Session(engine) as concurrent:
+                concurrent.execute(
+                    update(AppUser).where(AppUser.id == actor_id)
+                    .values(external_email="changed@example.test")
+                )
+                concurrent.commit()
+            assert cached.external_email == "original@example.test"
+
+            downstream_calls = []
+            monkeypatch.setattr(
+                boundary, "append_unresolved_review_event",
+                lambda *_args, **_kwargs: downstream_calls.append(True),
+            )
+            with pytest.raises(PermissionError, match="email and subject"):
+                boundary.append_unresolved_from_authenticated_context(
+                    session,
+                    authenticated=AuthenticatedUser(
+                        username=subject, auth_mode="google_oidc",
+                        subject=subject, email="original@example.test",
+                    ),
+                    evidence=UnresolvedReviewInput(
+                        certificate_version_id=str(uuid4()),
+                        site_id=str(uuid4()), case_id=None,
+                        source_snapshot_sha256="a" * 64,
+                        source_document_sha256="b" * 64,
+                        source_page_reference="synthetic", rationale="synthetic",
+                    ),
+                )
+            assert downstream_calls == []
+            assert cached.external_email == "changed@example.test"
+            session.rollback()
+    finally:
+        engine.dispose()

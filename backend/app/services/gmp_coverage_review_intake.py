@@ -54,7 +54,12 @@ def append_unresolved_review_event(
     No caller-supplied reviewer, status, or timestamp is accepted. Even an
     authenticated user cannot issue a VERIFIED decision through this method.
     """
-    # A flush also persists *other* pending ORM mutations in this Session.\n    # Intake must not implicitly write unrelated caller state before or along\n    # with its append-only review event. Require a flushed, dedicated unit of work.\n    if session.new or session.dirty or session.deleted:\n        raise ValueError("GMP evidence intake requires a clean Session.")\n    actor_id = _uuid(authenticated_user_id)\n    if actor_id != authenticated_user_id:
+    # A flush persists *other* pending ORM mutations in this Session.
+    # Require a clean unit of work before authorization queries and INSERT.
+    if session.new or session.dirty or session.deleted:
+        raise ValueError("GMP evidence intake requires a clean Session.")
+    actor_id = _uuid(authenticated_user_id)
+    if actor_id != authenticated_user_id:
         raise ValueError('Authenticated identity must be canonical UUID.')
     # Lock the actor row until the intake transaction commits or rolls back.
     # PostgreSQL deactivation updates must then serialize with this intake.

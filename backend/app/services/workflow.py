@@ -1708,9 +1708,11 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        site = session.get(Site, site_id)
-        if site is None:
-            raise HTTPException(status_code=404, detail="Site not found.")
+        # Share the Site owner lock used by certificate/eligibility promotion.
+        # Snapshot current affected artifacts only after competing promotions
+        # have committed, so the new Change Request does not capture stale
+        # latest_flag/current records.
+        site = self._lock_site(session, site_id)
         affected_snapshot = self._resolve_change_request_affected_artifact_snapshot(
             session,
             site=site,

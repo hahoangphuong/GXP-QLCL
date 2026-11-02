@@ -2745,7 +2745,16 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        row = self._get_case(session, case_id)
+        # Serialize CAPA round allocation against its owning Case. A unique
+        # (case_id, round_no) constraint alone lets competing creates race all
+        # the way to INSERT instead of rejecting at the business gate.
+        row = session.scalars(
+            select(Case).where(Case.id == case_id)
+            .with_for_update(of=Case)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
         self._assert_case_not_terminal(row, operation="CAPA create")
         self._assert_expected_version(row, expected_case_version, label="case")
         self._assert_case_allows_capa_request(row)

@@ -57,7 +57,11 @@ def append_unresolved_review_event(
     actor_id = _uuid(authenticated_user_id)
     if actor_id != authenticated_user_id:
         raise ValueError('Authenticated identity must be canonical UUID.')
-    user = session.get(AppUser, actor_id)
+    # Lock the actor row until the intake transaction commits or rolls back.
+    # PostgreSQL deactivation updates must then serialize with this intake.
+    user = session.scalars(
+        select(AppUser).where(AppUser.id == actor_id).with_for_update(of=AppUser)
+    ).one_or_none()
     if user is None or not user.is_active:
         raise ValueError("Active authenticated AppUser required.")
     # Permission is read from canonical DB grants, not a caller-supplied role.
@@ -69,7 +73,12 @@ def append_unresolved_review_event(
         .where(
             AppUserRole.app_user_id == actor_id,
             RbacPermission.permission_code == "gmp.coverage_evidence.intake",
-        ).limit(1)
+        )
+        # Hold the grant rows while inserting evidence. A concurrent role
+        # assignment or role-permission revocation cannot commit between this
+        # authorization check and the transaction-owned evidence INSERT.
+        .with_for_update(of=(AppUserRole, RbacRolePermission))
+        .limit(1)
     ).scalar_one_or_none()
     if permitted is None:
         raise PermissionError("GMP evidence intake permission required.")

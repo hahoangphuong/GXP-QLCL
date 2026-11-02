@@ -74,3 +74,43 @@ def test_provisioned_oidc_identity_still_requires_explicit_database_rbac():
                 )
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("subject", None), ("subject", 123), ("subject", []),
+    ("subject", {}), ("subject", "   "),
+    ("email", 123), ("email", []), ("email", {}),
+    ("email", "   "),
+])
+def test_malformed_oidc_identity_rejected_before_any_sql(field, bad):
+    from dataclasses import replace
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    statements = []
+    def record_statement(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        with Session(engine) as session:
+            malformed = replace(identity(), **{field: bad})
+            with pytest.raises(PermissionError):
+                append_unresolved_from_authenticated_context(
+                    session, authenticated=malformed, evidence=evidence(),
+                )
+        assert statements == []
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+        engine.dispose()
+
+
+def test_non_authenticated_context_rejected_before_any_sql():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    try:
+        with Session(engine) as session:
+            with pytest.raises(PermissionError):
+                append_unresolved_from_authenticated_context(
+                    session, authenticated=None, evidence=evidence(),
+                )
+    finally:
+        engine.dispose()

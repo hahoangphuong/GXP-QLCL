@@ -2216,7 +2216,16 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
-        row = self._get_change_request(session, change_request_id)
+        # Serialize approval create-vs-create on the Change Request owner.
+        # Lock before reading the optional approval; otherwise two writers
+        # can both see no approval and attempt a duplicate INSERT.
+        row = session.scalars(
+            select(ChangeRequest).where(ChangeRequest.id == change_request_id)
+            .with_for_update(of=ChangeRequest)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Change request not found.")
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_APPROVAL_EDITABLE_STATES:
             raise HTTPException(status_code=409, detail="Change approval is read-only in the current state.")

@@ -3957,7 +3957,9 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" })).toHaveTextContent("Newest outcome"));
     await act(async () => resolveOld(buildCaseWorkspace({ inspection: { ...buildCaseWorkspace().inspection, plan_row_version: 4, plan_decision_reference: "Obsolete plan" } })));
-    expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Newest plan");
+    expect(screen.getByLabelText("Số/Tham chiếu QĐKT")).toHaveValue("Plan draft");
+    expect(screen.queryByText("Obsolete plan")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" })).toHaveTextContent("Newest outcome");
   });
 

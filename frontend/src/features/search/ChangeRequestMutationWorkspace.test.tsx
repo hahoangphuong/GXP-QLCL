@@ -1,7 +1,7 @@
 import { CaseDraftSession } from "./CaseDraftSession";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -466,4 +466,18 @@ it("keeps the uncertain Change Request locked through history A → B → A", as
   fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
   expect(screen.getByRole("button", { name: "Lưu đề nghị" })).toBeDisabled();
   expect(handlers.onUpdateHeader).toHaveBeenCalledOnce();
+});
+
+
+it("synchronously serializes duplicate Change Request saves", async () => {
+  let finish!: () => void;
+  const handlers = buildHandlers();
+  vi.mocked(handlers.onUpdateHeader).mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+  render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Phạm vi thay đổi" }), { target: { value: "Changed" } });
+  const button = screen.getByRole("button", { name: "Lưu đề nghị" });
+  act(() => { button.click(); button.click(); });
+  expect(handlers.onUpdateHeader).toHaveBeenCalledOnce();
+  await act(async () => finish());
 });

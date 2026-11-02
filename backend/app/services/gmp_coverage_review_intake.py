@@ -94,7 +94,11 @@ def append_unresolved_review_event(
             CertificateVersion.id == _uuid(evidence.certificate_version_id)
         ).with_for_update(of=CertificateVersion)
     ).one_or_none()
-    site = session.get(Site, _uuid(evidence.site_id))
+    # Keep the evidenced Site identity stable until the intake transaction ends.
+    site = session.scalars(
+        select(Site).where(Site.id == _uuid(evidence.site_id))
+        .with_for_update(of=Site)
+    ).one_or_none()
     if version is None or site is None:
         raise ValueError("Certificate version and Site must exist.")
     certificate = session.scalars(

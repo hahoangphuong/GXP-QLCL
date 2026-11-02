@@ -579,3 +579,20 @@ it("does not release the new cycle command lock when an old cycle command settle
   expect(await screen.findByRole("alert")).toBeInTheDocument();
   expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-08");
 });
+
+it("does not send a second CAPA command after Case A → B → A while the first is pending", async () => {
+  const request = deferred<void>();
+  const handlers = { onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(), onSubmitCycle: vi.fn().mockReturnValue(request.promise), onAssessCycle: vi.fn() };
+  const editor = (id: string) => <CaseDraftSession identity={id}><CaseRemediationWorkspace caseWorkspace={{ ...workspace([cycle()], [action("submit_capa_cycle:capa-1")]), case_summary: { ...workspace().case_summary, id } }} selectedCycleId="capa-1" {...handlers} /></CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+  view.rerender(editor("case-B"));
+  view.rerender(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+  expect(handlers.onSubmitCycle).toHaveBeenCalledOnce();
+  await act(async () => request.resolve());
+  expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeEnabled();
+});

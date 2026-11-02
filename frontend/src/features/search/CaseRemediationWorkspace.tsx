@@ -1,4 +1,4 @@
-import { useCaseDraftState, useCaseDraftRef, useCaseDraftSession } from "./CaseDraftSession";
+import { useCaseDraftState, useCaseDraftRef, useCaseDraftSession, useCaseCommandLock } from "./CaseDraftSession";
 import { useEffect, useLayoutEffect, useMemo, type FormEvent } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
@@ -173,7 +173,7 @@ export function CaseRemediationWorkspace({
   const session = useCaseDraftSession();
   const hydratedCycleVersionKey = useCaseDraftRef("capa.hydratedVersion", selectedCycleVersionKey);
   const cycleOperationOwner = useCaseDraftRef("capa.operationOwner", { key: cycleIdentityKey, generation: 0 });
-  const inFlight = useCaseDraftRef<object | null>("capa.inFlight", null);
+  const commandLock = useCaseCommandLock(`capa:${cycleIdentityKey}`);
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -187,7 +187,6 @@ export function CaseRemediationWorkspace({
         key: cycleIdentityKey,
         generation: cycleOperationOwner.current.generation + 1,
       };
-      inFlight.current = null;
       setPendingAction(null);
       setIsCreating(false);
       setEditingField(null);
@@ -227,15 +226,16 @@ export function CaseRemediationWorkspace({
   const assessAvailable = isActionAvailable(caseWorkspace, "assess_capa_cycle", selectedCycle?.capa_cycle_id);
   const hasOpenEditor = isCreating || editingField !== null;
   const isPending = pendingAction !== null;
+  const isCommandBlocked = isPending || commandLock.pending;
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isPending || inFlight.current) {
+    if (isCommandBlocked) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = {};
-    inFlight.current = command;
+    const command = commandLock.acquire();
+    if (!command) return;
     setPendingAction("create");
     setErrorMessage(null);
     try {
@@ -255,18 +255,18 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getCreateErrorMessage(nextError));
       }
     } finally {
-      if (inFlight.current === command) inFlight.current = null;
+      commandLock.release(command);
       if (isCurrentCycleOperation(operationOwner)) setPendingAction(null);
     }
   }
 
   async function handleUpdateField() {
-    if (!selectedCycle || !editingField || isPending || inFlight.current || draftVersion === null) {
+    if (!selectedCycle || !editingField || isCommandBlocked || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = {};
-    inFlight.current = command;
+    const command = commandLock.acquire();
+    if (!command) return;
     setPendingAction("update");
     setErrorMessage(null);
     try {
@@ -286,7 +286,7 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getCycleErrorMessage(nextError));
       }
     } finally {
-      if (inFlight.current === command) inFlight.current = null;
+      commandLock.release(command);
       if (isCurrentCycleOperation(operationOwner)) {
         setPendingAction(null);
       }
@@ -294,12 +294,12 @@ export function CaseRemediationWorkspace({
   }
 
   async function handleSubmitAction() {
-    if (!selectedCycle || isPending || inFlight.current || draftVersion === null) {
+    if (!selectedCycle || isCommandBlocked || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = {};
-    inFlight.current = command;
+    const command = commandLock.acquire();
+    if (!command) return;
     setPendingAction("submit");
     setErrorMessage(null);
     try {
@@ -315,7 +315,7 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getSubmitErrorMessage(nextError));
       }
     } finally {
-      if (inFlight.current === command) inFlight.current = null;
+      commandLock.release(command);
       if (isCurrentCycleOperation(operationOwner)) {
         setPendingAction(null);
       }
@@ -323,12 +323,12 @@ export function CaseRemediationWorkspace({
   }
 
   async function handleAssessAction() {
-    if (!selectedCycle || isPending || inFlight.current || draftVersion === null) {
+    if (!selectedCycle || isCommandBlocked || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = {};
-    inFlight.current = command;
+    const command = commandLock.acquire();
+    if (!command) return;
     setPendingAction("assess");
     setErrorMessage(null);
     try {
@@ -345,7 +345,7 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getAssessErrorMessage(nextError));
       }
     } finally {
-      if (inFlight.current === command) inFlight.current = null;
+      commandLock.release(command);
       if (isCurrentCycleOperation(operationOwner)) {
         setPendingAction(null);
       }
@@ -380,7 +380,7 @@ export function CaseRemediationWorkspace({
           </div>
           {createAvailable ? (
             <div className="panel-actions panel-actions-tight">
-              <button disabled={isPending || hasOpenEditor} onClick={startCreate} type="button">
+              <button disabled={pendingAction !== null || hasOpenEditor} onClick={startCreate} type="button">
                 Thêm vòng khắc phục
               </button>
             </div>
@@ -447,7 +447,7 @@ export function CaseRemediationWorkspace({
                 <span>Số tham chiếu đến</span>
                 <input
                   aria-label="Số tham chiếu đến"
-                  disabled={isPending}
+                  disabled={pendingAction !== null}
                   onChange={(event) => changeDraft("incoming_reference", event.target.value)}
                   value={draft.incoming_reference}
                 />
@@ -456,7 +456,7 @@ export function CaseRemediationWorkspace({
                 <span>Ngày yêu cầu</span>
                 <input
                   aria-label="Ngày yêu cầu"
-                  disabled={isPending}
+                  disabled={pendingAction !== null}
                   onChange={(event) => changeDraft("requested_on", event.target.value)}
                   type="date"
                   value={draft.requested_on}
@@ -469,7 +469,7 @@ export function CaseRemediationWorkspace({
                 <textarea
                   aria-label="Ghi chú khắc phục"
                   className="inspection-textarea"
-                  disabled={isPending}
+                  disabled={pendingAction !== null}
                   onChange={(event) => changeDraft("notes", event.target.value)}
                   rows={4}
                   value={draft.notes}
@@ -482,10 +482,10 @@ export function CaseRemediationWorkspace({
               </p>
             ) : null}
             <div className="panel-actions panel-actions-tight">
-              <button disabled={isPending} type="submit">
+              <button disabled={isCommandBlocked} type="submit">
                 {pendingAction === "create" ? "Đang tạo..." : "Tạo vòng khắc phục"}
               </button>
-              <button className="secondary" disabled={isPending} onClick={cancelEditor} type="button">
+              <button className="secondary" disabled={pendingAction !== null} onClick={cancelEditor} type="button">
                 Hủy
               </button>
             </div>
@@ -502,7 +502,7 @@ export function CaseRemediationWorkspace({
               <div className="panel-actions panel-actions-tight">
                 {submitAvailable ? (
                   <button
-                    disabled={isPending || !draft.submitted_on.trim()}
+                    disabled={isCommandBlocked || !draft.submitted_on.trim()}
                     onClick={() => void handleSubmitAction()}
                     type="button"
                   >
@@ -511,7 +511,7 @@ export function CaseRemediationWorkspace({
                 ) : null}
                 {assessAvailable ? (
                   <button
-                    disabled={isPending || !draft.assessed_on.trim() || !draft.result.trim()}
+                    disabled={isCommandBlocked || !draft.assessed_on.trim() || !draft.result.trim()}
                     onClick={() => void handleAssessAction()}
                     type="button"
                   >
@@ -530,7 +530,7 @@ export function CaseRemediationWorkspace({
                   onCancel={cancelEditor}
                   onEdit={updateAvailable ? () => { setEditingField("incoming_reference"); setErrorMessage(null); } : null}
                   onSave={() => void handleUpdateField()}
-                  pending={isPending}
+                  pending={isCommandBlocked}
                   value={selectedCycle.incoming_reference}
                 >
                   <input
@@ -560,7 +560,7 @@ export function CaseRemediationWorkspace({
                       : null
                   }
                   onSave={() => void handleUpdateField()}
-                  pending={isPending}
+                  pending={isCommandBlocked}
                   value={formatCompactDate(selectedCycle.requested_on)}
                 >
                   <input
@@ -592,7 +592,7 @@ export function CaseRemediationWorkspace({
                       : null
                   }
                   onSave={() => void handleUpdateField()}
-                  pending={isPending}
+                  pending={isCommandBlocked}
                   value={selectedCycle.notes}
                 >
                   <textarea

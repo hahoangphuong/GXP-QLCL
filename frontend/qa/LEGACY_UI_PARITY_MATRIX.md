@@ -2293,8 +2293,10 @@ screen reader, Word/NAS and production UAT remain unverified; cutover NO_GO.
 A CAPA submit could be invoked twice before React committed its pending state:
 the baseline regression observed two calls where one was expected. The same
 pending-state pattern guarded create, update, submit and assess. A synchronous
-session-owned command token now serializes those actions while preserving the
-existing cycle-generation owner and reviewed version. When an old cycle settles,
+in-flight command registry now serializes those actions by access/Case/cycle
+identity, including while switching Case A → B → A, while preserving the
+existing cycle-generation owner and reviewed version. Drafts remain session-owned.
+When an old cycle settles,
 it can release only its own token; it cannot release a newer cycle's command.
 
 The fixture suite verifies all four commands, 409 draft/token retention, tab

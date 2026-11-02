@@ -1531,6 +1531,7 @@ export function SearchPage({
     const requestId = ++changeRequestSequence.current;
     const payload = await getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken);
     if (!isCurrentCaseOperation(operationOwner) || changeRequestSequence.current !== requestId) return null;
+    if (payload.id !== changeRequestId) throw new Error("Workspace không khớp yêu cầu thay đổi đã chọn.");
     setSelectedChangeRequestWorkspace(payload);
     setChangeRequestWorkspaceError(null);
     return payload;
@@ -1544,22 +1545,29 @@ export function SearchPage({
     }
     const changeRequestId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    try {
-      await mutation(changeRequestId);
-    } catch (error) {
-      const status = (error as Error & { status?: number }).status;
-      if (status === 409) {
-        await Promise.all([
-          refreshSelectedChangeRequestWorkspace(changeRequestId, operationOwner).catch(() => undefined),
+    await runCaseFieldMutation(
+      async () => {
+        try {
+          await mutation(changeRequestId);
+        } catch (error) {
+          const status = (error as Error & { status?: number }).status;
+          if (status === 409) {
+            await Promise.all([
+              refreshSelectedChangeRequestWorkspace(changeRequestId, operationOwner).catch(() => undefined),
+              refreshSelectedFacilityWorkspace(changeRequestId, operationOwner).catch(() => undefined),
+            ]);
+          }
+          throw error;
+        }
+      },
+      async () => {
+        const [readback] = await Promise.all([
+          refreshSelectedChangeRequestWorkspace(changeRequestId, operationOwner),
           refreshSelectedFacilityWorkspace(changeRequestId, operationOwner).catch(() => undefined),
         ]);
-      }
-      throw error;
-    }
-    await Promise.all([
-      refreshSelectedChangeRequestWorkspace(changeRequestId, operationOwner),
-      refreshSelectedFacilityWorkspace(changeRequestId, operationOwner).catch(() => undefined),
-    ]);
+        return readback;
+      },
+    );
   }
 
   async function handleChangeRequestIssuedBusinessEligibilityLoad(
@@ -1745,8 +1753,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await upsertInspectionPlan(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      () => upsertInspectionPlan(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
   }
 
   async function handleInspectionOutcomeSave(payload: InspectionOutcomeUpsertRequest) {
@@ -1755,8 +1765,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await upsertInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      () => upsertInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
@@ -2479,7 +2491,7 @@ export function SearchPage({
         ) : null}
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
-            <CaseDraftSession identity={selectedContext && selectedHistory?.source_type === "case" ? JSON.stringify([selectedContext, selectedHistory.id]) : null}>
+            <CaseDraftSession identity={selectedContext && selectedHistory ? JSON.stringify([selectedContext, selectedHistory.source_type, selectedHistory.id]) : null}>
             <ApprovalMutationContext.Provider value={{ pending: approvalPhase === "pending", requiresReview: approvalPhase === "review" }}>
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}

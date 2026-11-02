@@ -1,3 +1,5 @@
+import { useCaseCommandLock } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import { useEffect, useState } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
@@ -136,6 +138,8 @@ export function ChangeRequestMutationWorkspace({
     expectedVersion: number;
   } | null>(null);
   const [pending, setPending] = useState(false);
+  const commandLock = useCaseCommandLock(`change-request:${workspace.id}`);
+  const mutationBlocked = pending || commandLock.pending || commandLock.requiresReview;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -167,13 +171,17 @@ export function ChangeRequestMutationWorkspace({
   );
 
   async function runMutation(mutation: () => Promise<void>) {
+    const command = commandLock.acquire();
+    if (!command) return;
     setPending(true);
     setErrorMessage(null);
     try {
       await mutation();
     } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       setErrorMessage(error instanceof Error ? error.message : "Không thể cập nhật yêu cầu thay đổi.");
     } finally {
+      commandLock.release(command);
       setPending(false);
     }
   }
@@ -486,7 +494,7 @@ export function ChangeRequestMutationWorkspace({
                   <div className="workspace-section-heading" key={item.link_id}>
                     <DetailValue label="GCN hiện hành" value={item.artifact_id} />
                     <button
-                      disabled={!successorReadiness?.available || pending}
+                      disabled={!successorReadiness?.available || mutationBlocked}
                       onClick={() => void issueCertificateSuccessor(item.link_id)}
                       type="button"
                     >
@@ -510,7 +518,7 @@ export function ChangeRequestMutationWorkspace({
                   <div className="workspace-section-heading" key={item.link_id}>
                     <DetailValue label="GCN ĐĐK hiện hành" value={item.artifact_id} />
                     <button
-                      disabled={!successorReadiness?.available || pending}
+                      disabled={!successorReadiness?.available || mutationBlocked}
                       onClick={() => void issueBusinessEligibilitySuccessor(item.link_id)}
                       type="button"
                     >
@@ -546,7 +554,7 @@ export function ChangeRequestMutationWorkspace({
                             && readiness.target_artifact_id === item.artifact_id,
                         ) ?? null;
                         return <button
-                          disabled={!editReadiness?.available || pending}
+                          disabled={!editReadiness?.available || mutationBlocked}
                           onClick={() => void openIssuedGxpEdit(item.link_id)}
                           type="button"
                         >
@@ -561,7 +569,7 @@ export function ChangeRequestMutationWorkspace({
                             && readiness.target_artifact_id === item.artifact_id,
                         ) ?? null;
                         return <button
-                          disabled={!editReadiness?.available || pending}
+                          disabled={!editReadiness?.available || mutationBlocked}
                           onClick={() => void openIssuedBusinessEligibilityEdit(item.link_id)}
                           type="button"
                         >
@@ -569,7 +577,7 @@ export function ChangeRequestMutationWorkspace({
                         </button>;
                       })() : null}
                       <button
-                        disabled={!promotionReadiness?.available || pending}
+                        disabled={!promotionReadiness?.available || mutationBlocked}
                         onClick={() => void promoteIssuedArtifact(item.link_id)}
                         type="button"
                       >
@@ -588,13 +596,13 @@ export function ChangeRequestMutationWorkspace({
               <label>Đơn vị/người đề nghị<input aria-label="Người đề nghị thay đổi" disabled={pending} onChange={(event) => setHeaderDraft((current) => ({ ...current, requesterName: event.target.value }))} value={headerDraft.requesterName} /></label>
               <label className="full-width-field">Mô tả<textarea aria-label="Mô tả thay đổi" disabled={pending} onChange={(event) => setHeaderDraft((current) => ({ ...current, description: event.target.value }))} value={headerDraft.description} /></label>
               <div className="panel-actions">
-                <button disabled={pending} onClick={() => void saveHeader()} type="button">{pending ? "Đang lưu..." : "Lưu đề nghị"}</button>
+                <button disabled={mutationBlocked} onClick={() => void saveHeader()} type="button">{pending ? "Đang lưu..." : "Lưu đề nghị"}</button>
                 <button disabled={pending} onClick={() => setHeaderEditing(false)} type="button">Hủy</button>
               </div>
             </div>
           ) : null}
         </section>
-        {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+        {errorMessage || commandLock.requiresReview ? <p className="form-error" role="alert">{errorMessage ?? "Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra."}</p> : null}
         {issuedGxpEdit ? (
           <GxpCertificateEditDialog
             detail={issuedGxpEdit.detail}
@@ -665,13 +673,13 @@ export function ChangeRequestMutationWorkspace({
               <label>Thông tin mới<textarea aria-label="Thông tin mới" disabled={pending} onChange={(event) => setDetailDraft((current) => ({ ...current, newValue: event.target.value }))} value={detailDraft.newValue} /></label>
               <label>Ghi chú<textarea aria-label="Ghi chú chi tiết thay đổi" disabled={pending} onChange={(event) => setDetailDraft((current) => ({ ...current, note: event.target.value }))} value={detailDraft.note} /></label>
               <div className="panel-actions">
-                <button disabled={pending} onClick={() => void saveDetail()} type="button">{pending ? "Đang lưu..." : detailEditor.mode === "create" ? "Lưu chi tiết mới" : "Lưu chi tiết"}</button>
+                <button disabled={mutationBlocked} onClick={() => void saveDetail()} type="button">{pending ? "Đang lưu..." : detailEditor.mode === "create" ? "Lưu chi tiết mới" : "Lưu chi tiết"}</button>
                 <button disabled={pending} onClick={() => setDetailEditor(null)} type="button">Hủy</button>
               </div>
             </div>
           ) : null}
         </section>
-        {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+        {errorMessage || commandLock.requiresReview ? <p className="form-error" role="alert">{errorMessage ?? "Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra."}</p> : null}
       </div>
     );
   }
@@ -708,7 +716,7 @@ export function ChangeRequestMutationWorkspace({
             <label>Ngày hiệu lực<input aria-label="Ngày hiệu lực thay đổi" disabled={pending} onChange={(event) => setApprovalDraft((current) => ({ ...current, effectiveOn: event.target.value }))} type="date" value={approvalDraft.effectiveOn} /></label>
             <label>Tham chiếu phê duyệt<input aria-label="Tham chiếu phê duyệt thay đổi" disabled={pending} onChange={(event) => setApprovalDraft((current) => ({ ...current, approvalReference: event.target.value }))} value={approvalDraft.approvalReference} /></label>
             <div className="panel-actions">
-              <button disabled={pending} onClick={() => void saveApproval()} type="button">{pending ? "Đang lưu..." : "Lưu xử lý"}</button>
+              <button disabled={mutationBlocked} onClick={() => void saveApproval()} type="button">{pending ? "Đang lưu..." : "Lưu xử lý"}</button>
               <button disabled={pending} onClick={() => setApprovalEditing(false)} type="button">Hủy</button>
             </div>
           </div>
@@ -720,7 +728,7 @@ export function ChangeRequestMutationWorkspace({
           <div className="panel-actions">
             {transitionActions.map((item) => (
               <button
-                disabled={!item.available || pending || !item.target_state}
+                disabled={!item.available || mutationBlocked || !item.target_state}
                 key={item.action_key}
                 onClick={() => {
                   if (!item.target_state) return;
@@ -738,7 +746,7 @@ export function ChangeRequestMutationWorkspace({
           </div>
         </section>
       ) : null}
-      {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+      {errorMessage || commandLock.requiresReview ? <p className="form-error" role="alert">{errorMessage ?? "Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra."}</p> : null}
     </div>
   );
 }

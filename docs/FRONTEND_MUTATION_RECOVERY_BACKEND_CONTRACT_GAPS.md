@@ -1,0 +1,21 @@
+# Frontend mutation recovery: backend contract gaps
+
+Status: proposal for backend ownership; no operation identity, idempotency or status endpoint is asserted to exist. This is not authorization to retry. Review against the actual endpoint before implementation.
+
+| Workflow / current mutation | Owner and current request | Current response and canonical readback | Unresolved outcome |
+| --- | --- | --- | --- |
+| Registration | `PUT /cases/{caseId}/application`, `PUT /cases/{caseId}/assessment`; Case and corresponding record, `expected_version` | Versioned mutation response; `GET /cases/{caseId}/workspace` | A lost response or failed GET cannot attribute the current row to this command. |
+| Inspection | `PUT /cases/{caseId}/plan`, `/outcome`, `/outcome/period-segments`, `/team`; `POST /cases/{caseId}/outcome/final-evaluation` and `/transition`; Case and applicable record, `expected_version` | Mutation response; Case workspace GET | A newer row, same values, 409 or matching state cannot prove which actor or command produced it. Finalization and transition can have side effects. |
+| CAPA | `POST /cases/{caseId}/capa-cycles`; `PUT /capa-cycles/{cycleId}`, `POST /capa-cycles/{cycleId}/submit` and `/assess`; Case for creation, cycle for changes; expected Case or cycle version | Cycle mutation response; Case workspace GET | An absent response cannot distinguish committed creation from no creation, especially after reload. |
+| Approval | `POST /cases/{caseId}/approval-submissions/{stage}` and `POST /approval-submissions/{id}/complete`; Case, stage/submission and expected version | Submission mutation response; Case workspace GET | A similar or later submission does not prove a particular operation committed. |
+| Change Request | `POST /sites/{siteId}/change-requests`; `PUT /change-requests/{id}`; detail/approval/transition and successor mutations under the Change Request APIs | Mutation response; `GET /change-requests/{id}/workspace` and facility workspace | A lost create response, update, transition or successor issuance cannot be attributed using the current version alone. |
+
+Request types for these workflows expose resource identifiers and optimistic versions; they do not expose a general recoverable operation identity in the inspected frontend contracts. Other endpoints, including some document-related contracts, may have distinct idempotency support and must be assessed separately.
+
+A successful authenticated GET establishes a resource snapshot, not the outcome of a specific uncorrelated command. HTTP 401 requires authentication; 409 reports a conflict under the endpoint contract; 503/network failure is not verification. Stale or wrong-owner GET responses cannot reconcile a newer selection. Duplicate creation, transitions or issuance can have side effects; a stale draft can overwrite newer data if version checks are bypassed. The frontend must not automatically retry or use a browser marker, timestamp, matching content, version or 409 as proof.
+
+## Proposed backend capabilities
+
+A server-issued or server-recognized operation identity, atomically bound to authenticated actor, Case, resource and command type, should support a durable transaction outcome and an authenticated operation-status lookup with explicit pending, committed, rejected/conflict and unknown states. Define bounded idempotency, payload mismatch and concurrency behavior through the approved backend contract. Authorization must prevent cross-user or cross-resource disclosure; do not expose an operation's existence to an unauthorized principal. TTL, retention, uniqueness, retry behavior and stale-marker handling require owner approval and are deliberately unspecified here.
+
+After approval, test lost responses after commit and before commit, concurrent identical/different payloads, conflicting versions, operation lookup after reload and session renewal, wrong user/Case/resource/command, 401/403/404/409/503, storage or transaction failure, status lookup races and no cross-user data leakage. Frontend tests must verify no automatic replay, correct owner/generation, preserved draft and fail-closed behavior when status cannot be resolved. Real Google A/B UAT remains separate.

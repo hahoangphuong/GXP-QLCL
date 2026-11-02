@@ -2314,3 +2314,7 @@ unverified; cutover and authenticated UAT remain blocked.
 ## Application and assessment recovery ownership — 2026-11-02
 
 An application or assessment command with an uncertain outcome keeps its in-memory command lock by Case/access owner when navigating A → B → A. Concurrent saves are serialized before React commits pending state; drafts remain editable and 409 handling is unchanged. This does not provide durable recovery across a browser reload or reauthentication. A canonical snapshot alone cannot prove whether an uncorrelated command committed; authenticated UAT and native screen-reader verification remain outstanding.
+
+## Inspection and Change Request uncertain outcomes — 2026-11-02
+
+Inspection plan/outcome and Change Request workspace commands use in-memory, access/resource-scoped command locks for pending and unverified results. Canonical readback is bound to the selected resource and stale owner; wrong Change Request IDs are rejected. Draft inputs remain editable when an earlier generation is pending. This is not durable recovery across reload or reauthentication and does not establish backend idempotency. Inspection period/team/finalization and certificate editor commands need separate verification.

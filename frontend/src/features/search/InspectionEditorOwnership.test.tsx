@@ -1,3 +1,5 @@
+import { CaseDraftSession } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -188,4 +190,33 @@ describe("Inspection editor identity and token ownership", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(view.handlers.onInspectionPlanSave).toHaveBeenCalledOnce();
   });
+});
+
+
+it.each(["plan", "outcome"] as const)("blocks %s resubmit after write succeeded but readback was not verified", async section => {
+  const view = setup();
+  const edit = section === "plan" ? "Sửa Số/Tham chiếu QĐKT" : "Sửa Kết quả kiểm tra";
+  const save = section === "plan" ? "Lưu Số/Tham chiếu QĐKT" : "Lưu Đánh giá kết quả";
+  const callback = section === "plan" ? view.handlers.onInspectionPlanSave : view.handlers.onInspectionOutcomeSave;
+  callback.mockRejectedValue(new CaseFieldMutationRecoveryError("readback unavailable"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: edit }));
+  fireEvent.click(screen.getByRole("button", { name: save }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: save })).toBeDisabled();
+  expect(callback).toHaveBeenCalledOnce();
+});
+
+
+it("retains the uncertain inspection plan lock through Case A → B → A", async () => {
+  const handlers = { onInspectionPlanSave: vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("unknown")), onInspectionOutcomeSave: vi.fn(), onInspectionPeriodSegmentsSave: vi.fn(), onInspectionTeamSave: vi.fn(), onLoadInspectionTeamIdentityOptions: vi.fn(), onFinalizeInspectionOutcome: vi.fn(), onCreateApprovalSubmission: vi.fn(), onCompleteApprovalSubmission: vi.fn(), onTransitionCase: vi.fn() };
+  const editor = (id: string) => <CaseDraftSession identity={id}><CaseInspectionWorkspace caseWorkspace={workspace(2,id)} {...handlers} /></CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
+  await screen.findByText(/Chưa xác minh kết quả lưu/);
+  view.rerender(editor("case-B"));
+  view.rerender(editor("case-A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+  expect(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" })).toBeDisabled();
+  expect(handlers.onInspectionPlanSave).toHaveBeenCalledOnce();
 });

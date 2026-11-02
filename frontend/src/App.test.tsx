@@ -3815,8 +3815,9 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.upsertEvaluationScope.mockResolvedValue({ row_version: 4 });
     renderApp(["/search"]);
     await screen.findByText("HS-001");
+    await flushSearchUrlSync();
     fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
-    fireEvent.change(screen.getByLabelText("Giới hạn"), { target: { value: "Reviewed scope" } });
+    fireEvent.change(await screen.findByLabelText("Giới hạn"), { target: { value: "Reviewed scope" } });
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Lưu$/ }));
     await screen.findByText("Confirmed canonical scope");
     expect(apiMocks.upsertEvaluationScope).toHaveBeenCalledWith("case-1", { expected_version: 3, limitation_text: "Reviewed scope", blocks: [{ name: "Scope one", note: null, selections: [] }] }, expect.any(Object), true, null);

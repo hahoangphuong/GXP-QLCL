@@ -2227,3 +2227,31 @@ browser/API results are recorded with this session's exact source/evidence scope
 Historical totals are retained under their original dates. Google A/B16scenarios
 remain NOT_EXECUTED/AUTHENTICATED_UAT_BLOCKED. Gate6 cutover NO_GO; source/runtime
 attestation, backup/restore evidence and operator approvals remain BLOCKED.
+
+## Inspection team keyboard continuity — 2026-11-02 (v1.12)
+
+Confirmed web interaction defect: changing a team selector changed its React row
+key (`identityValue(member)` + position), replacing the focused native select.
+The last-correct point is the focused selector before `setIdentity`; the first
+incorrect point is reconciliation after the edited identity changes. A positional
+editor slot now keeps its DOM identity while canonical participant IDs remain
+only form values and mutation payload. No imperative focus rescue is added.
+
+RED: the original selector is no longer the rendered selector. GREEN verifies
+DOM identity, focus, the new participant value, the untouched second member,
+zero navigation writes/lookups and the unchanged reviewed version/payload.
+Additional deferred success/403 regressions confirm access A-B-A does not adopt
+an old team's identity lookup. Existing CAPA cycle-generation and Approval
+pending/recovery owners are retained, not rewritten.
+
+Browser fixture uses native select Home/Arrow/End/Enter/Escape and Tab/Shift+Tab,
+CAPA tab round-trip, one identity-options lookup and zero mutations. Candidate
+clientWidth=scrollWidth at 1366x768, 1920x1080 and 390x844. Team data/options in
+this fixture are synthetic; surrounding API is disposable FastAPI/header_stub.
+This is FIXTURE_VERIFIED, not authenticated Google A/B acceptance.
+
+Legacy runtime automatic focus-return after save/cancel remains EVIDENCE_MISSING;
+this change preserves an active native input and does not invent that policy.
+No changes to legacy layout, ownership, RBAC, certificate exceptions, document
+identity, state transitions or QDkt gates. Screen reader/native VBA/Word/NAS and
+real Google A/B UAT remain NOT_EXECUTED; cutover remains NO_GO.

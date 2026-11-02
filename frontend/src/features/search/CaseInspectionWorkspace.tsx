@@ -400,7 +400,8 @@ function InspectionTeamSection({
       {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
       {editing ? <div className="inspection-team-editor">
         <p className="workspace-note">Lưu sẽ thay toàn bộ danh sách từ dữ liệu có cấu trúc này. Mô tả legacy chỉ đọc, không được dùng để tạo thành viên.</p>
-        {members.map((member, index) => <div className="inspection-team-edit-row" key={`${identityValue(member)}-${index}`}>
+        {/* Editable roles are positional slots; changing their participant must not replace the focused select. */}
+        {members.map((member, index) => <div className="inspection-team-edit-row" key={index}>
           <select aria-label={`Định danh thành viên ${index + 1}`} disabled={pending} onChange={(event) => setIdentity(index, event.target.value)} value={identityValue(member)}>
             <option value="">Chọn định danh</option>
             {options.map((option) => <option key={`${option.identity_kind}:${option.inspector_profile_id ?? option.person_id ?? option.participant_catalog_id}`} value={`${option.identity_kind === "inspector_profile" ? "profile" : option.identity_kind === "organization_representative" ? "organization" : "person"}:${option.inspector_profile_id ?? option.person_id ?? option.participant_catalog_id}`}>

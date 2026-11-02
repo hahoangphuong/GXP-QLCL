@@ -1,5 +1,5 @@
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
-import { useCaseDraftState } from "./CaseDraftSession";
+import { useCaseCommandLock, useCaseDraftState } from "./CaseDraftSession";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
@@ -89,7 +89,8 @@ export function CaseApplicationWorkspace({
   const [draftVersion, setDraftVersion] = useCaseDraftState("application.draftVersion", caseWorkspace.application.row_version);
   const [editingField, setEditingField] = useCaseDraftState<"submitted_on" | "dossier_code" | null>("application.editingField", null);
   const [pending, setPending] = useCaseDraftState("application.pending", false);
-  const [requiresReview, setRequiresReview] = useCaseDraftState("application.requiresReview", false);
+  const commandLock = useCaseCommandLock("application");
+  const requiresReview = commandLock.requiresReview;
   const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("application.errorMessage", null);
   const folderLookupIdentity = JSON.stringify([
     accessGeneration,
@@ -141,13 +142,15 @@ export function CaseApplicationWorkspace({
   }, [currentDraft, editingField]);
 
   async function saveField() {
-    if (!editingField || pending || requiresReview) {
+    if (!editingField || pending || commandLock.pending || requiresReview) {
       return;
     }
     if (draftVersion === null && caseWorkspace.application.row_version !== null) {
       setErrorMessage("Thông tin hồ sơ đã được tạo sau khi bắt đầu sửa. Bản nháp được giữ lại; Hủy sửa rồi mở lại trường để kiểm tra dữ liệu mới.");
       return;
     }
+    const command = commandLock.acquire();
+    if (!command) return;
     setPending(true);
     setErrorMessage(null);
     try {
@@ -157,10 +160,11 @@ export function CaseApplicationWorkspace({
       await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
-      if (error instanceof CaseFieldMutationRecoveryError) setRequiresReview(true);
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       const nextError = error instanceof Error ? error : new Error("Không lưu được thông tin hồ sơ.");
       setErrorMessage(getErrorMessage(nextError));
     } finally {
+      commandLock.release(command);
       setPending(false);
     }
   }
@@ -229,7 +233,7 @@ export function CaseApplicationWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
-            saveDisabled={requiresReview}
+            saveDisabled={requiresReview || commandLock.pending}
             value={formatCompactDate(caseWorkspace.application.submitted_on)}
           >
             <input
@@ -254,7 +258,7 @@ export function CaseApplicationWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
-            saveDisabled={requiresReview}
+            saveDisabled={requiresReview || commandLock.pending}
             value={caseWorkspace.application.dossier_code}
           >
             <input

@@ -1,3 +1,4 @@
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -400,4 +401,40 @@ it("keeps the committed draft writable while a new owner render is suspended and
   expect(screen.queryByText("Loading next owner")).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Still editing A" } });
   expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Still editing A");
+});
+
+
+it("retains an unresolved application command lock after Case A → B → A", async () => {
+  const onSave = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("readback unavailable"));
+  const editor = (identity: string) => <CaseDraftSession identity={identity}><CaseApplicationWorkspace caseWorkspace={{ ...workspace, application: { ...workspace.application, row_version: 4 } }} onSave={onSave} onResolveInspectionFolder={vi.fn()} /></CaseDraftSession>;
+  const view = render(editor("A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+  fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Original" } });
+  fireEvent.click(screen.getByRole("button", { name: "Lưu Mã hồ sơ" }));
+  await screen.findByText(/Chưa xác minh kết quả lưu/);
+  view.rerender(editor("B"));
+  view.rerender(editor("A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+  expect(screen.getByRole("button", { name: "Lưu Mã hồ sơ" })).toBeDisabled();
+  expect(screen.getByText(/Chưa xác minh kết quả lưu/)).toBeInTheDocument();
+  expect(onSave).toHaveBeenCalledOnce();
+});
+
+
+it("synchronously serializes an application save and isolates other Cases", async () => {
+  const request = deferred<void>();
+  const onSave = vi.fn().mockReturnValue(request.promise);
+  const editor = (identity: string) => <CaseDraftSession identity={identity}><CaseApplicationWorkspace caseWorkspace={workspace} onSave={onSave} onResolveInspectionFolder={vi.fn()} /></CaseDraftSession>;
+  const view = render(editor("A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+  const save = screen.getByRole("button", { name: "Lưu Mã hồ sơ" });
+  act(() => { save.click(); save.click(); });
+  expect(onSave).toHaveBeenCalledOnce();
+  view.rerender(editor("B"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+  expect(screen.getByRole("button", { name: "Lưu Mã hồ sơ" })).toBeEnabled();
+  view.rerender(editor("A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+  expect(screen.getByRole("button", { name: "Lưu Mã hồ sơ" })).toBeDisabled();
+  await act(async () => request.resolve());
 });

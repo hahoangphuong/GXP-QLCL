@@ -145,9 +145,7 @@ vi.mock("./lib/api", () => apiMocks);
 vi.mock("./lib/oidc", () => oidcMocks);
 vi.mock("./lib/storage", () => ({
   loadAuthState: vi.fn(() => ({ username: "operator.local", role: "inspector" })),
-  loadOidcSession: vi.fn(() => null),
   saveAuthState: vi.fn(),
-  saveOidcSession: vi.fn(),
   clearOidcSession: vi.fn(),
 }));
 

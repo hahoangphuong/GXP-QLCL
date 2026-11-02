@@ -1,3 +1,5 @@
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { CaseDraftSession } from "./CaseDraftSession";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -147,4 +149,19 @@ describe("registration presentation preserves existing editor owners", () => {
     expect(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" })).toHaveTextContent("remote result");
     expect(save).toHaveBeenCalledOnce();
   });
+});
+
+
+it("keeps an uncertain assessment locked across Case switches", async () => {
+  const save = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("unknown outcome"));
+  const editor = (id: string) => <CaseDraftSession identity={id}><CaseProcessingWorkspace caseWorkspace={workspace} onSave={save} view="assessment" /></CaseDraftSession>;
+  const view = render(editor("A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
+  await screen.findByText(/Chưa xác minh kết quả lưu/);
+  view.rerender(editor("B"));
+  view.rerender(editor("A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+  expect(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" })).toBeDisabled();
+  expect(save).toHaveBeenCalledOnce();
 });

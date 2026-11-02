@@ -2310,3 +2310,7 @@ not establish real Google OIDC, actual certificate issuance or storage access.
 Existing business transitions, API payloads, RBAC and legacy layout remain owned
 by their original layers. Native screen reader and original VBA runtime remain
 unverified; cutover and authenticated UAT remain blocked.
+
+## Application and assessment recovery ownership — 2026-11-02
+
+An application or assessment command with an uncertain outcome keeps its in-memory command lock by Case/access owner when navigating A → B → A. Concurrent saves are serialized before React commits pending state; drafts remain editable and 409 handling is unchanged. This does not provide durable recovery across a browser reload or reauthentication. A canonical snapshot alone cannot prove whether an uncorrelated command committed; authenticated UAT and native screen-reader verification remain outstanding.

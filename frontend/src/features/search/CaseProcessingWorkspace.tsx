@@ -1,5 +1,5 @@
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
-import { useCaseDraftState } from "./CaseDraftSession";
+import { useCaseCommandLock, useCaseDraftState } from "./CaseDraftSession";
 import { useEffect, useMemo } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
@@ -82,7 +82,8 @@ export function CaseProcessingWorkspace({
   const [editingField, setEditingField] = useCaseDraftState<keyof ProcessingDraft | null>("assessment.editingField", null);
   const [draftVersion, setDraftVersion] = useCaseDraftState("assessment.draftVersion", caseWorkspace.processing.row_version);
   const [pending, setPending] = useCaseDraftState("assessment.pending", false);
-  const [requiresReview, setRequiresReview] = useCaseDraftState("assessment.requiresReview", false);
+  const commandLock = useCaseCommandLock("assessment");
+  const requiresReview = commandLock.requiresReview;
   const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("assessment.errorMessage", null);
 
   useEffect(() => {
@@ -93,9 +94,11 @@ export function CaseProcessingWorkspace({
   }, [currentDraft, editingField]);
 
   async function saveField() {
-    if (!editingField || pending || requiresReview) {
+    if (!editingField || pending || commandLock.pending || requiresReview) {
       return;
     }
+    const command = commandLock.acquire();
+    if (!command) return;
     setPending(true);
     setErrorMessage(null);
     try {
@@ -108,10 +111,11 @@ export function CaseProcessingWorkspace({
       });
       setEditingField(null);
     } catch (error) {
-      if (error instanceof CaseFieldMutationRecoveryError) setRequiresReview(true);
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       const nextError = error instanceof Error ? error : new Error("Không lưu được bước xử lý.");
       setErrorMessage(getErrorMessage(nextError));
     } finally {
+      commandLock.release(command);
       setPending(false);
     }
   }
@@ -142,7 +146,7 @@ export function CaseProcessingWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
-            saveDisabled={requiresReview}
+            saveDisabled={requiresReview || commandLock.pending}
             value={formatCompactDate(caseWorkspace.processing.assessed_on)}
           >
             <input
@@ -167,7 +171,7 @@ export function CaseProcessingWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
-            saveDisabled={requiresReview}
+            saveDisabled={requiresReview || commandLock.pending}
             value={caseWorkspace.processing.assessor_name}
           >
             <input
@@ -194,7 +198,7 @@ export function CaseProcessingWorkspace({
             }}
             onSave={() => void saveField()}
             pending={pending}
-            saveDisabled={requiresReview}
+            saveDisabled={requiresReview || commandLock.pending}
             value={caseWorkspace.processing.assessment_result}
           >
             <textarea

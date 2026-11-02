@@ -5954,6 +5954,62 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
   });
 
+  it("serializes create Change Request submissions before pending render", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_change_request" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.createChangeRequest.mockImplementation(() => new Promise(() => {}));
+    renderApp(["/search"]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Thay đổi" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Thay đổi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tạo yêu cầu thay đổi" });
+    const form = within(dialog).getByRole("button", { name: "Tạo yêu cầu thay đổi" }).closest("form")!;
+    act(() => { fireEvent.submit(form); fireEvent.submit(form); });
+    expect(apiMocks.createChangeRequest).toHaveBeenCalledOnce();
+  });
+
+  it("blocks create Change Request after success when canonical readback fails", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_change_request" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.createChangeRequest.mockResolvedValue({ change_request_id: "change-new", row_version: 1 });
+    apiMocks.getChangeRequestWorkspace.mockRejectedValue(new Error("unavailable"));
+    renderApp(["/search"]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Thay đổi" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Thay đổi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tạo yêu cầu thay đổi" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Phạm vi yêu cầu thay đổi" }), { target: { value: "Draft" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo yêu cầu thay đổi" }));
+    await within(dialog).findByRole("alert");
+    expect(within(dialog).getByRole("textbox", { name: "Phạm vi yêu cầu thay đổi" })).toHaveValue("Draft");
+    expect(within(dialog).getByRole("button", { name: "Tạo yêu cầu thay đổi" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Hủy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thay đổi" }));
+    const reopened = await screen.findByRole("dialog", { name: "Tạo yêu cầu thay đổi" });
+    expect(within(reopened).getByRole("button", { name: "Tạo yêu cầu thay đổi" })).toBeDisabled();
+    expect(within(reopened).getByRole("alert")).toHaveTextContent("Chưa xác minh");
+    expect(apiMocks.createChangeRequest).toHaveBeenCalledOnce();
+  });
+
+  it.each(["wrong-id", "wrong-site"] as const)("does not accept %s create readback as verification", async mismatch => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_change_request" ? { ...item, readiness_status: "available" } : item) }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.createChangeRequest.mockResolvedValue({ change_request_id: "change-new", row_version: 1 });
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace({ id: mismatch === "wrong-id" ? "other" : "change-new", site_id: mismatch === "wrong-site" ? "other-site" : "site-1" }));
+    renderApp(["/search"]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Thay đổi" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Thay đổi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tạo yêu cầu thay đổi" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo yêu cầu thay đổi" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("không khớp");
+    expect(within(dialog).getByRole("button", { name: "Tạo yêu cầu thay đổi" })).toBeDisabled();
+    expect(apiMocks.createChangeRequest).toHaveBeenCalledOnce();
+  });
+
   it("creates a change request from backend facility readiness and selects the canonical workspace", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

@@ -1,4 +1,4 @@
-import { runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
+import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
@@ -593,6 +593,11 @@ export function SearchPage({
   const eventContext = ownedWorkspace ?? (ownedRequest && ownedRequest.status !== "ready" ? ownedRequest.previous : null);
   const selectedHistory = deepLinkError ? null : eventContext?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const caseOperationOwner = useRef({ context: selectedContext, historyId: selectedHistory?.id ?? null });
+  const createChangeRequestWrites = useRef(new Map<string, object>());
+  const [createChangeRequestPhases, setCreateChangeRequestPhases] = useState<Record<string, "pending" | "review">>({});
+  const createChangeRequestOwnerKey = selectedResult && selectedContext
+    ? JSON.stringify([accessGeneration, useStubAuth, selectedResult.site_id]) : null;
+  const createChangeRequestPhase = createChangeRequestOwnerKey ? createChangeRequestPhases[createChangeRequestOwnerKey] : undefined;
   const approvalWrites = useRef(new Map<string, object>());
   const [approvalPhases, setApprovalPhases] = useState<Record<string, "pending" | "review">>({});
   const approvalKey = selectedContext && selectedHistory?.source_type === "case" ? JSON.stringify([accessGeneration, useStubAuth, selectedHistory.id]) : null;
@@ -2253,9 +2258,13 @@ export function SearchPage({
 
   async function handleCreateChangeRequestSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedResult || !workspace || createChangeRequestAction?.readiness_status !== "available") {
-      return;
-    }
+    if (!selectedResult || !workspace || !createChangeRequestOwnerKey || createChangeRequestAction?.readiness_status !== "available" || createChangeRequestWrites.current.has(createChangeRequestOwnerKey)) return;
+    const key = createChangeRequestOwnerKey;
+    const token = {};
+    const caseOwner = caseOperationOwner.current;
+    const siteId = selectedResult.site_id;
+    createChangeRequestWrites.current.set(key, token);
+    setCreateChangeRequestPhases(current => ({ ...current, [key]: "pending" }));
     setCreateChangeRequestPending(true);
     setCreateChangeRequestError(null);
     const payload: ChangeRequestCreateRequest = {
@@ -2264,22 +2273,24 @@ export function SearchPage({
       submitted_on: createChangeRequestDraft.submittedOn || null,
       requester_name: createChangeRequestDraft.requesterName.trim() || null,
     };
+    let changeWorkspace: Awaited<ReturnType<typeof getChangeRequestWorkspace>> | null = null;
+    let keepReview = false;
     try {
-      const created = await createChangeRequest(
-        selectedResult.site_id,
-        payload,
-        auth,
-        useStubAuth,
-        bearerToken,
+      let changeRequestId: string | null = null;
+      await runCaseFieldMutation(
+        async () => { changeRequestId = (await createChangeRequest(siteId, payload, auth, useStubAuth, bearerToken)).change_request_id; },
+        async () => {
+          if (!isCurrentCaseOperation(caseOwner) || !changeRequestId) return null;
+          const result = await getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken);
+          if (!isCurrentCaseOperation(caseOwner)) return null;
+          if (result.id !== changeRequestId || result.site_id !== siteId) throw new Error("Workspace không khớp yêu cầu thay đổi và cơ sở đã tạo.");
+          const facilityWorkspace = await refreshSelectedFacilityWorkspace(changeRequestId, caseOwner);
+          if (!facilityWorkspace || !isCurrentCaseOperation(caseOwner)) return null;
+          changeWorkspace = result;
+          return result;
+        },
       );
-      const changeRequestId = created.change_request_id;
-      const [changeWorkspace, facilityWorkspace] = await Promise.all([
-        getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken),
-        refreshSelectedFacilityWorkspace(changeRequestId),
-      ]);
-      if (!facilityWorkspace || committedContextRef.current !== selectedContext) {
-        return;
-      }
+      if (!isCurrentCaseOperation(caseOwner) || !changeWorkspace || !changeRequestId) return;
       setSelectedChangeRequestWorkspace(changeWorkspace);
       setChangeRequestWorkspaceError(null);
       setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
@@ -2287,9 +2298,17 @@ export function SearchPage({
       setActiveTab("Đề nghị");
       resetCreateChangeRequestState();
     } catch (error) {
-      if (!isCurrentContext()) return;
-      setCreateChangeRequestError(error instanceof Error ? error.message : "Không tạo được yêu cầu thay đổi.");
-      setCreateChangeRequestPending(false);
+      keepReview = error instanceof CaseFieldMutationRecoveryError;
+      if (keepReview) setCreateChangeRequestPhases(current => ({ ...current, [key]: "review" }));
+      if (isCurrentCaseOperation(caseOwner)) {
+        setCreateChangeRequestError(error instanceof Error ? error.message : "Không tạo được yêu cầu thay đổi.");
+        setCreateChangeRequestPending(false);
+      }
+    } finally {
+      if (!keepReview && createChangeRequestWrites.current.get(key) === token) {
+        createChangeRequestWrites.current.delete(key);
+        setCreateChangeRequestPhases(current => { const next = { ...current }; delete next[key]; return next; });
+      }
     }
   }
 
@@ -2446,9 +2465,9 @@ export function SearchPage({
               <label><span>Ngày đề nghị</span><input aria-label="Ngày tạo yêu cầu thay đổi" disabled={createChangeRequestPending} onChange={(event) => setCreateChangeRequestDraft((current) => ({ ...current, submittedOn: event.target.value }))} type="date" value={createChangeRequestDraft.submittedOn} /></label>
               <label><span>Đơn vị/người đề nghị</span><input aria-label="Người tạo yêu cầu thay đổi" disabled={createChangeRequestPending} onChange={(event) => setCreateChangeRequestDraft((current) => ({ ...current, requesterName: event.target.value }))} value={createChangeRequestDraft.requesterName} /></label>
               <label><span>Mô tả</span><textarea aria-label="Mô tả yêu cầu thay đổi" disabled={createChangeRequestPending} onChange={(event) => setCreateChangeRequestDraft((current) => ({ ...current, description: event.target.value }))} value={createChangeRequestDraft.description} /></label>
-              {createChangeRequestError ? <p className="form-error" role="alert">{createChangeRequestError}</p> : null}
+              {createChangeRequestError || createChangeRequestPhase === "review" ? <p className="form-error" role="alert">{createChangeRequestError ?? "Chưa xác minh kết quả tạo. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
               <div className="panel-actions reassessment-dialog-actions">
-                <button disabled={createChangeRequestPending} type="submit">{createChangeRequestPending ? "Đang tạo..." : "Tạo yêu cầu thay đổi"}</button>
+                <button disabled={createChangeRequestPending || createChangeRequestPhase === "pending" || createChangeRequestPhase === "review"} type="submit">{createChangeRequestPending ? "Đang tạo..." : "Tạo yêu cầu thay đổi"}</button>
                 <button disabled={createChangeRequestPending} onClick={closeChangeRequestDialog} type="button">Hủy</button>
               </div>
             </form>

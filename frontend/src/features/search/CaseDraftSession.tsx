@@ -28,10 +28,37 @@ function createSession() {
   };
 }
 
+function createCommandRegistry() {
+  const commands = new Map<string, object | "review">();
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach(listener => listener());
+  return {
+    state: (key: string) => commands.get(key) === "review" ? "review" : commands.has(key) ? "pending" : "idle",
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    acquire: (key: string) => {
+      if (commands.has(key)) return null;
+      const token = {};
+      commands.set(key, token); notify(); return token;
+    },
+    requireReview: (key: string, token: object) => {
+      if (commands.get(key) !== token) return;
+      commands.set(key, "review"); notify();
+    },
+    release: (key: string, token: object) => {
+      if (commands.get(key) !== token) return;
+      commands.delete(key); notify();
+    },
+  };
+}
+
+const CommandRegistryContext = createContext<{ identity: string | null; registry: ReturnType<typeof createCommandRegistry> } | null>(null);
+
 const Context = createContext<ReturnType<typeof createSession> | null>(null);
 
 // One active canonical Case/access/line context, in memory only. No history cache.
 export function CaseDraftSession({ identity, children }: { identity: string | null; children: ReactNode }) {
+  const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!registry.current) registry.current = createCommandRegistry();
   const [owner, setOwner] = useState(() => ({ identity, session: createSession() }));
   if (owner.identity !== identity) {
     setOwner({ identity, session: createSession() });
@@ -42,7 +69,7 @@ export function CaseDraftSession({ identity, children }: { identity: string | nu
     owner.session.activate();
     return () => owner.session.close();
   }, [owner.session]);
-  return <Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider>;
+  return <CommandRegistryContext.Provider value={{ identity, registry: registry.current }}><Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider></CommandRegistryContext.Provider>;
 }
 
 export function useCaseDraftSession() { return useContext(Context); }
@@ -62,4 +89,20 @@ export function useCaseDraftState<T>(key: string, initial: T | (() => T) = undef
 
 export function useCaseDraftRef<T>(key: string, initial: T): MutableRefObject<T> {
   return useCaseDraftState<MutableRefObject<T>>(key, () => ({ current: initial }))[0];
+}
+
+// In-flight and uncertain command identities survive Case switches; drafts remain session-owned.
+export function useCaseCommandLock(scope: string) {
+  const context = useContext(CommandRegistryContext);
+  const fallback = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!fallback.current) fallback.current = createCommandRegistry();
+  const registry = context?.registry ?? fallback.current;
+  const key = JSON.stringify([context?.identity ?? null, scope]);
+  const subscribe = useCallback((notify: () => void) => registry.subscribe(notify), [registry]);
+  const snapshot = useCallback(() => registry.state(key), [registry, key]);
+  const state = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const acquire = useCallback(() => registry.acquire(key), [registry, key]);
+  const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
+  const requireReview = useCallback((token: object) => registry.requireReview(key, token), [registry, key]);
+  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview };
 }

@@ -1,3 +1,4 @@
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
@@ -515,4 +516,115 @@ it("settles the original CAPA operation through tab unmount without losing its d
   expect(screen.getByRole("alert")).toBeInTheDocument();
   expect(onUpdateCycle).toHaveBeenCalledOnce();
   expect(onUpdateCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2 }));
+});
+
+it("serializes CAPA submit events dispatched before React commits pending state", async () => {
+  const request = deferred<void>();
+  const view = renderWorkspace(workspace([cycle()], [action("submit_capa_cycle:capa-1")]));
+  view.handlers.onSubmitCycle.mockReturnValue(request.promise);
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  const button = screen.getByRole("button", { name: "Ghi nhận tiếp nhận" });
+  act(() => { fireEvent.click(button); fireEvent.click(button); });
+  expect(view.handlers.onSubmitCycle).toHaveBeenCalledOnce();
+  await act(async () => request.resolve());
+});
+
+it.each(["create", "update", "submit", "assess"] as const)("serializes pre-commit duplicate %s commands and preserves its reviewed token", async command => {
+  const request = deferred<void>();
+  const actions = [action("create_capa_cycle", true, 8), action("update_capa_cycle:capa-1"), action("submit_capa_cycle:capa-1"), action("assess_capa_cycle:capa-1")];
+  const view = renderWorkspace(workspace([cycle()], actions));
+  const callback = { create: view.handlers.onCreateCycle, update: view.handlers.onUpdateCycle, submit: view.handlers.onSubmitCycle, assess: view.handlers.onAssessCycle }[command];
+  callback.mockReturnValue(request.promise);
+  let button: HTMLElement;
+  if (command === "create") {
+    fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+    button = screen.getByRole("button", { name: "Tạo vòng khắc phục" });
+  } else if (command === "update") {
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Ghi chú" }), { key: "F2" });
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Updated draft" } });
+    button = screen.getByRole("button", { name: "Lưu Ghi chú" });
+  } else {
+    fireEvent.change(screen.getByLabelText(command === "submit" ? "Ngày ghi nhận tiếp nhận" : "Ngày đánh giá khắc phục"), { target: { value: "2026-09-07" } });
+    if (command === "assess") fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
+    button = screen.getByRole("button", { name: command === "submit" ? "Ghi nhận tiếp nhận" : "Đánh giá" });
+  }
+  act(() => { fireEvent.click(button); fireEvent.click(button); });
+  expect(callback).toHaveBeenCalledOnce();
+  expect(callback.mock.calls[0][command === "create" ? 0 : 1]).toEqual(expect.objectContaining(command === "create" ? { expected_case_version: 8 } : { expected_version: 2 }));
+  await act(async () => request.reject(Object.assign(new Error("conflict"), { status: 409 })));
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(callback).toHaveBeenCalledOnce();
+});
+
+it("does not release the new cycle command lock when an old cycle command settles", async () => {
+  const oldRequest = deferred<void>(), newRequest = deferred<void>();
+  const cycles = [cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2, row_version: 4 })];
+  const actions = [action("submit_capa_cycle:capa-1"), action("submit_capa_cycle:capa-2", true, 4)];
+  const value = workspace(cycles, actions);
+  const view = renderWorkspace(value);
+  view.handlers.onSubmitCycle.mockReturnValueOnce(oldRequest.promise).mockReturnValue(newRequest.promise);
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+  view.rerender(<CaseRemediationWorkspace caseWorkspace={value} selectedCycleId="capa-2" {...view.handlers} />);
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-08" } });
+  const currentButton = screen.getByRole("button", { name: "Ghi nhận tiếp nhận" });
+  await act(async () => {
+    fireEvent.click(currentButton);
+    oldRequest.resolve();
+    await Promise.resolve();
+    fireEvent.click(currentButton);
+  });
+  expect(screen.getByRole("button", { name: "Đang ghi nhận..." })).toBeDisabled();
+  expect(view.handlers.onSubmitCycle).toHaveBeenCalledTimes(2);
+  await act(async () => newRequest.reject(Object.assign(new Error("conflict"), { status: 409 })));
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-08");
+});
+
+it("does not send a second CAPA command after Case A → B → A while the first is pending", async () => {
+  const request = deferred<void>();
+  const handlers = { onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(), onSubmitCycle: vi.fn().mockReturnValue(request.promise), onAssessCycle: vi.fn() };
+  const editor = (id: string) => <CaseDraftSession identity={id}><CaseRemediationWorkspace caseWorkspace={{ ...workspace([cycle()], [action("submit_capa_cycle:capa-1")]), case_summary: { ...workspace().case_summary, id } }} selectedCycleId="capa-1" {...handlers} /></CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+  view.rerender(editor("case-B"));
+  view.rerender(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+  expect(handlers.onSubmitCycle).toHaveBeenCalledOnce();
+  await act(async () => request.resolve());
+  expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeEnabled();
+});
+
+
+it("keeps a readback recovery lock across Case A → B → A without losing a new draft", async () => {
+  const handlers = { onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(), onSubmitCycle: vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("readback failed")), onAssessCycle: vi.fn() };
+  const editor = (id: string) => <CaseDraftSession identity={id}><CaseRemediationWorkspace caseWorkspace={{ ...workspace([cycle()], [action("submit_capa_cycle:capa-1")]), case_summary: { ...workspace().case_summary, id } }} selectedCycleId="capa-1" {...handlers} /></CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+  await waitFor(() => expect(screen.getByText(/Chưa thể xác minh kết quả thao tác/)).toBeInTheDocument());
+  view.rerender(editor("case-B"));
+  view.rerender(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-08" } });
+  expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeDisabled();
+  expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-08");
+  expect(screen.getByText(/Chưa thể xác minh kết quả thao tác/)).toBeInTheDocument();
+  expect(handlers.onSubmitCycle).toHaveBeenCalledOnce();
+});
+
+
+it("blocks a second create after the selected cycle changes while create is pending", async () => {
+  const request = deferred<void>();
+  const initial = workspace([cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2 })], [action("create_capa_cycle", true, 8)]);
+  const view = renderWorkspace(initial, "capa-1");
+  view.handlers.onCreateCycle.mockReturnValue(request.promise);
+  fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
+  view.rerender(<CaseRemediationWorkspace caseWorkspace={initial} selectedCycleId="capa-2" {...view.handlers} />);
+  fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+  expect(screen.getByRole("button", { name: "Tạo vòng khắc phục" })).toBeDisabled();
+  await act(async () => request.resolve());
 });

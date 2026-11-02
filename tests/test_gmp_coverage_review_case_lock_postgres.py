@@ -50,7 +50,7 @@ def test_case_rebind_and_certificate_reparent_wait_for_unresolved_intake():
             second_site = Site(company_id=company.id, site_name="Other Site")
             setup.add_all([site, second_site])
             setup.flush()
-            case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.__members__[next(iter(CaseState.__members__))])
+            case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
             certificate = Certificate(site_id=site.id, certificate_type="GMP")
             setup.add_all([case, certificate])
             setup.flush()

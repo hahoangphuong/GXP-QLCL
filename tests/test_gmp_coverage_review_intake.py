@@ -77,3 +77,56 @@ def test_intake_requires_canonical_actor_uuid_before_database_access():
         _uuid("00000000-0000-0000-0000-000000000001")
     with pytest.raises(ValueError):
         _uuid("not-an-identity")
+
+
+@pytest.mark.parametrize("field,bad_value", [
+    ("source_snapshot_sha256", None),
+    ("source_document_sha256", 42),
+    ("source_page_reference", None),
+    ("source_page_reference", 123),
+    ("rationale", None),
+    ("rationale", 123),
+])
+def test_unresolved_intake_rejects_nonstring_evidence_without_writes(field, bad_value):
+    """Malformed typed input must raise validation errors, not AttributeError/TypeError."""
+    from dataclasses import replace
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    try:
+        with Session(engine) as session:
+            actor = AppUser(username="synthetic-evidence-type")
+            company = Company(legal_name="Synthetic company")
+            role = RbacRole(role_code="synthetic-type-intake")
+            permission = RbacPermission(permission_code="gmp.coverage_evidence.intake")
+            session.add_all([actor, company, role, permission])
+            session.flush()
+            site = Site(company_id=company.id, site_name="Synthetic Site")
+            session.add(site)
+            session.flush()
+            cert = Certificate(site_id=site.id, certificate_type="GMP")
+            session.add(cert)
+            session.flush()
+            version = CertificateVersion(certificate_id=cert.id, version_no=1)
+            session.add(version)
+            session.add_all([
+                AppUserRole(app_user_id=actor.id, rbac_role_id=role.id),
+                RbacRolePermission(rbac_role_id=role.id, rbac_permission_id=permission.id),
+            ])
+            session.flush()
+            evidence = UnresolvedReviewInput(
+                certificate_version_id=version.id, site_id=site.id, case_id=None,
+                source_snapshot_sha256="a" * 64,
+                source_document_sha256="b" * 64,
+                source_page_reference="synthetic page 1",
+                rationale="needs review",
+            )
+            with pytest.raises(ValueError):
+                append_unresolved_review_event(
+                    session, evidence=replace(evidence, **{field: bad_value}),
+                    authenticated_user_id=actor.id,
+                )
+            assert session.scalars(select(GmpCoverageReviewEvent)).all() == []
+            session.rollback()
+    finally:
+        engine.dispose()

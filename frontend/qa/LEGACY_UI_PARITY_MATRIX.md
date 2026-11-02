@@ -2287,3 +2287,21 @@ Canonical business identity, permissions, expected_version, historical certifica
 exceptions and all VBA layouts/semantics remain unchanged. Legacy automatic focus
 return and original VBA runtime remain EVIDENCE_MISSING/NOT_EXECUTED. Google A/B,
 screen reader, Word/NAS and production UAT remain unverified; cutover NO_GO.
+
+## CAPA command serialization — 2026-11-02 (v1.14)
+
+A CAPA submit could be invoked twice before React committed its pending state:
+the baseline regression observed two calls where one was expected. The same
+pending-state pattern guarded create, update, submit and assess. A synchronous
+session-owned command token now serializes those actions while preserving the
+existing cycle-generation owner and reviewed version. When an old cycle settles,
+it can release only its own token; it cannot release a newer cycle's command.
+
+The fixture suite verifies all four commands, 409 draft/token retention, tab
+remount, cycle changes and old-finally/new-command ordering. Synthetic browser
+checks at 1366×768, 768×1024 and 390×844 cover duplicate submit, pending across
+tabs, 409/network failure, Case A-B-A and both GET completion orders. They do
+not establish real Google OIDC, actual certificate issuance or storage access.
+Existing business transitions, API payloads, RBAC and legacy layout remain owned
+by their original layers. Native screen reader and original VBA runtime remain
+unverified; cutover and authenticated UAT remain blocked.

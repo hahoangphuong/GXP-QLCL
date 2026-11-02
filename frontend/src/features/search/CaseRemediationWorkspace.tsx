@@ -173,6 +173,7 @@ export function CaseRemediationWorkspace({
   const session = useCaseDraftSession();
   const hydratedCycleVersionKey = useCaseDraftRef("capa.hydratedVersion", selectedCycleVersionKey);
   const cycleOperationOwner = useCaseDraftRef("capa.operationOwner", { key: cycleIdentityKey, generation: 0 });
+  const inFlight = useCaseDraftRef<object | null>("capa.inFlight", null);
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -186,6 +187,7 @@ export function CaseRemediationWorkspace({
         key: cycleIdentityKey,
         generation: cycleOperationOwner.current.generation + 1,
       };
+      inFlight.current = null;
       setPendingAction(null);
       setIsCreating(false);
       setEditingField(null);
@@ -228,10 +230,12 @@ export function CaseRemediationWorkspace({
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isPending) {
+    if (isPending || inFlight.current) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
+    const command = {};
+    inFlight.current = command;
     setPendingAction("create");
     setErrorMessage(null);
     try {
@@ -251,15 +255,18 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getCreateErrorMessage(nextError));
       }
     } finally {
+      if (inFlight.current === command) inFlight.current = null;
       if (isCurrentCycleOperation(operationOwner)) setPendingAction(null);
     }
   }
 
   async function handleUpdateField() {
-    if (!selectedCycle || !editingField || isPending || draftVersion === null) {
+    if (!selectedCycle || !editingField || isPending || inFlight.current || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
+    const command = {};
+    inFlight.current = command;
     setPendingAction("update");
     setErrorMessage(null);
     try {
@@ -279,6 +286,7 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getCycleErrorMessage(nextError));
       }
     } finally {
+      if (inFlight.current === command) inFlight.current = null;
       if (isCurrentCycleOperation(operationOwner)) {
         setPendingAction(null);
       }
@@ -286,10 +294,12 @@ export function CaseRemediationWorkspace({
   }
 
   async function handleSubmitAction() {
-    if (!selectedCycle || isPending || draftVersion === null) {
+    if (!selectedCycle || isPending || inFlight.current || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
+    const command = {};
+    inFlight.current = command;
     setPendingAction("submit");
     setErrorMessage(null);
     try {
@@ -305,6 +315,7 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getSubmitErrorMessage(nextError));
       }
     } finally {
+      if (inFlight.current === command) inFlight.current = null;
       if (isCurrentCycleOperation(operationOwner)) {
         setPendingAction(null);
       }
@@ -312,10 +323,12 @@ export function CaseRemediationWorkspace({
   }
 
   async function handleAssessAction() {
-    if (!selectedCycle || isPending || draftVersion === null) {
+    if (!selectedCycle || isPending || inFlight.current || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
+    const command = {};
+    inFlight.current = command;
     setPendingAction("assess");
     setErrorMessage(null);
     try {
@@ -332,6 +345,7 @@ export function CaseRemediationWorkspace({
         setErrorMessage(getAssessErrorMessage(nextError));
       }
     } finally {
+      if (inFlight.current === command) inFlight.current = null;
       if (isCurrentCycleOperation(operationOwner)) {
         setPendingAction(null);
       }

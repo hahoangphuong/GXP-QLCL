@@ -1,6 +1,6 @@
-import { useCaseCommandLock } from "./CaseDraftSession";
+import { useCaseCommandLock, useCaseDraftSession } from "./CaseDraftSession";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
@@ -138,11 +138,30 @@ export function ChangeRequestMutationWorkspace({
     expectedVersion: number;
   } | null>(null);
   const [pending, setPending] = useState(false);
+  const session = useCaseDraftSession();
+  const detailOwner = useRef<object>({});
+  const detailRequest = useRef<{ owner: object } | null>(null);
+  const loadOwner = useRef<object>({});
+  const detailIdentity = JSON.stringify([workspace.id, workspace.site_id, workspace.row_version, workspace.action_readiness]);
+  useLayoutEffect(() => {
+    const owner = {};
+    detailOwner.current = owner;
+    return () => { if (detailOwner.current === owner) detailOwner.current = {}; };
+  }, [detailIdentity, session]);
+  useLayoutEffect(() => {
+    if (detailRequest.current) {
+      detailRequest.current = null;
+      setPending(false);
+    }
+    const owner = {};
+    loadOwner.current = owner;
+    return () => { if (loadOwner.current === owner) loadOwner.current = {}; };
+  }, [detailIdentity, session, activeTab]);
   const commandLock = useCaseCommandLock(`change-request:${workspace.id}`);
   const mutationBlocked = pending || commandLock.pending || commandLock.requiresReview;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setHeaderEditing(false);
     setHeaderDraft(headerDraftFrom(workspace));
     setDetailEditor(null);
@@ -153,7 +172,7 @@ export function ChangeRequestMutationWorkspace({
     setIssuedBusinessEligibilityEdit(null);
     setPending(false);
     setErrorMessage(null);
-  }, [workspace.id, workspace.row_version]);
+  }, [workspace.id, workspace.row_version, session]);
 
   const editHeaderReadiness = action(workspace, "edit_change_request");
   const addDetailReadiness = action(workspace, "add_change_detail");
@@ -170,19 +189,23 @@ export function ChangeRequestMutationWorkspace({
     (item) => item.target_state && item.action_key.startsWith("transition_change_request:"),
   );
 
-  async function runMutation(mutation: () => Promise<void>) {
+  async function runMutation(mutation: () => Promise<void>): Promise<boolean> {
     const command = commandLock.acquire();
-    if (!command) return;
+    if (!command) return false;
+    const owner = detailOwner.current;
+    const isCurrent = () => detailOwner.current === owner && (!session || session.isLive());
     setPending(true);
     setErrorMessage(null);
     try {
       await mutation();
+      return isCurrent();
     } catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
-      setErrorMessage(error instanceof Error ? error.message : "Không thể cập nhật yêu cầu thay đổi.");
+      if (isCurrent()) setErrorMessage(error instanceof Error ? error.message : "Không thể cập nhật yêu cầu thay đổi.");
+      return false;
     } finally {
       commandLock.release(command);
-      setPending(false);
+      if (isCurrent()) setPending(false);
     }
   }
 
@@ -202,10 +225,7 @@ export function ChangeRequestMutationWorkspace({
       setHeaderEditing(false);
       return;
     }
-    await runMutation(async () => {
-      await handlers.onUpdateHeader(payload);
-      setHeaderEditing(false);
-    });
+    if (await runMutation(() => handlers.onUpdateHeader(payload))) setHeaderEditing(false);
   }
 
   function openCreateDetail() {
@@ -247,10 +267,7 @@ export function ChangeRequestMutationWorkspace({
         new_value: newValue,
         note,
       };
-      await runMutation(async () => {
-        await handlers.onCreateDetail(payload);
-        setDetailEditor(null);
-      });
+      if (await runMutation(() => handlers.onCreateDetail(payload))) setDetailEditor(null);
       return;
     }
 
@@ -273,10 +290,7 @@ export function ChangeRequestMutationWorkspace({
         setDetailEditor(null);
         return;
       }
-      await runMutation(async () => {
-        await handlers.onUpdateDetail(current.change_detail_id, payload);
-        setDetailEditor(null);
-      });
+      if (await runMutation(() => handlers.onUpdateDetail(current.change_detail_id, payload))) setDetailEditor(null);
     }
   }
 
@@ -327,25 +341,39 @@ export function ChangeRequestMutationWorkspace({
     ) {
       return;
     }
+    const owner = loadOwner.current;
+    if (detailRequest.current?.owner === owner) return;
+    const request = { owner };
+    detailRequest.current = request;
+    const isCurrent = () => loadOwner.current === owner && detailRequest.current === request && (!session || session.isLive());
     setPending(true);
     setErrorMessage(null);
     try {
       const detail = await handlers.onLoadIssuedCertificate(readiness.target_artifact_id);
+      if (!isCurrent()) return;
+      if (detail.certificate_id !== readiness.target_artifact_id) throw new Error("Chi tiết chứng nhận không khớp định danh đã chọn.");
       setIssuedGxpEdit({
         detail,
         expectedVersion: readiness.expected_version,
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Không thể tải GCN điều chỉnh.");
+      if (isCurrent()) setErrorMessage(error instanceof Error ? error.message : "Không thể tải GCN điều chỉnh.");
     } finally {
-      setPending(false);
+      if (isCurrent()) setPending(false);
+      if (detailRequest.current === request) detailRequest.current = null;
     }
   }
 
   async function runDialogMutation(mutation: () => Promise<void>) {
     const command = commandLock.acquire();
     if (!command) throw new CaseFieldMutationRecoveryError("Chưa xác minh kết quả thao tác trước; không gửi lại.");
-    try { await mutation(); }
+    const owner = detailOwner.current;
+    try {
+      await mutation();
+      if (detailOwner.current !== owner || (session && !session.isLive())) {
+        throw new CaseFieldMutationRecoveryError("Ngữ cảnh đã thay đổi; cần xác minh kết quả thao tác trước.");
+      }
+    }
     catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       throw error;
@@ -377,23 +405,31 @@ export function ChangeRequestMutationWorkspace({
     ) {
       return;
     }
+    const owner = loadOwner.current;
+    if (detailRequest.current?.owner === owner) return;
+    const request = { owner };
+    detailRequest.current = request;
+    const isCurrent = () => loadOwner.current === owner && detailRequest.current === request && (!session || session.isLive());
     setPending(true);
     setErrorMessage(null);
     try {
       const payload = await handlers.onLoadIssuedBusinessEligibility(
         readiness.target_artifact_id,
       );
+      if (!isCurrent()) return;
+      if (payload.detail.business_eligibility_certificate_id !== readiness.target_artifact_id) throw new Error("Chi tiết GCN đủ điều kiện không khớp định danh đã chọn.");
       setIssuedBusinessEligibilityEdit({
         detail: payload.detail,
         basisCertificates: payload.basisCertificates,
         expectedVersion: readiness.expected_version,
       });
     } catch (error) {
-      setErrorMessage(
+      if (isCurrent()) setErrorMessage(
         error instanceof Error ? error.message : "Không thể tải GCN đủ điều kiện điều chỉnh.",
       );
     } finally {
-      setPending(false);
+      if (isCurrent()) setPending(false);
+      if (detailRequest.current === request) detailRequest.current = null;
     }
   }
 
@@ -456,10 +492,7 @@ export function ChangeRequestMutationWorkspace({
       setApprovalEditing(false);
       return;
     }
-    await runMutation(async () => {
-      await handlers.onUpsertApproval(payload);
-      setApprovalEditing(false);
-    });
+    if (await runMutation(() => handlers.onUpsertApproval(payload))) setApprovalEditing(false);
   }
 
   if (activeTab === "Đề nghị") {

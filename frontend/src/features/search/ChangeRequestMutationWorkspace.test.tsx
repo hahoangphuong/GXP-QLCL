@@ -495,3 +495,122 @@ it.each(["gxp", "business"] as const)("blocks %s certificate dialog resubmit aft
   expect(within(dialog).getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
   expect(save).toHaveBeenCalledOnce();
 });
+
+
+it.each(["gxp", "business"] as const)("does not open old %s detail after Change Request A → B", async kind => {
+  const handlers = buildHandlers();
+  let resolve!: (value: never) => void;
+  const pending = new Promise<never>(yes => { resolve = yes; });
+  const load = kind === "gxp" ? handlers.onLoadIssuedCertificate : handlers.onLoadIssuedBusinessEligibility;
+  const saved = await vi.mocked(load)("unused");
+  vi.mocked(load).mockClear();
+  vi.mocked(load).mockReturnValue(pending);
+  const view = render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+  fireEvent.click(screen.getByRole("button", { name: kind === "gxp" ? "Cập nhật chứng nhận" : "Cập nhật GCN đủ điều kiện" }));
+  view.rerender(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace({id:"change-B", site_id:"site-B"})} />);
+  await act(async () => resolve(saved as never));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+
+it.each(["gxp", "business"] as const)("does not adopt a mismatched %s target identity", async kind => {
+  const handlers = buildHandlers();
+  if (kind === "gxp") vi.mocked(handlers.onLoadIssuedCertificate).mockResolvedValue({ certificate_id: "wrong", scopes: [] } as unknown as GxpCertificateDetail);
+  else vi.mocked(handlers.onLoadIssuedBusinessEligibility).mockResolvedValue({ detail: { business_eligibility_certificate_id: "wrong" } as BusinessEligibilityDetail, basisCertificates: [] });
+  render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+  fireEvent.click(screen.getByRole("button", { name: kind === "gxp" ? "Cập nhật chứng nhận" : "Cập nhật GCN đủ điều kiện" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("không khớp");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it("ignores old GxP detail through Change Request A → B → A", async () => {
+  const handlers = buildHandlers();
+  const saved = await vi.mocked(handlers.onLoadIssuedCertificate)("unused");
+  let resolve!: (value: GxpCertificateDetail) => void;
+  vi.mocked(handlers.onLoadIssuedCertificate).mockReturnValue(new Promise(yes => { resolve = yes; }));
+  const editor = (id: string) => <ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace({id})} />;
+  const view = render(editor("A"));
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  view.rerender(editor("B"));
+  view.rerender(editor("A"));
+  await act(async () => resolve(saved));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+
+it("does not issue duplicate certificate detail requests before pending renders", async () => {
+  const handlers = buildHandlers();
+  let resolve!: (value: GxpCertificateDetail) => void;
+  vi.mocked(handlers.onLoadIssuedCertificate).mockReturnValue(new Promise(yes => { resolve = yes; }));
+  render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+  const button = screen.getByRole("button", { name: "Cập nhật chứng nhận" });
+  act(() => { fireEvent.click(button); fireEvent.click(button); });
+  expect(handlers.onLoadIssuedCertificate).toHaveBeenCalledOnce();
+  await act(async () => resolve({certificate_id:"cert-successor-1",scopes:[]} as unknown as GxpCertificateDetail));
+});
+
+
+it.each(["success", "failure"] as const)("does not let old mutation %s alter the new Change Request editor", async outcome => {
+  const handlers = buildHandlers();
+  let resolve!: () => void; let reject!: (error: Error) => void;
+  vi.mocked(handlers.onUpdateHeader).mockReturnValue(new Promise<void>((yes,no) => { resolve=yes; reject=no; }));
+  const editor = (id: string) => <ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace({id})} />;
+  const view=render(editor("A"));
+  fireEvent.click(screen.getByRole("button",{name:"Sửa đề nghị"}));
+  fireEvent.change(screen.getByRole("textbox",{name:"Phạm vi thay đổi"}),{target:{value:"Old A"}});
+  fireEvent.click(screen.getByRole("button",{name:"Lưu đề nghị"}));
+  view.rerender(editor("B"));
+  fireEvent.click(screen.getByRole("button",{name:"Sửa đề nghị"}));
+  fireEvent.change(screen.getByRole("textbox",{name:"Phạm vi thay đổi"}),{target:{value:"New B"}});
+  await act(async () => outcome === "success" ? resolve() : reject(new Error("old private error")));
+  expect(screen.getByRole("textbox",{name:"Phạm vi thay đổi"})).toHaveValue("New B");
+  expect(screen.queryByText("old private error")).not.toBeInTheDocument();
+});
+
+
+it("clears a Change Request draft when access identity changes with the same resource UUID", () => {
+  const handlers = buildHandlers();
+  const editor = (identity: string) => <CaseDraftSession identity={identity}><ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} /></CaseDraftSession>;
+  const view = render(editor("access-A"));
+  fireEvent.click(screen.getByRole("button",{name:"Sửa đề nghị"}));
+  fireEvent.change(screen.getByRole("textbox",{name:"Phạm vi thay đổi"}),{target:{value:"private A draft"}});
+  view.rerender(editor("access-B"));
+  expect(screen.queryByDisplayValue("private A draft")).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox",{name:"Phạm vi thay đổi"})).not.toBeInTheDocument();
+});
+
+
+it("does not close a new certificate dialog when an old access mutation resolves", async () => {
+  const handlers=buildHandlers();
+  let resolve!: () => void;
+  vi.mocked(handlers.onEditIssuedCertificate).mockReturnValue(new Promise<void>(yes => {resolve=yes;}));
+  const editor = (identity: string) => <CaseDraftSession identity={identity}><ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} /></CaseDraftSession>;
+  const view=render(editor("access-A"));
+  fireEvent.click(screen.getByRole("button",{name:"Cập nhật chứng nhận"}));
+  const old=await screen.findByRole("dialog",{name:"Sửa giấy chứng nhận GxP"});
+  fireEvent.click(within(old).getByRole("button",{name:"Lưu thay đổi"}));
+  view.rerender(editor("access-B"));
+  fireEvent.click(screen.getByRole("button",{name:"Cập nhật chứng nhận"}));
+  const current=await screen.findByRole("dialog",{name:"Sửa giấy chứng nhận GxP"});
+  fireEvent.change(within(current).getByRole("textbox",{name:"Số GCN"}),{target:{value:"B draft"}});
+  await act(async () => resolve());
+  expect(screen.getByRole("dialog",{name:"Sửa giấy chứng nhận GxP"})).toBeInTheDocument();
+  expect(screen.getByRole("textbox",{name:"Số GCN"})).toHaveValue("B draft");
+});
+
+
+it("does not reopen a stale certificate dialog after a tab round trip", async () => {
+  const handlers=buildHandlers();
+  const saved = await vi.mocked(handlers.onLoadIssuedCertificate)("unused");
+  let resolve!: (value: GxpCertificateDetail) => void;
+  vi.mocked(handlers.onLoadIssuedCertificate).mockReturnValue(new Promise(yes => {resolve=yes;}));
+  const editor=(tab:string) => <ChangeRequestMutationWorkspace activeTab={tab} handlers={handlers} workspace={buildWorkspace()} />;
+  const view=render(editor("Đề nghị"));
+  fireEvent.click(screen.getByRole("button",{name:"Cập nhật chứng nhận"}));
+  view.rerender(editor("Chi tiết"));
+  view.rerender(editor("Đề nghị"));
+  expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeEnabled();
+  await act(async () => resolve(saved));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});

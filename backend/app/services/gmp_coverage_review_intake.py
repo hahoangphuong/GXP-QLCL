@@ -31,7 +31,12 @@ class UnresolvedReviewInput:
 
 
 def _uuid(value: str) -> str:
-    parsed = UUID(value)
+    if not isinstance(value, str):
+        raise ValueError("Canonical UUID identity must be a string.")
+    try:
+        parsed = UUID(value)
+    except (ValueError, AttributeError) as exc:
+        raise ValueError("Invalid UUID identity.") from exc
     if parsed.version != 4:
         raise ValueError('Version 4 UUID required for canonical identity.')
     return str(parsed)

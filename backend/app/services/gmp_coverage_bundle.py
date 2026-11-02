@@ -34,7 +34,7 @@ class CoverageEvaluation:
 
 
 def _valid_review_datetime(value: str | None) -> bool:
-    if not value:
+    if not isinstance(value, str) or not value.strip():
         return False
     try:
         parsed = datetime.fromisoformat(value)

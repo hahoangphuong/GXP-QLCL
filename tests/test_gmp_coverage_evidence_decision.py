@@ -90,3 +90,44 @@ def test_case_link_requires_exact_identity_and_explicit_approval(change):
         replace(link, **change),
         certificate_version_id="version-a", case_id="case-1", site_id="site-b", gxp_type="GMP",
     )
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("source_snapshot_sha256", None),
+    ("source_snapshot_sha256", 123),
+    ("source_document_sha256", None),
+    ("source_document_sha256", []),
+    ("source_page_reference", None),
+    ("source_page_reference", 7),
+    ("rationale", None),
+    ("rationale", {}),
+    ("reviewer_id", 12),
+    ("reviewed_at_iso", []),
+])
+def test_malformed_runtime_coverage_types_reject_without_exceptions(field, bad):
+    """Input types are untrusted at runtime despite dataclass type hints."""
+    coverage, link = approved()
+    malformed = replace(coverage, **{field: bad})
+    assert has_verified_site_coverage(
+        malformed, certificate_version_id="version-a", site_id="site-b",
+    ) is False
+    assert has_verified_case_link(
+        replace(link, coverage=malformed),
+        certificate_version_id="version-a", case_id="case-1",
+        site_id="site-b", gxp_type="GMP",
+    ) is False
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("reviewer_id", None),
+    ("reviewer_id", 7),
+    ("reviewed_at_iso", None),
+    ("reviewed_at_iso", []),
+])
+def test_malformed_runtime_case_review_types_reject_without_exceptions(field, bad):
+    _, link = approved()
+    assert has_verified_case_link(
+        replace(link, **{field: bad}),
+        certificate_version_id="version-a", case_id="case-1",
+        site_id="site-b", gxp_type="GMP",
+    ) is False

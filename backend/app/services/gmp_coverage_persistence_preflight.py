@@ -30,7 +30,7 @@ def prepare_coverage_persistence(bundle: ReviewedCoverageBundle) -> PersistenceP
     independently rejected identities. A partial review cannot be committed
     as though the full bundle had been accepted.
     """
-    if not bundle.certificate_version_id.strip():
+    if not isinstance(bundle.certificate_version_id, str) or not bundle.certificate_version_id.strip():
         raise ValueError("Certificate version identity is required.")
     if not bundle.coverage or not bundle.links:
         raise ValueError("Evidence coverage and Case link must both be present.")

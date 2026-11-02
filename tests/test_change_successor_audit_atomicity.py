@@ -15,7 +15,7 @@ from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.models.phase1 import (
     AuditEvent, BusinessEligibilityCertificate, BusinessEligibilityVersion,
-    Certificate, CertificateVersion, ChangeRequestAffectedArtifact,
+    Certificate, CertificateVersion, ChangeRequest, ChangeRequestAffectedArtifact,
     ChangeRequestIssuedArtifact, Company, ProductionLine, Site,
 )
 from backend.app.services.workflow import CaseWorkflowService
@@ -119,5 +119,6 @@ def test_successor_audit_write_failure_rolls_back_all_candidate_artifacts(
             "audit": verify.scalar(select(func.count(AuditEvent.id))),
         }
         assert after == before
+        assert verify.get(ChangeRequest, change_id).row_version == version
         assert verify.get(ChangeRequestAffectedArtifact, source_link_id) is not None
     engine.dispose()

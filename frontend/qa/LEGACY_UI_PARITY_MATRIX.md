@@ -2185,3 +2185,45 @@ served bundle and OpenAPI differ from candidate; old live390px overflow is not a
 candidate regression. HOLD_DEPLOY. No remote write, OAuth configuration, database,
 NAS or legal-output operation. Native reader, Word/binary output, original VBA
 runtime and automatic inline focus-return remain EVIDENCE_MISSING/NOT_EXECUTED.
+
+## v1.10 — Release compatibility and A/B acceptance gate (2026-11-01)
+
+Audit candidate main1ed3c40 follows PR259 schema0027, PR260 PostgreSQL test and
+PR261's unrouted UNRESOLVED intake service; no new frontend action is supported.
+Frontend tree remains4a6f6677796fa3a38256818d9fb226aca62ff55e, identical to PR253;
+no new presentation/interaction defect or parity implementation is asserted.
+See [release operator package](RELEASE_COMPATIBILITY_ACCEPTANCE.md) for the
+eleven-module compatibility matrix, migration/rollback review and gated protocol.
+
+Fresh disposable API211checks and production-browser1366/1920/390 verify
+authorization, owner isolation, pending/expiry,409/GET503 recovery and no replay.
+Candidate clientWidth=scrollWidth at all three widths; focus-only navigation0GET.
+Actual Google A/B remains16NOT_EXECUTED/AUTHENTICATED_UAT_BLOCKED by explicit owner
+instruction. Client/origin, accounts/roles and write scope are unapproved.
+
+Fresh HTTPS reports97182e58/schema0023 versus required0027,61paths versus67,
+different frontend asset and old mobile390/469 width. No fallback or CSS patch
+was added for an older deployed release. Source compatibility is scoped to
+current code/CI/disposable evidence; live payloads, executable/physical DB
+attestation, legal rendering, native speech, Word/NAS and production UAT remain
+NOT_VERIFIED/EVIDENCE_MISSING. No deploy, migration, real write or OAuth change.
+
+## v1.11 — Managed release consolidation and cutover gates (2026-11-02)
+
+Four owner documents from local423a46c are reconciled onto audited main7c226ad,
+then recreated from c12626d after reviewed non-routed PR264 drift (local6PASS).
+Frontend application behavior is unchanged; adding QA docs changes its full Git
+tree, so exact source pins must name the final tested/merged consolidation, not
+reuse the old frontend tree. Completion manifest records those identities.
+See [Gate0–6 package](RELEASE_COMPATIBILITY_ACCEPTANCE.md).
+
+Fresh source/runtime audit still finds0023deployed versus0027required, six missing
+routes and different JS. Canonical actor/UTC/DB permission changes in PR262/263
+remain backend-owned. No intake/VERIFIED HTTP API, default evidence-intake grant,
+frontend coverage screen/action or permissive link fallback is introduced.
+
+No new UI parity completion is asserted. Current local contracts90PASS;
+browser/API results are recorded with this session's exact source/evidence scope.
+Historical totals are retained under their original dates. Google A/B16scenarios
+remain NOT_EXECUTED/AUTHENTICATED_UAT_BLOCKED. Gate6 cutover NO_GO; source/runtime
+attestation, backup/restore evidence and operator approvals remain BLOCKED.

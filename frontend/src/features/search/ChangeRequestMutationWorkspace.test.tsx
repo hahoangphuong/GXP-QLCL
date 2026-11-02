@@ -1,5 +1,7 @@
+import { CaseDraftSession } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -431,4 +433,51 @@ describe("ChangeRequestMutationWorkspace backend-owned writes", () => {
     expect(screen.queryByRole("textbox", { name: "Phạm vi thay đổi" })).not.toBeInTheDocument();
     expect(screen.getByText("Authoritative")).toBeInTheDocument();
   });
+});
+
+
+it("blocks Change Request resubmit while the committed write has no verified readback", async () => {
+  const handlers = buildHandlers();
+  vi.mocked(handlers.onUpdateHeader).mockRejectedValue(new CaseFieldMutationRecoveryError("readback unavailable"));
+  render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Phạm vi thay đổi" }), { target: { value: "New draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Lưu đề nghị" }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: "Lưu đề nghị" })).toBeDisabled();
+  expect(screen.getByRole("textbox", { name: "Phạm vi thay đổi" })).toHaveValue("New draft");
+  expect(handlers.onUpdateHeader).toHaveBeenCalledOnce();
+});
+
+
+it("keeps the uncertain Change Request locked through history A → B → A", async () => {
+  const handlers = buildHandlers();
+  vi.mocked(handlers.onUpdateHeader).mockRejectedValue(new CaseFieldMutationRecoveryError("unknown outcome"));
+  const editor = (id: string) => <CaseDraftSession identity={id}><ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace({id})} /></CaseDraftSession>;
+  const view = render(editor("A"));
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Phạm vi thay đổi" }), { target: { value: "New draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Lưu đề nghị" }));
+  await screen.findByRole("alert");
+  view.rerender(editor("B"));
+  expect(screen.getByRole("button", { name: "Sửa đề nghị" })).toBeEnabled();
+  view.rerender(editor("A"));
+  expect(screen.getByRole("alert")).toHaveTextContent("Chưa xác minh");
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+  expect(screen.getByRole("button", { name: "Lưu đề nghị" })).toBeDisabled();
+  expect(handlers.onUpdateHeader).toHaveBeenCalledOnce();
+});
+
+
+it("synchronously serializes duplicate Change Request saves", async () => {
+  let finish!: () => void;
+  const handlers = buildHandlers();
+  vi.mocked(handlers.onUpdateHeader).mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+  render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Phạm vi thay đổi" }), { target: { value: "Changed" } });
+  const button = screen.getByRole("button", { name: "Lưu đề nghị" });
+  act(() => { button.click(); button.click(); });
+  expect(handlers.onUpdateHeader).toHaveBeenCalledOnce();
+  await act(async () => finish());
 });

@@ -84,9 +84,9 @@ def append_unresolved_review_event(
             RbacPermission.permission_code == "gmp.coverage_evidence.intake",
         )
         # Hold the grant rows while inserting evidence. A concurrent role
-        # assignment or role-permission revocation cannot commit between this
-        # authorization check and the transaction-owned evidence INSERT.
-        .with_for_update(of=(AppUserRole, RbacRolePermission))
+        # assignment, role-permission revocation, or permission-code edit cannot
+        # commit between authorization and the evidence INSERT.
+        .with_for_update(of=(AppUserRole, RbacRolePermission, RbacPermission))
         .limit(1)
     ).scalar_one_or_none()
     if permitted is None:

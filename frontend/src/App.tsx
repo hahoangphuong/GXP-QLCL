@@ -5,7 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { PrimaryNav } from "./components/PrimaryNav";
 import { getAppStatus, getCurrentIdentity } from "./lib/api";
 import { decodeOidcCredential, isOidcSessionValid, loadGoogleIdentityScript } from "./lib/oidc";
-import { clearOidcSession, loadAuthState, loadOidcSession, saveOidcSession } from "./lib/storage";
+import { clearOidcSession, loadAuthState } from "./lib/storage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AdminSystemStatusPage } from "./pages/AdminSystemStatusPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -136,10 +136,7 @@ function AppHeader({
 export function App() {
   const location = useLocation();
   const [auth] = useState<StubAuthState>(() => loadAuthState());
-  const [oidcSession, setOidcSession] = useState<OidcSession | null>(() => {
-    const stored = loadOidcSession();
-    return isOidcSessionValid(stored) ? stored : null;
-  });
+  const [oidcSession, setOidcSession] = useState<OidcSession | null>(null);
   // This opaque generation binds client state to the credential that loaded it
   // without exposing token or principal data in URLs, DOM attributes or logs.
   const [accessGeneration, setAccessGeneration] = useState(0);
@@ -187,7 +184,6 @@ export function App() {
       if (document.visibilityState === "visible") checkExpiry();
     }
     checkExpiry();
-    if (isOidcSessionValid(oidcSession)) saveOidcSession(oidcSession);
     window.addEventListener("focus", checkExpiry);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {

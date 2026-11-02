@@ -2318,3 +2318,7 @@ An application or assessment command with an uncertain outcome keeps its in-memo
 ## Inspection and Change Request uncertain outcomes — 2026-11-02
 
 Inspection plan/outcome and Change Request workspace commands use in-memory, access/resource-scoped command locks for pending and unverified results. Canonical readback is bound to the selected resource and stale owner; wrong Change Request IDs are rejected. Draft inputs remain editable when an earlier generation is pending. This is not durable recovery across reload or reauthentication and does not establish backend idempotency. Inspection period/team/finalization and certificate editor commands need separate verification.
+
+## Inspection and Change Request recovery completion — 2026-11-03
+
+In-session period, team, final-evaluation and Case-transition commands retain pending/uncertain ownership by access and Case; Change Request issued-certificate dialogs use the Change Request command owner; creation is serialized by access and Site and requires matching request/Site readback. A failed canonical readback does not authorize another write. OIDC credentials are held in page memory rather than browser storage; a reload requires sign-in again. These controls do not prove an uncorrelated mutation's outcome across reload, restart or reauthentication. Authenticated Google A/B and native screen-reader UAT remain unverified.

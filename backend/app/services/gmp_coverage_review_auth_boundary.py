@@ -36,7 +36,7 @@ def append_unresolved_from_authenticated_context(
         select(AppUser).where(
             AppUser.external_subject == authenticated.subject,
             AppUser.is_active.is_(True),
-        )
+        ).with_for_update(of=AppUser)
     ).all()
     if len(matches) != 1:
         raise PermissionError("Exactly one active provisioned subject required.")

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
@@ -125,4 +125,50 @@ it("retains structured periods, team and final evaluation across tab remount wit
   await waitFor(() => expect(onPeriod).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 6 })));
   fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
   await waitFor(() => expect(onFinalize).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 6, final_evaluation: "Retained final" })));
+});
+
+it("keeps keyboard focus on the same team slot when its canonical identity changes", async () => {
+  const onSave = vi.fn();
+  const loadOptions = vi.fn().mockResolvedValue([
+    { identity_kind: "inspector_profile", inspector_profile_id: "profile-1", person_id: null, display_name: "Thanh tra A", is_active: true },
+    { identity_kind: "person", inspector_profile_id: null, person_id: "person-2", display_name: "Thành viên B", is_active: null },
+    { identity_kind: "person", inspector_profile_id: null, person_id: "person-3", display_name: "Thành viên C", is_active: null },
+  ]);
+  render(<CaseInspectionWorkspace caseWorkspace={workspace()} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={onSave} onLoadInspectionTeamIdentityOptions={loadOptions} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" }));
+  const selector = await screen.findByLabelText("Định danh thành viên 1");
+  selector.focus();
+  fireEvent.change(selector, { target: { value: "person:person-3" } });
+  expect(screen.getByLabelText("Định danh thành viên 1")).toBe(selector);
+  expect(selector).toHaveFocus();
+  expect(selector).toHaveValue("person:person-3");
+  expect(screen.getByLabelText("Định danh thành viên 2")).toHaveValue("person:person-2");
+  expect(onSave).not.toHaveBeenCalled();
+  expect(loadOptions).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Lưu đoàn kiểm tra" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 7, members: [
+    expect.objectContaining({ person_id: "person-3", inspector_profile_id: null, role_code: "LEADER", sort_order: 1 }),
+    expect.objectContaining({ person_id: "person-2", role_code: "SECRETARY", sort_order: 2 }),
+  ] })));
+});
+
+it.each([false, true])("does not adopt late team identity lookup after access A → B → A (reject=%s)", async (rejectLookup) => {
+  let resolve!: (value: []) => void;
+  let reject!: (value: Error) => void;
+  const pending = new Promise<[]>((yes, no) => { resolve = yes; reject = no; });
+  const loadOptions = vi.fn().mockReturnValue(pending);
+  const editor = (identity: string) => <CaseDraftSession identity={identity}><CaseInspectionWorkspace caseWorkspace={workspace()} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={loadOptions} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} /></CaseDraftSession>;
+  const view = render(editor("access-A"));
+  fireEvent.click(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" }));
+  expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeDisabled();
+  view.rerender(editor("access-B"));
+  view.rerender(editor("access-A"));
+  await act(async () => {
+    if (rejectLookup) reject(Object.assign(new Error("Old account denied"), { status: 403 }));
+    else resolve([]);
+  });
+  expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeEnabled();
+  expect(screen.queryByLabelText("Định danh thành viên 1")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(loadOptions).toHaveBeenCalledOnce();
 });

@@ -73,3 +73,28 @@ def test_coverage_is_not_automatically_case_approval():
     result = evaluate_reviewed_bundle(replace(base, links=()))
     assert result.verified_site_ids == frozenset({"site-b"})
     assert result.verified_case_ids == frozenset()
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("reviewed_at_iso", []),
+    ("reviewed_at_iso", 12),
+    ("reviewed_at_iso", {}),
+])
+def test_malformed_coverage_review_timestamp_never_verifies_bundle(field, bad):
+    base = fixture()
+    changed = replace(base.coverage[0], **{field: bad})
+    result = evaluate_reviewed_bundle(replace(base, coverage=(changed,)))
+    assert result.verified_site_ids == frozenset()
+    assert result.verified_case_ids == frozenset()
+    assert result.rejected_site_ids == frozenset({"site-b"})
+    assert result.rejected_case_ids == frozenset({"case-1"})
+
+
+@pytest.mark.parametrize("bad", [[], {}, 123])
+def test_malformed_case_review_timestamp_never_verifies_bundle(bad):
+    base = fixture()
+    changed = replace(base.links[0], reviewed_at_iso=bad)
+    result = evaluate_reviewed_bundle(replace(base, links=(changed,)))
+    assert result.verified_site_ids == frozenset({"site-b"})
+    assert result.verified_case_ids == frozenset()
+    assert result.rejected_case_ids == frozenset({"case-1"})

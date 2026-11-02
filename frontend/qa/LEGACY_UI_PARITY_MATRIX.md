@@ -2298,6 +2298,8 @@ identity, including while switching Case A → B → A, while preserving the
 existing cycle-generation owner and reviewed version. Drafts remain session-owned.
 When an old cycle settles,
 it can release only its own token; it cannot release a newer cycle's command.
+An ambiguous write or failed authoritative readback keeps the affected command
+locked across Case switches until reload and verification; draft text remains editable.
 
 The fixture suite verifies all four commands, 409 draft/token retention, tab
 remount, cycle changes and old-finally/new-command ordering. Synthetic browser

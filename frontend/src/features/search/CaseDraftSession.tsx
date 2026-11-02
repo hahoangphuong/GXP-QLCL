@@ -29,16 +29,20 @@ function createSession() {
 }
 
 function createCommandRegistry() {
-  const commands = new Map<string, object>();
+  const commands = new Map<string, object | "review">();
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach(listener => listener());
   return {
-    pending: (key: string) => commands.has(key),
+    state: (key: string) => commands.get(key) === "review" ? "review" : commands.has(key) ? "pending" : "idle",
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     acquire: (key: string) => {
       if (commands.has(key)) return null;
       const token = {};
       commands.set(key, token); notify(); return token;
+    },
+    requireReview: (key: string, token: object) => {
+      if (commands.get(key) !== token) return;
+      commands.set(key, "review"); notify();
     },
     release: (key: string, token: object) => {
       if (commands.get(key) !== token) return;
@@ -87,7 +91,7 @@ export function useCaseDraftRef<T>(key: string, initial: T): MutableRefObject<T>
   return useCaseDraftState<MutableRefObject<T>>(key, () => ({ current: initial }))[0];
 }
 
-// Only in-flight command identities survive Case switches; drafts remain session-owned.
+// In-flight and uncertain command identities survive Case switches; drafts remain session-owned.
 export function useCaseCommandLock(scope: string) {
   const context = useContext(CommandRegistryContext);
   const fallback = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
@@ -95,9 +99,10 @@ export function useCaseCommandLock(scope: string) {
   const registry = context?.registry ?? fallback.current;
   const key = JSON.stringify([context?.identity ?? null, scope]);
   const subscribe = useCallback((notify: () => void) => registry.subscribe(notify), [registry]);
-  const snapshot = useCallback(() => registry.pending(key), [registry, key]);
-  const pending = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const snapshot = useCallback(() => registry.state(key), [registry, key]);
+  const state = useSyncExternalStore(subscribe, snapshot, snapshot);
   const acquire = useCallback(() => registry.acquire(key), [registry, key]);
   const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
-  return { pending, acquire, release };
+  const requireReview = useCallback((token: object) => registry.requireReview(key, token), [registry, key]);
+  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview };
 }

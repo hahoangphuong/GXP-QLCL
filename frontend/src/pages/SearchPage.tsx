@@ -1902,8 +1902,11 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    const response = await createCapaCycle(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, response.capa_cycle_id, operationOwner);
+    let cycleId: string | undefined;
+    await runCaseFieldMutation(
+      async () => { cycleId = (await createCapaCycle(caseId, payload, auth, useStubAuth, bearerToken)).capa_cycle_id; },
+      () => refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner),
+    );
   }
 
   async function handleUpdateCapaCycle(cycleId: string, payload: CapaCycleUpdateRequest) {
@@ -1912,8 +1915,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await updateCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner);
+    await runCaseFieldMutation(
+      () => updateCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner),
+    );
   }
 
   async function handleSubmitCapaCycle(cycleId: string, payload: CapaCycleSubmitRequest) {
@@ -1922,8 +1927,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await submitCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner);
+    await runCaseFieldMutation(
+      () => submitCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner),
+    );
   }
 
   async function handleAssessCapaCycle(cycleId: string, payload: CapaCycleAssessRequest) {
@@ -1932,8 +1939,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await assessCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner);
+    await runCaseFieldMutation(
+      () => assessCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, cycleId, operationOwner),
+    );
   }
 
   async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued: boolean, selectionGeneration: number) {

@@ -1,3 +1,4 @@
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import { useCaseDraftState, useCaseDraftRef, useCaseDraftSession, useCaseCommandLock } from "./CaseDraftSession";
 import { useEffect, useLayoutEffect, useMemo, type FormEvent } from "react";
 
@@ -226,7 +227,7 @@ export function CaseRemediationWorkspace({
   const assessAvailable = isActionAvailable(caseWorkspace, "assess_capa_cycle", selectedCycle?.capa_cycle_id);
   const hasOpenEditor = isCreating || editingField !== null;
   const isPending = pendingAction !== null;
-  const isCommandBlocked = isPending || commandLock.pending;
+  const isCommandBlocked = isPending || commandLock.pending || commandLock.requiresReview;
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -250,7 +251,8 @@ export function CaseRemediationWorkspace({
         setDraftChanged(false);
       }
     } catch (error) {
-      if (isCurrentCycleOperation(operationOwner)) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      if (!(error instanceof CaseFieldMutationRecoveryError) && isCurrentCycleOperation(operationOwner)) {
         const nextError = error instanceof Error ? error : new Error("Không tạo được vòng khắc phục.");
         setErrorMessage(getCreateErrorMessage(nextError));
       }
@@ -281,7 +283,8 @@ export function CaseRemediationWorkspace({
         setDraftChanged(false);
       }
     } catch (error) {
-      if (isCurrentCycleOperation(operationOwner)) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      if (!(error instanceof CaseFieldMutationRecoveryError) && isCurrentCycleOperation(operationOwner)) {
         const nextError = error instanceof Error ? error : new Error("Không lưu được vòng khắc phục.");
         setErrorMessage(getCycleErrorMessage(nextError));
       }
@@ -310,7 +313,8 @@ export function CaseRemediationWorkspace({
       });
       if (isCurrentCycleOperation(operationOwner)) setDraftChanged(false);
     } catch (error) {
-      if (isCurrentCycleOperation(operationOwner)) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      if (!(error instanceof CaseFieldMutationRecoveryError) && isCurrentCycleOperation(operationOwner)) {
         const nextError = error instanceof Error ? error : new Error("Không ghi nhận được tiếp nhận khắc phục.");
         setErrorMessage(getSubmitErrorMessage(nextError));
       }
@@ -340,7 +344,8 @@ export function CaseRemediationWorkspace({
       });
       if (isCurrentCycleOperation(operationOwner)) setDraftChanged(false);
     } catch (error) {
-      if (isCurrentCycleOperation(operationOwner)) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      if (!(error instanceof CaseFieldMutationRecoveryError) && isCurrentCycleOperation(operationOwner)) {
         const nextError = error instanceof Error ? error : new Error("Không đánh giá được vòng khắc phục.");
         setErrorMessage(getAssessErrorMessage(nextError));
       }
@@ -437,6 +442,8 @@ export function CaseRemediationWorkspace({
           />
         )}
       </section>
+
+      {commandLock.requiresReview ? <p className="form-error" role="alert">Chưa thể xác minh kết quả thao tác. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra.</p> : null}
 
       {isCreating ? (
         <section className="workspace-section">

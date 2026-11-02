@@ -1,3 +1,4 @@
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
@@ -595,4 +596,21 @@ it("does not send a second CAPA command after Case A → B → A while the first
   expect(handlers.onSubmitCycle).toHaveBeenCalledOnce();
   await act(async () => request.resolve());
   expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeEnabled();
+});
+
+
+it("keeps a readback recovery lock across Case A → B → A without losing a new draft", async () => {
+  const handlers = { onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(), onSubmitCycle: vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("readback failed")), onAssessCycle: vi.fn() };
+  const editor = (id: string) => <CaseDraftSession identity={id}><CaseRemediationWorkspace caseWorkspace={{ ...workspace([cycle()], [action("submit_capa_cycle:capa-1")]), case_summary: { ...workspace().case_summary, id } }} selectedCycleId="capa-1" {...handlers} /></CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+  await waitFor(() => expect(screen.getByText(/Chưa thể xác minh kết quả thao tác/)).toBeInTheDocument());
+  view.rerender(editor("case-B"));
+  view.rerender(editor("case-A"));
+  fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-08" } });
+  expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeDisabled();
+  expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-08");
+  expect(screen.getByText(/Chưa thể xác minh kết quả thao tác/)).toBeInTheDocument();
+  expect(handlers.onSubmitCycle).toHaveBeenCalledOnce();
 });

@@ -53,3 +53,9 @@ def test_different_reviewed_content_changes_digest():
     after_site = replace(before.coverage[0], rationale="Different reviewed provenance")
     after = replace(before, coverage=(after_site,), links=(replace(before.links[0], coverage=after_site),))
     assert prepare_coverage_persistence(before).canonical_payload_sha256 != prepare_coverage_persistence(after).canonical_payload_sha256
+
+
+@pytest.mark.parametrize("bad", [None, 13, [], {}, b"version-a", " ", ""])
+def test_malformed_version_identity_fails_closed_before_preflight_digest(bad):
+    with pytest.raises(ValueError, match="Certificate version identity"):
+        prepare_coverage_persistence(replace(evidence(), certificate_version_id=bad))

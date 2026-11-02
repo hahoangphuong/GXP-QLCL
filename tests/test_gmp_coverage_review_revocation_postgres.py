@@ -9,7 +9,7 @@ import os
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, delete, text
+from sqlalchemy import create_engine, delete, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -88,6 +88,18 @@ def test_revoking_grant_waits_for_outstanding_evidence_intake_transaction():
                             )
                     finally:
                         revoke_tx.rollback()
+                    # Active-user deactivation must also wait on the locked
+                    # AppUser row; it cannot race the same evidence insert.
+                    deactivate_tx = revoke_conn.begin()
+                    try:
+                        revoke_conn.execute(text("SET LOCAL lock_timeout = '250ms'"))
+                        with pytest.raises(DBAPIError, match="lock timeout"):
+                            revoke_conn.execute(
+                                update(AppUser).where(AppUser.id == ids["user"])
+                                .values(is_active=False)
+                            )
+                    finally:
+                        deactivate_tx.rollback()
             finally:
                 intake_tx.rollback()
     finally:

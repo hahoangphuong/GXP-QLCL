@@ -63,6 +63,18 @@ def append_unresolved_review_event(
     # Require a clean unit of work before authorization queries and INSERT.
     if session.new or session.dirty or session.deleted:
         raise ValueError("GMP evidence intake requires a clean Session.")
+    if not isinstance(evidence, UnresolvedReviewInput):
+        raise ValueError("UNRESOLVED evidence input required.")
+    version_id = _uuid(evidence.certificate_version_id)
+    site_id = _uuid(evidence.site_id)
+    case_id = _uuid(evidence.case_id) if evidence.case_id is not None else None
+    snapshot_digest = _digest(evidence.source_snapshot_sha256)
+    document_digest = _digest(evidence.source_document_sha256)
+    if (not isinstance(evidence.source_page_reference, str)
+            or not isinstance(evidence.rationale, str)
+            or not evidence.source_page_reference.strip()
+            or not evidence.rationale.strip()):
+        raise ValueError("Source page and rationale required.")
     actor_id = _uuid(authenticated_user_id)
     if actor_id != authenticated_user_id:
         raise ValueError('Authenticated identity must be canonical UUID.')
@@ -96,12 +108,12 @@ def append_unresolved_review_event(
     # validation and evidence INSERT. No coverage adjudication is inferred.
     version = session.scalars(
         select(CertificateVersion).where(
-            CertificateVersion.id == _uuid(evidence.certificate_version_id)
+            CertificateVersion.id == version_id
         ).with_for_update(of=CertificateVersion).execution_options(populate_existing=True)
     ).one_or_none()
     # Keep the evidenced Site identity stable until the intake transaction ends.
     site = session.scalars(
-        select(Site).where(Site.id == _uuid(evidence.site_id))
+        select(Site).where(Site.id == site_id)
         .with_for_update(of=Site).execution_options(populate_existing=True)
     ).one_or_none()
     if version is None or site is None:
@@ -112,26 +124,20 @@ def append_unresolved_review_event(
     ).one_or_none()
     if certificate is None or certificate.certificate_type != "GMP":
         raise ValueError("GMP CertificateVersion required.")
-    case_id = _uuid(evidence.case_id) if evidence.case_id is not None else None
     if case_id is not None:
         linked_case = session.scalars(
             select(Case).where(Case.id == case_id).with_for_update(of=Case).execution_options(populate_existing=True)
         ).one_or_none()
         if linked_case is None or linked_case.site_id != site.id or linked_case.gxp_type != "GMP":
             raise ValueError("Case must belong to the evidenced GMP Site.")
-    if (not isinstance(evidence.source_page_reference, str)
-            or not isinstance(evidence.rationale, str)
-            or not evidence.source_page_reference.strip()
-            or not evidence.rationale.strip()):
-        raise ValueError("Source page and rationale required.")
     row = GmpCoverageReviewEvent(
         certificate_version_id=version.id,
         site_id=site.id,
         case_id=case_id,
         decision_kind="CASE_LINK" if case_id is not None else "SITE_COVERAGE",
         decision_status="UNRESOLVED",
-        source_snapshot_sha256=_digest(evidence.source_snapshot_sha256),
-        source_document_sha256=_digest(evidence.source_document_sha256),
+        source_snapshot_sha256=snapshot_digest,
+        source_document_sha256=document_digest,
         source_page_reference=evidence.source_page_reference,
         rationale=evidence.rationale,
         reviewer_user_id=actor_id,

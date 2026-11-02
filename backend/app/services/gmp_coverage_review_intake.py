@@ -86,16 +86,15 @@ def append_unresolved_review_event(
     ).scalar_one_or_none()
     if permitted is None:
         raise PermissionError("GMP evidence intake permission required.")
-    version = session.get(CertificateVersion, _uuid(evidence.certificate_version_id))
-    site = session.get(Site, _uuid(evidence.site_id))
+    # Stabilize source identity for the caller-owned transaction: a concurrent\n    # Case rebind or CertificateVersion reassignment must not commit between\n    # validation and evidence INSERT. No coverage adjudication is inferred.\n    version = session.scalars(\n        select(CertificateVersion).where(\n            CertificateVersion.id == _uuid(evidence.certificate_version_id)\n        ).with_for_update(of=CertificateVersion)\n    ).one_or_none()\n    site = session.get(Site, _uuid(evidence.site_id))
     if version is None or site is None:
         raise ValueError("Certificate version and Site must exist.")
-    certificate = session.get(Certificate, version.certificate_id)
+    certificate = session.scalars(\n        select(Certificate).where(Certificate.id == version.certificate_id)\n        .with_for_update(of=Certificate)\n    ).one_or_none()
     if certificate is None or certificate.certificate_type != "GMP":
         raise ValueError("GMP CertificateVersion required.")
     case_id = _uuid(evidence.case_id) if evidence.case_id is not None else None
     if case_id is not None:
-        linked_case = session.get(Case, case_id)
+        linked_case = session.scalars(\n            select(Case).where(Case.id == case_id).with_for_update(of=Case)\n        ).one_or_none()
         if linked_case is None or linked_case.site_id != site.id or linked_case.gxp_type != "GMP":
             raise ValueError("Case must belong to the evidenced GMP Site.")
     if (not isinstance(evidence.source_page_reference, str)

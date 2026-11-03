@@ -126,7 +126,7 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
                     reason="reject stale cached version", user=actor,
                 )
         assert denied.value.status_code == 409
-        assert "incomplete" in str(denied.value.detail).lower()
+        assert "requires certificate number" in str(denied.value.detail).lower()
         contender.rollback()
 
         with factory() as verify:

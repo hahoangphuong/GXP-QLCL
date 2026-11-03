@@ -2408,7 +2408,10 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, str | None]:
-        row = self._get_case(session, case_id)
+        # CAPA creation/assessment uses the Case owner lock. Acquire it before
+        # reading the latest CAPA gate or mutating the transition state; an
+        # uncommitted new cycle must not be treated as absent.
+        row = self._lock_case(session, case_id)
         self._assert_expected_version(row, expected_version, label="case")
         try:
             parsed_target_state = CaseState(target_state)

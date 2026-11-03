@@ -4131,6 +4131,9 @@ class CaseWorkflowService:
         session.refresh(certificate)
         self._assert_expected_version(certificate, expected_version, label="certificate")
         candidate_version = self._load_latest_certificate_version(session, certificate.id)
+        # The Site owner lock refreshes the aggregate root, not an already-cached
+        # Version identity. Re-read committed version fields before promotion.
+        session.refresh(candidate_version)
         blocker = self._get_certificate_promotion_blocker(
             session,
             certificate=certificate,
@@ -4452,6 +4455,9 @@ class CaseWorkflowService:
         session.refresh(row)
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
         candidate_version = self._load_latest_business_eligibility_version(session, row.id)
+        # A cached version can predate a committed edit even when the root
+        # token was refreshed under the Site lock.
+        session.refresh(candidate_version)
         blocker = self._get_business_eligibility_promotion_blocker(
             session,
             certificate=row,

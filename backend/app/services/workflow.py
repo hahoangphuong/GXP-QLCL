@@ -607,6 +607,17 @@ class CaseWorkflowService:
             raise HTTPException(status_code=404, detail="Case not found.")
         return row
 
+    def _lock_case(self, session: Session, case_id: str) -> Case:
+        """Refresh and lock the owning Case before terminal-state mutations."""
+        row = session.scalars(
+            select(Case).where(Case.id == case_id)
+            .with_for_update(of=Case)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        return row
+
     @staticmethod
     def _validate_certificate_linked_case(session: Session, certificate: Certificate) -> Case | None:
         if certificate.case_id is None:
@@ -3613,9 +3624,14 @@ class CaseWorkflowService:
         }
 
     def finalize_inspection_outcome(self, session: Session, *, case_id: str, expected_version: int, final_evaluation: str, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
-        row = self._get_case(session, case_id)
+        # Case transitions write the owning row. Serialize terminal-state
+        # eligibility before finalizing an outcome and creating an audit fact.
+        row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection final evaluation")
-        stage = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)).first()
+        stage = session.scalars(
+            select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)
+            .execution_options(populate_existing=True)
+        ).first()
         if stage is None:
             raise HTTPException(status_code=422, detail="Inspection outcome must exist before final evaluation.")
         self._assert_expected_version(stage, expected_version, label="inspection_outcome")
@@ -3671,7 +3687,18 @@ class CaseWorkflowService:
         row = session.get(InspectionApprovalSubmission, approval_submission_id)
         if row is None:
             raise HTTPException(status_code=404, detail="Approval submission not found.")
-        self._assert_case_not_terminal(self._get_case(session, row.case_id), operation="approval submission completion")
+        # Read the parent identity, acquire its owner lock, then refresh the
+        # child version. This prevents completion against a concurrent Case
+        # terminal transition and preserves stale-version semantics.
+        parent = self._lock_case(session, row.case_id)
+        self._assert_case_not_terminal(parent, operation="approval submission completion")
+        row = session.scalars(
+            select(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.id == approval_submission_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Approval submission not found.")
         self._assert_expected_version(row, expected_version, label="approval_submission")
         try:
             validate_approval_completion(existing_completed_on=row.completed_on, existing_completed_time=row.completed_time, completed_on=completed_on, completed_time=completed_time)

@@ -124,10 +124,14 @@ export function ChangeRequestMutationWorkspace({
 }) {
   const [headerEditing, setHeaderEditing] = useState(false);
   const [headerDraft, setHeaderDraft] = useState<HeaderDraft>(() => headerDraftFrom(workspace));
+  const [headerSnapshot, setHeaderSnapshot] = useState<HeaderDraft>(() => headerDraftFrom(workspace));
+  const [headerVersion, setHeaderVersion] = useState(workspace.row_version);
   const [detailEditor, setDetailEditor] = useState<{ mode: "create" | "edit"; detailId: string | null } | null>(null);
   const [detailDraft, setDetailDraft] = useState<DetailDraft>(() => detailDraftFrom());
+  const [detailVersion, setDetailVersion] = useState(workspace.row_version);
   const [approvalEditing, setApprovalEditing] = useState(false);
   const [approvalDraft, setApprovalDraft] = useState<ApprovalDraft>(() => approvalDraftFrom(workspace));
+  const [approvalVersion, setApprovalVersion] = useState(workspace.row_version);
   const [issuedGxpEdit, setIssuedGxpEdit] = useState<{
     detail: GxpCertificateDetail;
     expectedVersion: number;
@@ -140,6 +144,7 @@ export function ChangeRequestMutationWorkspace({
   const [pending, setPending] = useState(false);
   const session = useCaseDraftSession();
   const detailOwner = useRef<object>({});
+  const formOwner = useRef({ id: workspace.id, site: workspace.site_id, session });
   const detailRequest = useRef<{ owner: object } | null>(null);
   const loadOwner = useRef<object>({});
   const detailIdentity = JSON.stringify([workspace.id, workspace.site_id, workspace.row_version, workspace.action_readiness]);
@@ -147,7 +152,7 @@ export function ChangeRequestMutationWorkspace({
     const owner = {};
     detailOwner.current = owner;
     return () => { if (detailOwner.current === owner) detailOwner.current = {}; };
-  }, [detailIdentity, session]);
+  }, [workspace.id, workspace.site_id, session]);
   useLayoutEffect(() => {
     if (detailRequest.current) {
       detailRequest.current = null;
@@ -162,17 +167,34 @@ export function ChangeRequestMutationWorkspace({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useLayoutEffect(() => {
-    setHeaderEditing(false);
-    setHeaderDraft(headerDraftFrom(workspace));
-    setDetailEditor(null);
-    setDetailDraft(detailDraftFrom());
-    setApprovalEditing(false);
-    setApprovalDraft(approvalDraftFrom(workspace));
-    setIssuedGxpEdit(null);
-    setIssuedBusinessEligibilityEdit(null);
-    setPending(false);
-    setErrorMessage(null);
-  }, [workspace.id, workspace.row_version, session]);
+    const previous = formOwner.current;
+    const ownerChanged = previous.id !== workspace.id || previous.site !== workspace.site_id || previous.session !== session;
+    formOwner.current = { id: workspace.id, site: workspace.site_id, session };
+    const headerDirty = headerEditing && JSON.stringify(headerDraft) !== JSON.stringify(headerSnapshot);
+    if (ownerChanged || !headerDirty) {
+      const next = headerDraftFrom(workspace);
+      setHeaderEditing(false);
+      setHeaderDraft(next);
+      setHeaderSnapshot(next);
+      setHeaderVersion(workspace.row_version);
+    }
+    if (ownerChanged || !detailEditor) {
+      setDetailEditor(null);
+      setDetailDraft(detailDraftFrom());
+      setDetailVersion(workspace.row_version);
+    }
+    if (ownerChanged || !approvalEditing) {
+      setApprovalEditing(false);
+      setApprovalDraft(approvalDraftFrom(workspace));
+      setApprovalVersion(workspace.row_version);
+    }
+    if (ownerChanged) {
+      setIssuedGxpEdit(null);
+      setIssuedBusinessEligibilityEdit(null);
+      setPending(false);
+      setErrorMessage(null);
+    }
+  }, [workspace.id, workspace.site_id, workspace.row_version, session]);
 
   const editHeaderReadiness = action(workspace, "edit_change_request");
   const addDetailReadiness = action(workspace, "add_change_detail");
@@ -211,7 +233,7 @@ export function ChangeRequestMutationWorkspace({
 
   async function saveHeader() {
     const payload: ChangeRequestUpdateRequest = {
-      expected_version: expectedVersion(workspace, editHeaderReadiness),
+      expected_version: headerVersion,
     };
     const scopeLabel = textOrNull(headerDraft.scopeLabel);
     const description = textOrNull(headerDraft.description);
@@ -229,12 +251,14 @@ export function ChangeRequestMutationWorkspace({
   }
 
   function openCreateDetail() {
+    setDetailVersion(expectedVersion(workspace, addDetailReadiness));
     setDetailDraft(detailDraftFrom());
     setDetailEditor({ mode: "create", detailId: null });
     setErrorMessage(null);
   }
 
   function openEditDetail(detail: ChangeRequestWorkspaceDetail) {
+    setDetailVersion(expectedVersion(workspace, editDetailReadiness));
     setDetailDraft(detailDraftFrom(detail));
     setDetailEditor({ mode: "edit", detailId: detail.change_detail_id });
     setErrorMessage(null);
@@ -259,7 +283,7 @@ export function ChangeRequestMutationWorkspace({
 
     if (detailEditor?.mode === "create") {
       const payload: ChangeRequestDetailCreateRequest = {
-        expected_version: expectedVersion(workspace, addDetailReadiness),
+        expected_version: detailVersion,
         classification_id: classificationId,
         classification_label: classificationLabel,
         approval_status: approvalStatus,
@@ -278,7 +302,7 @@ export function ChangeRequestMutationWorkspace({
         return;
       }
       const payload: ChangeRequestDetailUpdateRequest = {
-        expected_version: expectedVersion(workspace, editDetailReadiness),
+        expected_version: detailVersion,
       };
       if (classificationId !== current.classification_id) payload.classification_id = classificationId;
       if (classificationLabel !== current.classification_label) payload.classification_label = classificationLabel;
@@ -351,7 +375,8 @@ export function ChangeRequestMutationWorkspace({
     try {
       const detail = await handlers.onLoadIssuedCertificate(readiness.target_artifact_id);
       if (!isCurrent()) return;
-      if (detail.certificate_id !== readiness.target_artifact_id) throw new Error("Chi tiết chứng nhận không khớp định danh đã chọn.");
+      if (detail.certificate_id !== readiness.target_artifact_id || detail.site_id !== workspace.site_id) throw new Error("Chi tiết chứng nhận không khớp định danh hoặc cơ sở đã chọn.");
+      if (detail.row_version !== readiness.expected_version) throw new Error("Phiên bản chứng nhận đã thay đổi; tải lại để kiểm tra.");
       setIssuedGxpEdit({
         detail,
         expectedVersion: readiness.expected_version,
@@ -417,7 +442,8 @@ export function ChangeRequestMutationWorkspace({
         readiness.target_artifact_id,
       );
       if (!isCurrent()) return;
-      if (payload.detail.business_eligibility_certificate_id !== readiness.target_artifact_id) throw new Error("Chi tiết GCN đủ điều kiện không khớp định danh đã chọn.");
+      if (payload.detail.business_eligibility_certificate_id !== readiness.target_artifact_id || payload.detail.site_id !== workspace.site_id) throw new Error("Chi tiết GCN đủ điều kiện không khớp định danh hoặc cơ sở đã chọn.");
+      if (payload.detail.row_version !== readiness.expected_version) throw new Error("Phiên bản chứng nhận đã thay đổi; tải lại để kiểm tra.");
       setIssuedBusinessEligibilityEdit({
         detail: payload.detail,
         basisCertificates: payload.basisCertificates,
@@ -476,7 +502,7 @@ export function ChangeRequestMutationWorkspace({
 
   async function saveApproval() {
     const payload: ChangeApprovalUpsertRequest = {
-      expected_version: expectedVersion(workspace, editApprovalReadiness),
+      expected_version: approvalVersion,
     };
     const handledOn = textOrNull(approvalDraft.handledOn);
     const handledByName = textOrNull(approvalDraft.handledByName);
@@ -504,7 +530,10 @@ export function ChangeRequestMutationWorkspace({
             <button
               disabled={!editHeaderReadiness?.available || pending}
               onClick={() => {
-                setHeaderDraft(headerDraftFrom(workspace));
+                const next = headerDraftFrom(workspace);
+                setHeaderDraft(next);
+                setHeaderSnapshot(next);
+                setHeaderVersion(expectedVersion(workspace, editHeaderReadiness));
                 setHeaderEditing(true);
                 setErrorMessage(null);
               }}
@@ -738,6 +767,7 @@ export function ChangeRequestMutationWorkspace({
             disabled={!editApprovalReadiness?.available || pending}
             onClick={() => {
               setApprovalDraft(approvalDraftFrom(workspace));
+              setApprovalVersion(expectedVersion(workspace, editApprovalReadiness));
               setApprovalEditing(true);
               setErrorMessage(null);
             }}

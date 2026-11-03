@@ -6234,6 +6234,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
     apiMocks.getGxpCertificateDetail.mockResolvedValue({
       certificate_id: "cert-successor-1",
+      site_id: "site-1",
       row_version: 11,
       certificate_number: "GMP-DRAFT",
       issue_date: null,
@@ -6422,6 +6423,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
     apiMocks.getGxpCertificateDetail.mockResolvedValue({
       certificate_id: "cert-successor-1",
+      site_id: "site-1",
       row_version: 11,
       certificate_number: "GMP-DRAFT",
       issue_date: null,

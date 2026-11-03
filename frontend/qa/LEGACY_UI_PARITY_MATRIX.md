@@ -2322,3 +2322,7 @@ Inspection plan/outcome and Change Request workspace commands use in-memory, acc
 ## Inspection and Change Request recovery completion — 2026-11-03
 
 In-session period, team, final-evaluation and Case-transition commands retain pending/uncertain ownership by access and Case; Change Request issued-certificate dialogs use the Change Request command owner; creation is serialized by access and Site and requires matching request/Site readback. A failed canonical readback does not authorize another write. OIDC credentials are held in page memory rather than browser storage; a reload requires sign-in again. These controls do not prove an uncorrelated mutation's outcome across reload, restart or reauthentication. Authenticated Google A/B and native screen-reader UAT remain unverified.
+
+## Change Request dialog and access-owner isolation — 2026-11-03
+
+A pending issued-certificate detail lookup now belongs to the committed access, Change Request/Site, readiness and tab generation. Old or mismatched detail cannot open an editor in a newer context, and a stale mutation completion cannot close or overwrite a newer editor. Certificate detail must match the reviewed Site, identity and readiness version. Dirty Change Request drafts retain their reviewed concurrency version through a same-owner refresh; a different access or resource owner clears them. In-session controls do not establish durable outcome after reload or reauthentication; native screen reader and authenticated Google A/B remain unverified.

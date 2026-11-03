@@ -1,6 +1,6 @@
-import { useCaseCommandLock } from "./CaseDraftSession";
+import { useCaseCommandLock, useCaseDraftSession } from "./CaseDraftSession";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
@@ -124,10 +124,14 @@ export function ChangeRequestMutationWorkspace({
 }) {
   const [headerEditing, setHeaderEditing] = useState(false);
   const [headerDraft, setHeaderDraft] = useState<HeaderDraft>(() => headerDraftFrom(workspace));
+  const [headerSnapshot, setHeaderSnapshot] = useState<HeaderDraft>(() => headerDraftFrom(workspace));
+  const [headerVersion, setHeaderVersion] = useState(workspace.row_version);
   const [detailEditor, setDetailEditor] = useState<{ mode: "create" | "edit"; detailId: string | null } | null>(null);
   const [detailDraft, setDetailDraft] = useState<DetailDraft>(() => detailDraftFrom());
+  const [detailVersion, setDetailVersion] = useState(workspace.row_version);
   const [approvalEditing, setApprovalEditing] = useState(false);
   const [approvalDraft, setApprovalDraft] = useState<ApprovalDraft>(() => approvalDraftFrom(workspace));
+  const [approvalVersion, setApprovalVersion] = useState(workspace.row_version);
   const [issuedGxpEdit, setIssuedGxpEdit] = useState<{
     detail: GxpCertificateDetail;
     expectedVersion: number;
@@ -138,22 +142,59 @@ export function ChangeRequestMutationWorkspace({
     expectedVersion: number;
   } | null>(null);
   const [pending, setPending] = useState(false);
+  const session = useCaseDraftSession();
+  const detailOwner = useRef<object>({});
+  const formOwner = useRef({ id: workspace.id, site: workspace.site_id, session });
+  const detailRequest = useRef<{ owner: object } | null>(null);
+  const loadOwner = useRef<object>({});
+  const detailIdentity = JSON.stringify([workspace.id, workspace.site_id, workspace.row_version, workspace.action_readiness]);
+  useLayoutEffect(() => {
+    const owner = {};
+    detailOwner.current = owner;
+    return () => { if (detailOwner.current === owner) detailOwner.current = {}; };
+  }, [workspace.id, workspace.site_id, session]);
+  useLayoutEffect(() => {
+    if (detailRequest.current) {
+      detailRequest.current = null;
+      setPending(false);
+    }
+    const owner = {};
+    loadOwner.current = owner;
+    return () => { if (loadOwner.current === owner) loadOwner.current = {}; };
+  }, [detailIdentity, session, activeTab]);
   const commandLock = useCaseCommandLock(`change-request:${workspace.id}`);
   const mutationBlocked = pending || commandLock.pending || commandLock.requiresReview;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    setHeaderEditing(false);
-    setHeaderDraft(headerDraftFrom(workspace));
-    setDetailEditor(null);
-    setDetailDraft(detailDraftFrom());
-    setApprovalEditing(false);
-    setApprovalDraft(approvalDraftFrom(workspace));
-    setIssuedGxpEdit(null);
-    setIssuedBusinessEligibilityEdit(null);
-    setPending(false);
-    setErrorMessage(null);
-  }, [workspace.id, workspace.row_version]);
+  useLayoutEffect(() => {
+    const previous = formOwner.current;
+    const ownerChanged = previous.id !== workspace.id || previous.site !== workspace.site_id || previous.session !== session;
+    formOwner.current = { id: workspace.id, site: workspace.site_id, session };
+    const headerDirty = headerEditing && JSON.stringify(headerDraft) !== JSON.stringify(headerSnapshot);
+    if (ownerChanged || !headerDirty) {
+      const next = headerDraftFrom(workspace);
+      setHeaderEditing(false);
+      setHeaderDraft(next);
+      setHeaderSnapshot(next);
+      setHeaderVersion(workspace.row_version);
+    }
+    if (ownerChanged || !detailEditor) {
+      setDetailEditor(null);
+      setDetailDraft(detailDraftFrom());
+      setDetailVersion(workspace.row_version);
+    }
+    if (ownerChanged || !approvalEditing) {
+      setApprovalEditing(false);
+      setApprovalDraft(approvalDraftFrom(workspace));
+      setApprovalVersion(workspace.row_version);
+    }
+    if (ownerChanged) {
+      setIssuedGxpEdit(null);
+      setIssuedBusinessEligibilityEdit(null);
+      setPending(false);
+      setErrorMessage(null);
+    }
+  }, [workspace.id, workspace.site_id, workspace.row_version, session]);
 
   const editHeaderReadiness = action(workspace, "edit_change_request");
   const addDetailReadiness = action(workspace, "add_change_detail");
@@ -170,25 +211,29 @@ export function ChangeRequestMutationWorkspace({
     (item) => item.target_state && item.action_key.startsWith("transition_change_request:"),
   );
 
-  async function runMutation(mutation: () => Promise<void>) {
+  async function runMutation(mutation: () => Promise<void>): Promise<boolean> {
     const command = commandLock.acquire();
-    if (!command) return;
+    if (!command) return false;
+    const owner = detailOwner.current;
+    const isCurrent = () => detailOwner.current === owner && (!session || session.isLive());
     setPending(true);
     setErrorMessage(null);
     try {
       await mutation();
+      return isCurrent();
     } catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
-      setErrorMessage(error instanceof Error ? error.message : "Không thể cập nhật yêu cầu thay đổi.");
+      if (isCurrent()) setErrorMessage(error instanceof Error ? error.message : "Không thể cập nhật yêu cầu thay đổi.");
+      return false;
     } finally {
       commandLock.release(command);
-      setPending(false);
+      if (isCurrent()) setPending(false);
     }
   }
 
   async function saveHeader() {
     const payload: ChangeRequestUpdateRequest = {
-      expected_version: expectedVersion(workspace, editHeaderReadiness),
+      expected_version: headerVersion,
     };
     const scopeLabel = textOrNull(headerDraft.scopeLabel);
     const description = textOrNull(headerDraft.description);
@@ -202,19 +247,18 @@ export function ChangeRequestMutationWorkspace({
       setHeaderEditing(false);
       return;
     }
-    await runMutation(async () => {
-      await handlers.onUpdateHeader(payload);
-      setHeaderEditing(false);
-    });
+    if (await runMutation(() => handlers.onUpdateHeader(payload))) setHeaderEditing(false);
   }
 
   function openCreateDetail() {
+    setDetailVersion(expectedVersion(workspace, addDetailReadiness));
     setDetailDraft(detailDraftFrom());
     setDetailEditor({ mode: "create", detailId: null });
     setErrorMessage(null);
   }
 
   function openEditDetail(detail: ChangeRequestWorkspaceDetail) {
+    setDetailVersion(expectedVersion(workspace, editDetailReadiness));
     setDetailDraft(detailDraftFrom(detail));
     setDetailEditor({ mode: "edit", detailId: detail.change_detail_id });
     setErrorMessage(null);
@@ -239,7 +283,7 @@ export function ChangeRequestMutationWorkspace({
 
     if (detailEditor?.mode === "create") {
       const payload: ChangeRequestDetailCreateRequest = {
-        expected_version: expectedVersion(workspace, addDetailReadiness),
+        expected_version: detailVersion,
         classification_id: classificationId,
         classification_label: classificationLabel,
         approval_status: approvalStatus,
@@ -247,10 +291,7 @@ export function ChangeRequestMutationWorkspace({
         new_value: newValue,
         note,
       };
-      await runMutation(async () => {
-        await handlers.onCreateDetail(payload);
-        setDetailEditor(null);
-      });
+      if (await runMutation(() => handlers.onCreateDetail(payload))) setDetailEditor(null);
       return;
     }
 
@@ -261,7 +302,7 @@ export function ChangeRequestMutationWorkspace({
         return;
       }
       const payload: ChangeRequestDetailUpdateRequest = {
-        expected_version: expectedVersion(workspace, editDetailReadiness),
+        expected_version: detailVersion,
       };
       if (classificationId !== current.classification_id) payload.classification_id = classificationId;
       if (classificationLabel !== current.classification_label) payload.classification_label = classificationLabel;
@@ -273,10 +314,7 @@ export function ChangeRequestMutationWorkspace({
         setDetailEditor(null);
         return;
       }
-      await runMutation(async () => {
-        await handlers.onUpdateDetail(current.change_detail_id, payload);
-        setDetailEditor(null);
-      });
+      if (await runMutation(() => handlers.onUpdateDetail(current.change_detail_id, payload))) setDetailEditor(null);
     }
   }
 
@@ -327,25 +365,40 @@ export function ChangeRequestMutationWorkspace({
     ) {
       return;
     }
+    const owner = loadOwner.current;
+    if (detailRequest.current?.owner === owner) return;
+    const request = { owner };
+    detailRequest.current = request;
+    const isCurrent = () => loadOwner.current === owner && detailRequest.current === request && (!session || session.isLive());
     setPending(true);
     setErrorMessage(null);
     try {
       const detail = await handlers.onLoadIssuedCertificate(readiness.target_artifact_id);
+      if (!isCurrent()) return;
+      if (detail.certificate_id !== readiness.target_artifact_id || detail.site_id !== workspace.site_id) throw new Error("Chi tiết chứng nhận không khớp định danh hoặc cơ sở đã chọn.");
+      if (detail.row_version !== readiness.expected_version) throw new Error("Phiên bản chứng nhận đã thay đổi; tải lại để kiểm tra.");
       setIssuedGxpEdit({
         detail,
         expectedVersion: readiness.expected_version,
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Không thể tải GCN điều chỉnh.");
+      if (isCurrent()) setErrorMessage(error instanceof Error ? error.message : "Không thể tải GCN điều chỉnh.");
     } finally {
-      setPending(false);
+      if (isCurrent()) setPending(false);
+      if (detailRequest.current === request) detailRequest.current = null;
     }
   }
 
   async function runDialogMutation(mutation: () => Promise<void>) {
     const command = commandLock.acquire();
     if (!command) throw new CaseFieldMutationRecoveryError("Chưa xác minh kết quả thao tác trước; không gửi lại.");
-    try { await mutation(); }
+    const owner = detailOwner.current;
+    try {
+      await mutation();
+      if (detailOwner.current !== owner || (session && !session.isLive())) {
+        throw new CaseFieldMutationRecoveryError("Ngữ cảnh đã thay đổi; cần xác minh kết quả thao tác trước.");
+      }
+    }
     catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       throw error;
@@ -377,23 +430,32 @@ export function ChangeRequestMutationWorkspace({
     ) {
       return;
     }
+    const owner = loadOwner.current;
+    if (detailRequest.current?.owner === owner) return;
+    const request = { owner };
+    detailRequest.current = request;
+    const isCurrent = () => loadOwner.current === owner && detailRequest.current === request && (!session || session.isLive());
     setPending(true);
     setErrorMessage(null);
     try {
       const payload = await handlers.onLoadIssuedBusinessEligibility(
         readiness.target_artifact_id,
       );
+      if (!isCurrent()) return;
+      if (payload.detail.business_eligibility_certificate_id !== readiness.target_artifact_id || payload.detail.site_id !== workspace.site_id) throw new Error("Chi tiết GCN đủ điều kiện không khớp định danh hoặc cơ sở đã chọn.");
+      if (payload.detail.row_version !== readiness.expected_version) throw new Error("Phiên bản chứng nhận đã thay đổi; tải lại để kiểm tra.");
       setIssuedBusinessEligibilityEdit({
         detail: payload.detail,
         basisCertificates: payload.basisCertificates,
         expectedVersion: readiness.expected_version,
       });
     } catch (error) {
-      setErrorMessage(
+      if (isCurrent()) setErrorMessage(
         error instanceof Error ? error.message : "Không thể tải GCN đủ điều kiện điều chỉnh.",
       );
     } finally {
-      setPending(false);
+      if (isCurrent()) setPending(false);
+      if (detailRequest.current === request) detailRequest.current = null;
     }
   }
 
@@ -440,7 +502,7 @@ export function ChangeRequestMutationWorkspace({
 
   async function saveApproval() {
     const payload: ChangeApprovalUpsertRequest = {
-      expected_version: expectedVersion(workspace, editApprovalReadiness),
+      expected_version: approvalVersion,
     };
     const handledOn = textOrNull(approvalDraft.handledOn);
     const handledByName = textOrNull(approvalDraft.handledByName);
@@ -456,10 +518,7 @@ export function ChangeRequestMutationWorkspace({
       setApprovalEditing(false);
       return;
     }
-    await runMutation(async () => {
-      await handlers.onUpsertApproval(payload);
-      setApprovalEditing(false);
-    });
+    if (await runMutation(() => handlers.onUpsertApproval(payload))) setApprovalEditing(false);
   }
 
   if (activeTab === "Đề nghị") {
@@ -471,7 +530,10 @@ export function ChangeRequestMutationWorkspace({
             <button
               disabled={!editHeaderReadiness?.available || pending}
               onClick={() => {
-                setHeaderDraft(headerDraftFrom(workspace));
+                const next = headerDraftFrom(workspace);
+                setHeaderDraft(next);
+                setHeaderSnapshot(next);
+                setHeaderVersion(expectedVersion(workspace, editHeaderReadiness));
                 setHeaderEditing(true);
                 setErrorMessage(null);
               }}
@@ -705,6 +767,7 @@ export function ChangeRequestMutationWorkspace({
             disabled={!editApprovalReadiness?.available || pending}
             onClick={() => {
               setApprovalDraft(approvalDraftFrom(workspace));
+              setApprovalVersion(expectedVersion(workspace, editApprovalReadiness));
               setApprovalEditing(true);
               setErrorMessage(null);
             }}

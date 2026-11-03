@@ -4129,6 +4129,19 @@ class CaseWorkflowService:
         # cannot use a stale version/readiness snapshot.
         self._lock_site(session, certificate.site_id)
         session.refresh(certificate)
+        # Case transitions lock their own aggregate. A Site lock alone does
+        # not prevent a cancelled Case from being promoted via a cached identity.
+        # Keep the order Site -> Case, as in reassessment creation.
+        if certificate.case_id is not None:
+            try:
+                self._lock_case(session, certificate.case_id)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                # Preserve the existing malformed-certificate link contract.
+                raise HTTPException(
+                    status_code=409, detail="Certificate references an invalid linked Case."
+                ) from exc
         self._assert_expected_version(certificate, expected_version, label="certificate")
         candidate_version = self._load_latest_certificate_version(session, certificate.id)
         # The Site owner lock refreshes the aggregate root, not an already-cached

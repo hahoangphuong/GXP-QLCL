@@ -554,6 +554,9 @@ class CaseWorkflowService:
                 self._certificate_context_clause(session, certificate),
                 Certificate.latest_flag.is_(True),
             ).order_by(Certificate.id)
+            # SQL-filtered current peers can be stale ORM identities in a
+            # long-lived Session; refresh before checking/demoting them.
+            .execution_options(populate_existing=True)
         ))
         for current in current_peers:
             self._certificate_line_identity(session, current)
@@ -4170,6 +4173,9 @@ class CaseWorkflowService:
                 self._certificate_context_clause(session, certificate),
                 Certificate.latest_flag.is_(True),
             ).order_by(Certificate.id)
+            # SQL-filtered current peers can be stale ORM identities in a
+            # long-lived Session; refresh before checking/demoting them.
+            .execution_options(populate_existing=True)
         ))
         for current in current_peers:
             self._certificate_line_identity(session, current)

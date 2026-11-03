@@ -2520,7 +2520,10 @@ class CaseWorkflowService:
         session.add(case)
         session.flush()
         if source_case_id:
-            source_case = self._get_case(session, source_case_id)
+            # Evaluation Scope edits lock the source Case owner. Hold that same
+            # lock across identity checks and the complete scope snapshot copy.
+            # Site locking alone does not serialize source Case mutations.
+            source_case = self._lock_case(session, source_case_id)
             if source_case.production_line_id != case.production_line_id:
                 raise HTTPException(
                     status_code=422,

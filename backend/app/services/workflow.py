@@ -486,6 +486,10 @@ class CaseWorkflowService:
         if current_rows and current_rows[0].id != certificate.id:
             try:
                 current_version = self._load_latest_business_eligibility_version(session, current_rows[0].id)
+                # The SQL-current root is refreshed, but a previously loaded
+                # Version identity can still carry a stale issue date.
+                # Compare against the latest committed peer-version values.
+                session.refresh(current_version)
             except HTTPException:
                 return "current_record_incomplete"
             if current_version.issued_on is None:

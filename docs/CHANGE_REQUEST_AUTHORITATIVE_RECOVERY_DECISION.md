@@ -25,6 +25,8 @@ The executable, synthetic-only experiments are in `tools/experiments/change_requ
 | `test_rollback_after_audit_flush_leaves_no_receipt_or_mutation` | Experimental receipt/business/audit roll back together, and a later transaction can insert. | Does not prove a crashed process, authorized lookup or a production receipt. |
 | `test_unique_key_never_overwrites_actor_site_or_fingerprint` | Experimental global unique key prevents replacement for different synthetic actor/Site/fingerprint. | SQL uniqueness is not authorization, fingerprint validation, or a non-enumerating API. |
 
+The experimental table permits a null `result_id`; it does not enforce that every committed receipt denotes a completed mutation. The tests exercise selected transaction paths, not all possible application bugs, crashes or database failovers. A production design must explicitly enforce and test its own committed-receipt invariant.
+
 ## Identity options — RECOMMENDED_FOR_OWNER_APPROVAL
 
 | Option | Safety and atomicity | Complexity, compatibility and failure modes |

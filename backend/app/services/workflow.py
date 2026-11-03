@@ -3931,18 +3931,11 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         site = self._get_site(session, site_id)
-        case = None if case_id is None else self._get_case(session, case_id)
-        if case is not None and certificate_type == "GMP" and issuance_basis == "inspection_case":
-            # Serialize prospective issuance on the originating Case itself.
-            # Legacy duplicate records remain untouched; no blanket unique
-            # index may be imposed retroactively on imported history.
-            case = session.scalar(
-                select(Case).where(Case.id == case.id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
-            if case is None:
-                raise HTTPException(status_code=404, detail="Case not found.")
+        # All Case-backed certificate candidates depend on the current Case
+        # state/CAPA gate, not only GMP inspection issuances. Lock that owner
+        # before reading eligibility; a terminal transition cannot race with
+        # a non-GMP certificate insert or audit.
+        case = None if case_id is None else self._lock_case(session, case_id)
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,

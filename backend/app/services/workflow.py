@@ -1064,6 +1064,18 @@ class CaseWorkflowService:
             raise HTTPException(status_code=404, detail="CAPA cycle not found.")
         return row
 
+    def _lock_capa_parent_then_refresh(
+        self, session: Session, *, capa_cycle_id: str, operation: str,
+    ) -> CapaCycle:
+        """Serialize child mutation against terminal Case owner transitions."""
+        cycle = self._get_capa_cycle(session, capa_cycle_id)
+        parent = self._lock_case(session, cycle.case_id)
+        self._assert_case_not_terminal(parent, operation=operation)
+        return session.scalars(
+            select(CapaCycle).where(CapaCycle.id == capa_cycle_id)
+            .execution_options(populate_existing=True)
+        ).one()
+
     def _site_has_gxp_context(
         self,
         session: Session,
@@ -2830,9 +2842,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
-        row = self._get_capa_cycle(session, capa_cycle_id)
-        case = self._get_case(session, row.case_id)
-        self._assert_case_not_terminal(case, operation="CAPA update")
+        row = self._lock_capa_parent_then_refresh(
+            session, capa_cycle_id=capa_cycle_id, operation="CAPA update",
+        )
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
@@ -2874,9 +2886,9 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        row = self._get_capa_cycle(session, capa_cycle_id)
-        case = self._get_case(session, row.case_id)
-        self._assert_case_not_terminal(case, operation="CAPA submit")
+        row = self._lock_capa_parent_then_refresh(
+            session, capa_cycle_id=capa_cycle_id, operation="CAPA submit",
+        )
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
@@ -2914,9 +2926,9 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        row = self._get_capa_cycle(session, capa_cycle_id)
-        case = self._get_case(session, row.case_id)
-        self._assert_case_not_terminal(case, operation="CAPA assess")
+        row = self._lock_capa_parent_then_refresh(
+            session, capa_cycle_id=capa_cycle_id, operation="CAPA assess",
+        )
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         normalized_result = (result or "").strip().lower()

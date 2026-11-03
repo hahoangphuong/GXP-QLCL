@@ -2987,13 +2987,10 @@ class CaseWorkflowService:
             fields_set is None and dossier_reference is not None
         ):
             raise HTTPException(status_code=422, detail="dossier_reference is a read-only compatibility field.")
-        row = self._get_case(session, case_id)
+        # The Case lock must refresh the ORM identity before terminal-state
+        # eligibility; a SELECT of Case.id alone leaves an older cached state.
+        row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="application update")
-        # Serialize create-vs-update decisions on the owning Case. Without
-        # this lock, two null-token clients can both observe a missing stage.
-        session.execute(
-            select(Case.id).where(Case.id == row.id).with_for_update()
-        ).scalar_one()
         stage = session.scalars(
             select(CaseApplication).where(CaseApplication.case_id == row.id)
             .with_for_update()
@@ -3095,13 +3092,9 @@ class CaseWorkflowService:
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
         provided = self._provided_fields(fields_set, {"assessed_on", "assessor_name", "assessment_result", "notes"})
-        row = self._get_case(session, case_id)
+        # Serialize null-token create/update on a freshly locked Case owner.
+        row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="assessment update")
-        # A null version is create-only. Serialize creation against the owning
-        # Case before checking the stage, as for CaseApplication.
-        session.execute(
-            select(Case.id).where(Case.id == row.id).with_for_update()
-        ).scalar_one()
         stage = session.scalars(
             select(CaseAssessment).where(CaseAssessment.case_id == row.id)
             .with_for_update()
@@ -3213,9 +3206,8 @@ class CaseWorkflowService:
             fields_set is None and decision_document_hint is not None
         ):
             raise HTTPException(status_code=422, detail="decision_document_hint is a read-only compatibility field.")
-        row = self._get_case(session, case_id)
+        row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection plan update")
-        session.execute(select(Case.id).where(Case.id == row.id).with_for_update()).scalar_one()
         stage = session.scalars(
             select(InspectionPlan).where(InspectionPlan.case_id == row.id)
             .with_for_update().execution_options(populate_existing=True)
@@ -3351,13 +3343,12 @@ class CaseWorkflowService:
             fields_set is None and (decision_reference is not None or bbkt_reference is not None)
         ):
             raise HTTPException(status_code=422, detail="decision_reference and bbkt_reference are read-only compatibility fields.")
-        row = self._get_case(session, case_id)
+        row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection outcome update")
         if "inspected_to_on" in provided and "inspected_on" in provided and inspected_on is None and inspected_to_on is not None:
             raise HTTPException(status_code=422, detail="Inspection outcome end date requires a start date.")
         if "inspected_on" in provided and "inspected_to_on" in provided and inspected_on is not None and inspected_to_on is not None and inspected_on > inspected_to_on:
             raise HTTPException(status_code=422, detail="Inspection outcome start date must not be after its end date.")
-        session.execute(select(Case.id).where(Case.id == row.id).with_for_update()).scalar_one()
         stage = session.scalars(
             select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)
             .with_for_update().execution_options(populate_existing=True)

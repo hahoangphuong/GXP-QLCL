@@ -20,7 +20,7 @@ from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import (
-    Case, CaseEvaluationScope, CaseEvaluationScopeBlock,
+    AppUser, Case, CaseEvaluationScope, CaseEvaluationScopeBlock,
     CaseEvaluationScopeSelection, Company, EvaluationScopeTaxonomyNode,
     EvaluationScopeTaxonomyVersion, Site,
 )
@@ -56,6 +56,7 @@ def test_reassessment_copies_consistent_scope_while_certified_source_is_edited()
         with factory() as setup:
             company = Company(legal_name="Synthetic reassessment " + schema)
             setup.add(company)
+            setup.add(AppUser(username="synthetic-reassessment", display_name="Synthetic Reassessment", is_active=True))
             setup.flush()
             site = Site(company_id=company.id, site_name="Synthetic source site")
             setup.add(site)

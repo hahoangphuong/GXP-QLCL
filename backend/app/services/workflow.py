@@ -446,6 +446,10 @@ class CaseWorkflowService:
                     BusinessEligibilityCertificate.latest_flag.is_(True),
                 )
                 .order_by(BusinessEligibilityCertificate.id.asc())
+                # A Site lock serializes promotion, but an already-loaded peer
+                # can still have latest_flag=False in this Session identity map.
+                # Refresh the DB-current peer before demoting it.
+                .execution_options(populate_existing=True)
             )
         )
 

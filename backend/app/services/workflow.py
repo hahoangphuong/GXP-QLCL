@@ -3510,9 +3510,13 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         """Replace an explicitly user-entered, ordered actual visit sequence."""
-        case = self._get_case(session, case_id)
+        # Serialize against Case terminal transitions and refresh cached state.
+        case = self._lock_case(session, case_id)
         self._assert_case_not_terminal(case, operation="inspection period update")
-        outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
+        outcome = session.scalar(
+            select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)
+            .execution_options(populate_existing=True)
+        )
         readiness = inspection_period_edit_readiness(outcome=outcome, terminal_case=False)
         if not readiness["available"]:
             raise HTTPException(
@@ -3725,9 +3729,14 @@ class CaseWorkflowService:
         expected_version: int | None = None,
         display_text: str | None = None,
     ) -> dict[str, Any]:
-        row = self._get_case(session, case_id)
+        # The Case owner lock prevents replacing members after closure,
+        # including when an earlier Session read cached a nonterminal state.
+        row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection team update")
-        existing_team = session.scalar(select(InspectionTeam).where(InspectionTeam.case_id == row.id))
+        existing_team = session.scalar(
+            select(InspectionTeam).where(InspectionTeam.case_id == row.id)
+            .execution_options(populate_existing=True)
+        )
         existing_members = [] if existing_team is None else list(
             session.scalars(
                 select(InspectionTeamMember)

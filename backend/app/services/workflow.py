@@ -446,6 +446,10 @@ class CaseWorkflowService:
                     BusinessEligibilityCertificate.latest_flag.is_(True),
                 )
                 .order_by(BusinessEligibilityCertificate.id.asc())
+                # A Site lock serializes promotion, but an already-loaded peer
+                # can still have latest_flag=False in this Session identity map.
+                # Refresh the DB-current peer before demoting it.
+                .execution_options(populate_existing=True)
             )
         )
 
@@ -550,6 +554,9 @@ class CaseWorkflowService:
                 self._certificate_context_clause(session, certificate),
                 Certificate.latest_flag.is_(True),
             ).order_by(Certificate.id)
+            # SQL-filtered current peers can be stale ORM identities in a
+            # long-lived Session; refresh before checking/demoting them.
+            .execution_options(populate_existing=True)
         ))
         for current in current_peers:
             self._certificate_line_identity(session, current)
@@ -4129,8 +4136,24 @@ class CaseWorkflowService:
         # cannot use a stale version/readiness snapshot.
         self._lock_site(session, certificate.site_id)
         session.refresh(certificate)
+        # Case transitions lock their own aggregate. A Site lock alone does
+        # not prevent a cancelled Case from being promoted via a cached identity.
+        # Keep the order Site -> Case, as in reassessment creation.
+        if certificate.case_id is not None:
+            try:
+                self._lock_case(session, certificate.case_id)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                # Preserve the existing malformed-certificate link contract.
+                raise HTTPException(
+                    status_code=409, detail="Certificate references an invalid linked Case."
+                ) from exc
         self._assert_expected_version(certificate, expected_version, label="certificate")
         candidate_version = self._load_latest_certificate_version(session, certificate.id)
+        # The Site owner lock refreshes the aggregate root, not an already-cached
+        # Version identity. Re-read committed version fields before promotion.
+        session.refresh(candidate_version)
         blocker = self._get_certificate_promotion_blocker(
             session,
             certificate=certificate,
@@ -4150,6 +4173,9 @@ class CaseWorkflowService:
                 self._certificate_context_clause(session, certificate),
                 Certificate.latest_flag.is_(True),
             ).order_by(Certificate.id)
+            # SQL-filtered current peers can be stale ORM identities in a
+            # long-lived Session; refresh before checking/demoting them.
+            .execution_options(populate_existing=True)
         ))
         for current in current_peers:
             self._certificate_line_identity(session, current)
@@ -4452,6 +4478,9 @@ class CaseWorkflowService:
         session.refresh(row)
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
         candidate_version = self._load_latest_business_eligibility_version(session, row.id)
+        # A cached version can predate a committed edit even when the root
+        # token was refreshed under the Site lock.
+        session.refresh(candidate_version)
         blocker = self._get_business_eligibility_promotion_blocker(
             session,
             certificate=row,

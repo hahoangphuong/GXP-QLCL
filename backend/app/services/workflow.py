@@ -2628,9 +2628,14 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        case = self._get_case(session, case_id)
+        # Case closure is a parent-owner transition; the ORM identity might
+        # still hold a nonterminal snapshot from an earlier Session read.
+        case = self._lock_case(session, case_id)
         self._assert_case_not_terminal(case, operation="evaluation-scope edit")
-        scope = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == case.id))
+        scope = session.scalar(
+            select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == case.id)
+            .execution_options(populate_existing=True)
+        )
         if scope is None:
             raise HTTPException(status_code=409, detail="Case has no canonical evaluation scope to edit.")
         if scope.source_classification != "STRUCTURED_VALID" or scope.taxonomy_version_id is None:

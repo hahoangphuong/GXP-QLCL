@@ -3667,9 +3667,9 @@ class CaseWorkflowService:
             validate_time_requires_date(value_date=submitted_on, value_time=submitted_time, label="Approval submission")
         except InspectionContractViolation as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        row = session.scalars(select(Case).where(Case.id == case_id).with_for_update()).first()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Case not found.")
+        # Lock and refresh the Case owner before applying terminal eligibility.
+        # A Session may already hold an older nonterminal ORM identity.
+        row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="approval submission creation")
         if normalized_stage == "PCT" and pct_submission_id is not None:
             raise HTTPException(status_code=422, detail="PCT submission must not set pct_submission_id.")

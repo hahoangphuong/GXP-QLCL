@@ -1,8 +1,8 @@
-"""PostgreSQL regression: GxP action readiness must refresh cached current identity.
+"""PostgreSQL regression: GxP readiness refreshes cached root and version.
 
-Session A caches a certificate as noncurrent. Session B promotes it and commits.
-When A reads readiness under READ COMMITTED, the promote action must be blocked
-as already_current and must return the committed root row_version.
+Session A caches an eligible certificate. Session B either promotes it or edits
+its latest version to be incomplete. Readiness in A must reflect the committed
+state, reason and root concurrency token under READ COMMITTED.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ if not DATABASE_URL.startswith("postgresql"):
 
 
 @pytest.mark.parametrize("later_mutation", ["promote_current", "edit_incomplete"])
-def test_readiness_refreshes_cached_root_after_another_session_promotes_current(later_mutation):
+def test_readiness_refreshes_cached_root_and_version_after_other_session_mutation(later_mutation):
     if make_url(DATABASE_URL).database != "gxp_qlcl_test":
         pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted.")
     schema = "gxp_readiness_stale_" + uuid4().hex

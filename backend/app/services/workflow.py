@@ -1373,6 +1373,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> list[dict[str, Any]]:
         row = self._get_change_request(session, change_request_id)
+        # Read-only action projections must use the committed parent state
+        # and optimistic token, even when this Session cached an older identity.
+        session.refresh(row)
         actions: list[dict[str, Any]] = []
         can_edit = CHANGE_REQUEST_EDIT_PERMISSION in user.permissions
         can_approve = CHANGE_REQUEST_APPROVE_PERMISSION in user.permissions

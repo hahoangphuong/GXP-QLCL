@@ -340,8 +340,13 @@ class CaseWorkflowService:
     ) -> list[dict[str, Any]]:
         """Describe the contextual rules still enforced by certificate mutations."""
         certificate = self._get_certificate(session, certificate_id)
+        # Readiness may reuse a long-lived Session after another writer commits.
+        # Refresh root and child identities before checking eligibility/tokens;
+        # the mutation still revalidates under the Site/Case owner locks.
+        session.refresh(certificate)
         self._certificate_line_identity(session, certificate)
         version = self._load_latest_certificate_version(session, certificate.id)
+        session.refresh(version)
         edit_permission = "certificate.edit"
         promote_permission = "certificate.approve"
         edit_reason = None if edit_permission in user.permissions else "missing_permission"
@@ -544,6 +549,10 @@ class CaseWorkflowService:
         version: CertificateVersion,
     ) -> str | None:
         self._certificate_line_identity(session, certificate)
+        # Already-current is not a transition. Reject replay before any
+        # inspection event or success audit can be created.
+        if certificate.latest_flag:
+            return "already_current"
         if certificate.case_id is not None:
             case = self._get_case(session, certificate.case_id)
             if case.state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
@@ -4176,6 +4185,7 @@ class CaseWorkflowService:
                 "latest_capa_not_accepted": "Current-certificate promotion is blocked until the latest CAPA cycle is accepted.",
                 "certificate_data_incomplete": "Certificate promotion requires certificate number, issue date, and expiry date.",
                 "candidate_issue_date_precedes_current": "Certificate promotion requires a candidate issue date that is not older than the current active certificate.",
+                "already_current": "Certificate is already current for this context.",
             }
             raise HTTPException(status_code=409, detail=details[blocker])
         actor = self._get_or_create_app_user(session, user)

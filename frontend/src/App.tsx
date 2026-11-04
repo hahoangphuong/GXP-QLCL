@@ -11,7 +11,7 @@ import { AdminSystemStatusPage } from "./pages/AdminSystemStatusPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { SearchPage } from "./pages/SearchPage";
-import { FacilityCommandRegistryRoot } from "./features/search/CaseDraftSession";
+import { CaseCommandRegistryRoot, FacilityCommandRegistryRoot } from "./features/search/CaseDraftSession";
 import { TermsPage } from "./pages/TermsPage";
 import type { AppStatus, AuthenticatedIdentity, OidcSession, StubAuthState } from "./types";
 
@@ -264,7 +264,7 @@ export function App() {
   const isAuthenticated = useStubAuth || Boolean(oidcSession);
 
   return (
-    <FacilityCommandRegistryRoot><AppShell
+    <CaseCommandRegistryRoot><FacilityCommandRegistryRoot><AppShell
       showPublicLegalNav={!isAuthenticated}
       header={
         <AppHeader
@@ -314,6 +314,6 @@ export function App() {
         <Route path="/cases" element={<Navigate to="/search" replace />} />
         <Route path="/cases/:caseId" element={<Navigate to="/search" replace />} />
       </Routes>
-    </AppShell></FacilityCommandRegistryRoot>
+    </AppShell></FacilityCommandRegistryRoot></CaseCommandRegistryRoot>
   );
 }

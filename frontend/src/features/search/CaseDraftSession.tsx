@@ -53,9 +53,23 @@ function createCommandRegistry() {
 
 const CommandRegistryContext = createContext<{ identity: string | null; registry: ReturnType<typeof createCommandRegistry> } | null>(null);
 const FacilityCommandRegistryContext = createContext<{ identity: string | null; registry: ReturnType<typeof createCommandRegistry> } | null>(null);
+const RootCaseRegistryContext = createContext<ReturnType<typeof createCommandRegistry> | null>(null);
 const RootFacilityRegistryContext = createContext<ReturnType<typeof createCommandRegistry> | null>(null);
 
 const Context = createContext<ReturnType<typeof createSession> | null>(null);
+
+export function useCaseCommandRegistry() {
+  const root = useContext(RootCaseRegistryContext);
+  const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!registry.current) registry.current = createCommandRegistry();
+  return root ?? registry.current;
+}
+
+export function CaseCommandRegistryRoot({ children }: { children: ReactNode }) {
+  const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!registry.current) registry.current = createCommandRegistry();
+  return <RootCaseRegistryContext.Provider value={registry.current}>{children}</RootCaseRegistryContext.Provider>;
+}
 
 export function useFacilityCommandRegistry() {
   const root = useContext(RootFacilityRegistryContext);
@@ -71,9 +85,8 @@ export function FacilityCommandRegistryRoot({ children }: { children: ReactNode 
 }
 
 // One active canonical Case/access/line context, in memory only. No history cache.
-export function CaseDraftSession({ identity, facilityIdentity = identity, facilityRegistry, children }: { identity: string | null; facilityIdentity?: string | null; facilityRegistry?: ReturnType<typeof createCommandRegistry>; children: ReactNode }) {
-  const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
-  if (!registry.current) registry.current = createCommandRegistry();
+export function CaseDraftSession({ identity, commandRegistry, facilityIdentity = identity, facilityRegistry, children }: { identity: string | null; commandRegistry?: ReturnType<typeof createCommandRegistry>; facilityIdentity?: string | null; facilityRegistry?: ReturnType<typeof createCommandRegistry>; children: ReactNode }) {
+  const localRegistry = useCaseCommandRegistry();
   const localFacilityRegistry = useFacilityCommandRegistry();
   const [owner, setOwner] = useState(() => ({ identity, session: createSession() }));
   if (owner.identity !== identity) {
@@ -85,7 +98,7 @@ export function CaseDraftSession({ identity, facilityIdentity = identity, facili
     owner.session.activate();
     return () => owner.session.close();
   }, [owner.session]);
-  return <FacilityCommandRegistryContext.Provider value={{ identity: facilityIdentity, registry: facilityRegistry ?? localFacilityRegistry }}><CommandRegistryContext.Provider value={{ identity, registry: registry.current }}><Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider></CommandRegistryContext.Provider></FacilityCommandRegistryContext.Provider>;
+  return <FacilityCommandRegistryContext.Provider value={{ identity: facilityIdentity, registry: facilityRegistry ?? localFacilityRegistry }}><CommandRegistryContext.Provider value={{ identity, registry: commandRegistry ?? localRegistry }}><Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider></CommandRegistryContext.Provider></FacilityCommandRegistryContext.Provider>;
 }
 
 export function useCaseDraftSession() { return useContext(Context); }

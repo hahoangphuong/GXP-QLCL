@@ -296,6 +296,7 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
       <BusinessEligibilityWorkspace
+        siteId={summary.site_id}
         documentMetadata={eligibilityDocumentMetadata}
         versionHistory={eligibilityVersionHistory}
         sourceEvidence={eligibilitySourceEvidence}

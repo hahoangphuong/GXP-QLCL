@@ -1,6 +1,6 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
-import { CaseDraftSession } from "../features/search/CaseDraftSession";
+import { CaseDraftSession, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
 import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
@@ -303,6 +303,7 @@ export function SearchPage({
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(() => resolveFacilityTab(searchParams.get("facility_tab")));
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
   const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
+  const facilityCommandRegistry = useFacilityCommandRegistry();
   const deferredGeneralQuery = useDeferredValue(generalQuery);
   const deferredFacilityName = useDeferredValue(facilityName);
   const deferredCertificateScope = useDeferredValue(certificateScope);
@@ -467,6 +468,12 @@ export function SearchPage({
   const selectedContext = selectedResult && canLoadSecureApi && !accessTransitionPending
     && !explicitTargetPending && resultResolution !== "not_found"
     ? JSON.stringify([accessGeneration, useStubAuth, facilityContextIdentity(selectedResult)]) : null;
+  const eligibilityIssueOwner = useRef<object>({});
+  useLayoutEffect(() => {
+    const owner = {};
+    eligibilityIssueOwner.current = owner;
+    return () => { if (eligibilityIssueOwner.current === owner) eligibilityIssueOwner.current = {}; };
+  }, [selectedContext, selectedFacilityTab]);
   const gxpListOwner = selectedContext && selectedFacilityTab === "Giấy chứng nhận GxP"
     ? JSON.stringify(["gxp-list", selectedContext]) : null;
   const eligibilityListOwner = selectedContext && selectedFacilityTab === "Giấy chứng nhận đủ điều kiện"
@@ -1970,16 +1977,16 @@ export function SearchPage({
     );
   }
 
-  async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued: boolean, selectionGeneration: number) {
-    if (!selectedResult || !isCurrentContext() || !eligibilityListOwner) return;
+  async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued: boolean, selectionGeneration: number, isOwnerCurrent: () => boolean = () => true) {
+    if (!selectedResult || !isCurrentContext() || !eligibilityListOwner || !isOwnerCurrent()) return null;
     const listOwner = eligibilityListOwner;
     const detailOwner = JSON.stringify(["eligibility-detail", listOwner, certificateId]);
     const [detailPayload, listPayload] = await Promise.all([
       getBusinessEligibilityDetail(certificateId, auth, useStubAuth, bearerToken),
       listSiteBusinessEligibilityCertificates(selectedResult.site_id, auth, useStubAuth, bearerToken),
     ]);
-    if (!isCurrentContext() || certificateOwnerRef.current.eligibilityList !== listOwner || certificateSelectionRef.current.eligibilityGeneration !== selectionGeneration) return;
-    if (!selectIssued && (certificateSelectionRef.current.eligibilityOwner !== listOwner || certificateSelectionRef.current.eligibility !== certificateId)) return;
+    if (!isOwnerCurrent() || !isCurrentContext() || certificateOwnerRef.current.eligibilityList !== listOwner || certificateSelectionRef.current.eligibilityGeneration !== selectionGeneration) return null;
+    if (!selectIssued && (certificateSelectionRef.current.eligibilityOwner !== listOwner || certificateSelectionRef.current.eligibility !== certificateId)) return null;
     setSelectedEligibilityCertificateOwner(listOwner);
     setSelectedEligibilityCertificateId(certificateId);
     setEligibilityCertificateDetailOwner(detailOwner);
@@ -1988,6 +1995,7 @@ export function SearchPage({
     setEligibilityCertificatesOwner(listOwner);
     setEligibilityCertificates(listPayload.items);
     setEligibilityIssueReadiness(listPayload.issue_readiness);
+    return detailPayload;
   }
 
   async function handleIssueBusinessEligibility(payload: BusinessEligibilityIssueRequest) {
@@ -1995,8 +2003,12 @@ export function SearchPage({
       throw new Error("Chưa chọn cơ sở để cấp GCN đủ điều kiện.");
     }
     const generation = certificateSelectionRef.current.eligibilityGeneration;
-    const result = await issueBusinessEligibility(selectedResult.site_id, payload, auth, useStubAuth, bearerToken);
-    await refreshBusinessEligibilityAfterMutation(result.business_eligibility_certificate_id, true, generation);
+    const owner = eligibilityIssueOwner.current;
+    let certificateId = "";
+    await runCaseFieldMutation(
+      async () => { certificateId = (await issueBusinessEligibility(selectedResult.site_id, payload, auth, useStubAuth, bearerToken)).business_eligibility_certificate_id; },
+      () => refreshBusinessEligibilityAfterMutation(certificateId, true, generation, () => eligibilityIssueOwner.current === owner),
+    );
   }
 
   async function handleBusinessEligibilityLatestVersionUpdate(payload: BusinessEligibilityLatestVersionUpsertRequest) {
@@ -2518,7 +2530,7 @@ export function SearchPage({
         ) : null}
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
-            <CaseDraftSession identity={selectedContext && selectedHistory ? JSON.stringify([selectedContext, selectedHistory.source_type, selectedHistory.id]) : null}>
+            <CaseDraftSession identity={selectedContext && selectedHistory ? JSON.stringify([selectedContext, selectedHistory.source_type, selectedHistory.id]) : null} facilityIdentity={selectedContext && selectedResult ? JSON.stringify([accessGeneration, useStubAuth, selectedResult.site_id]) : null} facilityRegistry={facilityCommandRegistry}>
             <ApprovalMutationContext.Provider value={{ pending: approvalPhase === "pending", requiresReview: approvalPhase === "review" }}>
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}

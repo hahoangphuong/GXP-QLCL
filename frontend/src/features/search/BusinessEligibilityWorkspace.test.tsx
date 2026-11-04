@@ -4,6 +4,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { describe, expect, it, vi } from "vitest";
 
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
+import { CaseDraftSession, useFacilityCommandRegistry } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import type { BusinessEligibilityDetail, BusinessEligibilityListItem, GxpCertificateListItem } from "../../types";
 
 const items: BusinessEligibilityListItem[] = [{
@@ -85,6 +87,7 @@ function detail(): BusinessEligibilityDetail {
 
 function baseProps() {
   return {
+    siteId: "site-1",
     items,
     listLoading: false,
     listError: null,
@@ -104,6 +107,97 @@ function baseProps() {
     promotionPending: false,
   };
 }
+
+it("keeps facility eligibility issuance locked across workspace remount", async () => {
+  let finish!: () => void;
+  const props = baseProps();
+  props.onIssue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const view = (show: boolean) => <CaseDraftSession identity="site-1:case-1">{show ? <BusinessEligibilityWorkspace {...props} /> : null}</CaseDraftSession>;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" })).toBeDisabled();
+  expect(props.onIssue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
+it("keeps facility issuance locked when the entire workspace owner unmounts", async () => {
+  let finish!: () => void;
+  const props = baseProps();
+  props.onIssue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  function Parent({ show }: { show: boolean }) {
+    const registry = useFacilityCommandRegistry();
+    return show ? <CaseDraftSession identity="history" facilityIdentity="access-A:site-1" facilityRegistry={registry}><BusinessEligibilityWorkspace {...props} /></CaseDraftSession> : null;
+  }
+  const view = (show: boolean) => <Parent show={show} />;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" })).toBeDisabled();
+  expect(props.onIssue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
+it("blocks another facility eligibility issuance after an unknown result", async () => {
+  const props = baseProps();
+  props.onIssue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Chưa xác minh kết quả"));
+  render(<CaseDraftSession identity="site-1:case-1"><BusinessEligibilityWorkspace {...props} /></CaseDraftSession>);
+  fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+  expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("Chưa xác minh kết quả");
+  expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" })).toBeDisabled();
+  expect(props.onIssue).toHaveBeenCalledOnce();
+});
+
+it("keeps a Site issuance locked when history changes", async () => {
+  let finish!: () => void;
+  const props = baseProps();
+  props.onIssue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const view = (history: string) => <CaseDraftSession identity={history} facilityIdentity="access-A:site-1"><BusinessEligibilityWorkspace {...props} /></CaseDraftSession>;
+  const { rerender } = render(view("case-A"));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+  rerender(view("case-B"));
+  expect(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" })).toBeDisabled();
+  expect(props.onIssue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
+it("retains a pending issuance lock through Site A to B to A", async () => {
+  let finish!: () => void;
+  const props = baseProps();
+  props.onIssue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const view = (siteId: string) => <CaseDraftSession identity={`history:${siteId}`} facilityIdentity={`access-A:${siteId}`}><BusinessEligibilityWorkspace {...props} siteId={siteId} /></CaseDraftSession>;
+  const { rerender } = render(view("site-1"));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+  rerender(view("site-2"));
+  rerender(view("site-1"));
+  expect(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" })).toBeDisabled();
+  expect(props.onIssue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
+it.each(["access", "site"] as const)("does not expose the old issue draft after %s owner changes", async kind => {
+  let finish!: () => void;
+  const props = baseProps();
+  props.onIssue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const view = (owner: string, siteId: string) => <CaseDraftSession identity={owner} facilityIdentity={owner}><BusinessEligibilityWorkspace {...props} siteId={siteId} /></CaseDraftSession>;
+  const { rerender } = render(view("access-A:site-1", "site-1"));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+  fireEvent.change(screen.getByLabelText("Số GCN ĐĐK"), { target: { value: "old synthetic draft" } });
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+  rerender(view(kind === "access" ? "access-B:site-1" : "access-A:site-2", kind === "access" ? "site-1" : "site-2"));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+  fireEvent.change(screen.getByLabelText("Số GCN ĐĐK"), { target: { value: "new synthetic draft" } });
+  await act(async () => finish());
+  expect(screen.getByLabelText("Số GCN ĐĐK")).toHaveValue("new synthetic draft");
+});
 
 describe("Eligibility certificate keyboard and identity", () => {
   it.each(["issue", "edit"])("submits %s only once before pending renders", async mode => {

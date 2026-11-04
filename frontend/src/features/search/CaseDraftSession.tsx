@@ -52,13 +52,29 @@ function createCommandRegistry() {
 }
 
 const CommandRegistryContext = createContext<{ identity: string | null; registry: ReturnType<typeof createCommandRegistry> } | null>(null);
+const FacilityCommandRegistryContext = createContext<{ identity: string | null; registry: ReturnType<typeof createCommandRegistry> } | null>(null);
+const RootFacilityRegistryContext = createContext<ReturnType<typeof createCommandRegistry> | null>(null);
 
 const Context = createContext<ReturnType<typeof createSession> | null>(null);
 
-// One active canonical Case/access/line context, in memory only. No history cache.
-export function CaseDraftSession({ identity, children }: { identity: string | null; children: ReactNode }) {
+export function useFacilityCommandRegistry() {
+  const root = useContext(RootFacilityRegistryContext);
   const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
   if (!registry.current) registry.current = createCommandRegistry();
+  return root ?? registry.current;
+}
+
+export function FacilityCommandRegistryRoot({ children }: { children: ReactNode }) {
+  const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!registry.current) registry.current = createCommandRegistry();
+  return <RootFacilityRegistryContext.Provider value={registry.current}>{children}</RootFacilityRegistryContext.Provider>;
+}
+
+// One active canonical Case/access/line context, in memory only. No history cache.
+export function CaseDraftSession({ identity, facilityIdentity = identity, facilityRegistry, children }: { identity: string | null; facilityIdentity?: string | null; facilityRegistry?: ReturnType<typeof createCommandRegistry>; children: ReactNode }) {
+  const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!registry.current) registry.current = createCommandRegistry();
+  const localFacilityRegistry = useFacilityCommandRegistry();
   const [owner, setOwner] = useState(() => ({ identity, session: createSession() }));
   if (owner.identity !== identity) {
     setOwner({ identity, session: createSession() });
@@ -69,7 +85,7 @@ export function CaseDraftSession({ identity, children }: { identity: string | nu
     owner.session.activate();
     return () => owner.session.close();
   }, [owner.session]);
-  return <CommandRegistryContext.Provider value={{ identity, registry: registry.current }}><Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider></CommandRegistryContext.Provider>;
+  return <FacilityCommandRegistryContext.Provider value={{ identity: facilityIdentity, registry: facilityRegistry ?? localFacilityRegistry }}><CommandRegistryContext.Provider value={{ identity, registry: registry.current }}><Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider></CommandRegistryContext.Provider></FacilityCommandRegistryContext.Provider>;
 }
 
 export function useCaseDraftSession() { return useContext(Context); }
@@ -105,4 +121,20 @@ export function useCaseCommandLock(scope: string) {
   const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
   const requireReview = useCallback((token: object) => registry.requireReview(key, token), [registry, key]);
   return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview };
+}
+
+// Facility commands are bound to access and Site, independently of selected history.
+export function useFacilityCommandLock(scope: string) {
+  const context = useContext(FacilityCommandRegistryContext);
+  const fallback = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!fallback.current) fallback.current = createCommandRegistry();
+  const registry = context?.registry ?? fallback.current;
+  const key = JSON.stringify([context?.identity ?? null, scope]);
+  const subscribe = useCallback((notify: () => void) => registry.subscribe(notify), [registry]);
+  const snapshot = useCallback(() => registry.state(key), [registry, key]);
+  const state = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const acquire = useCallback(() => registry.acquire(key), [registry, key]);
+  const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
+  const requireReview = useCallback((token: object) => registry.requireReview(key, token), [registry, key]);
+  return { owner: context?.identity ?? null, pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview };
 }

@@ -936,6 +936,99 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("discards eligibility issuance readback that finishes after a tab round trip", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [], issue_readiness: {
+      action_key: "issue_business_eligibility", label: "Cấp GCN đủ điều kiện", available: true, reason_code: null, required_permissions: ["certificate.issue"],
+    } });
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
+    apiMocks.issueBusinessEligibility.mockResolvedValue({ business_eligibility_certificate_id: "synthetic-ddk" });
+    let finish!: (value: unknown) => void;
+    apiMocks.getBusinessEligibilityDetail.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("tab", { name: "Giấy chứng nhận ĐĐK" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+    await waitFor(() => expect(apiMocks.getBusinessEligibilityDetail).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận ĐĐK" }));
+    await act(async () => finish({ business_eligibility_certificate_id: "synthetic-ddk", site_id: "site-1", certificate_number: "STALE-SYNTHETIC", linked_gxp_certificates: [], action_readiness: [] }));
+    expect(screen.queryByText("STALE-SYNTHETIC")).not.toBeInTheDocument();
+    expect(apiMocks.getBusinessEligibilityDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains a pending facility issuance lock when leaving and reopening Search", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [], issue_readiness: {
+      action_key: "issue_business_eligibility", label: "Cấp GCN đủ điều kiện", available: true, reason_code: null, required_permissions: ["certificate.issue"],
+    } });
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
+    let finish!: (value: { business_eligibility_certificate_id: string }) => void;
+    apiMocks.issueBusinessEligibility.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("tab", { name: "Giấy chứng nhận ĐĐK" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+    fireEvent.click(screen.getByRole("link", { name: "Tổng quan" }));
+    fireEvent.click(screen.getByRole("link", { name: "Tra cứu" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Giấy chứng nhận ĐĐK" }));
+    expect(await screen.findByRole("button", { name: "Cấp GCN đủ điều kiện" })).toBeDisabled();
+    expect(apiMocks.issueBusinessEligibility).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ business_eligibility_certificate_id: "synthetic-ddk" }));
+  });
+
+  it("does not start stale eligibility issuance readback after a tab round trip", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [], issue_readiness: {
+      action_key: "issue_business_eligibility", label: "Cấp GCN đủ điều kiện", available: true, reason_code: null, required_permissions: ["certificate.issue"],
+    } });
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
+    let finish!: (value: { business_eligibility_certificate_id: string }) => void;
+    apiMocks.issueBusinessEligibility.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("tab", { name: "Giấy chứng nhận ĐĐK" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận ĐĐK" }));
+    await screen.findByRole("button", { name: "Cấp GCN đủ điều kiện" });
+    await act(async () => finish({ business_eligibility_certificate_id: "synthetic-ddk" }));
+    expect(apiMocks.getBusinessEligibilityDetail).not.toHaveBeenCalled();
+    expect(apiMocks.issueBusinessEligibility).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps facility eligibility issuance locked when committed write readback fails", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [], issue_readiness: {
+      action_key: "issue_business_eligibility", label: "Cấp GCN đủ điều kiện", available: true, reason_code: null, required_permissions: ["certificate.issue"],
+    } });
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
+    apiMocks.issueBusinessEligibility.mockResolvedValue({ business_eligibility_certificate_id: "synthetic-ddk" });
+    apiMocks.getBusinessEligibilityDetail.mockRejectedValue(new Error("synthetic readback failure"));
+    renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("tab", { name: "Giấy chứng nhận ĐĐK" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+    const dialog = screen.getByRole("dialog", { name: "Cấp GCN đủ điều kiện" });
+    fireEvent.change(within(dialog).getByLabelText("Số GCN ĐĐK"), { target: { value: "synthetic draft" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cấp GCN" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Không gửi lại");
+    expect(within(dialog).getByLabelText("Số GCN ĐĐK")).toHaveValue("synthetic draft");
+    expect(within(dialog).getByRole("button", { name: "Cấp GCN" })).toBeDisabled();
+    expect(apiMocks.issueBusinessEligibility).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     { owner: "application", step: "Hồ sơ đăng ký", trigger: "Sửa Mã hồ sơ", field: "Mã hồ sơ" },
     { owner: "assessment", step: "Hồ sơ đăng ký", trigger: "Sửa Kết quả thẩm định", field: "Kết quả thẩm định" },

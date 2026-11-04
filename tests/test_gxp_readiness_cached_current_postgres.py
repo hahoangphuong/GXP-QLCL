@@ -77,7 +77,10 @@ def test_readiness_refreshes_cached_root_after_another_session_promotes_current(
             initial_token = certificate.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-gxp-readiness", "manager")
+        actor = build_authenticated_user(
+            "synthetic-gxp-readiness", "manager",
+            permissions=["certificate.edit", "certificate.approve"],
+        )
         cached_session = factory()
         cached = cached_session.get(Certificate, certificate_id)
         assert cached.latest_flag is False

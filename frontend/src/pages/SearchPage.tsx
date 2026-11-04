@@ -2168,26 +2168,31 @@ export function SearchPage({
       throw new Error("Ngữ cảnh hồ sơ cấp chứng nhận không còn hợp lệ.");
     }
     const operationOwner = caseOperationOwner.current;
-    const result = await issueGxpCertificate(selectedCaseWorkspace.case_summary.site_id, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(payload.case_id, undefined, operationOwner);
-    if (!isCurrentCaseOperation(operationOwner)) return;
-    if (selectedFacilityTab === "Giấy chứng nhận GxP") {
-      if (!gxpListOwner) return;
-      const listOwner = gxpListOwner;
-      const detailOwner = JSON.stringify(["gxp-detail", listOwner, result.certificate_id]);
-      const [detailPayload, listPayload] = await Promise.all([
-        getGxpCertificateDetail(result.certificate_id, auth, useStubAuth, bearerToken),
-        listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken, selectedResult.production_line_id),
-      ]);
-      if (!isCurrentCaseOperation(operationOwner) || certificateOwnerRef.current.gxpList !== listOwner) return;
-      setSelectedGxpCertificateOwner(listOwner);
-      setSelectedGxpCertificateId(result.certificate_id);
-      setGxpCertificateDetailOwner(detailOwner);
-      setGxpCertificateDetail(detailPayload);
-      setGxpCertificatesOwner(listOwner);
-      setGxpCertificates(listPayload.items);
-      setGxpCertificateDetailFailure(null);
-    }
+    let certificateId = "";
+    await runCaseFieldMutation(
+      async () => { certificateId = (await issueGxpCertificate(selectedCaseWorkspace.case_summary.site_id, payload, auth, useStubAuth, bearerToken)).certificate_id; },
+      async () => {
+        const workspace = await refreshSelectedCaseWorkspace(payload.case_id, undefined, operationOwner);
+        if (!workspace || !isCurrentCaseOperation(operationOwner)) return null;
+        if (selectedFacilityTab === "Giấy chứng nhận GxP" && gxpListOwner) {
+          const listOwner = gxpListOwner;
+          const detailOwner = JSON.stringify(["gxp-detail", listOwner, certificateId]);
+          const [detailPayload, listPayload] = await Promise.all([
+            getGxpCertificateDetail(certificateId, auth, useStubAuth, bearerToken),
+            listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken, selectedResult.production_line_id),
+          ]);
+          if (!isCurrentCaseOperation(operationOwner) || certificateOwnerRef.current.gxpList !== listOwner) return null;
+          setSelectedGxpCertificateOwner(listOwner);
+          setSelectedGxpCertificateId(certificateId);
+          setGxpCertificateDetailOwner(detailOwner);
+          setGxpCertificateDetail(detailPayload);
+          setGxpCertificatesOwner(listOwner);
+          setGxpCertificates(listPayload.items);
+          setGxpCertificateDetailFailure(null);
+        }
+        return workspace;
+      },
+    );
   }
 
   async function handleLoadDocumentDetail(documentId: string): Promise<DocumentDetail> {

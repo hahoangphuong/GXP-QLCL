@@ -936,6 +936,29 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("keeps case GxP issuance locked when its committed write cannot be read back", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(buildCaseWorkspace({ certificate_issue_readiness: {
+        action_key: "issue_certificate", label: "Cấp chứng nhận GxP", available: true,
+        reason_code: null, required_permissions: ["certificate.issue"], certificate_type: "GMP", issuance_basis: "inspection_case",
+      } }))
+      .mockRejectedValueOnce(new Error("synthetic readback failure"));
+    apiMocks.issueGxpCertificate.mockResolvedValue({ certificate_id: "cert-new", row_version: 1, latest_flag: false });
+    renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GPs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GxP" }));
+    const dialog = screen.getByRole("dialog", { name: "Cấp giấy chứng nhận GxP" });
+    fireEvent.change(within(dialog).getByLabelText("Số GCN"), { target: { value: "synthetic draft" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cấp giấy chứng nhận" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Không gửi lại");
+    expect(within(dialog).getByLabelText("Số GCN")).toHaveValue("synthetic draft");
+    expect(within(dialog).getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+    expect(apiMocks.issueGxpCertificate).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     { owner: "application", step: "Hồ sơ đăng ký", trigger: "Sửa Mã hồ sơ", field: "Mã hồ sơ" },
     { owner: "assessment", step: "Hồ sơ đăng ký", trigger: "Sửa Kết quả thẩm định", field: "Kết quả thẩm định" },

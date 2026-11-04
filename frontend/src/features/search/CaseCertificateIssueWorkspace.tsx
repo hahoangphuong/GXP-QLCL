@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { CertificateIssueActionReadiness, CertificateIssueRequest } from "../../types";
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
+import { useCaseCommandLock } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 
 type ScopeDraft = CertificateIssueRequest["scopes"][number];
 
@@ -126,6 +128,19 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
 }) {
   const [intent, setIntent] = useState<{ caseId: string; readiness: CertificateIssueActionReadiness } | null>(null);
   const [intentCaseId, setIntentCaseId] = useState(caseId);
+  const commandLock = useCaseCommandLock(`certificate.issue:${caseId}`);
+  async function issueOwned(payload: CertificateIssueRequest) {
+    const command = commandLock.acquire();
+    if (!command) throw new CaseFieldMutationRecoveryError("Chưa xác minh kết quả cấp chứng nhận trước; không gửi lại.");
+    try {
+      await onIssue(payload);
+    } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      throw error;
+    } finally {
+      commandLock.release(command);
+    }
+  }
   if (intentCaseId !== caseId) {
     setIntentCaseId(caseId);
     setIntent(null);
@@ -133,10 +148,11 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
   if (!readiness || readiness.action_key !== "issue_certificate") return null;
   return <section className="workspace-section certificate-issue-section">
     <div className="certificate-action-bar">
-      <button disabled={!readiness.available} onClick={() => setIntent({ caseId, readiness })} title={readiness.reason_code ?? undefined} type="button">{readiness.label}</button>
+      <button disabled={!readiness.available || commandLock.pending || commandLock.requiresReview} onClick={() => setIntent({ caseId, readiness })} title={readiness.reason_code ?? undefined} type="button">{readiness.label}</button>
       {!readiness.available && readiness.reason_code ? <span>{readiness.reason_code}</span> : null}
     </div>
-    {intent ? <CertificateIssueDialog caseId={intent.caseId} onClose={() => setIntent(current => current === intent ? null : current)} onIssue={onIssue} readiness={intent.readiness}
-      saveAvailable={readiness.available && readiness.certificate_type === intent.readiness.certificate_type && readiness.issuance_basis === intent.readiness.issuance_basis} /> : null}
+    {commandLock.requiresReview ? <p role="alert">Chưa xác minh kết quả cấp chứng nhận trước; không gửi lại.</p> : null}
+    {intent ? <CertificateIssueDialog caseId={intent.caseId} onClose={() => setIntent(current => current === intent ? null : current)} onIssue={issueOwned} readiness={intent.readiness}
+      saveAvailable={!commandLock.pending && !commandLock.requiresReview && readiness.available && readiness.certificate_type === intent.readiness.certificate_type && readiness.issuance_basis === intent.readiness.issuance_basis} /> : null}
   </section>;
 }

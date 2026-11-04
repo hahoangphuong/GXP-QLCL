@@ -1,0 +1,187 @@
+[
+  {
+    "group": "identity",
+    "scenario": "opaque_id",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "same_intent",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "different_payload",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "different_actor",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "different_site",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "different_command",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "different_expected_version",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "omitted_vs_null",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "identity",
+    "scenario": "canonicalizer_version",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "transaction",
+    "scenario": "atomic_business_receipt",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "transaction",
+    "scenario": "rollback_no_success",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "transaction",
+    "scenario": "receipt_references_result",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "transaction",
+    "scenario": "one_commit",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "transaction",
+    "scenario": "no_duplicate_audit",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "transaction",
+    "scenario": "concurrent_duplicates",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "lookup",
+    "scenario": "same_actor_current_permission",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "lookup",
+    "scenario": "different_actor",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "lookup",
+    "scenario": "different_site",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "lookup",
+    "scenario": "permission_revoked",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "lookup",
+    "scenario": "non_enumerating",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "lookup",
+    "scenario": "result_binding",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "lost_response",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "lookup_after_commit",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "lookup_during_commit",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "lookup_before_admission",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "late_original_after_not_found",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "reload",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "same_principal_reauth",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "different_principal_reauth",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "stale_generation",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "old_response_after_new",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "recovery",
+    "scenario": "timeout_unknown",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "crash",
+    "scenario": "disconnect_before_commit",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "crash",
+    "scenario": "crash_after_reservation",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "crash",
+    "scenario": "lease_expiry",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "crash",
+    "scenario": "stale_fence",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  },
+  {
+    "group": "crash",
+    "scenario": "failover_after_commit",
+    "status": "CONTRACT_PENDING_APPROVAL"
+  }
+]

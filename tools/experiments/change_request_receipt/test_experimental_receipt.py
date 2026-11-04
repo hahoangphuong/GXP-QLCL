@@ -16,6 +16,17 @@ def proof():
         c.execute(text('CREATE TABLE receipt (op_id text PRIMARY KEY, actor text NOT NULL, site text NOT NULL, fingerprint text NOT NULL, result_id int)'))
         c.execute(text('CREATE TABLE business (id serial PRIMARY KEY, site text NOT NULL)'))
         c.execute(text('CREATE TABLE audit (id serial PRIMARY KEY, business_id int NOT NULL REFERENCES business(id))'))
+        c.execute(text('ALTER TABLE receipt ADD CONSTRAINT receipt_result_fk FOREIGN KEY (result_id) REFERENCES business(id) DEFERRABLE INITIALLY DEFERRED'))
+        c.execute(text('''CREATE FUNCTION require_receipt_result() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+              IF EXISTS (SELECT 1 FROM receipt WHERE op_id = NEW.op_id AND result_id IS NULL) THEN
+                RAISE EXCEPTION 'committed receipt has no result' USING ERRCODE = '23514';
+              END IF;
+              RETURN NULL;
+            END $$'''))
+        c.execute(text('''CREATE CONSTRAINT TRIGGER receipt_result_required
+            AFTER INSERT OR UPDATE ON receipt DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW EXECUTE FUNCTION require_receipt_result()'''))
     try: yield engine
     finally:
         engine.dispose()
@@ -64,3 +75,47 @@ def test_unique_key_never_overwrites_actor_site_or_fingerprint(proof):
             row=c.execute(text("SELECT actor,site,fingerprint FROM receipt WHERE op_id='op-a'")).one()
             assert tuple(row)==('actor-a','site-a','hash-a')
             assert counts(c)==(1,1,1)
+
+def test_committed_receipt_requires_a_real_business_result(proof):
+    from sqlalchemy.exc import IntegrityError
+    with pytest.raises(IntegrityError):
+        with proof.begin() as c:
+            c.execute(text("INSERT INTO receipt(op_id,actor,site,fingerprint) VALUES ('orphan','actor-a','site-a','hash-a')"))
+    with proof.connect() as c:
+        assert counts(c) == (0, 0, 0)
+
+def test_receipt_result_must_reference_committed_business(proof):
+    from sqlalchemy.exc import IntegrityError
+    with pytest.raises(IntegrityError):
+        with proof.begin() as c:
+            c.execute(text("INSERT INTO receipt(op_id,actor,site,fingerprint,result_id) VALUES ('bad','actor-a','site-a','hash-a',999999)"))
+    with proof.connect() as c:
+        assert counts(c) == (0, 0, 0)
+
+def test_absent_lookup_before_late_original_does_not_fence_it(proof):
+    with proof.connect() as reader:
+        assert reader.scalar(text("SELECT count(*) FROM receipt WHERE op_id='late'")) == 0
+    with proof.begin() as delayed:
+        prepare(delayed, op='late')
+    with proof.connect() as verify:
+        assert counts(verify) == (1, 1, 1)
+
+
+def test_retry_admitted_first_prevents_late_same_key_second_insert(proof):
+    with proof.connect() as reader:
+        assert reader.scalar(text("SELECT count(*) FROM receipt WHERE op_id='late'")) == 0
+    with proof.begin() as retry:
+        first_result = prepare(retry, op='late')
+    with proof.begin() as delayed:
+        row = delayed.execute(text("INSERT INTO receipt(op_id,actor,site,fingerprint) VALUES ('late','actor-a','site-a','hash-a') ON CONFLICT DO NOTHING"))
+        assert row.rowcount == 0
+        assert delayed.scalar(text("SELECT result_id FROM receipt WHERE op_id='late'")) == first_result
+        assert counts(delayed) == (1, 1, 1)
+
+def test_disconnect_before_commit_rolls_back_experimental_rows(proof):
+    c = proof.connect()
+    c.begin()
+    prepare(c, op='disconnect')
+    c.close()
+    with proof.connect() as verify:
+        assert counts(verify) == (0, 0, 0)

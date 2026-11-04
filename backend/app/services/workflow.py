@@ -511,7 +511,12 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> list[dict[str, Any]]:
         certificate = self._get_business_eligibility(session, business_eligibility_certificate_id)
+        # A read-only readiness Session can outlive another writer's commit.
+        # Refresh both identities before advertising eligibility and the root
+        # optimistic token; the mutation still revalidates under the Site lock.
+        session.refresh(certificate)
         version = self._load_latest_business_eligibility_version(session, certificate.id)
+        session.refresh(version)
         edit_permission = "certificate.edit"
         promote_permission = "certificate.approve"
         edit_reason = None if edit_permission in user.permissions else "missing_permission"

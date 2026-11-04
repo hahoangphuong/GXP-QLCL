@@ -104,6 +104,9 @@ def test_existing_change_request_uses_committed_root_token(operation, request_to
             with pytest.raises(HTTPException) as denied:
                 mutate(stale_session, original_token, "SECOND")
             assert denied.value.status_code == 409
+            # A 409 for invalid state is not an optimistic-version rejection.
+            # Ensure the actual root concurrency gate rejected the stale token.
+            assert "Stale change_request update" in str(denied.value.detail)
             stale_session.rollback()
         else:
             second = mutate(stale_session, committed_token, "SECOND")

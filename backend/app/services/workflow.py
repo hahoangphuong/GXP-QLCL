@@ -398,6 +398,10 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         case = self._get_case(session, case_id)
+        # Readiness may run in a long-lived Session after another writer
+        # committed a Case transition. Refresh the owner state before deciding
+        # whether issuance should be offered; mutation rechecks under Case lock.
+        session.refresh(case)
         permission = "certificate.issue"
         reason = None if permission in user.permissions else "missing_permission"
         if reason is None and case.gxp_type == "GMP" and self._gmp_case_already_issued(session, case.id):

@@ -1830,6 +1830,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_change_request(session, change_request_id)
+        # The Change Request owns successor issuance. Serialize against its
+        # committed root before checking the optimistic token or writing artifacts.
+        session.refresh(row, with_for_update=True)
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
             raise HTTPException(
@@ -1982,6 +1985,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_change_request(session, change_request_id)
+        # The Change Request owns successor issuance. Serialize against its
+        # committed root before checking the optimistic token or writing artifacts.
+        session.refresh(row, with_for_update=True)
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
             raise HTTPException(

@@ -21,6 +21,8 @@ import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 import { BusinessEligibilitySourceEvidence } from "./BusinessEligibilitySourceEvidence";
 import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
 import { CertificateDocumentMetadata } from "./CertificateDocumentMetadata";
+import { useFacilityCommandLock } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 type LinkDraft = { certificate_id: string; link_role: string };
@@ -188,6 +190,7 @@ export function BusinessEligibilityMutationDialog({
 }
 
 export function BusinessEligibilityWorkspace({
+  siteId,
   versionHistory,
   documentMetadata,
   sourceEvidence,
@@ -209,6 +212,7 @@ export function BusinessEligibilityWorkspace({
   promotionError,
   promotionPending,
 }: {
+  siteId: string;
   versionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
   documentMetadata?: CertificateDocumentMetadataState;
   sourceEvidence?: EligibilitySourceState;
@@ -230,7 +234,21 @@ export function BusinessEligibilityWorkspace({
   promotionError: string | null;
   promotionPending: boolean;
 }) {
-  const [issueOpen, setIssueOpen] = useState(false);
+  const [issueIntent, setIssueIntent] = useState<{ siteId: string; owner: string | null } | null>(null);
+  const issueLock = useFacilityCommandLock(`business-eligibility.issue:${siteId}`);
+  async function issueOwned(payload: BusinessEligibilityIssueRequest) {
+    const command = issueLock.acquire();
+    if (!command) throw new CaseFieldMutationRecoveryError("Chưa xác minh kết quả cấp GCN đủ điều kiện trước; không gửi lại.");
+    try {
+      await onIssue(payload);
+    } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) issueLock.requireReview(command);
+      throw error;
+    } finally {
+      issueLock.release(command);
+    }
+  }
+  if (issueIntent && (issueIntent.siteId !== siteId || issueIntent.owner !== issueLock.owner)) setIssueIntent(null);
   const [editDraft, setEditDraft] = useState<{ detail: BusinessEligibilityDetail; expectedVersion: number } | null>(null);
   const [draftSelection, setDraftSelection] = useState(selectedCertificateId);
   if (draftSelection !== selectedCertificateId) {
@@ -252,12 +270,13 @@ export function BusinessEligibilityWorkspace({
         <div className="panel-header">
           <div><h3>Danh mục GCN đủ điều kiện</h3><span className="panel-meta">{items.length} giấy</span></div>
           {issueReadiness ? <button
-            disabled={!issueReadiness.available || promotionPending}
-            onClick={() => setIssueOpen(true)}
+            disabled={!issueReadiness.available || promotionPending || issueLock.pending || issueLock.requiresReview}
+            onClick={() => setIssueIntent({ siteId, owner: issueLock.owner })}
             title={issueReadiness.reason_code ?? undefined}
             type="button"
           >{issueReadiness.label}</button> : null}
         </div>
+        {issueLock.requiresReview ? <p role="alert">Chưa xác minh kết quả cấp GCN đủ điều kiện trước; không gửi lại.</p> : null}
         <p className="workspace-note" id={hintId}>↑/↓, Home/End: di chuyển · Enter/Space: chọn giấy</p>
         {listError ? <ErrorState message={listError} /> : null}
         {listLoading && items.length > 0 ? <p role="status" className="workspace-note">Đang tải danh mục ĐĐK…</p> : null}
@@ -311,17 +330,17 @@ export function BusinessEligibilityWorkspace({
         {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="ddk" state={versionHistory} /> : null}
       </section>
 
-      {issueOpen ? <BusinessEligibilityMutationDialog
+      {issueIntent && issueIntent.siteId === siteId && issueIntent.owner === issueLock.owner ? <BusinessEligibilityMutationDialog
         basisCertificates={basisCertificates}
         basisError={basisError}
         basisLoading={basisLoading}
         detail={null}
         expectedVersion={null}
         mode="issue"
-        saveAvailable={issueReadiness?.available === true}
-        onClose={() => setIssueOpen(false)}
+        saveAvailable={issueReadiness?.available === true && !issueLock.pending && !issueLock.requiresReview}
+        onClose={() => setIssueIntent(current => current === issueIntent ? null : current)}
         onEdit={onEditLatestVersion}
-        onIssue={onIssue}
+        onIssue={issueOwned}
         onStaleConflict={() => undefined}
       /> : null}
 

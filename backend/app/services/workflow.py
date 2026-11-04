@@ -4079,6 +4079,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         certificate = self._get_certificate(session, certificate_id)
+        # Serialize edits on their aggregate root and refresh an already-cached
+        # ORM identity before validating the caller's concurrency token.
+        session.refresh(certificate, with_for_update=True)
         self._certificate_line_identity(session, certificate)
         self._assert_expected_version(certificate, expected_version, label="certificate")
         actor = self._get_or_create_app_user(session, user)
@@ -4410,6 +4413,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_business_eligibility(session, business_eligibility_certificate_id)
+        # Lock/refresh the aggregate root before comparing its optimistic token;
+        # otherwise Session identity-map cache can reject a valid update.
+        session.refresh(row, with_for_update=True)
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
         actor = self._get_or_create_app_user(session, user)
         version = self._load_latest_business_eligibility_version(session, row.id)

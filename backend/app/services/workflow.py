@@ -4065,6 +4065,10 @@ class CaseWorkflowService:
         self._assert_expected_version(certificate, expected_version, label="certificate")
         actor = self._get_or_create_app_user(session, user)
         version = self._load_latest_certificate_version(session, certificate.id)
+        # A caller may hold a stale Version ORM identity while supplying the
+        # current aggregate-root token after another committed edit. Refresh
+        # its versioned child before capturing audit before-state and writing.
+        session.refresh(version)
         before = {
             "certificate_number": version.certificate_number,
             "issue_date": self._normalize_audit_value(version.issue_date),
@@ -4390,6 +4394,9 @@ class CaseWorkflowService:
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
         actor = self._get_or_create_app_user(session, user)
         version = self._load_latest_business_eligibility_version(session, row.id)
+        # The root token is authoritative for edits; a cached child Version
+        # must not yield a false optimistic-lock conflict or stale audit delta.
+        session.refresh(version)
         before = {
             "certificate_number": version.certificate_number,
             "issued_on": self._normalize_audit_value(version.issued_on),

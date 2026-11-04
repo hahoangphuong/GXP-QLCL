@@ -40,7 +40,13 @@ export function ReportsPage({
   const [page, setPage] = useState<PageState | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const exportGuard = useRef(false);
+  const exportGuard = useRef<object | null>(null);
+  useEffect(() => {
+    // A new authenticated owner must not inherit an unfinished download lock.
+    exportGuard.current = null;
+    setExporting(false);
+    setExportError(null);
+  }, [owner]);
   const key = JSON.stringify([active, offset]);
   const current = page?.owner === owner && page.key === key ? page : null;
 
@@ -67,7 +73,8 @@ export function ReportsPage({
 
   async function exportReport() {
     if (exportGuard.current || !canLoadSecureApi) return;
-    exportGuard.current = true;
+    const token = {};
+    exportGuard.current = token;
     setExporting(true);
     setExportError(null);
     const requestedOwner = owner;
@@ -76,7 +83,7 @@ export function ReportsPage({
       const rows = await collectFacilityReport(
         (pageOffset, limit) =>
           searchFacilities({ ...filters, offset: pageOffset, limit }, auth, useStubAuth, bearerToken),
-        () => ownerRef.current === requestedOwner,
+        () => ownerRef.current === requestedOwner && exportGuard.current === token,
       );
       if (ownerRef.current !== requestedOwner) return;
       const blob = new Blob([facilityReportCsv(rows)], { type: "text/csv;charset=utf-8" });
@@ -96,8 +103,10 @@ export function ReportsPage({
         setExportError(error instanceof Error ? error.message : "Không thể xuất báo cáo.");
       }
     } finally {
-      exportGuard.current = false;
-      if (ownerRef.current === requestedOwner) setExporting(false);
+      if (exportGuard.current === token) {
+        exportGuard.current = null;
+        if (ownerRef.current === requestedOwner) setExporting(false);
+      }
     }
   }
 

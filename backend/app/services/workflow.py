@@ -2171,6 +2171,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_change_request(session, change_request_id)
+        # The Change Request owns the detail mutation token. Refresh and lock
+        # its committed version before any detail or audit write.
+        session.refresh(row, with_for_update=True)
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
             raise HTTPException(status_code=409, detail="Change request details are read-only in the current state.")
@@ -2228,6 +2231,9 @@ class CaseWorkflowService:
         if detail is None:
             raise HTTPException(status_code=404, detail="Change request detail not found.")
         row = self._get_change_request(session, detail.change_request_id)
+        # A cached parent must not accept a stale token or reject a fresh one.
+        # Serialize changes against the committed Change Request owner.
+        session.refresh(row, with_for_update=True)
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
             raise HTTPException(status_code=409, detail="Change request details are read-only in the current state.")

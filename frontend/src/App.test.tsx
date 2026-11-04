@@ -936,6 +936,28 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("retains a pending case issuance lock when leaving and reopening Search", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ certificate_issue_readiness: {
+      action_key: "issue_certificate", label: "Cấp chứng nhận GxP", available: true, reason_code: null,
+      required_permissions: ["certificate.issue"], certificate_type: "GMP", issuance_basis: "inspection_case",
+    } }));
+    let finish!: (value: { certificate_id: string }) => void;
+    apiMocks.issueGxpCertificate.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GPs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GxP" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp giấy chứng nhận" }));
+    fireEvent.click(screen.getByRole("link", { name: "Tổng quan" }));
+    fireEvent.click(screen.getByRole("link", { name: "Tra cứu" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GPs" }));
+    expect(await screen.findByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+    expect(apiMocks.issueGxpCertificate).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ certificate_id: "synthetic-certificate" }));
+  });
+
   it("keeps case GxP issuance locked when its committed write cannot be read back", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

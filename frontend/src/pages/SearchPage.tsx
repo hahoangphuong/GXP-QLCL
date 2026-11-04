@@ -1,6 +1,6 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
-import { CaseDraftSession } from "../features/search/CaseDraftSession";
+import { CaseDraftSession, useCaseCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
 import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
@@ -303,6 +303,7 @@ export function SearchPage({
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(() => resolveFacilityTab(searchParams.get("facility_tab")));
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
   const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
+  const caseCommandRegistry = useCaseCommandRegistry();
   const deferredGeneralQuery = useDeferredValue(generalQuery);
   const deferredFacilityName = useDeferredValue(facilityName);
   const deferredCertificateScope = useDeferredValue(certificateScope);
@@ -2523,7 +2524,7 @@ export function SearchPage({
         ) : null}
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
-            <CaseDraftSession identity={selectedContext && selectedHistory ? JSON.stringify([selectedContext, selectedHistory.source_type, selectedHistory.id]) : null}>
+            <CaseDraftSession identity={selectedContext && selectedHistory ? JSON.stringify([selectedContext, selectedHistory.source_type, selectedHistory.id]) : null} commandRegistry={caseCommandRegistry}>
             <ApprovalMutationContext.Provider value={{ pending: approvalPhase === "pending", requiresReview: approvalPhase === "review" }}>
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}

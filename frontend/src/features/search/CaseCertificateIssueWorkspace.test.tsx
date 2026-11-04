@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { describe, expect, it, vi } from "vitest";
 
 import { CaseCertificateIssueWorkspace } from "./CaseCertificateIssueWorkspace";
-import { CaseDraftSession } from "./CaseDraftSession";
+import { CaseDraftSession, useCaseCommandRegistry } from "./CaseDraftSession";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import type { CertificateIssueActionReadiness, CertificateIssueRequest } from "../../types";
 
@@ -28,6 +28,24 @@ it("keeps certificate issuance locked when its workspace remounts while pending"
   let finish!: () => void;
   const issue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
   const view = (show: boolean) => <CaseDraftSession identity="case-A">{show ? <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /> : null}</CaseDraftSession>;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+  expect(issue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
+it("keeps issuance locked when the entire Case workspace owner unmounts", async () => {
+  let finish!: () => void;
+  const issue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  function Parent({ show }: { show: boolean }) {
+    const registry = useCaseCommandRegistry();
+    return show ? <CaseDraftSession identity="case-A" commandRegistry={registry}><CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /></CaseDraftSession> : null;
+  }
+  const view = (show: boolean) => <Parent show={show} />;
   const { rerender } = render(view(true));
   fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
   fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));

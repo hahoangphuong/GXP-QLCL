@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { describe, expect, it, vi } from "vitest";
 
 import { CaseCertificateIssueWorkspace } from "./CaseCertificateIssueWorkspace";
+import { CaseDraftSession, useCaseCommandRegistry } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import type { CertificateIssueActionReadiness, CertificateIssueRequest } from "../../types";
 
 function readiness(available = true): CertificateIssueActionReadiness {
@@ -21,6 +23,62 @@ function renderWorkspace(onIssue = vi.fn().mockResolvedValue(undefined), action 
   render(<CaseCertificateIssueWorkspace caseId="case-1" onIssue={onIssue} readiness={action} />);
   return onIssue;
 }
+
+it("keeps certificate issuance locked when its workspace remounts while pending", async () => {
+  let finish!: () => void;
+  const issue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const view = (show: boolean) => <CaseDraftSession identity="case-A">{show ? <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /> : null}</CaseDraftSession>;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+  expect(issue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
+it("keeps issuance locked when the entire Case workspace owner unmounts", async () => {
+  let finish!: () => void;
+  const issue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  function Parent({ show }: { show: boolean }) {
+    const registry = useCaseCommandRegistry();
+    return show ? <CaseDraftSession identity="case-A" commandRegistry={registry}><CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /></CaseDraftSession> : null;
+  }
+  const view = (show: boolean) => <Parent show={show} />;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+  expect(issue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
+
+it("does not allow another issuance after an unknown result", async () => {
+  const issue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Chưa xác minh kết quả"));
+  render(<CaseDraftSession identity="case-A"><CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /></CaseDraftSession>);
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("Chưa xác minh kết quả");
+  expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+  expect(issue).toHaveBeenCalledOnce();
+});
+
+it("retains the pending issuance lock through Case A to B to A", async () => {
+  let finish!: () => void;
+  const issue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const view = (id: string) => <CaseDraftSession identity={id}><CaseCertificateIssueWorkspace caseId={id} readiness={readiness()} onIssue={issue} /></CaseDraftSession>;
+  const { rerender } = render(view("case-A"));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  rerender(view("case-B"));
+  rerender(view("case-A"));
+  expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+  expect(issue).toHaveBeenCalledOnce();
+  await act(async () => finish());
+});
 
 describe("CaseCertificateIssueWorkspace", () => {
   it("submits only once before pending renders", async () => {

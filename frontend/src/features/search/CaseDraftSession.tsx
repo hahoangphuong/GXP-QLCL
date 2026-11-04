@@ -52,13 +52,26 @@ function createCommandRegistry() {
 }
 
 const CommandRegistryContext = createContext<{ identity: string | null; registry: ReturnType<typeof createCommandRegistry> } | null>(null);
+const RootCaseRegistryContext = createContext<ReturnType<typeof createCommandRegistry> | null>(null);
 
 const Context = createContext<ReturnType<typeof createSession> | null>(null);
 
-// One active canonical Case/access/line context, in memory only. No history cache.
-export function CaseDraftSession({ identity, children }: { identity: string | null; children: ReactNode }) {
+export function useCaseCommandRegistry() {
+  const root = useContext(RootCaseRegistryContext);
   const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
   if (!registry.current) registry.current = createCommandRegistry();
+  return root ?? registry.current;
+}
+
+export function CaseCommandRegistryRoot({ children }: { children: ReactNode }) {
+  const registry = useRef<ReturnType<typeof createCommandRegistry> | null>(null);
+  if (!registry.current) registry.current = createCommandRegistry();
+  return <RootCaseRegistryContext.Provider value={registry.current}>{children}</RootCaseRegistryContext.Provider>;
+}
+
+// One active canonical Case/access/line context, in memory only. No history cache.
+export function CaseDraftSession({ identity, commandRegistry, children }: { identity: string | null; commandRegistry?: ReturnType<typeof createCommandRegistry>; children: ReactNode }) {
+  const localRegistry = useCaseCommandRegistry();
   const [owner, setOwner] = useState(() => ({ identity, session: createSession() }));
   if (owner.identity !== identity) {
     setOwner({ identity, session: createSession() });
@@ -69,7 +82,7 @@ export function CaseDraftSession({ identity, children }: { identity: string | nu
     owner.session.activate();
     return () => owner.session.close();
   }, [owner.session]);
-  return <CommandRegistryContext.Provider value={{ identity, registry: registry.current }}><Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider></CommandRegistryContext.Provider>;
+  return <CommandRegistryContext.Provider value={{ identity, registry: commandRegistry ?? localRegistry }}><Context.Provider value={identity === null ? null : owner.session}>{children}</Context.Provider></CommandRegistryContext.Provider>;
 }
 
 export function useCaseDraftSession() { return useContext(Context); }

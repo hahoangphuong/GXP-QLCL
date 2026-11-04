@@ -340,8 +340,13 @@ class CaseWorkflowService:
     ) -> list[dict[str, Any]]:
         """Describe the contextual rules still enforced by certificate mutations."""
         certificate = self._get_certificate(session, certificate_id)
+        # Readiness may reuse a long-lived Session after another writer commits.
+        # Refresh root and child identities before checking eligibility/tokens;
+        # the mutation still revalidates under the Site/Case owner locks.
+        session.refresh(certificate)
         self._certificate_line_identity(session, certificate)
         version = self._load_latest_certificate_version(session, certificate.id)
+        session.refresh(version)
         edit_permission = "certificate.edit"
         promote_permission = "certificate.approve"
         edit_reason = None if edit_permission in user.permissions else "missing_permission"

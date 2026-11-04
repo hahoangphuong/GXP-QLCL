@@ -567,6 +567,9 @@ class CaseWorkflowService:
             if current.id == certificate.id:
                 continue
             current_version = self._load_latest_certificate_version(session, current.id)
+            # The SQL-current certificate root may be refreshed while its
+            # Version remains stale in this Session identity map.
+            session.refresh(current_version)
             if current_version.issue_date is not None and version.issue_date < current_version.issue_date:
                 return "candidate_issue_date_precedes_current"
         return None

@@ -2124,6 +2124,9 @@ class CaseWorkflowService:
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
         row = self._get_change_request(session, change_request_id)
+        # Serialize header writes and refresh any cached aggregate root before
+        # validating the optimistic token from the caller.
+        session.refresh(row, with_for_update=True)
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
             raise HTTPException(status_code=409, detail="Change request header is read-only in the current state.")
@@ -2328,6 +2331,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_change_request(session, change_request_id)
+        # Transition gates must use the committed owner state and version,
+        # never the Session's stale ChangeRequest identity.
+        session.refresh(row, with_for_update=True)
         self._assert_expected_version(row, expected_version, label="change_request")
         try:
             parsed_target = ChangeRequestState(target_state)

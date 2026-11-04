@@ -27,7 +27,8 @@ if not DATABASE_URL.startswith("postgresql"):
     pytest.skip("requires disposable PostgreSQL", allow_module_level=True)
 
 
-def test_readiness_refreshes_cached_root_after_another_session_promotes_current():
+@pytest.mark.parametrize("later_mutation", ["promote_current", "edit_incomplete"])
+def test_readiness_refreshes_cached_root_after_another_session_promotes_current(later_mutation):
     if make_url(DATABASE_URL).database != "gxp_qlcl_test":
         pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted.")
     schema = "gxp_readiness_stale_" + uuid4().hex
@@ -92,11 +93,23 @@ def test_readiness_refreshes_cached_root_after_another_session_promotes_current(
         assert initial_promote["expected_version"] == initial_token
 
         with factory() as editor:
-            result = service.promote_certificate_current(
-                editor, certificate_id=certificate_id,
-                expected_version=initial_token,
-                reason="Another session promotes current", user=actor,
-            )
+            if later_mutation == "promote_current":
+                result = service.promote_certificate_current(
+                    editor, certificate_id=certificate_id,
+                    expected_version=initial_token,
+                    reason="Another session promotes current", user=actor,
+                )
+            else:
+                result = service.upsert_certificate_latest_version(
+                    editor, certificate_id=certificate_id,
+                    expected_version=initial_token,
+                    certificate_number=None,
+                    issue_date=date(2026, 9, 1),
+                    expiry_date=date(2027, 9, 1),
+                    scopes=[],
+                    reason="Another session removes candidate certificate number",
+                    user=actor,
+                )
             editor.commit()
         current_token = result["row_version"]
         assert current_token != initial_token
@@ -106,8 +119,9 @@ def test_readiness_refreshes_cached_root_after_another_session_promotes_current(
             cached_session, certificate_id=certificate_id, user=actor,
         )
         promote = next(x for x in readiness if x["action_key"] == "promote_current")
-        assert promote["available"] is False, "Stale readiness advertises a redundant success mutation"
-        assert promote["reason_code"] == "already_current"
+        assert promote["available"] is False, "Stale readiness advertises an invalid promotion"
+        expected_reason = "already_current" if later_mutation == "promote_current" else "certificate_data_incomplete"
+        assert promote["reason_code"] == expected_reason
         assert promote["expected_version"] == current_token
     finally:
         if cached_session is not None:

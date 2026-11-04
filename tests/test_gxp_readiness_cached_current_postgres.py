@@ -11,7 +11,7 @@ import os
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -84,7 +84,11 @@ def test_readiness_refreshes_cached_root_and_version_after_other_session_mutatio
         )
         cached_session = factory()
         cached = cached_session.get(Certificate, certificate_id)
+        cached_version = cached_session.scalars(
+            select(CertificateVersion).where(CertificateVersion.certificate_id == certificate_id)
+        ).one()
         assert cached.latest_flag is False
+        assert cached_version.certificate_number == "SYNTHETIC-GLP-READINESS"
         initial_readiness = service.get_certificate_action_readiness(
             cached_session, certificate_id=certificate_id, user=actor,
         )
@@ -114,6 +118,10 @@ def test_readiness_refreshes_cached_root_and_version_after_other_session_mutatio
         current_token = result["row_version"]
         assert current_token != initial_token
         assert cached.latest_flag is False, "Precondition: Session A still holds stale ORM root"
+        if later_mutation == "edit_incomplete":
+            assert cached_version.certificate_number == "SYNTHETIC-GLP-READINESS", (
+                "Precondition: Session A must retain a stale child Version identity"
+            )
 
         readiness = service.get_certificate_action_readiness(
             cached_session, certificate_id=certificate_id, user=actor,

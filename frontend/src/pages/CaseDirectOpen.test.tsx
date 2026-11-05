@@ -56,7 +56,9 @@ describe("canonical Case UUID entry", () => {
   });
 
   it("does not redirect after a 404 or denied response", async () => {
-    vi.mocked(getCaseWorkspace).mockRejectedValue(new Error("403 Forbidden"));
+    vi.mocked(getCaseWorkspace).mockImplementation(() => new Promise((_resolve, reject) => {
+      queueMicrotask(() => reject(new Error("403 Forbidden")));
+    }));
     mount("/cases/blocked-case");
     expect(await screen.findByRole("alert")).toHaveTextContent("403 Forbidden");
     expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();

@@ -68,10 +68,11 @@ function csvCell(value: string): string {
   return '"' + safe.replace(/"/g, '""') + '"';
 }
 
-export function facilityReportCsv(rows: FacilitySearchResult[]): string {
+export function facilityReportCsv(rows: FacilitySearchResult[], options: { omitCertificateProjection?: boolean } = {}): string {
+  const columns = options.omitCertificateProjection ? REPORT_COLUMNS.slice(0, -2) : REPORT_COLUMNS;
   const lines = [
-    REPORT_COLUMNS.map(column => csvCell(column.label)).join(","),
-    ...rows.map(row => REPORT_COLUMNS.map(column => csvCell(column.value(row))).join(",")),
+    columns.map(column => csvCell(column.label)).join(","),
+    ...rows.map(row => columns.map(column => csvCell(column.value(row))).join(",")),
   ];
   return "\uFEFF" + lines.join("\r\n") + "\r\n";
 }

@@ -58,7 +58,7 @@ function casePayload(id = "case-1") {
     contextual_document_actions: [{
       checklist_key: missingDocument.checklist_key, parent_scope: "case", parent_id: "case-1",
       actions: [{ action_key: "create", available: false, disabled_reason: "QĐKT chưa đủ bằng chứng" }],
-    }] as ContextualDocumentAction[],
+    }] as unknown as ContextualDocumentAction[],
   } as Awaited<ReturnType<typeof getCaseWorkspace>>;
 }
 function changePayload(id = "change-1") {

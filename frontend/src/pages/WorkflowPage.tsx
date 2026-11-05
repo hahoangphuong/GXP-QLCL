@@ -15,6 +15,14 @@ const QUEUES: { id: Queue; title: string; hint: string }[] = [
   { id: "expiring", title: "GCN sắp hết hạn", hint: "Các Certificate hiện hành có ngày hết hạn theo cửa sổ 30/60/90 ngày" },
 ];
 
+const QUEUE_REPORT: Record<Queue, "cases" | "inspection" | "certificates" | "change_requests"> = {
+  active: "cases",
+  inspection: "inspection",
+  certificate_decision: "cases",
+  change_requests: "change_requests",
+  expiring: "certificates",
+};
+
 export function WorkflowPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
   const [queue, setQueue] = useState<Queue>("active");
   if (statusError) return <ErrorState message={statusError} />;
@@ -35,7 +43,7 @@ export function WorkflowPage({ access, statusError }: { access: ApiAccess; statu
           {item.title}
         </button>)}
       </div>
-      <p className="muted-copy">{selected.hint}. <Link className="text-link" to="/reports">Mở Báo cáo đầy đủ</Link></p>
+      <p className="muted-copy">{selected.hint}. <Link className="text-link" to={`/reports?report=${QUEUE_REPORT[queue]}`}>Mở Báo cáo đầy đủ</Link></p>
     </section>
     {queue === "change_requests" ? <CanonicalRecordReport key={queue} access={access} kind="change_requests" showDocumentsLink /> :
       queue === "expiring" ? <CanonicalRecordReport key={queue} access={access} kind="certificates" /> :

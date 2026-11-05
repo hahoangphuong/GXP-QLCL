@@ -33,6 +33,7 @@ describe("canonical record report workflow", () => {
   it("filters current Certificates by GxP and expiry window, linking to exact UUID", async () => {
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "GCN-123" })).toHaveAttribute("href", expect.stringContaining("certificate_id=cert-uuid"));
+    expect(screen.getByRole("link", { name: "Xem metadata" })).toHaveAttribute("href", "/documents/certificates/cert-uuid");
     expect(screen.getByText("1 GCN")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Loại GxP"), { target: { value: "GMP" } });
     fireEvent.change(screen.getByLabelText("GCN hết hạn trong"), { target: { value: "30" } });
@@ -57,6 +58,7 @@ describe("canonical record report workflow", () => {
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
     expect(await screen.findByText(/chưa hỗ trợ mở trực tiếp/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /GCN-123/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Xem metadata" })).toHaveAttribute("href", "/documents/certificates/cert-uuid");
   });
 
   it("does not fetch protected pages without a valid session", () => {

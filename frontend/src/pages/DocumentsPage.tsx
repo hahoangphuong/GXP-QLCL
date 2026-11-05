@@ -39,10 +39,16 @@ function documentOwnerMatches(
 }
 
 export function DocumentsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
-  const [kind, setKind] = useState<"cases" | "change_requests">("cases");
+  const [kind, setKind] = useState<"cases" | "change_requests" | "certificates" | "business_eligibility">("cases");
   const [directId, setDirectId] = useState("");
   const [lookupError, setLookupError] = useState<string | null>(null);
   const navigate = useNavigate();
+  function selectKind(next: typeof kind) {
+    if (next === kind) return;
+    setKind(next);
+    setDirectId("");
+    setLookupError(null);
+  }
   function openById(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const id = directId.trim();
@@ -51,7 +57,9 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
       return;
     }
     setLookupError(null);
-    navigate(`/documents/${kind === "cases" ? "cases" : "change-requests"}/${encodeURIComponent(id)}`);
+    const segment = kind === "cases" ? "cases" : kind === "change_requests" ? "change-requests"
+      : kind === "certificates" ? "certificates" : "business-eligibility-certificates";
+    navigate(`/documents/${segment}/${encodeURIComponent(id)}`);
   }
   if (statusError) return <ErrorState message={statusError} />;
   if (!access.canLoadSecureApi) return <EmptyState title="Cần đăng nhập" description="Đăng nhập để tra cứu danh mục tài liệu trong hồ sơ có phân quyền." />;
@@ -62,14 +70,16 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
       Chọn một hồ sơ để xem các tài liệu đang có và những mục còn thiếu.</p></header>
     <section className="panel">
       <div className="report-actions" role="group" aria-label="Loại hồ sơ tài liệu">
-        <button type="button" aria-pressed={kind === "cases"} className={kind === "cases" ? "" : "secondary"} onClick={() => setKind("cases")}>Hồ sơ kiểm tra</button>
-        <button type="button" aria-pressed={kind === "change_requests"} className={kind === "change_requests" ? "" : "secondary"} onClick={() => setKind("change_requests")}>Yêu cầu thay đổi</button>
+        <button type="button" aria-pressed={kind === "cases"} className={kind === "cases" ? "" : "secondary"} onClick={() => selectKind("cases")}>Hồ sơ kiểm tra</button>
+        <button type="button" aria-pressed={kind === "change_requests"} className={kind === "change_requests" ? "" : "secondary"} onClick={() => selectKind("change_requests")}>Yêu cầu thay đổi</button>
+        <button type="button" aria-pressed={kind === "certificates"} className={kind === "certificates" ? "" : "secondary"} onClick={() => selectKind("certificates")}>GCN GxP</button>
+        <button type="button" aria-pressed={kind === "business_eligibility"} className={kind === "business_eligibility" ? "" : "secondary"} onClick={() => selectKind("business_eligibility")}>Giấy đủ điều kiện kinh doanh dược</button>
       </div>
       <form onSubmit={openById}>
         <label htmlFor="document-direct-uuid">Mở danh mục tài liệu theo UUID</label>
         <div className="report-actions">
           <input id="document-direct-uuid" value={directId} onChange={event => { setDirectId(event.target.value); setLookupError(null); }}
-            placeholder={kind === "cases" ? "UUID của Case" : "UUID của Change Request"} aria-invalid={Boolean(lookupError)} />
+            placeholder={kind === "cases" ? "UUID của Case" : kind === "change_requests" ? "UUID của Change Request" : "UUID chứng nhận"} aria-invalid={Boolean(lookupError)} />
           <button type="submit">Mở hồ sơ</button>
         </div>
         {lookupError && <p role="alert">{lookupError}</p>}
@@ -79,7 +89,8 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
     </section>
     {kind === "cases"
       ? <CaseReport key={kind} access={access} inspectionQueue={false} showDocumentsLink />
-      : <CanonicalRecordReport key={kind} access={access} kind="change_requests" showDocumentsLink />}
+      : kind === "change_requests" ? <CanonicalRecordReport key={kind} access={access} kind="change_requests" showDocumentsLink />
+      : <section className="panel"><p className="muted-copy">Nhập UUID chứng nhận để xem metadata tài liệu đã đăng ký theo API được phân quyền. Chưa xác minh tệp gốc hoặc chữ ký; không có chức năng tải binary chứng nhận.</p></section>}
   </section>;
 }
 

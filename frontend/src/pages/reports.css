@@ -1,4 +1,4 @@
-.report-filter-grid { display: grid; grid-template-columns: minmax(120px, 160px) repeat(2, minmax(180px, 1fr)); gap: 12px; align-items: end; }
+.report-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px; align-items: end; }
 .report-filter-grid label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-weight: 600; }
 .report-filter-grid :is(input, select) { min-width: 0; width: 100%; box-sizing: border-box; }
 .report-actions, .report-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }

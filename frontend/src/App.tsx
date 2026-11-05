@@ -11,6 +11,8 @@ import { AdminSystemStatusPage } from "./pages/AdminSystemStatusPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { SearchPage } from "./pages/SearchPage";
+import { WorkflowPage } from "./pages/WorkflowPage";
+import { CaseDirectOpen } from "./pages/CaseDirectOpen";
 import { ReportRecordDetail } from "./features/reports/ReportRecordDetail";
 import { ReportsPage } from "./pages/ReportsPage";
 import { CaseCommandRegistryRoot, FacilityCommandRegistryRoot } from "./features/search/CaseDraftSession";
@@ -285,15 +287,7 @@ export function App() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/search" element={<SearchPage access={apiAccess} statusError={statusError} />} />
         <Route path="/terms" element={<TermsPage />} />
-        <Route
-          path="/workflow"
-          element={
-            <PlaceholderPage
-              title="Nghiệp vụ"
-              description="Slice A giữ mục này như lối vào cấu trúc nghiệp vụ; các thao tác sâu hơn sẽ nối ở Slice B."
-            />
-          }
-        />
+        <Route path="/workflow" element={<WorkflowPage access={apiAccess} statusError={statusError} />} />
         <Route
           path="/documents"
           element={
@@ -308,7 +302,7 @@ export function App() {
         <Route path="/reports/change-requests/:changeRequestId" element={<ReportRecordDetail access={apiAccess} kind="change_requests" />} />
         <Route path="/admin/system-status" element={<AdminSystemStatusPage access={apiAccess} />} />
         <Route path="/cases" element={<Navigate to="/search" replace />} />
-        <Route path="/cases/:caseId" element={<Navigate to="/search" replace />} />
+        <Route path="/cases/:caseId" element={<CaseDirectOpen access={apiAccess} />} />
       </Routes>
     </AppShell></FacilityCommandRegistryRoot></CaseCommandRegistryRoot>
   );

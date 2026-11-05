@@ -1172,7 +1172,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
   });
 
-  it("does not advertise global workflow, document, or report screens without an owner-backed contract", async () => {
+  it("advertises the backed facility report while keeping unsupported global workflow and document menus hidden", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     renderApp();
 
@@ -1183,7 +1183,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(navigation).getByRole("link", { name: "Tra cứu" })).toHaveAttribute("href", "/search");
     expect(within(navigation).queryByRole("link", { name: "Nghiệp vụ" })).not.toBeInTheDocument();
     expect(within(navigation).queryByRole("link", { name: "Tài liệu" })).not.toBeInTheDocument();
-    expect(within(navigation).queryByRole("link", { name: "Báo cáo" })).not.toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: "Báo cáo" })).toHaveAttribute("href", "/reports");
   });
 
   it("shows protected system status only after backend confirms the admin permission", async () => {

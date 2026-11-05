@@ -38,6 +38,9 @@ export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: 
   const item = current?.certificate;
   const change = current?.change;
   if (item) {
+    if (!["GMP", "GLP", "GMPbb"].includes(item.certificate_type)) {
+      return <section className="page-section"><p role="alert">Chưa hỗ trợ mở trực tiếp GCN loại {item.certificate_type}.</p><Link to="/reports">Quay lại Báo cáo</Link></section>;
+    }
     const target = new URLSearchParams({ site_id: item.site_id, gxp_type: item.certificate_type,
       context_gxp: item.certificate_type, certificate_id: item.certificate_id, facility_tab: "Giấy chứng nhận GxP" });
     if (item.production_line_id) target.set("production_line_id", item.production_line_id);

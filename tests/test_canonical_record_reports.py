@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
-from backend.app.db.enums import ChangeRequestState
+from backend.app.db.enums import CaseState, ChangeRequestState
 from backend.app.db.models.phase1 import (
-    Certificate, CertificateVersion, ChangeRequest, Company, Site,
+    Case, Certificate, CertificateVersion, ChangeRequest, Company, Site,
 )
 from backend.app.main import create_app
 from backend.app.services.catalog import CatalogReadService
@@ -104,6 +104,14 @@ def test_certificate_report_rejects_multiple_latest_versions_even_outside_window
     assert conflict.value.status_code == 409
 
 
+def test_certificate_without_current_version_is_not_reported_as_current(session):
+    row = cert_report(session)["items"][0]
+    version = session.get(CertificateVersion, row["certificate_version_id"])
+    version.is_latest_version = False
+    session.flush()
+    assert row["certificate_id"] not in {item["certificate_id"] for item in cert_report(session, expiry_days=None)["items"]}
+
+
 def test_certificate_status_uses_existing_current_certificate_policy(session):
     row = cert_report(session)["items"][0]
     version = session.get(CertificateVersion, row["certificate_version_id"])
@@ -111,6 +119,25 @@ def test_certificate_status_uses_existing_current_certificate_policy(session):
     session.flush()
     all_current = cert_report(session, expiry_days=None)["items"]
     assert next(item for item in all_current if item["certificate_id"] == row["certificate_id"])["status"] == "expired"
+
+
+@pytest.mark.parametrize("link", ["missing", "wrong_site", "wrong_gxp"])
+def test_certificate_report_rejects_invalid_case_link(session, link):
+    row = cert_report(session)["items"][0]
+    cert = session.get(Certificate, row["certificate_id"])
+    if link == "missing":
+        cert.case_id = "missing-case"
+    else:
+        site = session.get(Site, cert.site_id)
+        other = Site(company_id=site.company_id, site_name="Other")
+        session.add(other); session.flush()
+        case = Case(site_id=other.id if link == "wrong_site" else site.id,
+                    gxp_type="GLP" if link == "wrong_gxp" else "GMP", state=CaseState.DRAFT)
+        session.add(case); session.flush(); cert.case_id = case.id
+    session.flush()
+    with pytest.raises(HTTPException) as exc:
+        cert_report(session)
+    assert exc.value.status_code == 409
 
 
 def test_change_report_is_per_request_site_owned_no_inferred_gxp(session):
@@ -141,3 +168,56 @@ def test_report_endpoints_require_existing_read_role(session):
         with pytest.raises(HTTPException) as forbidden:
             endpoint(**arguments, session=session, user=build_authenticated_user("viewer", "viewer"))
         assert forbidden.value.status_code == 403
+
+
+def test_site_scoped_search_returns_only_canonical_contexts_for_that_site(session):
+    site_id = session.scalar(__import__("sqlalchemy").select(Site.id).limit(1))
+    company_id = session.scalar(__import__("sqlalchemy").select(Company.id).limit(1))
+    other = Site(company_id=company_id, site_name="Cơ sở Khác")
+    session.add(other)
+    session.flush()
+    second = Certificate(site_id=other.id, certificate_type="GLP", latest_flag=True)
+    session.add(second)
+    session.flush()
+    session.add(CertificateVersion(
+        certificate_id=second.id, version_no=1, certificate_number="GLP-OTHER",
+        is_latest_version=True,
+    ))
+    session.commit()
+
+    service = CatalogReadService()
+    scoped = service.search_facilities(session, site_id=site_id)
+    other_scoped = service.search_facilities(session, site_id=other.id)
+    unknown = service.search_facilities(session, site_id="missing-site")
+    assert scoped["total_count"] >= 1
+    assert {row["site_id"] for row in scoped["items"]} == {site_id}
+    assert {row["site_id"] for row in other_scoped["items"]} == {other.id}
+    assert unknown["total_count"] == 0
+
+    ids = [row["result_key"] for row in scoped["items"]]
+    assert len(ids) == len(set(ids))
+    current_cr = session.scalar(
+        __import__("sqlalchemy").select(ChangeRequest.id).where(ChangeRequest.site_id == site_id).limit(1)
+    )
+    assert current_cr
+    context = scoped["items"][0]
+    workspace = service.get_facility_workspace(
+        session, site_id=site_id, gxp_type=context["gxp_type"],
+        production_line_id=context["production_line_id"], line_code=context["line_code"],
+    )
+    assert any(
+        row["id"] == current_cr and row["source_type"] == "change_request"
+        for row in workspace["history"]
+    )
+    assert {row["site_id"] for row in service.search_facilities(session)["items"]} == {site_id, other.id}
+
+
+def test_site_filter_retains_pagination_and_gxp_combination(session):
+    site_id = session.scalar(__import__("sqlalchemy").select(Site.id).limit(1))
+    service = CatalogReadService()
+    first = service.search_facilities(session, site_id=site_id, gxp_type="GMP", offset=0, limit=1)
+    later = service.search_facilities(session, site_id=site_id, gxp_type="GMP", offset=1, limit=1)
+    assert first["total_count"] == 1
+    assert len(first["items"]) == 1
+    assert later["items"] == []
+    assert service.search_facilities(session, site_id=site_id, gxp_type="GLP")["total_count"] == 0

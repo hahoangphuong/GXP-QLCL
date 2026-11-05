@@ -1458,6 +1458,7 @@ class CatalogReadService:
         *,
         q: str | None = None,
         facility_name: str | None = None,
+        site_id: str | None = None,
         certificate_scope: str | None = None,
         gxp_type: str | None = None,
         province: str | None = None,
@@ -1472,6 +1473,7 @@ class CatalogReadService:
             session,
             q=q,
             facility_name=facility_name,
+            site_id=site_id,
             certificate_scope=certificate_scope,
             gxp_type=gxp_type,
             province=province,
@@ -1489,6 +1491,7 @@ class CatalogReadService:
         *,
         q: str | None,
         facility_name: str | None,
+        site_id: str | None,
         certificate_scope: str | None,
         gxp_type: str | None,
         province: str | None,
@@ -1549,6 +1552,8 @@ class CatalogReadService:
         for site in sites:
             company = companies.get(site.company_id)
             if company is None:
+                continue
+            if site_id is not None and site.id != site_id:
                 continue
             site_cases = [row for row in cases if row.site_id == site.id]
             site_certificates = [row for row in certificates if row.site_id == site.id]

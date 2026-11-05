@@ -52,6 +52,13 @@ describe("canonical record report workflow", () => {
       filters?.state === "under_review")).toBe(true));
   });
 
+  it("explicitly blocks unsupported GxP navigation instead of mapping it to GMP", async () => {
+    vi.mocked(getCertificateReport).mockResolvedValue({ items: [{ ...cert, gxp_type: "GSP" }], total_count: 1, limit: 100, offset: 0 });
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
+    expect(await screen.findByText(/chưa hỗ trợ mở trực tiếp/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /GCN-123/ })).not.toBeInTheDocument();
+  });
+
   it("does not fetch protected pages without a valid session", () => {
     render(<MemoryRouter><CanonicalRecordReport access={{ ...access, canLoadSecureApi: false }} kind="certificates" /></MemoryRouter>);
     expect(screen.getByText("Cần đăng nhập để xem báo cáo.")).toBeInTheDocument();

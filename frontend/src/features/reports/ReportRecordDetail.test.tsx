@@ -33,6 +33,14 @@ describe("authorized canonical detail navigation", () => {
     mount("/reports/certificates/cert-uuid");
     expect(await screen.findByText(/certificate_id=cert-uuid/)).toHaveTextContent("production_line_id=line-uuid");
   });
+
+  it("blocks an unsupported GxP without redirecting to another rail", async () => {
+    vi.mocked(getGxpCertificateDetail).mockResolvedValue({ certificate_id: "cert-uuid", site_id: "site-uuid",
+      certificate_type: "GSP", production_line_id: null, line_code: null } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    mount("/reports/certificates/cert-uuid");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa hỗ trợ mở trực tiếp GCN loại GSP");
+    expect(screen.queryByText(/certificate_id=cert-uuid/)).not.toBeInTheDocument();
+  });
   it("fetches exact Certificate UUID and rejects mismatched canonical identity", async () => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({
       certificate_id: "different-id", certificate_number: "GCN-ERROR",

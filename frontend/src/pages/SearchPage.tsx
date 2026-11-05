@@ -346,6 +346,8 @@ export function SearchPage({
   const [changeRequestWorkspaceLoading, setChangeRequestWorkspaceLoading] = useState(false);
   const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
   const [gxpCertificates, setGxpCertificates] = useState<GxpCertificateListItem[]>([]);
+  const gxpCertificatesRef = useRef(gxpCertificates);
+  gxpCertificatesRef.current = gxpCertificates;
   const [gxpCertificatesOwner, setGxpCertificatesOwner] = useState<string | null>(null);
   const [gxpCertificatesLoading, setGxpCertificatesLoading] = useState(false);
   const [gxpCertificatesError, setGxpCertificatesError] = useState<string | null>(null);
@@ -1244,6 +1246,10 @@ export function SearchPage({
         if (cancelled || gxpListRequestSequence.current !== requestId) {
           return;
         }
+        if (payload.items.some(item => item.site_id !== selectedResult.site_id
+          || (selectedResult.gxp_type && item.certificate_type !== selectedResult.gxp_type))) {
+          throw new Error("Danh sách giấy chứng nhận không khớp cơ sở hoặc loại GxP.");
+        }
         setGxpCertificates(payload.items);
         setGxpCertificatesError(null);
         setGxpCertificatesLoading(false);
@@ -1286,6 +1292,12 @@ export function SearchPage({
     void getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken)
       .then((payload) => {
         if (!cancelled && gxpDetailRequestSequence.current === requestId) {
+          const listed = gxpCertificatesRef.current.find(item => item.certificate_id === selectedGxpCertificateId);
+          if (payload.certificate_id !== selectedGxpCertificateId || payload.site_id !== selectedResult?.site_id
+            || (selectedResult?.gxp_type && payload.certificate_type !== selectedResult.gxp_type)
+            || !listed || payload.certificate_type !== listed.certificate_type || payload.case_id !== listed.case_id) {
+            throw new Error("Chi tiết giấy chứng nhận không khớp định danh hoặc ngữ cảnh.");
+          }
           setGxpCertificateDetail(payload);
           setGxpCertificateDetailFailure(null);
           setGxpCertificateDetailLoading(false);
@@ -1301,7 +1313,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth.role, auth.username, bearerToken, expectedGxpDetailOwner, selectedGxpCertificateId, useStubAuth]);
+  }, [auth.role, auth.username, bearerToken, expectedGxpDetailOwner, selectedGxpCertificateId, useStubAuth, selectedResult]);
 
   useEffect(() => {
     if (!selectedResult || !eligibilityListOwner) {

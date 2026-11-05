@@ -2437,6 +2437,21 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getGxpCertificateDetail).not.toHaveBeenCalled();
   });
 
+  it.each(["site", "case", "certificate"] as const)("rejects report certificate detail with wrong %s identity", async (mismatch) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const cert = { certificate_id: "cert-A", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", context_match_kind: "exact_line", latest_flag: true, certificate_number: "GCN-A", issue_date: null, expiry_date: null, applicable_standard: "WHO-GMP", issuing_authority: null, status: "active" };
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [cert] });
+    apiMocks.getGxpCertificateDetail.mockResolvedValue({ ...cert, certificate_id: mismatch === "certificate" ? "other" : cert.certificate_id,
+      site_id: mismatch === "site" ? "other" : cert.site_id, case_id: mismatch === "case" ? "other" : cert.case_id,
+      facility_name: "Nhà máy A", scope_summary: "STALE DETAIL", action_readiness: [] });
+    const params = new URLSearchParams({ site_id: "site-1", result_key: "site-1:GMP:A", gxp_type: "GMP", production_line_id: "line-uuid-1", facility_tab: "Giấy chứng nhận GxP", certificate_id: "cert-A" });
+    renderApp([`/search?${params}`]);
+    expect(await screen.findByText("Chi tiết giấy chứng nhận không khớp định danh hoặc ngữ cảnh.")).toBeInTheDocument();
+    expect(screen.queryByText("STALE DETAIL")).not.toBeInTheDocument();
+  });
+
   it("hides certificate data at the first B commit and throughout B loading and error", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "B", context_code: "target-B", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });

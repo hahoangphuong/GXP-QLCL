@@ -293,6 +293,7 @@ def register_catalog_routes(app, session_factory) -> None:
     def search_facilities(
         q: str | None = Query(default=None),
         facility_name: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
         certificate_scope: str | None = Query(default=None),
         gxp_type: str | None = Query(default=None),
         province: str | None = Query(default=None),
@@ -310,6 +311,7 @@ def register_catalog_routes(app, session_factory) -> None:
             session,
             q=_optional_string_query(q),
             facility_name=_optional_string_query(facility_name),
+            site_id=_optional_string_query(site_id),
             certificate_scope=_optional_string_query(certificate_scope),
             gxp_type=_optional_string_query(gxp_type),
             province=_optional_string_query(province),

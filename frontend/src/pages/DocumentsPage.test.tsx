@@ -219,6 +219,29 @@ describe("direct document register navigation", () => {
     expect(screen.getByText("Change Request register reached")).toBeInTheDocument();
   });
 
+  it("opens GxP and eligibility certificate metadata via explicit UUID and kind", () => {
+    const certUuid = "33333333-3333-4333-8333-333333333333";
+    const eligUuid = "44444444-4444-4444-8444-444444444444";
+    const ui = render(<MemoryRouter initialEntries={["/documents"]}><Routes>
+      <Route path="/documents" element={<DocumentsPage access={access} statusError={null} />} />
+      <Route path="/documents/certificates/:certificateId" element={<p>GCN metadata reached</p>} />
+      <Route path="/documents/business-eligibility-certificates/:eligibilityId" element={<p>Eligibility metadata reached</p>} />
+    </Routes></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "GCN GxP" }));
+    fireEvent.change(screen.getByLabelText("Mở danh mục tài liệu theo UUID"), { target: { value: certUuid } });
+    fireEvent.click(screen.getByRole("button", { name: "Mở hồ sơ" }));
+    expect(screen.getByText("GCN metadata reached")).toBeInTheDocument();
+    ui.unmount();
+    render(<MemoryRouter initialEntries={["/documents"]}><Routes>
+      <Route path="/documents" element={<DocumentsPage access={access} statusError={null} />} />
+      <Route path="/documents/business-eligibility-certificates/:eligibilityId" element={<p>Eligibility metadata reached</p>} />
+    </Routes></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Giấy đủ điều kiện kinh doanh dược" }));
+    fireEvent.change(screen.getByLabelText("Mở danh mục tài liệu theo UUID"), { target: { value: eligUuid } });
+    fireEvent.click(screen.getByRole("button", { name: "Mở hồ sơ" }));
+    expect(screen.getByText("Eligibility metadata reached")).toBeInTheDocument();
+  });
+
   it("rejects invalid UUIDs without routing or reading protected data", () => {
     render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText("Mở danh mục tài liệu theo UUID"), { target: { value: "../other" } });

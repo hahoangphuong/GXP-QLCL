@@ -22,6 +22,12 @@ describe("operational report predicates are the existing dashboard facility cont
     expect(query("inspection")).toMatchObject({
       case_state: ["planned", "decision_issued", "inspection_in_progress"],
     });
+    expect(buildOperationalReportQuery({ ...INITIAL_REPORT_FILTERS, kind: "inspection", inspection_state: "decision_issued" }))
+      .toMatchObject({ case_state: ["decision_issued"] });
+    expect(buildOperationalReportQuery({ ...INITIAL_REPORT_FILTERS, kind: "inspection", inspection_state: "planned" }))
+      .toMatchObject({ case_state: ["planned"] });
+    expect(buildOperationalReportQuery({ ...INITIAL_REPORT_FILTERS, kind: "inspection", inspection_state: "inspection_in_progress" }))
+      .toMatchObject({ case_state: ["inspection_in_progress"] });
     expect(query("certificate_decision")).toMatchObject({ case_state: ["awaiting_certificate_decision"] });
   });
 
@@ -45,6 +51,7 @@ describe("operational report predicates are the existing dashboard facility cont
       const predicate = query(kind);
       expect(predicate).not.toHaveProperty("kind");
       expect(predicate).not.toHaveProperty("expiry_days");
+      expect(predicate).not.toHaveProperty("inspection_state");
     }
   });
 });

@@ -143,6 +143,37 @@ export type DashboardSummary = {
 export type CaseReportItem = DashboardQueueItem & { production_line_id: string | null };
 export type CaseReportPage = { items: CaseReportItem[]; total_count: number; offset: number; limit: number };
 
+export type CertificateReportItem = {
+  certificate_id: string;
+  certificate_version_id: string;
+  site_id: string;
+  case_id: string | null;
+  production_line_id: string | null;
+  line_code: string | null;
+  facility_name: string;
+  company_name: string;
+  gxp_type: string;
+  certificate_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  lifecycle_state: string | null;
+};
+export type CertificateReportPage = { items: CertificateReportItem[]; total_count: number; offset: number; limit: number };
+
+export type ChangeRequestReportItem = {
+  change_request_id: string;
+  site_id: string;
+  legacy_change_request_id: number | null;
+  facility_name: string;
+  company_name: string;
+  scope_label: string | null;
+  description: string | null;
+  submitted_on: string | null;
+  requester_name: string | null;
+  state: string;
+};
+export type ChangeRequestReportPage = { items: ChangeRequestReportItem[]; total_count: number; offset: number; limit: number };
+
 export type FacilitySearchResult = {
   result_key: string;
   site_id: string;

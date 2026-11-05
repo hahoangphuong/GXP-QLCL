@@ -10,9 +10,10 @@ export type ReportFilters = {
   province: string;
   kind: ReportKind;
   expiry_days: 30 | 60 | 90;
+  inspection_state: "all" | "planned" | "decision_issued" | "inspection_in_progress";
 };
 export const INITIAL_REPORT_FILTERS: ReportFilters = {
-  gxp_type: "GMP", q: "", province: "", kind: "facilities", expiry_days: 90,
+  gxp_type: "GMP", q: "", province: "", kind: "facilities", expiry_days: 90, inspection_state: "all",
 };
 
 const ACTIVE_CASE_STATES = [
@@ -60,7 +61,7 @@ export function buildOperationalReportQuery(filters: ReportFilters) {
     case "active_cases":
       return { ...common, case_state: [...ACTIVE_CASE_STATES] };
     case "inspection":
-      return { ...common, case_state: [...INSPECTION_STATES] };
+      return { ...common, case_state: filters.inspection_state === "all" ? [...INSPECTION_STATES] : [filters.inspection_state] };
     case "certificate_decision":
       return { ...common, case_state: ["awaiting_certificate_decision"] };
     case "expiring_certificates":

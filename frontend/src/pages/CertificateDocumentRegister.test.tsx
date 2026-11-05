@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
 import { getBusinessEligibilityDocumentMetadata, getDocumentDetail, getGxpCertificateDocumentMetadata } from "../lib/api";
@@ -113,24 +113,22 @@ describe("certificate document metadata register", () => {
     expect(getDocumentDetail).not.toHaveBeenCalled();
   });
 
-  it("discards stale metadata from a prior certificate after route context changes", async () => {
+  it("discards stale metadata after navigating to another certificate", async () => {
     let resolveOld!: (value: DocumentOwnerMetadataInventory) => void;
     vi.mocked(getGxpCertificateDocumentMetadata).mockImplementation(id =>
       id === "cert-1" ? new Promise(resolve => { resolveOld = resolve; }) :
         Promise.resolve({ ...metadata(), owner_id: "cert-2", documents: [] }));
-    const ui = render(<MemoryRouter initialEntries={["/documents/certificates/cert-1"]}><Routes>
-      <Route path="/documents/certificates/:certificateId" element={
-        <CertificateDocumentRegister access={access} kind="certificate" />} />
-    </Routes></MemoryRouter>);
-    // Replacing the router is not a route transition; access change is sufficient
-    // to test rejection of a stale completion by the previous effect owner.
-    ui.rerender(<MemoryRouter initialEntries={["/documents/certificates/cert-1"]}><Routes>
-      <Route path="/documents/certificates/:certificateId" element={
-        <CertificateDocumentRegister access={{ ...access, accessGeneration: 2 }} kind="certificate" />} />
-    </Routes></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/documents/certificates/cert-1"]}>
+      <Link to="/documents/certificates/cert-2">Mở chứng nhận khác</Link>
+      <Routes><Route path="/documents/certificates/:certificateId" element={
+        <CertificateDocumentRegister access={access} kind="certificate" />} /></Routes>
+    </MemoryRouter>);
+    await waitFor(() => expect(getGxpCertificateDocumentMetadata).toHaveBeenCalledWith(
+      "cert-1", expect.anything(), true, null));
+    fireEvent.click(screen.getByRole("link", { name: "Mở chứng nhận khác" }));
+    expect(await screen.findByText("UUID chứng nhận: cert-2")).toBeInTheDocument();
     resolveOld(metadata());
-    await waitFor(() => expect(getGxpCertificateDocumentMetadata).toHaveBeenCalled());
-    // Ownership guard prevents stale data being treated as the new generation.
     expect(screen.queryByText("Tệp đã đăng ký")).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
   });
 });

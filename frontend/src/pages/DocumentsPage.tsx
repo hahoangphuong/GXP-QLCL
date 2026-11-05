@@ -146,7 +146,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     let live = true;
     const lookup = kind === "cases"
       ? getCaseWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
-          if (workspace.case_summary.id !== id) throw new Error("Case UUID không khớp phản hồi.");
+          if (workspace.case_summary.id !== id || !workspace.case_summary.site_id) throw new Error("Case UUID không khớp phản hồi hoặc thiếu Site canonical.");
           validateChecklistOwner(workspace.documents.items, kind, id);
           return {
             name: workspace.case_summary.facility_name,
@@ -157,7 +157,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
           };
         })
       : getChangeRequestWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
-          if (workspace.id !== id) throw new Error("Change Request UUID không khớp phản hồi.");
+          if (workspace.id !== id || !workspace.site_id) throw new Error("Change Request UUID không khớp phản hồi hoặc thiếu Site canonical.");
           validateChecklistOwner(workspace.documents.items, kind, id);
           return {
             name: workspace.facility_name,

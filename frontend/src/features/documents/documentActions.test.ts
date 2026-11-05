@@ -33,7 +33,10 @@ describe("document register binary and creation contracts", () => {
     expect(hasCurrentActiveDocumentVersion(detail)).toBe(false);
     expect(hasCurrentActiveDocumentVersion({
       ...detail,
-      variants: [...detail.variants, { is_active: true, versions: [{ is_current: true }] }],
+      variants: [...detail.variants, {
+        ...detail.variants[0], is_active: true,
+        versions: [{ ...detail.variants[0].versions[0], is_current: true }],
+      }],
     })).toBe(true);
   });
   it("matches source create actions by exact checklist and parent ownership", () => {

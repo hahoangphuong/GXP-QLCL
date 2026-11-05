@@ -60,7 +60,7 @@ export const REPORT_COLUMNS: { label: string; value: (row: FacilitySearchResult)
 
 // Prevent spreadsheet formula execution for text returned by an external catalogue.
 // Quoting CSV alone does not neutralize formula injection in spreadsheet programs.
-function csvCell(value: string): string {
+export function csvCell(value: string): string {
   let first = 0;
   while (first < value.length && value.charCodeAt(first) <= 32) first += 1;
   const safe = first < value.length && "=+-@".includes(value[first])

@@ -82,6 +82,17 @@ class DashboardQueueItemRead(BaseModel):
     opened_year: int | None
 
 
+class CaseReportItemRead(DashboardQueueItemRead):
+    production_line_id: str | None
+
+
+class CaseReportPageRead(BaseModel):
+    items: list[CaseReportItemRead]
+    total_count: int
+    offset: int
+    limit: int
+
+
 class DashboardSummaryRead(BaseModel):
     total_facilities: int
     total_cases: int

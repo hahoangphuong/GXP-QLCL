@@ -7,6 +7,7 @@ import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { collectFacilityReport, facilityReportCsv, REPORT_PAGE_SIZE } from "../features/reports/facilityReportExport";
+import { CaseReport } from "../features/reports/CaseReport";
 import { searchFacilities } from "../lib/api";
 import type { FacilitySearchPage, FacilitySearchResult } from "../types";
 
@@ -25,7 +26,21 @@ function searchLink(row: FacilitySearchResult) {
   return "/search?" + params.toString();
 }
 
-export function ReportsPage({
+export function ReportsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
+  const [report, setReport] = useState("facilities");
+  if (statusError) return <ErrorState message={statusError} />;
+  return <>
+    <section className="panel"><label>Loại báo cáo <select value={report} onChange={event => setReport(event.target.value)}>
+      <option value="facilities">Danh sách cơ sở</option>
+      <option value="cases">Hồ sơ đang xử lý</option>
+      <option value="inspection">Hồ sơ chuẩn bị và đang kiểm tra</option>
+    </select></label></section>
+    {report === "facilities" ? <FacilityReport access={access} statusError={null} /> :
+      <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report} access={access} inspectionQueue={report === "inspection"} /></section>}
+  </>;
+}
+
+function FacilityReport({
   access,
   statusError,
 }: {

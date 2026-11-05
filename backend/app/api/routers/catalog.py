@@ -14,6 +14,7 @@ from backend.app.read_models import (
     CaseDetailRead,
     CaseWorkspaceRead,
     CaseRead,
+    CaseReportPageRead,
     ChangeRequestWorkspaceRead,
     CompanyDetailRead,
     CompanyRead,
@@ -236,6 +237,25 @@ def register_catalog_routes(app, session_factory) -> None:
         require_role(user, ALLOWED_READ_ROLES)
         return DashboardSummaryRead(**service.get_dashboard_summary(session, queue_limit=queue_limit))
 
+    def case_report(
+        gxp_type: str | None = Query(default=None),
+        state: str | None = Query(default=None),
+        q: str | None = Query(default=None),
+        opened_year: int | None = Query(default=None, ge=1900, le=9999),
+        inspection_queue: bool = Query(default=False),
+        export: bool = Query(default=False),
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=200),
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return CaseReportPageRead(**service.get_case_report(
+            session, gxp_type=_optional_string_query(gxp_type), state=_optional_string_query(state),
+            q=_optional_string_query(q), opened_year=opened_year, inspection_queue=inspection_queue,
+            export=export, offset=offset, limit=limit,
+        ))
+
     def search_facilities(
         q: str | None = Query(default=None),
         facility_name: str | None = Query(default=None),
@@ -406,6 +426,7 @@ def register_catalog_routes(app, session_factory) -> None:
         tags=["catalog"],
     )
     app.add_api_route("/dashboard/summary", get_dashboard_summary, methods=["GET"], response_model=DashboardSummaryRead, tags=["catalog"])
+    app.add_api_route("/reports/cases", case_report, methods=["GET"], response_model=CaseReportPageRead, tags=["catalog"])
     app.add_api_route("/search/facilities", search_facilities, methods=["GET"], response_model=FacilitySearchPageRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/workspace", get_facility_workspace, methods=["GET"], response_model=FacilityWorkspaceRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/gxp-certificates", list_site_gxp_certificates, methods=["GET"], response_model=GxpCertificateListRead, tags=["catalog"])

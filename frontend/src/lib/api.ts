@@ -20,6 +20,7 @@ import type {
   CaseAssessmentUpsertResponse,
   CaseDetail,
   CaseListItem,
+  CaseReportPage,
   CaseWorkspaceEvaluationScope,
   CertificateLatestVersionUpsertRequest,
   CertificateIssueRequest,
@@ -264,6 +265,18 @@ export function listSites(auth: StubAuthState, useStubAuth: boolean, bearerToken
 
 export function listCases(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseListItem[]> {
   return requestJson<CaseListItem[]>("/cases", { auth, useStubAuth, bearerToken });
+}
+
+export function getCaseReport(filters: { gxp_type: string; state: string; q: string; opened_year: string; inspection_queue: boolean; export?: boolean; offset?: number }, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseReportPage> {
+  const params = new URLSearchParams();
+  if (filters.gxp_type) params.set("gxp_type", filters.gxp_type);
+  if (filters.state) params.set("state", filters.state);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.opened_year) params.set("opened_year", filters.opened_year);
+  if (filters.inspection_queue) params.set("inspection_queue", "true");
+  if (filters.export) params.set("export", "true");
+  if (filters.offset) params.set("offset", String(filters.offset));
+  return requestJson<CaseReportPage>(buildApiPath("/reports/cases", params), { auth, useStubAuth, bearerToken });
 }
 
 export function searchFacilities(

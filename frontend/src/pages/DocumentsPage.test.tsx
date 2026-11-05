@@ -1,16 +1,18 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
-import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail } from "../lib/api";
-import type { DocumentChecklistItem } from "../types";
+import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
+import type { ContextualDocumentAction, DocumentChecklistItem } from "../types";
 import { DocumentsPage, DocumentRegister } from "./DocumentsPage";
 
 vi.mock("../lib/api", () => ({
   getCaseWorkspace: vi.fn(),
   getChangeRequestWorkspace: vi.fn(),
   getDocumentDetail: vi.fn(),
+  openCaseDocumentCurrentContent: vi.fn(),
+  openCapaCycleDocumentCurrentContent: vi.fn(),
 }));
 vi.mock("../features/reports/CaseReport", () => ({
   CaseReport: ({ showDocumentsLink }: { showDocumentsLink?: boolean }) =>
@@ -53,6 +55,10 @@ function casePayload(id = "case-1") {
   return {
     case_summary: { id, facility_name: "Cơ sở A", site_id: "site-1", gxp_type: "GMP" },
     documents: { items: [caseDocument, missingDocument] },
+    contextual_document_actions: [{
+      checklist_key: missingDocument.checklist_key, parent_scope: "case", parent_id: "case-1",
+      actions: [{ action_key: "create", available: false, disabled_reason: "QĐKT chưa đủ bằng chứng" }],
+    }] as unknown as ContextualDocumentAction[],
   } as Awaited<ReturnType<typeof getCaseWorkspace>>;
 }
 function changePayload(id = "change-1") {
@@ -100,6 +106,91 @@ beforeEach(() => {
   vi.mocked(getCaseWorkspace).mockReset().mockResolvedValue(casePayload());
   vi.mocked(getChangeRequestWorkspace).mockReset().mockResolvedValue(changePayload());
   vi.mocked(getDocumentDetail).mockReset().mockResolvedValue(detailPayload());
+  vi.mocked(openCaseDocumentCurrentContent).mockReset().mockResolvedValue({
+    blob: new Blob(["source"], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    filename: "bien-ban.docx",
+  });
+  vi.mocked(openCapaCycleDocumentCurrentContent).mockReset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("document binary action and readiness", () => {
+  it("downloads the current Case-owned file using the authorized binary endpoint", async () => {
+    const objectUrl = vi.fn(() => "blob:case-current");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: objectUrl });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mount("/documents/cases/case-1");
+    await screen.findByText("2 mục trong checklist · 1 đã có · 1 chưa có");
+    expect(screen.getByText(/Chưa sẵn sàng: QĐKT chưa đủ bằng chứng/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Đến workspace để tạo" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    await screen.findByText(/Phiên bản 2:/);
+    fireEvent.click(screen.getByRole("button", { name: "Tải tệp hiện hành" }));
+    await waitFor(() => expect(openCaseDocumentCurrentContent)
+      .toHaveBeenCalledWith("case-1", "doc-1", expect.anything(), true, null));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(objectUrl).toHaveBeenCalledTimes(1);
+    expect(openCapaCycleDocumentCurrentContent).not.toHaveBeenCalled();
+  });
+
+  it("does not offer download when metadata has no active current version", async () => {
+    vi.mocked(getDocumentDetail).mockResolvedValue({
+      ...detailPayload(),
+      variants: [{ ...detailPayload().variants[0], is_active: false }],
+    });
+    mount("/documents/cases/case-1");
+    await screen.findByText("2 mục trong checklist · 1 đã có · 1 chưa có");
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    const download = await screen.findByRole("button", { name: "Tải tệp hiện hành" });
+    expect(download).toBeDisabled();
+    expect(screen.getByText(/Chưa xác nhận phiên bản hiện hành/)).toBeInTheDocument();
+    expect(openCaseDocumentCurrentContent).not.toHaveBeenCalled();
+  });
+
+  it("uses the CAPA cycle-scoped endpoint for CAPA document content", async () => {
+    const capaDocument = {
+      ...caseDocument,
+      checklist_key: "capa:cycle-1:REPORT",
+      parent_scope: "capa_cycle" as const,
+      parent_id: "cycle-1",
+      document_id: "capa-doc",
+    };
+    vi.mocked(getCaseWorkspace).mockResolvedValue({
+      ...casePayload(),
+      documents: { items: [capaDocument] },
+    });
+    vi.mocked(getDocumentDetail).mockResolvedValue({
+      ...detailPayload(), document_id: "capa-doc", case_id: null, capa_cycle_id: "cycle-1",
+    });
+    vi.mocked(openCapaCycleDocumentCurrentContent).mockResolvedValue({
+      blob: new Blob(["capa"]), contentType: "application/octet-stream", filename: "capa.docx",
+    });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:capa-current") });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mount("/documents/cases/case-1");
+    await screen.findByText("1 mục trong checklist · 1 đã có · 0 chưa có");
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    await screen.findByText(/Phiên bản 2:/);
+    fireEvent.click(screen.getByRole("button", { name: "Tải tệp hiện hành" }));
+    await waitFor(() => expect(openCapaCycleDocumentCurrentContent)
+      .toHaveBeenCalledWith("case-1", "cycle-1", "capa-doc", expect.anything(), true, null));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(openCaseDocumentCurrentContent).not.toHaveBeenCalled();
+  });
+
+  it("keeps Change Request documents metadata-only without an invented binary route", async () => {
+    vi.mocked(getDocumentDetail).mockResolvedValue(detailPayload("change"));
+    mount("/documents/change-requests/change-1");
+    await screen.findByText("Cơ sở B");
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    await screen.findByText(/Phiên bản 2:/);
+    expect(screen.queryByRole("button", { name: "Tải tệp hiện hành" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Chưa có API tải binary Change Request/)).toBeInTheDocument();
+  });
 });
 
 describe("contextual document register", () => {

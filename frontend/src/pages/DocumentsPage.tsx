@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { CaseReport } from "../features/reports/CaseReport";
 import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
-import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail } from "../lib/api";
-import type { DocumentChecklistItem, DocumentDetail } from "../types";
+import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
+import type { ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
+import { hasCurrentActiveDocumentVersion, safeDocumentDownloadName, resolveDocumentCreation } from "../features/documents/documentActions";
 
 type Scope = "cases" | "change-requests";
 type Context = {
@@ -15,6 +16,7 @@ type Context = {
   subtitle: string;
   siteId: string;
   items: DocumentChecklistItem[];
+  actions: ContextualDocumentAction[];
   error: string | null;
 };
 
@@ -66,6 +68,14 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
   const [detail, setDetail] = useState<{ owner: object; id: string; value: DocumentDetail | null; error: string | null } | null>(null);
   const [filter, setFilter] = useState<"all" | "available" | "missing">("all");
   const [query, setQuery] = useState("");
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const downloadToken = useRef<object | null>(null);
+  const currentOwnerRef = useRef(owner);
+  const selectedIdRef = useRef(selectedId);
+  currentOwnerRef.current = owner;
+  selectedIdRef.current = selectedId;
+  useEffect(() => { downloadToken.current = null; setDownloadPending(false); setDownloadError(null); }, [owner]);
 
   const context = source?.owner === owner ? source : null;
   const currentItem = context?.items.find(item => item.document_id === selectedId) ?? null;
@@ -82,6 +92,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
             subtitle: `Case ${id} • ${workspace.case_summary.gxp_type}`,
             siteId: workspace.case_summary.site_id,
             items: workspace.documents.items,
+            actions: workspace.contextual_document_actions ?? [],
           };
         })
       : getChangeRequestWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
@@ -91,12 +102,13 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
             subtitle: `Yêu cầu thay đổi ${id}`,
             siteId: workspace.site_id,
             items: workspace.documents.items,
+            actions: [],
           };
         });
     void lookup.then(value => {
       if (live) setSource({ owner, ...value, error: null });
     }).catch((error: Error) => {
-      if (live) setSource({ owner, name: "", subtitle: "", siteId: "", items: [], error: error.message });
+      if (live) setSource({ owner, name: "", subtitle: "", siteId: "", items: [], actions: [], error: error.message });
     });
     return () => { live = false; };
   }, [id, owner, kind, auth, useStubAuth, bearerToken, canLoadSecureApi]);
@@ -113,6 +125,50 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     });
     return () => { live = false; };
   }, [auth, bearerToken, canLoadSecureApi, currentItem, id, kind, owner, useStubAuth]);
+
+  async function downloadCurrentFile() {
+    const item = currentItem;
+    const documentId = selectedId;
+    if (kind !== "cases" || !canLoadSecureApi || !id || !documentId
+      || !item || !item.detail_available || !visibleDetail?.value
+      || !documentOwnerMatches(visibleDetail.value, item, kind, id)
+      || !hasCurrentActiveDocumentVersion(visibleDetail.value) || downloadToken.current) return;
+    const token = {};
+    downloadToken.current = token;
+    setDownloadPending(true);
+    setDownloadError(null);
+    try {
+      const result = item.parent_scope === "case"
+        ? await openCaseDocumentCurrentContent(id, documentId, auth, useStubAuth, bearerToken)
+        : item.parent_scope === "capa_cycle"
+          ? await openCapaCycleDocumentCurrentContent(id, item.parent_id, documentId, auth, useStubAuth, bearerToken)
+          : null;
+      if (!result || currentOwnerRef.current !== owner
+        || selectedIdRef.current !== documentId || downloadToken.current !== token) return;
+      const name = safeDocumentDownloadName(result.filename, item.original_filename);
+      const url = URL.createObjectURL(result.blob);
+      try {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+    } catch (error) {
+      if (currentOwnerRef.current === owner && selectedIdRef.current === documentId
+        && downloadToken.current === token) {
+        setDownloadError(error instanceof Error ? error.message : "Không thể tải tệp hiện hành.");
+      }
+    } finally {
+      if (downloadToken.current === token) {
+        downloadToken.current = null;
+        if (currentOwnerRef.current === owner) setDownloadPending(false);
+      }
+    }
+  }
 
   if (!canLoadSecureApi) return <EmptyState title="Cần đăng nhập" description="Đăng nhập để đọc checklist tài liệu theo hồ sơ." />;
   if (!id) return <p role="alert">Thiếu định danh hồ sơ.</p>;
@@ -152,7 +208,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
           <h3>Danh mục tài liệu</h3>
           {items.length === 0 ? <p>Không có mục tài liệu phù hợp.</p> :
             <div className="table-scroll"><table className="dense-table">
-              <thead><tr><th>Tài liệu</th><th>Nhóm</th><th>Trạng thái</th><th>Tệp hiện có</th><th>Ngày ban hành</th><th>Chi tiết</th></tr></thead>
+              <thead><tr><th>Tài liệu</th><th>Nhóm</th><th>Trạng thái</th><th>Tệp hiện có</th><th>Ngày ban hành</th><th>Chi tiết</th><th>Hành động</th></tr></thead>
               <tbody>{items.map(item => <tr key={item.checklist_key}>
                 <td>{item.label}</td>
                 <td>{item.family_code ?? "—"}</td>
@@ -161,7 +217,14 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
                 <td>{item.issued_on ?? "—"}</td>
                 <td>{item.status === "available" && item.document_id && item.detail_available ?
                   <button type="button" className="secondary" aria-pressed={selectedId === item.document_id}
-                    onClick={() => setSelectedId(item.document_id)}>Xem chi tiết</button> : "—"}</td>
+                    onClick={() => { setSelectedId(item.document_id); setDownloadError(null); }}>Xem chi tiết</button> : "—"}</td>
+                <td>{item.status === "missing" && kind === "cases" ? (() => {
+                  const readiness = resolveDocumentCreation(context.actions, item);
+                  if (!readiness) return "Chưa có thao tác tạo được xác nhận";
+                  return readiness.available && readiness.create_input_readiness !== "CANONICAL_INPUT_BLOCKED"
+                    ? <Link className="text-link" to={`/cases/${encodeURIComponent(id)}`}>Đến workspace để tạo</Link>
+                    : <span title={readiness.disabled_reason ?? undefined}>Chưa sẵn sàng{readiness.disabled_reason ? `: ${readiness.disabled_reason}` : ""}</span>;
+                })() : "—"}</td>
               </tr>)}</tbody>
             </table></div>}
         </section>
@@ -174,6 +237,18 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
             visibleDetail.value && <div>
               <p>Tên: {visibleDetail.value.title ?? "Chưa có"}</p>
               <p>Loại: {visibleDetail.value.document_type_code} · Nhóm: {visibleDetail.value.family_code}</p>
+              {kind === "cases" && <div className="report-actions">
+                <button type="button" className="secondary"
+                  disabled={downloadPending || !hasCurrentActiveDocumentVersion(visibleDetail.value)}
+                  onClick={() => void downloadCurrentFile()}>
+                  {downloadPending ? "Đang tải tệp..." : "Tải tệp hiện hành"}
+                </button>
+                {!hasCurrentActiveDocumentVersion(visibleDetail.value) &&
+                  <p className="muted-copy">Chưa xác nhận phiên bản hiện hành đang hoạt động để tải.</p>}
+              </div>}
+              {kind === "change-requests" &&
+                <p className="muted-copy">Chưa có API tải binary Change Request được xác nhận; chỉ xem metadata.</p>}
+              {downloadError && <p role="alert">{downloadError}</p>}
               <h4>Biến thể và phiên bản</h4>
               {visibleDetail.value.variants.length === 0 ? <p>Chưa có biến thể tài liệu.</p> :
                 <ul>{visibleDetail.value.variants.map(variant => <li key={variant.id}>
@@ -184,7 +259,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
                     {version.issued_on ? ` — ${version.issued_on}` : ""}
                   </li>)}</ul>
                 </li>)}</ul>}
-              <p className="muted-copy">Chỉ hiển thị metadata đã được phân quyền. Mở/tạo hoặc xử lý file trong workspace theo readiness hiện hành.</p>
+              <p className="muted-copy">Lịch sử phiên bản hiện chỉ có metadata; không có API tải binary lịch sử được xác nhận. Mọi thao tác tạo/ban hành vẫn ở workspace theo readiness hiện hành.</p>
             </div>}
         </section>}
       </>}

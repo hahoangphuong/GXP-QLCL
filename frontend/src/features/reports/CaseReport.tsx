@@ -17,6 +17,38 @@ function target(item: CaseReportItem) {
   return `/cases/${encodeURIComponent(item.case_id)}`;
 }
 
+// Validate every read at the Case report owner boundary, not only CSV exports.
+// A mismatched or duplicate projection must not create clickable Case/document rows.
+function validatedCaseReportPage(
+  page: CaseReportPage,
+  expectedOffset: number,
+  filters: Filters,
+  isExport: boolean,
+): CaseReportPage {
+  if (!Array.isArray(page.items) || !Number.isSafeInteger(page.offset) || page.offset !== expectedOffset
+    || !Number.isSafeInteger(page.total_count) || page.total_count < 0
+    || !Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > (isExport ? 10000 : 200)
+    || page.items.length > page.limit || page.items.length > Math.max(0, page.total_count - page.offset)
+    || (!isExport && page.offset > page.total_count)
+    || (page.offset < page.total_count && page.items.length === 0)
+    || (isExport && (page.total_count > 10000 || page.items.length !== page.total_count))) {
+    throw new Error("API trả về phân trang Case không đầy đủ hoặc không hợp lệ.");
+  }
+  const ids = new Set<string>();
+  for (const item of page.items) {
+    if (!item || typeof item.case_id !== "string" || !item.case_id.trim()
+      || typeof item.site_id !== "string" || !item.site_id.trim()
+      || ids.has(item.case_id)
+      || (filters.state && item.state !== filters.state)
+      || (filters.gxp_type && item.gxp_type !== filters.gxp_type)
+      || (filters.opened_year && String(item.opened_year ?? "") !== filters.opened_year)) {
+      throw new Error("Báo cáo Case có UUID, Site, bộ lọc hoặc danh sách bản ghi không nhất quán.");
+    }
+    ids.add(item.case_id);
+  }
+  return page;
+}
+
 export function CaseReport({ access, inspectionQueue, initialState = "", showDocumentsLink = false }: { access: ApiAccess; inspectionQueue: boolean; initialState?: string; showDocumentsLink?: boolean }) {
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration, inspectionQueue]);
@@ -42,7 +74,14 @@ export function CaseReport({ access, inspectionQueue, initialState = "", showDoc
     if (!canLoadSecureApi) return;
     let live = true;
     void getCaseReport({ ...active, offset }, auth, useStubAuth, bearerToken).then(
-      data => { if (live) setResult({ owner, key, data, error: null }); },
+      data => {
+        if (!live) return;
+        try {
+          setResult({ owner, key, data: validatedCaseReportPage(data, offset, active, false), error: null });
+        } catch (error) {
+          setResult({ owner, key, data: null, error: error instanceof Error ? error.message : "Báo cáo Case không hợp lệ." });
+        }
+      },
       (error: Error) => { if (live) setResult({ owner, key, data: null, error: error.message }); },
     );
     return () => { live = false; };
@@ -63,7 +102,7 @@ export function CaseReport({ access, inspectionQueue, initialState = "", showDoc
     try {
       const page = await getCaseReport({ ...active, export: true }, auth, useStubAuth, bearerToken);
       if (ownerRef.current !== owner || guard.current !== token) return;
-      if (page.offset !== 0 || page.items.length !== page.total_count || page.total_count > 10000 || page.items.some(item => !item.case_id) || new Set(page.items.map(item => item.case_id)).size !== page.items.length) throw new Error("Dữ liệu xuất không đầy đủ hoặc trùng hồ sơ.");
+      validatedCaseReportPage(page, 0, active, true);
       const fields = [(item: CaseReportItem) => item.reference_code ?? item.case_id, (item: CaseReportItem) => item.facility_name, (item: CaseReportItem) => item.company_name, (item: CaseReportItem) => item.gxp_type, (item: CaseReportItem) => formatStatusLabel(item.state), (item: CaseReportItem) => item.opened_year?.toString() ?? ""];
       const lines = [["Hồ sơ", "Cơ sở", "Công ty", "GxP", "Trạng thái", "Năm"].map(csvCell).join(","), ...page.items.map(item => fields.map(field => csvCell(field(item))).join(","))];
       const url = URL.createObjectURL(new Blob(["\uFEFF" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" }));

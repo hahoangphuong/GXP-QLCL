@@ -30,6 +30,85 @@ describe("case report", () => {
     expect(screen.getByRole("link", { name: "Xem tài liệu" })).toHaveAttribute("href", "/documents/cases/case-a");
   });
 
+  it.each([
+    ["unexpected offset", { offset: 100 }],
+    ["duplicate Case UUID", { items: [row, { ...row }] , total_count: 2 }],
+    ["missing canonical Site", { items: [{ ...row, site_id: "" }] }],
+    ["missing Case UUID", { items: [{ ...row, case_id: "" }] }],
+    ["inconsistent page total", { total_count: 0 }],
+    ["empty page before the reported total", { items: [] }],
+    ["invalid page limit", { limit: 0 }],
+    ["excess page length", { limit: 1, items: [row, { ...row, case_id: "case-b" }], total_count: 2 }],
+  ])("rejects %s before rendering any Case or document link", async (_name, change) => {
+    vi.mocked(getCaseReport).mockResolvedValue({
+      items: [row], total_count: 1, offset: 0, limit: 100, ...change,
+    });
+    render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} showDocumentsLink /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Case|phân trang/);
+    expect(screen.queryByRole("link", { name: "KT-01" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Xem tài liệu" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xuất CSV (Excel)" })).toBeDisabled();
+  });
+
+  it("rejects a Case row outside the applied exact state, GxP or year", async () => {
+    vi.mocked(getCaseReport).mockResolvedValue({
+      items: [row], total_count: 1, offset: 0, limit: 100,
+    });
+    render(<MemoryRouter><CaseReport access={access} inspectionQueue={false}
+      initialState="awaiting_certificate_decision" showDocumentsLink /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("bộ lọc");
+    expect(screen.queryByRole("link", { name: "KT-01" })).not.toBeInTheDocument();
+  });
+
+  it("accepts complete canonical pagination and links exactly the second page Case", async () => {
+    const first = Array.from({ length: 100 }, (_, index) => ({ ...row, case_id: "case-" + index }));
+    vi.mocked(getCaseReport).mockImplementation(async filters => ({
+      items: filters.offset === 100 ? [{ ...row, case_id: "last-case", reference_code: "KT-LAST" }] : first,
+      total_count: 101, offset: filters.offset ?? 0, limit: 100,
+    }));
+    render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} showDocumentsLink /></MemoryRouter>);
+    expect(await screen.findByText("101 hồ sơ")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Trang sau" }));
+    const second = await screen.findByRole("link", { name: "KT-LAST" });
+    expect(second).toHaveAttribute("href", "/cases/last-case");
+    expect(screen.getByRole("link", { name: "Xem tài liệu" })).toHaveAttribute("href", "/documents/cases/last-case");
+  });
+
+  it("rejects CSV export with a foreign Site even when row count is complete", async () => {
+    vi.mocked(getCaseReport).mockImplementation(async filters => ({
+      items: [{ ...row, site_id: filters.export ? "" : "site-a" }],
+      total_count: 1, offset: 0, limit: filters.export ? 10000 : 100,
+    }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} /></MemoryRouter>);
+      await screen.findByRole("link", { name: "KT-01" });
+      fireEvent.click(screen.getByRole("button", { name: "Xuất CSV (Excel)" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Site");
+      expect(click).not.toHaveBeenCalled();
+    } finally {
+      click.mockRestore();
+    }
+  });
+
+  it("rejects a complete-count CSV export containing a record outside the selected state", async () => {
+    vi.mocked(getCaseReport).mockImplementation(async filters => ({
+      items: [{ ...row, state: filters.export ? "planned" : "awaiting_certificate_decision" }],
+      total_count: 1, offset: 0, limit: filters.export ? 10000 : 100,
+    }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      render(<MemoryRouter><CaseReport access={access} inspectionQueue={false}
+        initialState="awaiting_certificate_decision" /></MemoryRouter>);
+      await screen.findByRole("link", { name: "KT-01" });
+      fireEvent.click(screen.getByRole("button", { name: "Xuất CSV (Excel)" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("bộ lọc");
+      expect(click).not.toHaveBeenCalled();
+    } finally {
+      click.mockRestore();
+    }
+  });
+
   it("limits inspection states and does not expose stale results when access changes", async () => {
     vi.mocked(getCaseReport).mockResolvedValueOnce({ items: [row], total_count: 1, offset: 0, limit: 100 }).mockImplementationOnce(() => new Promise(() => {}));
     const { rerender } = render(<MemoryRouter><CaseReport access={access} inspectionQueue /></MemoryRouter>);

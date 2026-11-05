@@ -67,6 +67,10 @@ describe("ReportsPage operator workflow", () => {
     await waitFor(() => expect(vi.mocked(searchFacilities).mock.calls.some(([filters]) =>
       filters?.case_state?.join(",") === "planned,decision_issued,inspection_in_progress")).toBe(true));
     expect(screen.getByText(/Không suy ra lịch kiểm tra/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Giai đoạn kiểm tra"), { target: { value: "decision_issued" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);
+    await waitFor(() => expect(vi.mocked(searchFacilities).mock.calls.some(([filters]) =>
+      filters?.case_state?.join(",") === "decision_issued")).toBe(true));
 
     fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "open_changes" } });
     fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);

@@ -30,7 +30,21 @@ describe("operator workflow landing", () => {
     expect(screen.getByTestId("record-queue")).toHaveTextContent("change_requests:true");
     fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));
     expect(screen.getByTestId("record-queue")).toHaveTextContent("certificates:false");
-    expect(screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" })).toHaveAttribute("href", "/reports");
+    expect(screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" })).toHaveAttribute("href", "/reports?report=certificates");
+  });
+
+  it("keeps full-report navigation in the corresponding operator category", () => {
+    render(<MemoryRouter><WorkflowPage access={access} statusError={null} /></MemoryRouter>);
+    const link = screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" });
+    expect(link).toHaveAttribute("href", "/reports?report=cases");
+    fireEvent.click(screen.getByRole("button", { name: "Chuẩn bị và đang kiểm tra" }));
+    expect(link).toHaveAttribute("href", "/reports?report=inspection");
+    fireEvent.click(screen.getByRole("button", { name: "Chờ quyết định cấp GCN" }));
+    expect(link).toHaveAttribute("href", "/reports?report=cases");
+    fireEvent.click(screen.getByRole("button", { name: "Yêu cầu thay đổi đang mở" }));
+    expect(link).toHaveAttribute("href", "/reports?report=change_requests");
+    fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));
+    expect(link).toHaveAttribute("href", "/reports?report=certificates");
   });
 
   it("never mounts the operator queue for unauthorized visitors", () => {

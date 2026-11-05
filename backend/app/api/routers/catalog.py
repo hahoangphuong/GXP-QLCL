@@ -261,7 +261,7 @@ def register_catalog_routes(app, session_factory) -> None:
     def certificate_report(
         gxp_type: str | None = Query(default=None),
         q: str | None = Query(default=None),
-        expiry_days: int | None = Query(default=90),
+        expiry_days: int | None = Query(default=None),
         export: bool = Query(default=False),
         offset: int = Query(default=0, ge=0),
         limit: int = Query(default=100, ge=1, le=200),

@@ -154,6 +154,14 @@ export function ReportsPage({
             <label>Tỉnh/thành
               <input value={draft.province} disabled={exporting} onChange={event => setDraft({ ...draft, province: event.target.value })} placeholder="Nhập tên tỉnh/thành" />
             </label>
+            {draft.kind === "inspection" && <label>Giai đoạn kiểm tra
+              <select value={draft.inspection_state} disabled={exporting} onChange={event => setDraft({ ...draft, inspection_state: event.target.value as ReportFilters["inspection_state"] })}>
+                <option value="all">Tất cả các giai đoạn</option>
+                <option value="planned">Đã lập kế hoạch</option>
+                <option value="decision_issued">Đã có quyết định kiểm tra</option>
+                <option value="inspection_in_progress">Đang kiểm tra</option>
+              </select>
+            </label>}
             {draft.kind === "expiring_certificates" && <label>Hết hạn trong
               <select value={draft.expiry_days} disabled={exporting} onChange={event => setDraft({ ...draft, expiry_days: Number(event.target.value) as ReportFilters["expiry_days"] })}>
                 <option value={30}>30 ngày</option><option value={60}>60 ngày</option><option value={90}>90 ngày</option>

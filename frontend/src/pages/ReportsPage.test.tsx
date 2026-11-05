@@ -9,6 +9,14 @@ import { searchFacilities } from "../lib/api";
 import { ReportsPage } from "./ReportsPage";
 
 vi.mock("../lib/api", () => ({ searchFacilities: vi.fn() }));
+vi.mock("../features/reports/CaseReport", () => ({
+  CaseReport: ({ showDocumentsLink, inspectionQueue }: { showDocumentsLink?: boolean; inspectionQueue: boolean }) =>
+    <output data-testid="cases-report">{inspectionQueue ? "inspection" : "cases"}:{String(showDocumentsLink)}</output>,
+}));
+vi.mock("../features/reports/CanonicalRecordReport", () => ({
+  CanonicalRecordReport: ({ kind, showDocumentsLink }: { kind: string; showDocumentsLink?: boolean }) =>
+    <output data-testid="canonical-report">{kind}:{String(showDocumentsLink)}</output>,
+}));
 
 const access: ApiAccess = {
   auth: { username: "report-test", role: "reader" },
@@ -53,6 +61,19 @@ describe("ReportsPage operator workflow", () => {
     fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);
     await waitFor(() => expect(vi.mocked(searchFacilities).mock.calls.some(([filters]) =>
       filters?.gxp_type === "GLP" && filters.offset === 0)).toBe(true));
+  });
+
+  it("provides canonical document links for Case and Change Request reports only", () => {
+    render(<MemoryRouter><ReportsPage access={access} statusError={null} /></MemoryRouter>);
+    const select = screen.getByLabelText("Loại báo cáo");
+    fireEvent.change(select, { target: { value: "cases" } });
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true");
+    fireEvent.change(select, { target: { value: "inspection" } });
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("inspection:true");
+    fireEvent.change(select, { target: { value: "change_requests" } });
+    expect(screen.getByTestId("canonical-report")).toHaveTextContent("change_requests:true");
+    fireEvent.change(select, { target: { value: "certificates" } });
+    expect(screen.getByTestId("canonical-report")).toHaveTextContent("certificates:false");
   });
 
   it("does not query or expose report rows without authentication", () => {

@@ -64,6 +64,7 @@ describe("ReportsPage operator workflow", () => {
   });
 
   it("provides canonical document links for Case and Change Request reports only", () => {
+    vi.mocked(searchFacilities).mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 });
     render(<MemoryRouter><ReportsPage access={access} statusError={null} /></MemoryRouter>);
     const select = screen.getByLabelText("Loại báo cáo");
     fireEvent.change(select, { target: { value: "cases" } });

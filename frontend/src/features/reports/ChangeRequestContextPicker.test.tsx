@@ -115,6 +115,6 @@ describe("Change Request to editing workspace chooser", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chọn ngữ cảnh xử lý" }));
     await waitFor(() => expect(screen.getAllByRole("link", { name: "Mở ngữ cảnh này" })).toHaveLength(2));
     expect(screen.getByText("GMP-L1")).toBeInTheDocument();
-    expect(screen.getByText("GLP")).toBeInTheDocument();
+    expect(screen.getAllByText("GLP")).toHaveLength(2);
   });
 });

@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
-from backend.app.db.enums import ChangeRequestState
+from backend.app.db.enums import CaseState, ChangeRequestState
 from backend.app.db.models.phase1 import (
-    Certificate, CertificateVersion, ChangeRequest, Company, Site,
+    Case, Certificate, CertificateVersion, ChangeRequest, Company, Site,
 )
 from backend.app.main import create_app
 from backend.app.services.catalog import CatalogReadService
@@ -75,6 +75,8 @@ def test_certificate_report_is_per_canonical_current_certificate_not_version(ses
     assert len(cert_report(session, expiry_days=90)["items"]) == 2
     assert cert_report(session, q="GCN-OLD")["total_count"] == 0
     assert cert_report(session, q="GCN-REPLACED")["total_count"] == 0
+    assert cert_report(session, q="Công ty", number="GCN-A")["total_count"] == 1
+    assert cert_report(session, q="Công ty", number="GCN-OLD")["total_count"] == 0
 
 
 def test_certificate_report_paging_export_and_validation(session):
@@ -90,6 +92,62 @@ def test_certificate_report_paging_export_and_validation(session):
         assert exc.value.status_code == 422
     with pytest.raises(HTTPException):
         cert_report(session, export=True, offset=1)
+
+
+def test_certificate_report_rejects_multiple_latest_versions_even_outside_window(session):
+    row = cert_report(session)["items"][0]
+    session.add(CertificateVersion(certificate_id=row["certificate_id"], version_no=3,
+        certificate_number="OTHER", expiry_date=date.today() + timedelta(days=500), is_latest_version=True))
+    session.flush()
+    with pytest.raises(HTTPException) as conflict:
+        cert_report(session)
+    assert conflict.value.status_code == 409
+    service = CatalogReadService()
+    with pytest.raises(HTTPException) as detail_conflict:
+        service.get_gxp_certificate_detail(session, certificate_id=row["certificate_id"])
+    assert detail_conflict.value.status_code == 409
+    with pytest.raises(HTTPException) as list_conflict:
+        service.list_site_gxp_certificates(session, site_id=row["site_id"], gxp_type="GMP", line_code=None)
+    assert list_conflict.value.status_code == 409
+
+
+def test_certificate_without_current_version_is_not_reported_as_current(session):
+    row = cert_report(session)["items"][0]
+    version = session.get(CertificateVersion, row["certificate_version_id"])
+    version.is_latest_version = False
+    session.flush()
+    assert row["certificate_id"] not in {item["certificate_id"] for item in cert_report(session, expiry_days=None)["items"]}
+    with pytest.raises(HTTPException) as missing:
+        CatalogReadService().get_gxp_certificate_detail(session, certificate_id=row["certificate_id"])
+    assert missing.value.status_code == 404
+
+
+def test_certificate_status_uses_existing_current_certificate_policy(session):
+    row = cert_report(session)["items"][0]
+    version = session.get(CertificateVersion, row["certificate_version_id"])
+    version.expiry_date = date.today() - timedelta(days=1)
+    session.flush()
+    all_current = cert_report(session, expiry_days=None)["items"]
+    assert next(item for item in all_current if item["certificate_id"] == row["certificate_id"])["status"] == "expired"
+
+
+@pytest.mark.parametrize("link", ["missing", "wrong_site", "wrong_gxp"])
+def test_certificate_report_rejects_invalid_case_link(session, link):
+    row = cert_report(session)["items"][0]
+    cert = session.get(Certificate, row["certificate_id"])
+    if link == "missing":
+        cert.case_id = "missing-case"
+    else:
+        site = session.get(Site, cert.site_id)
+        other = Site(company_id=site.company_id, site_name="Other")
+        session.add(other); session.flush()
+        case = Case(site_id=other.id if link == "wrong_site" else site.id,
+                    gxp_type="GLP" if link == "wrong_gxp" else "GMP", state=CaseState.DRAFT)
+        session.add(case); session.flush(); cert.case_id = case.id
+    session.flush()
+    with pytest.raises(HTTPException) as exc:
+        cert_report(session)
+    assert exc.value.status_code == 409
 
 
 def test_change_report_is_per_request_site_owned_no_inferred_gxp(session):

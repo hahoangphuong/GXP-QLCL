@@ -42,11 +42,11 @@ export const REPORT_DESCRIPTIONS: Record<ReportKind, { title: string; detail: st
   },
   expiring_certificates: {
     title: "Cơ sở có GCN hiện hành sắp hết hạn",
-    detail: "Lọc chứng nhận hiện hành theo cửa sổ hết hạn của backend. Một cơ sở/dây chuyền có thể có nhiều chứng nhận.",
+    detail: "Lọc ngữ cảnh có ít nhất một GCN hiện hành sắp hết hạn. API không định danh GCN khớp nên phải mở cơ sở để xem số GCN và ngày hết hạn cụ thể.",
   },
   open_changes: {
     title: "Cơ sở có yêu cầu thay đổi chưa hoàn tất",
-    detail: "Cơ sở có ít nhất một Change Request ở received hoặc under_review; không phải danh sách từng yêu cầu.",
+    detail: "Change Request lọc ở cấp Site (không phân loại GxP). GxP là ngữ cảnh hiển thị; đây không phải danh sách từng yêu cầu.",
   },
 };
 

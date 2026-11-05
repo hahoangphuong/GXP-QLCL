@@ -25,12 +25,15 @@ function ArtifactTable({ title, items }: { title: string; items: ChangeRequestAr
       <div className="table-scroll"><table className="dense-table">
         <thead><tr><th>Loại</th><th>Định danh đối tượng</th><th>Nguồn thay đổi</th></tr></thead>
         <tbody>{items.map(item => <tr key={item.link_id}>
-          <td>{item.artifact_kind === "certificate" ? "GCN GxP" : "GCN đủ điều kiện"}</td>
-          <td>{item.artifact_kind === "certificate" ?
+          <td>{item.artifact_kind === "certificate" ? "GCN GxP" :
+            item.artifact_kind === "business_eligibility_certificate" ? "GCN đủ điều kiện" : "Loại chưa hỗ trợ"}</td>
+          <td>{item.artifact_kind === "certificate" && item.artifact_id ?
             <><Link className="text-link" to={"/reports/certificates/" + encodeURIComponent(item.artifact_id)}>{item.artifact_id}</Link>
               {" · "}<Link className="text-link" to={"/documents/certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>
-            : <><span>{item.artifact_id}</span>{" · "}
-              <Link className="text-link" to={"/documents/business-eligibility-certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>}</td>
+            : item.artifact_kind === "business_eligibility_certificate" && item.artifact_id ?
+              <><span>{item.artifact_id}</span>{" · "}
+                <Link className="text-link" to={"/documents/business-eligibility-certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>
+              : <span>Không hỗ trợ mở trực tiếp</span>}</td>
           <td>{item.source_affected_artifact_id ?? "Chưa có"}</td>
         </tr>)}</tbody>
       </table></div>}

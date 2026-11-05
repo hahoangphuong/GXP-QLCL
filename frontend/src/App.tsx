@@ -14,6 +14,7 @@ import { SearchPage } from "./pages/SearchPage";
 import { WorkflowPage } from "./pages/WorkflowPage";
 import { CaseDirectOpen } from "./pages/CaseDirectOpen";
 import { ReportRecordDetail } from "./features/reports/ReportRecordDetail";
+import { ChangeRequestReadWorkspace } from "./features/reports/ChangeRequestReadWorkspace";
 import { ReportsPage } from "./pages/ReportsPage";
 import { CaseCommandRegistryRoot, FacilityCommandRegistryRoot } from "./features/search/CaseDraftSession";
 import { TermsPage } from "./pages/TermsPage";
@@ -293,7 +294,7 @@ export function App() {
         <Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister access={apiAccess} kind="change-requests" />} />
         <Route path="/reports" element={<ReportsPage access={apiAccess} statusError={statusError} />} />
         <Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={apiAccess} kind="certificates" />} />
-        <Route path="/reports/change-requests/:changeRequestId" element={<ReportRecordDetail access={apiAccess} kind="change_requests" />} />
+        <Route path="/reports/change-requests/:changeRequestId" element={<ChangeRequestReadWorkspace access={apiAccess} />} />
         <Route path="/admin/system-status" element={<AdminSystemStatusPage access={apiAccess} />} />
         <Route path="/cases" element={<Navigate to="/search" replace />} />
         <Route path="/cases/:caseId" element={<CaseDirectOpen access={apiAccess} />} />

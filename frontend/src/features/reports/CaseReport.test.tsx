@@ -16,13 +16,20 @@ describe("case report", () => {
     vi.mocked(getCaseReport).mockResolvedValue({ items: [row], total_count: 1, offset: 0, limit: 100 });
     render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} /></MemoryRouter>);
     const link = await screen.findByRole("link", { name: "KT-01" });
-    expect(link).toHaveAttribute("href", expect.stringContaining("history_id=case-a"));
-    expect(link).toHaveAttribute("href", expect.stringContaining("production_line_id=line-a"));
+    expect(link).toHaveAttribute("href", "/cases/case-a");
+    expect(link).not.toHaveAttribute("href", expect.stringContaining("site_id="));
     fireEvent.change(screen.getByLabelText("Cơ sở, công ty hoặc mã hồ sơ"), { target: { value: "Công ty A" } });
     fireEvent.change(screen.getByLabelText("Năm hồ sơ"), { target: { value: "2026" } });
     fireEvent.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
     await waitFor(() => expect(getCaseReport).toHaveBeenLastCalledWith(expect.objectContaining({ q: "Công ty A", opened_year: "2026", offset: 0 }), access.auth, true, null));
   });
+  it("uses the canonical Case UUID even when a report projection contains stale site or line context", async () => {
+    vi.mocked(getCaseReport).mockResolvedValue({ items: [{ ...row, site_id: "stale-site", result_key: "stale", production_line_id: "stale-line" }], total_count: 1, offset: 0, limit: 100 });
+    render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} showDocumentsLink /></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "KT-01" })).toHaveAttribute("href", "/cases/case-a");
+    expect(screen.getByRole("link", { name: "Xem tài liệu" })).toHaveAttribute("href", "/documents/cases/case-a");
+  });
+
   it("limits inspection states and does not expose stale results when access changes", async () => {
     vi.mocked(getCaseReport).mockResolvedValueOnce({ items: [row], total_count: 1, offset: 0, limit: 100 }).mockImplementationOnce(() => new Promise(() => {}));
     const { rerender } = render(<MemoryRouter><CaseReport access={access} inspectionQueue /></MemoryRouter>);

@@ -102,15 +102,9 @@ export function DashboardPage({
     return <EmptyState title="Đang tải dashboard" description="Đang lấy số liệu nghiệp vụ thật từ backend." />;
   }
 
-  function queueSearchTarget(item: DashboardSummary["queue"][number]) {
-    const params = new URLSearchParams({
-      q: item.reference_code ?? item.facility_name,
-      gxp_type: item.gxp_type,
-      result_key: item.result_key,
-      site_id: item.site_id,
-      history_id: item.case_id,
-    });
-    return `/search?${params.toString()}`;
+  function queueCaseTarget(item: DashboardSummary["queue"][number]) {
+    // Canonical CaseDirectOpen checks the UUID and resolves current Site/GxP/line.
+    return `/cases/${encodeURIComponent(item.case_id)}`;
   }
 
   return (
@@ -142,8 +136,8 @@ export function DashboardPage({
             <p className="eyebrow">Việc cần xử lý</p>
             <h3>Hồ sơ đang mở</h3>
           </div>
-          <Link className="text-link" to="/search">
-            Mở Tra cứu
+          <Link className="text-link" to="/workflow">
+            Mở Bàn công việc
           </Link>
         </div>
         {summary.queue.length === 0 ? (
@@ -158,6 +152,7 @@ export function DashboardPage({
                   <th>GxP</th>
                   <th>Trạng thái</th>
                   <th>Năm</th>
+                  <th>Tài liệu</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,7 +161,7 @@ export function DashboardPage({
                     <td>
                       <Link
                         className="text-link"
-                        to={queueSearchTarget(item)}
+                        to={queueCaseTarget(item)}
                       >
                         {item.reference_code ?? item.case_id}
                       </Link>
@@ -182,6 +177,7 @@ export function DashboardPage({
                       <StatusBadge value={item.state} />
                     </td>
                     <td>{item.opened_year ?? "Chưa có"}</td>
+                    <td><Link className="text-link" to={`/documents/cases/${encodeURIComponent(item.case_id)}`}>Xem tài liệu</Link></td>
                   </tr>
                 ))}
               </tbody>

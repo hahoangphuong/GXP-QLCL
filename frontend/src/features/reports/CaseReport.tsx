@@ -12,9 +12,9 @@ const states = ["draft", "application_received", "under_assessment", "planned", 
 const inspectionStates = ["planned", "decision_issued", "inspection_in_progress"];
 
 function target(item: CaseReportItem) {
-  const params = new URLSearchParams({ site_id: item.site_id, result_key: item.result_key, gxp_type: item.gxp_type, history_id: item.case_id });
-  if (item.production_line_id) params.set("production_line_id", item.production_line_id);
-  return `/search?${params}`;
+  // Resolve this canonical Case through the guarded CaseDirectOpen owner.
+  // Never select Site/GxP/line from a potentially stale report projection.
+  return `/cases/${encodeURIComponent(item.case_id)}`;
 }
 
 export function CaseReport({ access, inspectionQueue, initialState = "", showDocumentsLink = false }: { access: ApiAccess; inspectionQueue: boolean; initialState?: string; showDocumentsLink?: boolean }) {

@@ -11,6 +11,7 @@ import { AdminSystemStatusPage } from "./pages/AdminSystemStatusPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { SearchPage } from "./pages/SearchPage";
+import { ReportRecordDetail } from "./features/reports/ReportRecordDetail";
 import { ReportsPage } from "./pages/ReportsPage";
 import { CaseCommandRegistryRoot, FacilityCommandRegistryRoot } from "./features/search/CaseDraftSession";
 import { TermsPage } from "./pages/TermsPage";
@@ -303,6 +304,8 @@ export function App() {
           }
         />
         <Route path="/reports" element={<ReportsPage access={apiAccess} statusError={statusError} />} />
+        <Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={apiAccess} kind="certificates" />} />
+        <Route path="/reports/change-requests/:changeRequestId" element={<ReportRecordDetail access={apiAccess} kind="change_requests" />} />
         <Route path="/admin/system-status" element={<AdminSystemStatusPage access={apiAccess} />} />
         <Route path="/cases" element={<Navigate to="/search" replace />} />
         <Route path="/cases/:caseId" element={<Navigate to="/search" replace />} />

@@ -1223,6 +1223,131 @@ class CatalogReadService:
                           "reference_code": case.legacy_inspection_code, "opened_year": case.opened_year})
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 
+    def get_certificate_report(
+        self, session: Session, *, gxp_type: str | None, q: str | None,
+        expiry_days: int | None, export: bool, offset: int, limit: int,
+    ) -> dict[str, object]:
+        """One current Certificate and its explicitly current version per row."""
+        if expiry_days is not None and expiry_days not in (30, 60, 90):
+            raise HTTPException(status_code=422, detail="Unsupported certificate expiry window.")
+        if gxp_type is not None and gxp_type not in ("GMP", "GLP", "GMPbb"):
+            raise HTTPException(status_code=422, detail="Invalid certificate GxP type.")
+        conditions = [
+            Certificate.latest_flag.is_(True),
+            CertificateVersion.is_latest_version.is_(True),
+        ]
+        if gxp_type:
+            conditions.append(Certificate.certificate_type == gxp_type)
+        if q:
+            term = f"%{q}%"
+            conditions.append(or_(
+                Site.site_name.ilike(term), Company.legal_name.ilike(term),
+                CertificateVersion.certificate_number.ilike(term),
+            ))
+        if expiry_days is not None:
+            today = date.today()
+            conditions.extend((
+                CertificateVersion.expiry_date.is_not(None),
+                CertificateVersion.expiry_date >= today,
+                CertificateVersion.expiry_date <= today + timedelta(days=expiry_days),
+            ))
+        source = (
+            select(Certificate, CertificateVersion, Site, Company, ProductionLine)
+            .join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id)
+            .join(Site, Site.id == Certificate.site_id)
+            .join(Company, Company.id == Site.company_id)
+            .outerjoin(ProductionLine, ProductionLine.id == Certificate.production_line_id)
+            .where(*conditions)
+        )
+        if export:
+            if offset != 0:
+                raise HTTPException(status_code=422, detail="Export offset must be zero.")
+            rows = session.execute(source.order_by(Certificate.id, CertificateVersion.id).limit(10001)).all()
+            if len(rows) > 10000:
+                raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
+            total, limit = len(rows), 10000
+        else:
+            total = session.scalar(
+                select(func.count()).select_from(Certificate)
+                .join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id)
+                .join(Site, Site.id == Certificate.site_id)
+                .join(Company, Company.id == Site.company_id)
+                .where(*conditions)
+            ) or 0
+            rows = session.execute(source.order_by(Certificate.id, CertificateVersion.id).offset(offset).limit(limit)).all()
+        items = [
+            {
+                "certificate_id": certificate.id,
+                "certificate_version_id": version.id,
+                "site_id": site.id,
+                "case_id": certificate.case_id,
+                "production_line_id": certificate.production_line_id,
+                "line_code": line.code if line is not None else certificate.line_code,
+                "facility_name": site.site_name,
+                "company_name": company.legal_name,
+                "gxp_type": certificate.certificate_type,
+                "certificate_number": version.certificate_number,
+                "issue_date": version.issue_date,
+                "expiry_date": version.expiry_date,
+                "lifecycle_state": version.lifecycle_state,
+            }
+            for certificate, version, site, company, line in rows
+        ]
+        return {"items": items, "total_count": total, "offset": offset, "limit": limit}
+
+    def get_change_request_report(
+        self, session: Session, *, state: str | None, q: str | None,
+        export: bool, offset: int, limit: int,
+    ) -> dict[str, object]:
+        """Site-owned Change Requests. Never assign inferred GxP from other artifacts."""
+        allowed = {item.value: item for item in OPEN_CHANGE_REQUEST_STATES}
+        if state is not None and state not in allowed:
+            raise HTTPException(status_code=422, detail="Invalid open Change Request state.")
+        conditions = [ChangeRequest.state.in_([allowed[state]] if state else OPEN_CHANGE_REQUEST_STATES)]
+        if q:
+            term = f"%{q}%"
+            conditions.append(or_(
+                Site.site_name.ilike(term), Company.legal_name.ilike(term),
+                ChangeRequest.scope_label.ilike(term), ChangeRequest.description.ilike(term),
+            ))
+        source = (
+            select(ChangeRequest, Site, Company)
+            .join(Site, Site.id == ChangeRequest.site_id)
+            .join(Company, Company.id == Site.company_id)
+            .where(*conditions)
+        )
+        if export:
+            if offset != 0:
+                raise HTTPException(status_code=422, detail="Export offset must be zero.")
+            rows = session.execute(source.order_by(ChangeRequest.id).limit(10001)).all()
+            if len(rows) > 10000:
+                raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
+            total, limit = len(rows), 10000
+        else:
+            total = session.scalar(
+                select(func.count()).select_from(ChangeRequest)
+                .join(Site, Site.id == ChangeRequest.site_id)
+                .join(Company, Company.id == Site.company_id)
+                .where(*conditions)
+            ) or 0
+            rows = session.execute(source.order_by(ChangeRequest.id).offset(offset).limit(limit)).all()
+        items = [
+            {
+                "change_request_id": change.id,
+                "site_id": site.id,
+                "legacy_change_request_id": change.legacy_change_request_id,
+                "facility_name": site.site_name,
+                "company_name": company.legal_name,
+                "scope_label": change.scope_label,
+                "description": change.description,
+                "submitted_on": change.submitted_on,
+                "requester_name": change.requester_name,
+                "state": change.state.value,
+            }
+            for change, site, company in rows
+        ]
+        return {"items": items, "total_count": total, "offset": offset, "limit": limit}
+
     def get_dashboard_summary(self, session: Session, *, queue_limit: int):
         total_facilities = session.scalar(select(func.count()).select_from(Site)) or 0
         total_cases = session.scalar(select(func.count()).select_from(Case)) or 0

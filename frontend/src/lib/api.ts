@@ -21,6 +21,8 @@ import type {
   CaseDetail,
   CaseListItem,
   CaseReportPage,
+  CertificateReportPage,
+  ChangeRequestReportPage,
   CaseWorkspaceEvaluationScope,
   CertificateLatestVersionUpsertRequest,
   CertificateIssueRequest,
@@ -277,6 +279,31 @@ export function getCaseReport(filters: { gxp_type: string; state: string; q: str
   if (filters.export) params.set("export", "true");
   if (filters.offset) params.set("offset", String(filters.offset));
   return requestJson<CaseReportPage>(buildApiPath("/reports/cases", params), { auth, useStubAuth, bearerToken });
+}
+
+export function getCertificateReport(
+  filters: { gxp_type: string; q: string; expiry_days: string; export?: boolean; offset?: number },
+  auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null,
+): Promise<CertificateReportPage> {
+  const params = new URLSearchParams();
+  if (filters.gxp_type) params.set("gxp_type", filters.gxp_type);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.expiry_days) params.set("expiry_days", filters.expiry_days);
+  if (filters.export) params.set("export", "true");
+  if (filters.offset) params.set("offset", String(filters.offset));
+  return requestJson<CertificateReportPage>(buildApiPath("/reports/certificates", params), { auth, useStubAuth, bearerToken });
+}
+
+export function getChangeRequestReport(
+  filters: { state: string; q: string; export?: boolean; offset?: number },
+  auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null,
+): Promise<ChangeRequestReportPage> {
+  const params = new URLSearchParams();
+  if (filters.state) params.set("state", filters.state);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.export) params.set("export", "true");
+  if (filters.offset) params.set("offset", String(filters.offset));
+  return requestJson<ChangeRequestReportPage>(buildApiPath("/reports/change-requests", params), { auth, useStubAuth, bearerToken });
 }
 
 export function searchFacilities(

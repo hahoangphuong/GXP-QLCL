@@ -93,6 +93,49 @@ class CaseReportPageRead(BaseModel):
     limit: int
 
 
+class CertificateReportItemRead(BaseModel):
+    certificate_id: str
+    certificate_version_id: str
+    site_id: str
+    case_id: str | None
+    production_line_id: str | None
+    line_code: str | None
+    facility_name: str
+    company_name: str
+    gxp_type: str
+    certificate_number: str | None
+    issue_date: date | None
+    expiry_date: date | None
+    lifecycle_state: str | None
+
+
+class CertificateReportPageRead(BaseModel):
+    items: list[CertificateReportItemRead]
+    total_count: int
+    offset: int
+    limit: int
+
+
+class ChangeRequestReportItemRead(BaseModel):
+    change_request_id: str
+    site_id: str
+    legacy_change_request_id: int | None
+    facility_name: str
+    company_name: str
+    scope_label: str | None
+    description: str | None
+    submitted_on: date | None
+    requester_name: str | None
+    state: str
+
+
+class ChangeRequestReportPageRead(BaseModel):
+    items: list[ChangeRequestReportItemRead]
+    total_count: int
+    offset: int
+    limit: int
+
+
 class DashboardSummaryRead(BaseModel):
     total_facilities: int
     total_cases: int

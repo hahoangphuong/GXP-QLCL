@@ -15,6 +15,8 @@ from backend.app.read_models import (
     CaseWorkspaceRead,
     CaseRead,
     CaseReportPageRead,
+    CertificateReportPageRead,
+    ChangeRequestReportPageRead,
     ChangeRequestWorkspaceRead,
     CompanyDetailRead,
     CompanyRead,
@@ -256,6 +258,37 @@ def register_catalog_routes(app, session_factory) -> None:
             export=export, offset=offset, limit=limit,
         ))
 
+    def certificate_report(
+        gxp_type: str | None = Query(default=None),
+        q: str | None = Query(default=None),
+        expiry_days: int | None = Query(default=None),
+        export: bool = Query(default=False),
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=200),
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return CertificateReportPageRead(**service.get_certificate_report(
+            session, gxp_type=_optional_string_query(gxp_type), q=_optional_string_query(q),
+            expiry_days=expiry_days, export=export, offset=offset, limit=limit,
+        ))
+
+    def change_request_report(
+        state: str | None = Query(default=None),
+        q: str | None = Query(default=None),
+        export: bool = Query(default=False),
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=200),
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return ChangeRequestReportPageRead(**service.get_change_request_report(
+            session, state=_optional_string_query(state), q=_optional_string_query(q),
+            export=export, offset=offset, limit=limit,
+        ))
+
     def search_facilities(
         q: str | None = Query(default=None),
         facility_name: str | None = Query(default=None),
@@ -427,6 +460,8 @@ def register_catalog_routes(app, session_factory) -> None:
     )
     app.add_api_route("/dashboard/summary", get_dashboard_summary, methods=["GET"], response_model=DashboardSummaryRead, tags=["catalog"])
     app.add_api_route("/reports/cases", case_report, methods=["GET"], response_model=CaseReportPageRead, tags=["catalog"])
+    app.add_api_route("/reports/certificates", certificate_report, methods=["GET"], response_model=CertificateReportPageRead, tags=["catalog"])
+    app.add_api_route("/reports/change-requests", change_request_report, methods=["GET"], response_model=ChangeRequestReportPageRead, tags=["catalog"])
     app.add_api_route("/search/facilities", search_facilities, methods=["GET"], response_model=FacilitySearchPageRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/workspace", get_facility_workspace, methods=["GET"], response_model=FacilityWorkspaceRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/gxp-certificates", list_site_gxp_certificates, methods=["GET"], response_model=GxpCertificateListRead, tags=["catalog"])

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import "./reports.css";
 
@@ -27,11 +27,26 @@ function searchLink(row: FacilitySearchResult) {
   return "/search?" + params.toString();
 }
 
+type ReportKind = "facilities" | "cases" | "inspection" | "certificates" | "change_requests";
+const REPORT_KINDS = new Set<ReportKind>(["facilities", "cases", "inspection", "certificates", "change_requests"]);
+
+function selectedReport(value: string | null): ReportKind {
+  return value && REPORT_KINDS.has(value as ReportKind) ? value as ReportKind : "facilities";
+}
+
 export function ReportsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
-  const [report, setReport] = useState("facilities");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const report = selectedReport(searchParams.get("report"));
+  function selectReport(next: ReportKind) {
+    setSearchParams(params => {
+      const updated = new URLSearchParams(params);
+      updated.set("report", next);
+      return updated;
+    });
+  }
   if (statusError) return <ErrorState message={statusError} />;
   return <>
-    <section className="panel"><label>Loại báo cáo <select value={report} onChange={event => setReport(event.target.value)}>
+    <section className="panel"><label>Loại báo cáo <select value={report} onChange={event => selectReport(event.target.value as ReportKind)}>
       <option value="facilities">Danh sách cơ sở</option>
       <option value="cases">Hồ sơ đang xử lý</option>
       <option value="inspection">Hồ sơ chuẩn bị và đang kiểm tra</option>

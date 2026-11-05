@@ -310,6 +310,7 @@ export function searchFacilities(
   filters: {
     q?: string;
     facility_name?: string;
+    site_id?: string;
     certificate_scope?: string;
     gxp_type?: string | null;
     province?: string;
@@ -330,6 +331,9 @@ export function searchFacilities(
   }
   if (filters.facility_name) {
     searchParams.set("facility_name", filters.facility_name);
+  }
+  if (filters.site_id) {
+    searchParams.set("site_id", filters.site_id);
   }
   if (filters.certificate_scope) {
     searchParams.set("certificate_scope", filters.certificate_scope);

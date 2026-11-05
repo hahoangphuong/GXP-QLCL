@@ -102,6 +102,13 @@ def test_certificate_report_rejects_multiple_latest_versions_even_outside_window
     with pytest.raises(HTTPException) as conflict:
         cert_report(session)
     assert conflict.value.status_code == 409
+    service = CatalogReadService()
+    with pytest.raises(HTTPException) as detail_conflict:
+        service.get_gxp_certificate_detail(session, certificate_id=row["certificate_id"])
+    assert detail_conflict.value.status_code == 409
+    with pytest.raises(HTTPException) as list_conflict:
+        service.list_site_gxp_certificates(session, site_id=row["site_id"], gxp_type="GMP", line_code=None)
+    assert list_conflict.value.status_code == 409
 
 
 def test_certificate_without_current_version_is_not_reported_as_current(session):
@@ -110,6 +117,9 @@ def test_certificate_without_current_version_is_not_reported_as_current(session)
     version.is_latest_version = False
     session.flush()
     assert row["certificate_id"] not in {item["certificate_id"] for item in cert_report(session, expiry_days=None)["items"]}
+    with pytest.raises(HTTPException) as missing:
+        CatalogReadService().get_gxp_certificate_detail(session, certificate_id=row["certificate_id"])
+    assert missing.value.status_code == 404
 
 
 def test_certificate_status_uses_existing_current_certificate_policy(session):

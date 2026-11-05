@@ -1835,6 +1835,9 @@ class CatalogReadService:
                 )
             ).all()
         )
+        certificate_ids = [certificate.id for certificate, _ in rows]
+        if len(certificate_ids) != len(set(certificate_ids)):
+            raise HTTPException(status_code=409, detail="Certificate has ambiguous latest CertificateVersion identity.")
         items = []
         for certificate, version in rows:
             linked_case = None if certificate.case_id is None else case_by_id.get(certificate.case_id)
@@ -1987,15 +1990,18 @@ class CatalogReadService:
         CaseWorkflowService._validate_certificate_linked_case(session, certificate)
         site = self.get_site(session, certificate.site_id)
         company = self.get_company(session, site.company_id)
-        version = session.scalar(
+        versions = list(session.scalars(
             select(CertificateVersion)
             .where(
                 CertificateVersion.certificate_id == certificate.id,
                 CertificateVersion.is_latest_version.is_(True),
             )
-        )
-        if version is None:
+        ))
+        if not versions:
             raise HTTPException(status_code=404, detail="Certificate latest version not found")
+        if len(versions) != 1:
+            raise HTTPException(status_code=409, detail="Certificate has ambiguous latest CertificateVersion identity.")
+        version = versions[0]
         linked_case = None if certificate.case_id is None else session.get(Case, certificate.case_id)
         scope_rows = list(
             session.scalars(

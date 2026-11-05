@@ -75,6 +75,38 @@ describe("ReportsPage operator workflow", () => {
       filters?.gxp_type === "GLP" && filters.offset === 0)).toBe(true));
   });
 
+  it.each([
+    ["wrong offset", { offset: 10 }],
+    ["duplicate result_key", { items: [row(0), { ...row(0) }], total_count: 2 }],
+    ["missing Site UUID", { items: [{ ...row(0), site_id: "" }] }],
+    ["missing result_key", { items: [{ ...row(0), result_key: "" }] }],
+    ["inconsistent count", { total_count: 0 }],
+    ["underfilled first page", { total_count: 2 }],
+    ["wrong limit", { limit: 200 }],
+  ])("refuses %s before displaying clickable facility result", async (_name, change) => {
+    vi.mocked(searchFacilities).mockResolvedValue({
+      items: [row(0)], total_count: 1, offset: 0, limit: 100, ...change,
+    });
+    render(<MemoryRouter><ReportsPage access={access} statusError={null} /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/phân trang|định danh|Site/);
+    expect(screen.queryByRole("link", { name: "Cơ sở 0" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xuất CSV (Excel)" })).toBeDisabled();
+  });
+
+  it("does not display a stale first page after the next page reports the wrong offset", async () => {
+    const first = Array.from({ length: 100 }, (_, n) => row(n));
+    vi.mocked(searchFacilities).mockImplementation(async filters => ({
+      items: filters?.offset === 100 ? [row(100)] : first,
+      total_count: 101, offset: 0, limit: 100,
+    }));
+    render(<MemoryRouter><ReportsPage access={access} statusError={null} /></MemoryRouter>);
+    expect(await screen.findByText("101 dòng kết quả")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Trang sau" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("phân trang");
+    expect(screen.queryByRole("link", { name: "Cơ sở 0" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Cơ sở 100" })).not.toBeInTheDocument();
+  });
+
   it("provides canonical document links for Case and Change Request reports only", () => {
     vi.mocked(searchFacilities).mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 });
     render(<MemoryRouter><ReportsPage access={access} statusError={null} /></MemoryRouter>);

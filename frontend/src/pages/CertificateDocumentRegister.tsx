@@ -45,8 +45,10 @@ export function CertificateDocumentRegister({
     let live = true;
     const documentId = currentDocument.document_id;
     void getDocumentDetail(documentId, auth, useStubAuth, bearerToken).then(value => {
-      if (value.document_id !== documentId
-        || (kind === "certificate" ? value.certificate_id : value.business_eligibility_certificate_id) !== id) {
+      if (value.document_id !== documentId || value.case_id || value.capa_cycle_id || value.change_request_id
+        || (kind === "certificate"
+          ? value.certificate_id !== id || Boolean(value.business_eligibility_certificate_id)
+          : value.business_eligibility_certificate_id !== id || Boolean(value.certificate_id))) {
         throw new Error("Tài liệu không thuộc chứng nhận đã chọn.");
       }
       if (live) setDetail({ owner, id: documentId, value, error: null });

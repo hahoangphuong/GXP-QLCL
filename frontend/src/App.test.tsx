@@ -1172,7 +1172,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
   });
 
-  it("advertises functional workflow and report routes while keeping unsupported document menu hidden", async () => {
+  it("advertises backed workflow, document and report navigation", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     renderApp();
 
@@ -1182,7 +1182,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(navigation).getByRole("link", { name: "Tổng quan" })).toHaveAttribute("href", "/");
     expect(within(navigation).getByRole("link", { name: "Tra cứu" })).toHaveAttribute("href", "/search");
     expect(within(navigation).getByRole("link", { name: "Nghiệp vụ" })).toHaveAttribute("href", "/workflow");
-    expect(within(navigation).queryByRole("link", { name: "Tài liệu" })).not.toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: "Tài liệu" })).toHaveAttribute("href", "/documents");
     expect(within(navigation).getByRole("link", { name: "Báo cáo" })).toHaveAttribute("href", "/reports");
   });
 

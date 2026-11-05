@@ -92,7 +92,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
             subtitle: `Case ${id} • ${workspace.case_summary.gxp_type}`,
             siteId: workspace.case_summary.site_id,
             items: workspace.documents.items,
-            actions: workspace.contextual_document_actions,
+            actions: workspace.contextual_document_actions ?? [],
           };
         })
       : getChangeRequestWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
@@ -221,7 +221,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
                 <td>{item.status === "missing" && kind === "cases" ? (() => {
                   const readiness = resolveDocumentCreation(context.actions, item);
                   if (!readiness) return "Chưa có thao tác tạo được xác nhận";
-                  return readiness.available
+                  return readiness.available && readiness.create_input_readiness !== "CANONICAL_INPUT_BLOCKED"
                     ? <Link className="text-link" to={`/cases/${encodeURIComponent(id)}`}>Đến workspace để tạo</Link>
                     : <span title={readiness.disabled_reason ?? undefined}>Chưa sẵn sàng{readiness.disabled_reason ? `: ${readiness.disabled_reason}` : ""}</span>;
                 })() : "—"}</td>

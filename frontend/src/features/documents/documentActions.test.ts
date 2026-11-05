@@ -25,7 +25,7 @@ function action(overrides: Record<string, unknown> = {}) {
       create_input_readiness: "CANONICAL_INPUT_READY",
     }],
     ...overrides,
-  } as ContextualDocumentAction;
+  } as unknown as ContextualDocumentAction;
 }
 
 describe("document register binary and creation contracts", () => {

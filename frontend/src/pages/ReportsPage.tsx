@@ -36,7 +36,7 @@ export function ReportsPage({
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
   const [draft, setDraft] = useState<ReportFilters>(INITIAL_REPORT_FILTERS);
-  const [active, setActive] = useState<Filters>(INITIAL_FILTERS);
+  const [active, setActive] = useState<ReportFilters>(INITIAL_REPORT_FILTERS);
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<PageState | null>(null);
   const [exporting, setExporting] = useState(false);

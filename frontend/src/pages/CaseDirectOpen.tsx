@@ -36,20 +36,16 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   useEffect(() => {
     if (!canLoadSecureApi || !caseId) return;
     let live = true;
-    void getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).then(
-      workspace => {
+    void (async () => {
+      try {
+        const workspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
         if (!live) return;
-        try {
-          const location = caseSearchLocation(caseId, workspace.case_summary);
-          setResult({ owner, location, error: null });
-        } catch (error) {
-          setResult({ owner, location: null, error: error instanceof Error ? error.message : "Không mở được hồ sơ." });
-        }
-      },
-      error => {
+        const location = caseSearchLocation(caseId, workspace.case_summary);
+        setResult({ owner, location, error: null });
+      } catch (error) {
         if (live) setResult({ owner, location: null, error: error instanceof Error ? error.message : "Không mở được hồ sơ." });
-      },
-    );
+      }
+    })();
     return () => { live = false; };
   }, [owner, caseId, auth, bearerToken, useStubAuth, canLoadSecureApi]);
 

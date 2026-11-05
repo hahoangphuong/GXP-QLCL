@@ -27,5 +27,7 @@ export function safeDocumentDownloadName(
 ): string {
   const raw = serverFilename || fallbackFilename || "tai-lieu-hien-hanh";
   const name = raw.split(/[\\/]/).pop() || "tai-lieu-hien-hanh";
-  return name.replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_").trim() || "tai-lieu-hien-hanh";
+  return Array.from(name, char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127
+    || '< > : " | ? *'.replace(/ /g, "").includes(char) ? "_" : char)
+    .join("").trim() || "tai-lieu-hien-hanh";
 }

@@ -37,6 +37,8 @@ function selectedReport(value: string | null): ReportKind {
 export function ReportsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const report = selectedReport(searchParams.get("report"));
+  const initialCaseState = report === "cases" && searchParams.get("case_state") === "awaiting_certificate_decision"
+    ? "awaiting_certificate_decision" : "";
   function selectReport(next: ReportKind) {
     setSearchParams(params => {
       const updated = new URLSearchParams(params);
@@ -59,9 +61,8 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
       (report === "certificates" || report === "change_requests") ?
         <section className="page-section"><h2>{report === "certificates" ? "GCN GxP hiện hành" : "Yêu cầu thay đổi chưa hoàn tất"}</h2>
           <CanonicalRecordReport key={report} access={access} kind={report} showDocumentsLink={report === "change_requests"} /></section> :
-      <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report} access={access} inspectionQueue={report === "inspection"} showDocumentsLink
-        initialState={report === "cases" && searchParams.get("case_state") === "awaiting_certificate_decision"
-          ? "awaiting_certificate_decision" : ""} /></section>}
+      <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report + ":" + initialCaseState} access={access}
+        inspectionQueue={report === "inspection"} showDocumentsLink initialState={initialCaseState} /></section>}
   </>;
 }
 

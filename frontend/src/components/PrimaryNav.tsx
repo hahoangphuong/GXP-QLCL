@@ -14,6 +14,9 @@ export function PrimaryNav({ canAccessAdmin }: { canAccessAdmin: boolean }) {
       >
         Tra cứu
       </NavLink>
+      <NavLink className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")} to="/workflow">
+        Nghiệp vụ
+      </NavLink>
       <NavLink className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")} to="/reports">
         Báo cáo
       </NavLink>

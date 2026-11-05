@@ -1,0 +1,40 @@
+import "@testing-library/jest-dom/vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+import type { ApiAccess } from "../App";
+import { WorkflowPage } from "./WorkflowPage";
+
+vi.mock("../features/reports/CaseReport", () => ({
+  CaseReport: ({ inspectionQueue, initialState }: { inspectionQueue: boolean; initialState: string }) =>
+    <output data-testid="case-queue">{String(inspectionQueue) + ":" + initialState}</output>,
+}));
+vi.mock("../features/reports/CanonicalRecordReport", () => ({
+  CanonicalRecordReport: ({ kind }: { kind: string }) => <output data-testid="record-queue">{kind}</output>,
+}));
+
+const access: ApiAccess = { auth: { username: "reader", role: "reader" }, useStubAuth: true,
+  bearerToken: null, canLoadSecureApi: true, accessGeneration: 1 };
+
+describe("operator workflow landing", () => {
+  it("opens real canonical queues and filters certificate decision by backend Case state", () => {
+    render(<MemoryRouter><WorkflowPage access={access} statusError={null} /></MemoryRouter>);
+    expect(screen.getByRole("heading", { name: "Bàn công việc GxP" })).toBeInTheDocument();
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("false:");
+    fireEvent.click(screen.getByRole("button", { name: "Chuẩn bị và đang kiểm tra" }));
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("true:");
+    fireEvent.click(screen.getByRole("button", { name: "Chờ quyết định cấp GCN" }));
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("false:awaiting_certificate_decision");
+    fireEvent.click(screen.getByRole("button", { name: "Yêu cầu thay đổi đang mở" }));
+    expect(screen.getByTestId("record-queue")).toHaveTextContent("change_requests");
+    fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));
+    expect(screen.getByTestId("record-queue")).toHaveTextContent("certificates");
+    expect(screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" })).toHaveAttribute("href", "/reports");
+  });
+
+  it("never mounts the operator queue for unauthorized visitors", () => {
+    render(<MemoryRouter><WorkflowPage access={{ ...access, canLoadSecureApi: false }} statusError={null} /></MemoryRouter>);
+    expect(screen.getByText("Cần đăng nhập")).toBeInTheDocument();
+    expect(screen.queryByTestId("case-queue")).not.toBeInTheDocument();
+  });
+});

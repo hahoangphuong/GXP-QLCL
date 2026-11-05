@@ -17,12 +17,12 @@ function target(item: CaseReportItem) {
   return `/search?${params}`;
 }
 
-export function CaseReport({ access, inspectionQueue }: { access: ApiAccess; inspectionQueue: boolean }) {
+export function CaseReport({ access, inspectionQueue, initialState = "" }: { access: ApiAccess; inspectionQueue: boolean; initialState?: string }) {
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration, inspectionQueue]);
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const initial: Filters = { gxp_type: "", state: "", q: "", opened_year: "", inspection_queue: inspectionQueue };
+  const initial: Filters = { gxp_type: "", state: initialState, q: "", opened_year: "", inspection_queue: inspectionQueue };
   const [draft, setDraft] = useState(initial);
   const [active, setActive] = useState(initial);
   const [offset, setOffset] = useState(0);

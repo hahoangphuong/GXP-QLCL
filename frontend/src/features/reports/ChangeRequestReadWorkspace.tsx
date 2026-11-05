@@ -27,8 +27,10 @@ function ArtifactTable({ title, items }: { title: string; items: ChangeRequestAr
         <tbody>{items.map(item => <tr key={item.link_id}>
           <td>{item.artifact_kind === "certificate" ? "GCN GxP" : "GCN đủ điều kiện"}</td>
           <td>{item.artifact_kind === "certificate" ?
-            <Link className="text-link" to={"/reports/certificates/" + encodeURIComponent(item.artifact_id)}>{item.artifact_id}</Link>
-            : item.artifact_id}</td>
+            <><Link className="text-link" to={"/reports/certificates/" + encodeURIComponent(item.artifact_id)}>{item.artifact_id}</Link>
+              {" · "}<Link className="text-link" to={"/documents/certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>
+            : <><span>{item.artifact_id}</span>{" · "}
+              <Link className="text-link" to={"/documents/business-eligibility-certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>}</td>
           <td>{item.source_affected_artifact_id ?? "Chưa có"}</td>
         </tr>)}</tbody>
       </table></div>}

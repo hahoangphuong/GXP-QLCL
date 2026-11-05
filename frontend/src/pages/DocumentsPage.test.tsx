@@ -310,7 +310,7 @@ describe("contextual document register", () => {
   it("fails closed on an incorrect Case UUID returned from the API", async () => {
     vi.mocked(getCaseWorkspace).mockResolvedValue(casePayload("other-case"));
     mount("/documents/cases/case-1");
-    const error = await screen.findByText("Case UUID không khớp phản hồi.");
+    const error = await screen.findByText(/Case UUID không khớp phản hồi/);
     expect(error).toBeInTheDocument();
     expect(getDocumentDetail).not.toHaveBeenCalled();
   });

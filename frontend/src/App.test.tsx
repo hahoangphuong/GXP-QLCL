@@ -2412,6 +2412,47 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["GMP", "GLP", "GMPbb"])("opens the %s certificate UUID from a report link, not the first certificate", async (gxp) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    const resultKey = `site-1:${gxp}:A`;
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: resultKey, gxp_type: gxp, gxp_types: [gxp] })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const cert = { certificate_id: "cert-A", site_id: "site-1", case_id: "case-1", certificate_type: gxp, line_code: "A", context_match_kind: "exact_line", latest_flag: true, certificate_number: "SAME-NUMBER", issue_date: null, expiry_date: null, applicable_standard: "WHO-GMP", issuing_authority: null, status: "active" };
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [cert, { ...cert, certificate_id: "cert-B" }] });
+    apiMocks.getGxpCertificateDetail.mockImplementation(async (id: string) => ({ ...cert, certificate_id: id, facility_name: "Nhà máy A", scope_summary: `Scope ${id}`, action_readiness: [] }));
+    const params = new URLSearchParams({ site_id: "site-1", result_key: resultKey, gxp_type: gxp, production_line_id: "line-uuid-1", facility_tab: "Giấy chứng nhận GxP", certificate_id: "cert-B" });
+    renderApp([`/search?${params}`]);
+    expect(await screen.findByText("Scope cert-B")).toBeInTheDocument();
+    expect(apiMocks.getGxpCertificateDetail).not.toHaveBeenCalledWith("cert-A", expect.anything(), expect.anything(), expect.anything());
+  });
+
+  it.each(["missing", ""])("does not substitute another certificate when the requested UUID is missing or empty (%s)", async (targetId) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const cert = { certificate_id: "cert-A", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", context_match_kind: "exact_line", latest_flag: true, certificate_number: "GCN-A", issue_date: null, expiry_date: null, applicable_standard: "WHO-GMP", issuing_authority: null, status: "active" };
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [cert] });
+    const params = new URLSearchParams({ site_id: "site-1", result_key: "site-1:GMP:A", gxp_type: "GMP", production_line_id: "line-uuid-1", facility_tab: "Giấy chứng nhận GxP", certificate_id: targetId });
+    renderApp([`/search?${params}`]);
+    expect(await screen.findByText("Không tìm thấy giấy chứng nhận trong ngữ cảnh đã chọn.")).toBeInTheDocument();
+    expect(apiMocks.getGxpCertificateDetail).not.toHaveBeenCalled();
+  });
+
+  it.each(["site", "case", "certificate"] as const)("rejects report certificate detail with wrong %s identity", async (mismatch) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const cert = { certificate_id: "cert-A", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", context_match_kind: "exact_line", latest_flag: true, certificate_number: "GCN-A", issue_date: null, expiry_date: null, applicable_standard: "WHO-GMP", issuing_authority: null, status: "active" };
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [cert] });
+    apiMocks.getGxpCertificateDetail.mockResolvedValue({ ...cert, certificate_id: mismatch === "certificate" ? "other" : cert.certificate_id,
+      site_id: mismatch === "site" ? "other" : cert.site_id, case_id: mismatch === "case" ? "other" : cert.case_id,
+      facility_name: "Nhà máy A", scope_summary: "STALE DETAIL", action_readiness: [] });
+    const params = new URLSearchParams({ site_id: "site-1", result_key: "site-1:GMP:A", gxp_type: "GMP", production_line_id: "line-uuid-1", facility_tab: "Giấy chứng nhận GxP", certificate_id: "cert-A" });
+    renderApp([`/search?${params}`]);
+    expect(await screen.findByText("Chi tiết giấy chứng nhận không khớp định danh hoặc ngữ cảnh.")).toBeInTheDocument();
+    expect(screen.queryByText("STALE DETAIL")).not.toBeInTheDocument();
+  });
+
   it("hides certificate data at the first B commit and throughout B loading and error", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "B", context_code: "target-B", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
@@ -5234,7 +5275,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
-    apiMocks[list].mockResolvedValue({ items: [{ [id]: "certificate-A" }, { [id]: "certificate-B" }], issue_readiness: null });
+    apiMocks[list].mockResolvedValue({ items: [{ [id]: "certificate-A", site_id: "site-1", certificate_type: "GMP" }, { [id]: "certificate-B", site_id: "site-1", certificate_type: "GMP" }], issue_readiness: null });
     let rejectB!: (error: Error) => void;
     apiMocks[load].mockRejectedValueOnce(new Error("Error owned by certificate A")).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectB = reject; }));
     renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);

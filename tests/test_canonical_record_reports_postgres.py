@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session
@@ -67,6 +68,17 @@ def test_canonical_record_reports_disposable_postgres():
             assert changes["total_count"] == 2
             assert len({x["change_request_id"] for x in changes["items"]}) == 2
             assert all("gxp_type" not in item for item in changes["items"])
+            db.add(CertificateVersion(certificate_id=current.id, version_no=2,
+                is_latest_version=True, certificate_number="GCN-CONFLICT",
+                expiry_date=date.today() + timedelta(days=300)))
+            db.flush()
+            with pytest.raises(HTTPException) as conflict:
+                service.get_certificate_report(db, gxp_type="GMP", q=None,
+                    expiry_days=30, export=True, offset=0, limit=100)
+            assert conflict.value.status_code == 409
+            with pytest.raises(HTTPException) as detail_conflict:
+                service.get_gxp_certificate_detail(db, certificate_id=current.id)
+            assert detail_conflict.value.status_code == 409
     finally:
         if engine is not None:
             engine.dispose()

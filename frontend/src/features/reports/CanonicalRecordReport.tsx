@@ -6,9 +6,17 @@ import type { CertificateReportItem, CertificateReportPage, ChangeRequestReportI
 import { csvCell } from "./facilityReportExport";
 
 type Kind = "certificates" | "change_requests";
-type Filters = { gxp_type: string; expiry_days: string; state: string; q: string };
+type Filters = { gxp_type: string; expiry_days: string; state: string; q: string; number: string };
 type Page = CertificateReportPage | ChangeRequestReportPage;
-const EMPTY: Filters = { gxp_type: "", expiry_days: "90", state: "", q: "" };
+const EMPTY: Filters = { gxp_type: "", expiry_days: "90", state: "", q: "", number: "" };
+
+function certificateLocation(item: CertificateReportItem): string {
+  const params = new URLSearchParams({ site_id: item.site_id, result_key: item.result_key,
+    gxp_type: item.gxp_type, certificate_id: item.certificate_id, facility_tab: "Giấy chứng nhận GxP" });
+  if (item.production_line_id) params.set("production_line_id", item.production_line_id);
+  if (item.line_code) params.set("line_code", item.line_code);
+  return `/search?${params}`;
+}
 
 export function CanonicalRecordReport({ access, kind, showDocumentsLink = false }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean }) {
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
@@ -49,7 +57,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
   function apply(event: FormEvent) {
     event.preventDefault();
     if (guard.current) return;
-    setActive({ ...draft, q: draft.q.trim() });
+    setActive({ ...draft, q: draft.q.trim(), number: draft.number.trim() });
     setOffset(0);
     setExportError(null);
   }
@@ -81,6 +89,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
               { title: "Ngày cấp", get: x => (x as CertificateReportItem).issue_date ?? "" },
               { title: "Ngày hết hạn", get: x => (x as CertificateReportItem).expiry_date ?? "" },
               { title: "Trạng thái version", get: x => (x as CertificateReportItem).lifecycle_state ?? "" },
+              { title: "Tình trạng GCN", get: x => (x as CertificateReportItem).status },
             ]
           : [
               { title: "Change Request UUID", get: x => (x as ChangeRequestReportItem).change_request_id },
@@ -128,6 +137,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
           </select></label> : <label>Trạng thái thay đổi<select value={draft.state} disabled={exporting} onChange={e => setDraft({ ...draft, state: e.target.value })}>
             <option value="">Tất cả chưa hoàn tất</option><option value="received">Đã tiếp nhận</option><option value="under_review">Đang xem xét</option>
           </select></label>}
+          {isCert && <label>Số GCN<input value={draft.number} disabled={exporting} onChange={e => setDraft({ ...draft, number: e.target.value })} /></label>}
           <label>Tìm kiếm<input value={draft.q} disabled={exporting} onChange={e => setDraft({ ...draft, q: e.target.value })}
             placeholder={isCert ? "Cơ sở, công ty hoặc số GCN" : "Cơ sở, công ty hoặc nội dung thay đổi"} /></label>
         </div>
@@ -147,13 +157,13 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
         : rows.length === 0 ? <p>Không có kết quả phù hợp.</p>
         : <div className="table-scroll"><table className="dense-table"><thead><tr>
           <th>{isCert ? "Số GCN" : "Yêu cầu"}</th><th>Cơ sở</th><th>Công ty</th>
-          {isCert ? <><th>GxP</th><th>Ngày cấp</th><th>Hạn GCN</th><th>Trạng thái version</th></>
+          {isCert ? <><th>GxP</th><th>Ngày cấp</th><th>Hạn GCN</th><th>Tình trạng GCN</th><th>Trạng thái version</th></>
             : <><th>Nội dung/phạm vi</th><th>Ngày gửi</th><th>Trạng thái</th>{showDocumentsLink && <th>Tài liệu</th>}</>}
         </tr></thead><tbody>
           {isCert ? (rows as CertificateReportItem[]).map(item => <tr key={item.certificate_id}>
-            <td><Link className="text-link" to={`/reports/certificates/${encodeURIComponent(item.certificate_id)}`}>{item.certificate_number ?? item.certificate_id}</Link></td>
+            <td>{["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? <Link className="text-link" to={certificateLocation(item)}>{item.certificate_number ?? item.certificate_id}</Link> : <span>{item.certificate_number ?? item.certificate_id} (chưa hỗ trợ mở trực tiếp)</span>}</td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td>
-            <td>{item.issue_date ?? "—"}</td><td>{item.expiry_date ?? "—"}</td><td>{item.lifecycle_state ?? "Chưa xác minh"}</td>
+            <td>{item.issue_date ?? "—"}</td><td>{item.expiry_date ?? "—"}</td><td>{item.status === "expired" ? "Hết hạn" : "Hiện hành"}</td><td>{item.lifecycle_state ?? "Chưa xác minh"}</td>
           </tr>) : (rows as ChangeRequestReportItem[]).map(item => <tr key={item.change_request_id}>
             <td><Link className="text-link" to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.scope_label ?? "—"}</td>

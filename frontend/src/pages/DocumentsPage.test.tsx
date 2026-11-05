@@ -310,8 +310,28 @@ describe("contextual document register", () => {
   it("fails closed on an incorrect Case UUID returned from the API", async () => {
     vi.mocked(getCaseWorkspace).mockResolvedValue(casePayload("other-case"));
     mount("/documents/cases/case-1");
-    const error = await screen.findByText("Case UUID không khớp phản hồi.");
+    const error = await screen.findByText(/Case UUID không khớp phản hồi/);
     expect(error).toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Case checklist if its canonical Site is missing", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue({
+      ...casePayload(), case_summary: { ...casePayload().case_summary, site_id: "" },
+    });
+    mount("/documents/cases/case-1");
+    expect(await screen.findByText(/thiếu Site canonical/)).toBeInTheDocument();
+    expect(screen.queryByText("Biên bản kiểm tra")).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Change Request checklist if its canonical Site is missing", async () => {
+    vi.mocked(getChangeRequestWorkspace).mockResolvedValue({
+      ...changePayload(), site_id: "",
+    });
+    mount("/documents/change-requests/change-1");
+    expect(await screen.findByText(/thiếu Site canonical/)).toBeInTheDocument();
+    expect(screen.queryByText("Biên bản kiểm tra")).not.toBeInTheDocument();
     expect(getDocumentDetail).not.toHaveBeenCalled();
   });
 
@@ -322,6 +342,72 @@ describe("contextual document register", () => {
     fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("không thuộc ngữ cảnh");
     expect(screen.queryByText(/bien-ban-v2.docx/)).not.toBeInTheDocument();
+  });
+
+  it("rejects Case document detail carrying an additional certificate owner before download", async () => {
+    vi.mocked(getDocumentDetail).mockResolvedValue({ ...detailPayload(), certificate_id: "other-cert" });
+    mount("/documents/cases/case-1");
+    await screen.findByText("2 mục trong checklist · 1 đã có · 1 chưa có");
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không thuộc ngữ cảnh");
+    expect(screen.queryByRole("button", { name: "Tải tệp hiện hành" })).not.toBeInTheDocument();
+    expect(openCaseDocumentCurrentContent).not.toHaveBeenCalled();
+  });
+
+  it("rejects Change Request document detail carrying an additional Case owner", async () => {
+    vi.mocked(getDocumentDetail).mockResolvedValue({
+      ...detailPayload("change"), case_id: "another-case",
+    });
+    mount("/documents/change-requests/change-1");
+    await screen.findByText("Cơ sở B");
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không thuộc ngữ cảnh");
+    expect(screen.queryByText(/bien-ban-v2.docx/)).not.toBeInTheDocument();
+  });
+
+  it("rejects CAPA detail with a second Case parent before requesting a binary", async () => {
+    const capaDocument = { ...caseDocument, checklist_key: "capa:cycle-1:REPORT",
+      parent_scope: "capa_cycle" as const, parent_id: "cycle-1", document_id: "capa-doc" };
+    vi.mocked(getCaseWorkspace).mockResolvedValue({
+      ...casePayload(), documents: { items: [capaDocument] },
+    });
+    vi.mocked(getDocumentDetail).mockResolvedValue({
+      ...detailPayload(), document_id: "capa-doc", capa_cycle_id: "cycle-1", case_id: "case-1",
+    });
+    mount("/documents/cases/case-1");
+    await screen.findByText("1 mục trong checklist · 1 đã có · 0 chưa có");
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không thuộc ngữ cảnh");
+    expect(openCapaCycleDocumentCurrentContent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a foreign parent in a Case checklist without exposing any rows", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue({
+      ...casePayload(), documents: { items: [{ ...caseDocument, parent_id: "case-foreign" }] },
+    });
+    mount("/documents/cases/case-1");
+    expect(await screen.findByText(/Checklist tài liệu có ngữ cảnh owner không khớp/)).toBeInTheDocument();
+    expect(screen.queryByText("Biên bản kiểm tra")).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
+  it("rejects foreign Change Request checklist rows", async () => {
+    vi.mocked(getChangeRequestWorkspace).mockResolvedValue({
+      ...changePayload(), documents: { items: [{ ...caseDocument,
+        parent_scope: "change_request", parent_id: "another-change" }] },
+    });
+    mount("/documents/change-requests/change-1");
+    expect(await screen.findByText(/Checklist tài liệu có ngữ cảnh owner không khớp/)).toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate checklist keys without rendering ambiguous document actions", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue({
+      ...casePayload(), documents: { items: [caseDocument, { ...caseDocument }] },
+    });
+    mount("/documents/cases/case-1");
+    expect(await screen.findByText(/định danh trùng lặp/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xem chi tiết" })).not.toBeInTheDocument();
   });
 
   it("opens exactly the requested Change Request's checklist and validates its document owner", async () => {

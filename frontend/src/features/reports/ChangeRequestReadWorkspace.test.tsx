@@ -72,10 +72,30 @@ describe("full canonical Change Request read workspace", () => {
     expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid");
     expect(screen.getByText("ddk-uuid")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "ddk-uuid" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid");
+    expect(screen.getAllByRole("link", { name: "Tài liệu" }).map(link => link.getAttribute("href")))
+      .toEqual(["/documents/certificates/gcn-uuid", "/documents/business-eligibility-certificates/ddk-uuid"]);
     fireEvent.click(screen.getByRole("button", { name: "Tài liệu" }));
     expect(screen.getByText("quyet-dinh.pdf")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Xem checklist và phiên bản" }))
       .toHaveAttribute("href", "/documents/change-requests/cr-uuid");
+  });
+
+  it("does not invent an eligibility metadata link for an unknown artifact kind", async () => {
+    vi.mocked(getChangeRequestWorkspace).mockResolvedValue({
+      ...record, affected_artifacts: [{
+        link_id: "unknown", artifact_kind: "unmapped" as "certificate",
+        artifact_id: "unknown-id", source_affected_artifact_id: null,
+      }],
+      issued_artifacts: [],
+    });
+    mount("/reports/change-requests/cr-uuid");
+    await screen.findByText("site-uuid");
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý và chứng nhận" }));
+    expect(screen.getByText("Loại chưa hỗ trợ")).toBeInTheDocument();
+    expect(screen.getByText("Không hỗ trợ mở trực tiếp")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Tài liệu" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "unknown-id" })).not.toBeInTheDocument();
   });
 
   it("never fetches protected records without authentication", () => {

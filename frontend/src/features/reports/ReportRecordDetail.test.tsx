@@ -27,18 +27,19 @@ beforeEach(() => {
 });
 
 describe("authorized canonical detail navigation", () => {
-  it("redirects a matching Certificate to its existing workspace with UUID", async () => {
+  it.each(["GMP", "GLP", "GMPbb"])("redirects a matching %s Certificate to its existing workspace with UUID", async (type) => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({ certificate_id: "cert-uuid", site_id: "site-uuid",
-      certificate_type: "GMP", production_line_id: "line-uuid", line_code: "A" } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+      certificate_type: type, production_line_id: "line-uuid", line_code: "A" } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
     mount("/reports/certificates/cert-uuid");
     expect(await screen.findByText(/certificate_id=cert-uuid/)).toHaveTextContent("production_line_id=line-uuid");
+    expect(screen.getByText(/certificate_id=cert-uuid/)).toHaveTextContent(`gxp_type=${type}`);
   });
 
-  it("blocks an unsupported GxP without redirecting to another rail", async () => {
+  it("shows GSP read-only without redirecting to another rail", async () => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({ certificate_id: "cert-uuid", site_id: "site-uuid",
       certificate_type: "GSP", production_line_id: null, line_code: null } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
     mount("/reports/certificates/cert-uuid");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa hỗ trợ mở trực tiếp GCN loại GSP");
+    expect(await screen.findByRole("heading", { name: "Chi tiết GCN GSP" })).toBeInTheDocument();
     expect(screen.queryByText(/certificate_id=cert-uuid/)).not.toBeInTheDocument();
   });
   it("fetches exact Certificate UUID and rejects mismatched canonical identity", async () => {

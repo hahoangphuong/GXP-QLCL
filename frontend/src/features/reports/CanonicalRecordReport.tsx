@@ -161,7 +161,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
             : <><th>Nội dung/phạm vi</th><th>Ngày gửi</th><th>Trạng thái</th>{showDocumentsLink && <th>Tài liệu</th>}</>}
         </tr></thead><tbody>
           {isCert ? (rows as CertificateReportItem[]).map(item => <tr key={item.certificate_id}>
-            <td>{["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? <Link className="text-link" to={certificateLocation(item)}>{item.certificate_number ?? item.certificate_id}</Link> : <span>{item.certificate_number ?? item.certificate_id} (chưa hỗ trợ mở trực tiếp)</span>}</td>
+            <td><Link className="text-link" to={["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? certificateLocation(item) : `/reports/certificates/${encodeURIComponent(item.certificate_id)}?${new URLSearchParams({ site_id: item.site_id })}`}>{item.certificate_number ?? item.certificate_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td>
             <td>{item.issue_date ?? "—"}</td><td>{item.expiry_date ?? "—"}</td><td>{item.status === "expired" ? "Hết hạn" : "Hiện hành"}</td><td>{item.lifecycle_state ?? "Chưa xác minh"}</td>
             <td><Link className="text-link" to={`/documents/certificates/${encodeURIComponent(item.certificate_id)}`}>Xem metadata</Link></td>

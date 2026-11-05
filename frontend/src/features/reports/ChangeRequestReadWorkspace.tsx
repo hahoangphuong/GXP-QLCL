@@ -4,6 +4,7 @@ import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace } from "../../lib/api";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type { ChangeRequestArtifact, ChangeRequestWorkspace } from "../../types";
+import { ChangeRequestContextPicker } from "./ChangeRequestContextPicker";
 
 type Section = "request" | "details" | "processing" | "documents";
 const SECTIONS: Array<{ key: Section; label: string }> = [
@@ -85,6 +86,7 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
             <Field label="Mã legacy" value={item.legacy_change_request_id} />
           </dl>
         </section>
+        <ChangeRequestContextPicker access={access} changeRequestId={item.id} siteId={item.site_id} />
         <nav className="report-actions" aria-label="Các phần yêu cầu thay đổi">
           {SECTIONS.map(tab => <button type="button" key={tab.key}
             className={section === tab.key ? "" : "secondary"}

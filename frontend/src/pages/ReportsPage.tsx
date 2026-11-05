@@ -87,7 +87,7 @@ export function ReportsPage({
         () => ownerRef.current === requestedOwner && exportGuard.current === token,
       );
       if (ownerRef.current !== requestedOwner) return;
-      const blob = new Blob([facilityReportCsv(rows)], { type: "text/csv;charset=utf-8" });
+      const blob = new Blob([facilityReportCsv(rows, { omitCertificateProjection: filters.kind === "expiring_certificates" })], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       try {
         const anchor = document.createElement("a");
@@ -187,7 +187,8 @@ export function ReportsPage({
             <div className="table-scroll">
               <table className="dense-table">
                 <thead><tr>
-                  <th>Cơ sở</th><th>Công ty</th><th>GxP</th><th>Tỉnh/thành</th><th>Dây chuyền</th><th>GCN hiện hành</th><th>Hạn GCN</th>
+                  <th>Cơ sở</th><th>Công ty</th><th>GxP</th><th>Tỉnh/thành</th><th>Dây chuyền</th>
+                  {active.kind !== "expiring_certificates" && <><th>GCN hiện hành (ngữ cảnh)</th><th>Hạn GCN (ngữ cảnh)</th></>}
                 </tr></thead>
                 <tbody>
                   {rows.map(row => (
@@ -197,8 +198,8 @@ export function ReportsPage({
                       <td>{row.gxp_type ?? row.gxp_types.join(", ")}</td>
                       <td>{row.province_name ?? "—"}</td>
                       <td>{row.production_line_code ?? row.line_code ?? "—"}</td>
-                      <td>{row.current_certificate_number ?? "—"}</td>
-                      <td>{row.current_certificate_expiry ?? "—"}</td>
+                      {active.kind !== "expiring_certificates" && <><td>{row.current_certificate_number ?? "—"}</td>
+                      <td>{row.current_certificate_expiry ?? "—"}</td></>}
                     </tr>
                   ))}
                 </tbody>

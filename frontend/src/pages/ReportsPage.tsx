@@ -7,12 +7,11 @@ import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { collectFacilityReport, facilityReportCsv, REPORT_PAGE_SIZE } from "../features/reports/facilityReportExport";
+import { buildOperationalReportQuery, INITIAL_REPORT_FILTERS, REPORT_DESCRIPTIONS, reportExportFilename, type ReportFilters } from "../features/reports/reportCatalog";
 import { searchFacilities } from "../lib/api";
 import type { FacilitySearchPage, FacilitySearchResult } from "../types";
 
-type Filters = { gxp_type: "GMP" | "GLP" | "GMPbb"; q: string; province: string };
 type PageState = { owner: object; key: string; data: FacilitySearchPage | null; error: string | null };
-const INITIAL_FILTERS: Filters = { gxp_type: "GMP", q: "", province: "" };
 
 function searchLink(row: FacilitySearchResult) {
   const params = new URLSearchParams({
@@ -36,7 +35,7 @@ export function ReportsPage({
   const owner = useMemo(() => ({}), [auth, bearerToken, canLoadSecureApi, useStubAuth, accessGeneration]);
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const [draft, setDraft] = useState<Filters>(INITIAL_FILTERS);
+  const [draft, setDraft] = useState<ReportFilters>(INITIAL_REPORT_FILTERS);
   const [active, setActive] = useState<Filters>(INITIAL_FILTERS);
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<PageState | null>(null);
@@ -55,7 +54,7 @@ export function ReportsPage({
   useEffect(() => {
     if (!canLoadSecureApi) return;
     let cancelled = false;
-    void searchFacilities({ ...active, offset, limit: REPORT_PAGE_SIZE }, auth, useStubAuth, bearerToken)
+    void searchFacilities({ ...buildOperationalReportQuery(active), offset, limit: REPORT_PAGE_SIZE }, auth, useStubAuth, bearerToken)
       .then(data => {
         if (!cancelled) setPage({ owner, key, data, error: null });
       })
@@ -84,7 +83,7 @@ export function ReportsPage({
     try {
       const rows = await collectFacilityReport(
         (pageOffset, limit) =>
-          searchFacilities({ ...filters, offset: pageOffset, limit }, auth, useStubAuth, bearerToken),
+          searchFacilities({ ...buildOperationalReportQuery(filters), offset: pageOffset, limit }, auth, useStubAuth, bearerToken),
         () => ownerRef.current === requestedOwner && exportGuard.current === token,
       );
       if (ownerRef.current !== requestedOwner) return;
@@ -93,7 +92,7 @@ export function ReportsPage({
       try {
         const anchor = document.createElement("a");
         anchor.href = url;
-        anchor.download = "danh-sach-co-so-" + filters.gxp_type + ".csv";
+        anchor.download = reportExportFilename(filters);
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
@@ -126,19 +125,24 @@ export function ReportsPage({
       <header className="section-title">
         <div>
           <p className="eyebrow">Báo cáo</p>
-          <h2>Danh sách cơ sở theo GxP</h2>
+          <h2>Báo cáo nghiệp vụ GxP</h2>
         </div>
         <p className="section-copy">
-          Dữ liệu trực tiếp từ Tra cứu; một cơ sở có thể có nhiều dòng theo dây chuyền sản xuất.
-          Đây là danh sách tra cứu, không phải danh sách cơ sở được công bố hoặc giấy chứng nhận đã cấp.
+          Các báo cáo sử dụng bộ lọc của API Tra cứu. Mỗi dòng là một ngữ cảnh cơ sở hoặc dây chuyền,
+          không phải một Case, Change Request hay GCN duy nhất; không phải danh sách công bố chính thức.
         </p>
       </header>
 
       <section className="panel">
         <form onSubmit={applyFilters}>
           <div className="report-filter-grid">
+            <label>Loại báo cáo
+              <select value={draft.kind} disabled={exporting} onChange={event => setDraft({ ...draft, kind: event.target.value as ReportFilters["kind"] })}>
+                {Object.entries(REPORT_DESCRIPTIONS).map(([kind, detail]) => <option key={kind} value={kind}>{detail.title}</option>)}
+              </select>
+            </label>
             <label>Loại GxP
-              <select value={draft.gxp_type} disabled={exporting} onChange={event => setDraft({ ...draft, gxp_type: event.target.value as Filters["gxp_type"] })}>
+              <select value={draft.gxp_type} disabled={exporting} onChange={event => setDraft({ ...draft, gxp_type: event.target.value as ReportFilters["gxp_type"] })}>
                 <option value="GMP">GMP</option>
                 <option value="GLP">GLP</option>
                 <option value="GMPbb">GMPbb</option>
@@ -150,6 +154,11 @@ export function ReportsPage({
             <label>Tỉnh/thành
               <input value={draft.province} disabled={exporting} onChange={event => setDraft({ ...draft, province: event.target.value })} placeholder="Nhập tên tỉnh/thành" />
             </label>
+            {draft.kind === "expiring_certificates" && <label>Hết hạn trong
+              <select value={draft.expiry_days} disabled={exporting} onChange={event => setDraft({ ...draft, expiry_days: Number(event.target.value) as ReportFilters["expiry_days"] })}>
+                <option value={30}>30 ngày</option><option value={60}>60 ngày</option><option value={90}>90 ngày</option>
+              </select>
+            </label>}
           </div>
           <div className="report-actions">
             <button type="submit" disabled={exporting}>Áp dụng bộ lọc</button>
@@ -167,7 +176,8 @@ export function ReportsPage({
 
       <section className="panel">
         <div className="panel-header">
-          <h3>Kết quả {active.gxp_type}</h3>
+          <div><h3>{REPORT_DESCRIPTIONS[active.kind].title} — {active.gxp_type}</h3>
+            <p className="muted-copy">{REPORT_DESCRIPTIONS[active.kind].detail}</p></div>
           {!loading && !current?.error && <span aria-live="polite">{total} dòng kết quả</span>}
         </div>
         {loading ? <p role="status">Đang tải dữ liệu...</p>

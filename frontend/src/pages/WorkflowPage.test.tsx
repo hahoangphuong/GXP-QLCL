@@ -40,7 +40,7 @@ describe("operator workflow landing", () => {
     expect(screen.getByTestId("record-queue")).toHaveTextContent("change_requests:true");
     fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));
     expect(screen.getByTestId("record-queue")).toHaveTextContent("certificates:false");
-    expect(screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" })).toHaveAttribute("href", "/reports");
+    expect(screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" })).toHaveAttribute("href", "/reports?report=certificates");
   });
 
   it("restores a bookmarked Certificate or Change Request queue by exact URL", () => {
@@ -78,6 +78,21 @@ describe("operator workflow landing", () => {
     expect(screen.getByTestId("case-queue")).toHaveTextContent("false::true");
     expect(screen.getByRole("button", { name: "Hồ sơ đang xử lý" })).toHaveAttribute("aria-pressed", "true");
   });
+
+  it("keeps full-report navigation in the corresponding operator category", () => {
+    render(<MemoryRouter><WorkflowPage access={access} statusError={null} /></MemoryRouter>);
+    const link = screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" });
+    expect(link).toHaveAttribute("href", "/reports?report=cases");
+    fireEvent.click(screen.getByRole("button", { name: "Chuẩn bị và đang kiểm tra" }));
+    expect(link).toHaveAttribute("href", "/reports?report=inspection");
+    fireEvent.click(screen.getByRole("button", { name: "Chờ quyết định cấp GCN" }));
+    expect(link).toHaveAttribute("href", "/reports?report=cases&case_state=awaiting_certificate_decision");
+    fireEvent.click(screen.getByRole("button", { name: "Yêu cầu thay đổi đang mở" }));
+    expect(link).toHaveAttribute("href", "/reports?report=change_requests");
+    fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));
+    expect(link).toHaveAttribute("href", "/reports?report=certificates");
+  });
+
 
   it("never mounts the operator queue for unauthorized visitors", () => {
     render(<MemoryRouter><WorkflowPage access={{ ...access, canLoadSecureApi: false }} statusError={null} /></MemoryRouter>);

@@ -55,12 +55,10 @@ describe("canonical Case UUID entry", () => {
     expect(getCaseWorkspace).not.toHaveBeenCalled();
   });
 
-  it("does not redirect after a 404 or denied response", async () => {
-    vi.mocked(getCaseWorkspace).mockImplementation(() => new Promise((_resolve, reject) => {
-      queueMicrotask(() => reject(new Error("403 Forbidden")));
-    }));
+  it("does not redirect when the canonical Case response lacks its Site identity", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("blocked-case", ""));
     mount("/cases/blocked-case");
-    expect(await screen.findByRole("alert")).toHaveTextContent("403 Forbidden");
+    expect(await screen.findByRole("alert")).toHaveTextContent("thiếu ngữ cảnh");
     expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
   });
 });

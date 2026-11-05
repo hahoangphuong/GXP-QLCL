@@ -1,0 +1,76 @@
+"""Canonical report queries against an isolated disposable PostgreSQL schema."""
+import os
+from datetime import date, timedelta
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.orm import Session
+
+from backend.app.db.base import Base
+from backend.app.db.enums import ChangeRequestState
+from backend.app.db.models.phase1 import (
+    Certificate, CertificateVersion, ChangeRequest, Company, Site,
+)
+from backend.app.services.catalog import CatalogReadService
+
+
+def test_canonical_record_reports_disposable_postgres():
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "record_report_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as db:
+            company = Company(legal_name="Công ty kiểm tra")
+            db.add(company)
+            db.flush()
+            site = Site(company_id=company.id, site_name="Cơ sở kiểm tra")
+            db.add(site)
+            db.flush()
+            current = Certificate(site_id=site.id, certificate_type="GMP", latest_flag=True)
+            replaced = Certificate(site_id=site.id, certificate_type="GMP", latest_flag=False)
+            db.add_all([current, replaced])
+            db.flush()
+            db.add_all([
+                CertificateVersion(certificate_id=current.id, version_no=1,
+                    is_latest_version=True, certificate_number="GCN-PG",
+                    expiry_date=date.today() + timedelta(days=25)),
+                CertificateVersion(certificate_id=replaced.id, version_no=1,
+                    is_latest_version=True, certificate_number="GCN-REPLACED",
+                    expiry_date=date.today() + timedelta(days=15)),
+                ChangeRequest(site_id=site.id, state=ChangeRequestState.RECEIVED,
+                    scope_label="Đổi tên"),
+                ChangeRequest(site_id=site.id, state=ChangeRequestState.UNDER_REVIEW,
+                    scope_label="Đổi địa chỉ"),
+            ])
+            db.commit()
+            service = CatalogReadService()
+            certificates = service.get_certificate_report(db, gxp_type="GMP", q=None,
+                expiry_days=30, export=True, offset=0, limit=100)
+            assert certificates["total_count"] == 1
+            assert certificates["items"][0]["certificate_id"] == current.id
+            assert certificates["items"][0]["certificate_number"] == "GCN-PG"
+            changes = service.get_change_request_report(db, state=None, q="kiểm tra",
+                export=True, offset=0, limit=100)
+            assert changes["total_count"] == 2
+            assert len({x["change_request_id"] for x in changes["items"]}) == 2
+            assert all("gxp_type" not in item for item in changes["items"])
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

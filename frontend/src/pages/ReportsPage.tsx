@@ -16,6 +16,29 @@ type Filters = { gxp_type: "GMP" | "GLP" | "GMPbb"; q: string; province: string 
 type PageState = { owner: object; key: string; data: FacilitySearchPage | null; error: string | null };
 const INITIAL_FILTERS: Filters = { gxp_type: "GMP", q: "", province: "" };
 
+// Refuse a malformed read page before exposing links based on potentially
+// wrong Site/result_key projections. CSV export validates its own full walk.
+function validatedFacilityReportPage(page: FacilitySearchPage, requestedOffset: number): FacilitySearchPage {
+  if (!Array.isArray(page.items) || !Number.isSafeInteger(page.total_count) || page.total_count < 0
+    || !Number.isSafeInteger(page.offset) || page.offset !== requestedOffset
+    || !Number.isSafeInteger(page.limit) || page.limit !== REPORT_PAGE_SIZE
+    || page.offset > page.total_count
+    || page.items.length > REPORT_PAGE_SIZE
+    || page.items.length !== Math.min(REPORT_PAGE_SIZE, page.total_count - page.offset)) {
+    throw new Error("API trả về phân trang cơ sở không hợp lệ.");
+  }
+  const seen = new Set<string>();
+  for (const item of page.items) {
+    if (!item || typeof item.result_key !== "string" || !item.result_key.trim()
+      || typeof item.site_id !== "string" || !item.site_id.trim()
+      || seen.has(item.result_key)) {
+      throw new Error("Trang cơ sở có định danh kết quả trùng, thiếu hoặc không có Site canonical.");
+    }
+    seen.add(item.result_key);
+  }
+  return page;
+}
+
 function searchLink(row: FacilitySearchResult) {
   const params = new URLSearchParams({
     site_id: row.site_id,
@@ -98,7 +121,12 @@ function FacilityReport({
     let cancelled = false;
     void searchFacilities({ ...active, offset, limit: REPORT_PAGE_SIZE }, auth, useStubAuth, bearerToken)
       .then(data => {
-        if (!cancelled) setPage({ owner, key, data, error: null });
+        if (cancelled) return;
+        try {
+          setPage({ owner, key, data: validatedFacilityReportPage(data, offset), error: null });
+        } catch (error) {
+          setPage({ owner, key, data: null, error: error instanceof Error ? error.message : "Trang báo cáo cơ sở không hợp lệ." });
+        }
       })
       .catch((error: Error) => {
         if (!cancelled) setPage({ owner, key, data: null, error: error.message });

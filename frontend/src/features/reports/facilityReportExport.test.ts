@@ -59,6 +59,14 @@ describe("authorized facility report export", () => {
     }, () => current)).rejects.toThrow("Phiên truy cập");
   });
 
+  it("omits unverified GCN projection columns from an expiry-filtered report", () => {
+    const filtered = facilityReportCsv([row(1)], { omitCertificateProjection: true });
+    expect(filtered).not.toContain("Số GCN hiện hành");
+    expect(filtered).not.toContain("Hạn GCN");
+    expect(filtered).toContain("Cơ sở");
+    expect(facilityReportCsv([row(1)])).toContain("Số GCN hiện hành");
+  });
+
   it("produces UTF-8 Excel-compatible CSV and neutralizes formulas", () => {
     const csv = facilityReportCsv([row(1, '=HYPERLINK("https://evil.example")'), row(2, "\t+SUM(1,2)")]);
     expect(csv.startsWith("\uFEFF")).toBe(true);

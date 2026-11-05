@@ -40,7 +40,7 @@ describe("operator workflow landing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chuẩn bị và đang kiểm tra" }));
     expect(link).toHaveAttribute("href", "/reports?report=inspection");
     fireEvent.click(screen.getByRole("button", { name: "Chờ quyết định cấp GCN" }));
-    expect(link).toHaveAttribute("href", "/reports?report=cases");
+    expect(link).toHaveAttribute("href", "/reports?report=cases&case_state=awaiting_certificate_decision");
     fireEvent.click(screen.getByRole("button", { name: "Yêu cầu thay đổi đang mở" }));
     expect(link).toHaveAttribute("href", "/reports?report=change_requests");
     fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));

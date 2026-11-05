@@ -488,6 +488,8 @@ export function SearchPage({
     ? selectedEligibilityCertificateIdState : null;
   const expectedGxpDetailOwner = gxpListOwner && selectedGxpCertificateId
     ? JSON.stringify(["gxp-detail", gxpListOwner, selectedGxpCertificateId]) : null;
+  const selectedCertificateSiteId = selectedResult?.site_id ?? null;
+  const selectedCertificateGxpType = selectedResult?.gxp_type ?? null;
   const expectedEligibilityDetailOwner = eligibilityListOwner && selectedEligibilityCertificateId
     ? JSON.stringify(["eligibility-detail", eligibilityListOwner, selectedEligibilityCertificateId]) : null;
   const visibleGxpCertificates = gxpListOwner && gxpCertificatesOwner === gxpListOwner ? gxpCertificates : [];
@@ -1293,8 +1295,8 @@ export function SearchPage({
       .then((payload) => {
         if (!cancelled && gxpDetailRequestSequence.current === requestId) {
           const listed = gxpCertificatesRef.current.find(item => item.certificate_id === selectedGxpCertificateId);
-          if (payload.certificate_id !== selectedGxpCertificateId || payload.site_id !== selectedResult?.site_id
-            || (selectedResult?.gxp_type && payload.certificate_type !== selectedResult.gxp_type)
+          if (payload.certificate_id !== selectedGxpCertificateId || payload.site_id !== selectedCertificateSiteId
+            || (selectedCertificateGxpType && payload.certificate_type !== selectedCertificateGxpType)
             || !listed || payload.certificate_type !== listed.certificate_type || payload.case_id !== listed.case_id) {
             throw new Error("Chi tiết giấy chứng nhận không khớp định danh hoặc ngữ cảnh.");
           }
@@ -1313,7 +1315,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth.role, auth.username, bearerToken, expectedGxpDetailOwner, selectedGxpCertificateId, useStubAuth, selectedResult]);
+  }, [auth.role, auth.username, bearerToken, expectedGxpDetailOwner, selectedGxpCertificateId, useStubAuth, selectedCertificateSiteId, selectedCertificateGxpType]);
 
   useEffect(() => {
     if (!selectedResult || !eligibilityListOwner) {

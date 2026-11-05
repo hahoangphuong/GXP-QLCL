@@ -140,6 +140,9 @@ export type DashboardSummary = {
   queue: DashboardQueueItem[];
 };
 
+export type CaseReportItem = DashboardQueueItem & { production_line_id: string | null };
+export type CaseReportPage = { items: CaseReportItem[]; total_count: number; offset: number; limit: number };
+
 export type FacilitySearchResult = {
   result_key: string;
   site_id: string;

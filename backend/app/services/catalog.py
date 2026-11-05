@@ -1175,6 +1175,54 @@ class CatalogReadService:
             raise HTTPException(status_code=404, detail="Case not found.")
         return row
 
+    def get_case_report(self, session: Session, *, gxp_type: str | None, state: str | None,
+                        q: str | None, opened_year: int | None, inspection_queue: bool,
+                        export: bool, offset: int, limit: int) -> dict[str, object]:
+        states = WAITING_INSPECTION_CASE_STATES if inspection_queue else ACTIVE_CASE_STATES
+        if state:
+            allowed = {item.value: item for item in states}
+            if state not in allowed:
+                raise HTTPException(status_code=422, detail="Invalid report case state.")
+            states = [allowed[state]]
+        conditions = [Case.state.in_(states)]
+        if gxp_type:
+            conditions.append(Case.gxp_type == gxp_type)
+        if q:
+            pattern = f"%{q}%"
+            conditions.append(or_(Site.site_name.ilike(pattern), Company.legal_name.ilike(pattern),
+                                  Case.legacy_inspection_code.ilike(pattern)))
+        if opened_year is not None:
+            conditions.append(Case.opened_year == opened_year)
+        base = (select(Case, Site, Company, ProductionLine)
+                .join(Site, Site.id == Case.site_id).join(Company, Company.id == Site.company_id)
+                .outerjoin(ProductionLine, ProductionLine.id == Case.production_line_id)
+                .where(*conditions))
+        if export:
+            if offset != 0:
+                raise HTTPException(status_code=422, detail="Export offset must be zero.")
+            rows = session.execute(base.order_by(Case.id).limit(10001)).all()
+            if len(rows) > 10000:
+                raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
+            total = len(rows)
+            limit = 10000
+        else:
+            total = session.scalar(select(func.count()).select_from(Case).join(Site, Site.id == Case.site_id)
+                                   .join(Company, Company.id == Site.company_id).where(*conditions)) or 0
+            rows = session.execute(base.order_by(Case.id).offset(offset).limit(limit)).all()
+        items = []
+        for case, site, company, line in rows:
+            line_id, line_code, identity = self._line_identity(
+                site_id=case.site_id, production_line_id=case.production_line_id,
+                raw_line_code=case.scope_code, lines={} if line is None else {line.id: line},
+            )
+            items.append({"case_id": case.id, "site_id": site.id, "production_line_id": line_id,
+                          "result_key": self._build_search_result_key(site.id, gxp_type=case.gxp_type,
+                              identity_state=identity, production_line_id=line_id, line_code=line_code),
+                          "facility_name": site.site_name, "company_name": company.legal_name,
+                          "gxp_type": case.gxp_type, "state": case.state.value,
+                          "reference_code": case.legacy_inspection_code, "opened_year": case.opened_year})
+        return {"items": items, "total_count": total, "offset": offset, "limit": limit}
+
     def get_dashboard_summary(self, session: Session, *, queue_limit: int):
         total_facilities = session.scalar(select(func.count()).select_from(Site)) or 0
         total_cases = session.scalar(select(func.count()).select_from(Case)) or 0

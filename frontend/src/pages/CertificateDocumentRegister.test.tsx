@@ -97,6 +97,15 @@ describe("certificate document metadata register", () => {
     expect(screen.queryByText(/Phiên bản 2/)).not.toBeInTheDocument();
   });
 
+  it("rejects multi-parent document detail even when the selected certificate ID matches", async () => {
+    vi.mocked(getDocumentDetail).mockResolvedValue({ ...document(), change_request_id: "unexpected-owner" });
+    mount();
+    await screen.findByText("Tệp đã đăng ký");
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không thuộc chứng nhận");
+    expect(screen.queryByText(/Phiên bản 2/)).not.toBeInTheDocument();
+  });
+
   it("shows an empty registered inventory without claiming missing binary evidence", async () => {
     vi.mocked(getGxpCertificateDocumentMetadata).mockResolvedValue({
       ...metadata(), metadata_status: "no_registered_document_metadata", documents: [],

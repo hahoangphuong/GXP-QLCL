@@ -55,6 +55,32 @@ describe("ReportsPage operator workflow", () => {
       filters?.gxp_type === "GLP" && filters.offset === 0)).toBe(true));
   });
 
+  it("selects operational categories and sends backed filters for Case, change and expiry contexts", async () => {
+    vi.mocked(searchFacilities).mockImplementation(async filters => ({
+      items: [row(1)], offset: filters?.offset ?? 0, limit: filters?.limit ?? 100, total_count: 1,
+    }));
+    render(<MemoryRouter><ReportsPage access={access} statusError={null} /></MemoryRouter>);
+    await screen.findByText("1 dòng kết quả");
+
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "inspection" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);
+    await waitFor(() => expect(vi.mocked(searchFacilities).mock.calls.some(([filters]) =>
+      filters?.case_state?.join(",") === "planned,decision_issued,inspection_in_progress")).toBe(true));
+    expect(screen.getByText(/Không suy ra lịch kiểm tra/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "open_changes" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);
+    await waitFor(() => expect(vi.mocked(searchFacilities).mock.calls.some(([filters]) =>
+      filters?.change_request_state?.join(",") === "received,under_review")).toBe(true));
+
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "expiring_certificates" } });
+    fireEvent.change(screen.getByLabelText("Hết hạn trong"), { target: { value: "30" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);
+    await waitFor(() => expect(vi.mocked(searchFacilities).mock.calls.some(([filters]) =>
+      filters?.certificate_expiring_within_days === 30 && filters.certificate_state === "active")).toBe(true));
+    expect(screen.getByText(/Một cơ sở\/dây chuyền có thể có nhiều chứng nhận/)).toBeInTheDocument();
+  });
+
   it("does not query or expose report rows without authentication", () => {
     render(<MemoryRouter><ReportsPage access={{ ...access, canLoadSecureApi: false }} statusError={null} /></MemoryRouter>);
     expect(screen.getByText("Cần đăng nhập")).toBeInTheDocument();

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import "./reports.css";
 
@@ -27,11 +27,30 @@ function searchLink(row: FacilitySearchResult) {
   return "/search?" + params.toString();
 }
 
+type ReportKind = "facilities" | "cases" | "inspection" | "certificates" | "change_requests";
+const REPORT_KINDS = new Set<ReportKind>(["facilities", "cases", "inspection", "certificates", "change_requests"]);
+
+function selectedReport(value: string | null): ReportKind {
+  return value && REPORT_KINDS.has(value as ReportKind) ? value as ReportKind : "facilities";
+}
+
 export function ReportsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
-  const [report, setReport] = useState("facilities");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const report = selectedReport(searchParams.get("report"));
+  const initialCaseState = report === "cases" && searchParams.get("case_state") === "awaiting_certificate_decision"
+    ? "awaiting_certificate_decision" : "";
+  function selectReport(next: ReportKind) {
+    setSearchParams(params => {
+      const updated = new URLSearchParams(params);
+      updated.set("report", next);
+      // A report-kind change starts a fresh filter context, not a stale Case queue.
+      updated.delete("case_state");
+      return updated;
+    });
+  }
   if (statusError) return <ErrorState message={statusError} />;
   return <>
-    <section className="panel"><label>Loại báo cáo <select value={report} onChange={event => setReport(event.target.value)}>
+    <section className="panel"><label>Loại báo cáo <select value={report} onChange={event => selectReport(event.target.value as ReportKind)}>
       <option value="facilities">Danh sách cơ sở</option>
       <option value="cases">Hồ sơ đang xử lý</option>
       <option value="inspection">Hồ sơ chuẩn bị và đang kiểm tra</option>
@@ -42,7 +61,8 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
       (report === "certificates" || report === "change_requests") ?
         <section className="page-section"><h2>{report === "certificates" ? "GCN GxP hiện hành" : "Yêu cầu thay đổi chưa hoàn tất"}</h2>
           <CanonicalRecordReport key={report} access={access} kind={report} showDocumentsLink={report === "change_requests"} /></section> :
-      <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report} access={access} inspectionQueue={report === "inspection"} showDocumentsLink /></section>}
+      <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report + ":" + initialCaseState} access={access}
+        inspectionQueue={report === "inspection"} showDocumentsLink initialState={initialCaseState} /></section>}
   </>;
 }
 

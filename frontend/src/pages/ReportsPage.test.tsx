@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { ApiAccess } from "../App";
@@ -10,8 +10,8 @@ import { ReportsPage } from "./ReportsPage";
 
 vi.mock("../lib/api", () => ({ searchFacilities: vi.fn() }));
 vi.mock("../features/reports/CaseReport", () => ({
-  CaseReport: ({ showDocumentsLink, inspectionQueue }: { showDocumentsLink?: boolean; inspectionQueue: boolean }) =>
-    <output data-testid="cases-report">{inspectionQueue ? "inspection" : "cases"}:{String(showDocumentsLink)}</output>,
+  CaseReport: ({ showDocumentsLink, inspectionQueue, initialState }: { showDocumentsLink?: boolean; inspectionQueue: boolean; initialState?: string }) =>
+    <output data-testid="cases-report">{inspectionQueue ? "inspection" : "cases"}:{String(showDocumentsLink)}:{initialState ?? ""}</output>,
 }));
 vi.mock("../features/reports/CanonicalRecordReport", () => ({
   CanonicalRecordReport: ({ kind, showDocumentsLink }: { kind: string; showDocumentsLink?: boolean }) =>
@@ -39,6 +39,18 @@ function row(n: number): FacilitySearchResult {
 }
 
 beforeEach(() => vi.mocked(searchFacilities).mockReset());
+
+function NavigationHistory() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <>
+    <output data-testid="report-url">{location.pathname + location.search}</output>
+    <button type="button" onClick={() => navigate(-1)}>Lùi lịch sử</button>
+    <button type="button" onClick={() => navigate(1)}>Tiến lịch sử</button>
+    <button type="button" onClick={() =>
+      navigate("/reports?report=cases&case_state=awaiting_certificate_decision")}>Mở trực tiếp Case chờ cấp</button>
+  </>;
+}
 
 describe("ReportsPage operator workflow", () => {
   it("shows real authorized results, pages and navigates to matching facility context", async () => {
@@ -75,6 +87,83 @@ describe("ReportsPage operator workflow", () => {
     expect(screen.getByTestId("canonical-report")).toHaveTextContent("change_requests:true");
     fireEvent.change(select, { target: { value: "certificates" } });
     expect(screen.getByTestId("canonical-report")).toHaveTextContent("certificates:false");
+  });
+
+  it("restores bookmarked report selections, including non-facility reports", () => {
+    const first = render(<MemoryRouter initialEntries={["/reports?report=change_requests"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByLabelText("Loại báo cáo")).toHaveValue("change_requests");
+    expect(screen.getByTestId("canonical-report")).toHaveTextContent("change_requests:true");
+    expect(searchFacilities).not.toHaveBeenCalled();
+    first.unmount();
+    render(<MemoryRouter initialEntries={["/reports?report=inspection"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("inspection:true");
+  });
+
+  it("synchronizes report selection with URL history without losing unrelated query params", () => {
+    vi.mocked(searchFacilities).mockResolvedValue({ items: [], offset: 0, limit: 100, total_count: 0 });
+    render(<MemoryRouter initialEntries={["/reports?source=workflow&report=cases"]}>
+      <ReportsPage access={access} statusError={null} /><NavigationHistory />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true");
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "certificates" } });
+    expect(screen.getByTestId("canonical-report")).toHaveTextContent("certificates:false");
+    expect(screen.getByTestId("report-url")).toHaveTextContent("source=workflow");
+    expect(screen.getByTestId("report-url")).toHaveTextContent("report=certificates");
+    fireEvent.click(screen.getByRole("button", { name: "Lùi lịch sử" }));
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true");
+    fireEvent.click(screen.getByRole("button", { name: "Tiến lịch sử" }));
+    expect(screen.getByTestId("canonical-report")).toHaveTextContent("certificates:false");
+  });
+
+  it("uses the certificate-decision Case filter only from its explicit supported URL", () => {
+    const first = render(<MemoryRouter initialEntries={["/reports?report=cases&case_state=awaiting_certificate_decision"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:awaiting_certificate_decision");
+    first.unmount();
+    const second = render(<MemoryRouter initialEntries={["/reports?report=cases&case_state=unknown"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:");
+    expect(screen.getByTestId("cases-report")).not.toHaveTextContent("unknown");
+    second.unmount();
+  });
+
+  it("resolves a same-page Case URL change to the new initial filter and restores browser history", () => {
+    render(<MemoryRouter initialEntries={["/reports?report=cases"]}>
+      <ReportsPage access={access} statusError={null} /><NavigationHistory />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:");
+    fireEvent.click(screen.getByRole("button", { name: "Mở trực tiếp Case chờ cấp" }));
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:awaiting_certificate_decision");
+    fireEvent.click(screen.getByRole("button", { name: "Lùi lịch sử" }));
+    expect(screen.getByTestId("cases-report")).not.toHaveTextContent("awaiting_certificate_decision");
+  });
+
+  it("clears a stale Case-specific filter when manually switching report categories", () => {
+    vi.mocked(searchFacilities).mockResolvedValue({ items: [], offset: 0, limit: 100, total_count: 0 });
+    render(<MemoryRouter initialEntries={["/reports?report=cases&case_state=awaiting_certificate_decision"]}>
+      <ReportsPage access={access} statusError={null} /><NavigationHistory />
+    </MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "certificates" } });
+    expect(screen.getByTestId("report-url")).not.toHaveTextContent("case_state=");
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "cases" } });
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:");
+    expect(screen.getByTestId("cases-report")).not.toHaveTextContent("awaiting_certificate_decision");
+  });
+
+  it("falls back to facilities on an unknown or duplicated report type", async () => {
+    vi.mocked(searchFacilities).mockResolvedValue({ items: [], offset: 0, limit: 100, total_count: 0 });
+    render(<MemoryRouter initialEntries={["/reports?report=GSP&report=cases"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByLabelText("Loại báo cáo")).toHaveValue("facilities");
+    expect(await screen.findByText("Không có cơ sở phù hợp.")).toBeInTheDocument();
+    expect(screen.queryByTestId("cases-report")).not.toBeInTheDocument();
   });
 
   it("does not query or expose report rows without authentication", () => {

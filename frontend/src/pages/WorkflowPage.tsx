@@ -14,6 +14,14 @@ const QUEUES: { id: Queue; title: string; hint: string }[] = [
   { id: "expiring", title: "GCN sắp hết hạn", hint: "Các Certificate hiện hành có ngày hết hạn theo cửa sổ 30/60/90 ngày" },
 ];
 
+const QUEUE_REPORT: Record<Queue, string> = {
+  active: "/reports?report=cases",
+  inspection: "/reports?report=inspection",
+  certificate_decision: "/reports?report=cases&case_state=awaiting_certificate_decision",
+  change_requests: "/reports?report=change_requests",
+  expiring: "/reports?report=certificates",
+};
+
 function selectedQueue(value: string | null): Queue {
   // URL state is an operator navigation hint, never a backend filter or an authority.
   return QUEUES.find(item => item.id === value)?.id ?? "active";
@@ -47,7 +55,7 @@ export function WorkflowPage({ access, statusError }: { access: ApiAccess; statu
           {item.title}
         </button>)}
       </div>
-      <p className="muted-copy">{selected.hint}. <Link className="text-link" to="/reports">Mở Báo cáo đầy đủ</Link></p>
+      <p className="muted-copy">{selected.hint}. <Link className="text-link" to={QUEUE_REPORT[queue]}>Mở Báo cáo đầy đủ</Link></p>
     </section>
     {queue === "change_requests" ? <CanonicalRecordReport key={queue} access={access} kind="change_requests" showDocumentsLink /> :
       queue === "expiring" ? <CanonicalRecordReport key={queue} access={access} kind="certificates" /> :

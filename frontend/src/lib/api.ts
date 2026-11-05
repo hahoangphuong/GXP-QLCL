@@ -289,8 +289,6 @@ export function getCertificateReport(
   if (filters.gxp_type) params.set("gxp_type", filters.gxp_type);
   if (filters.q) params.set("q", filters.q);
   if (filters.expiry_days) params.set("expiry_days", filters.expiry_days);
-  // Empty expiry_days selects all current certificates, rather than default 90 days.
-  else params.set("expiry_days", "");
   if (filters.export) params.set("export", "true");
   if (filters.offset) params.set("offset", String(filters.offset));
   return requestJson<CertificateReportPage>(buildApiPath("/reports/certificates", params), { auth, useStubAuth, bearerToken });

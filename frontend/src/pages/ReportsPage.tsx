@@ -24,8 +24,7 @@ function validatedFacilityReportPage(page: FacilitySearchPage, requestedOffset: 
     || !Number.isSafeInteger(page.limit) || page.limit !== REPORT_PAGE_SIZE
     || page.offset > page.total_count
     || page.items.length > REPORT_PAGE_SIZE
-    || page.items.length > page.total_count - page.offset
-    || (page.offset < page.total_count && page.items.length === 0)) {
+    || page.items.length !== Math.min(REPORT_PAGE_SIZE, page.total_count - page.offset)) {
     throw new Error("API trả về phân trang cơ sở không hợp lệ.");
   }
   const seen = new Set<string>();

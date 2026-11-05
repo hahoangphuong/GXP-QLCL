@@ -5275,7 +5275,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
-    apiMocks[list].mockResolvedValue({ items: [{ [id]: "certificate-A" }, { [id]: "certificate-B" }], issue_readiness: null });
+    apiMocks[list].mockResolvedValue({ items: [{ [id]: "certificate-A", site_id: "site-1", certificate_type: "GMP" }, { [id]: "certificate-B", site_id: "site-1", certificate_type: "GMP" }], issue_readiness: null });
     let rejectB!: (error: Error) => void;
     apiMocks[load].mockRejectedValueOnce(new Error("Error owned by certificate A")).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectB = reject; }));
     renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);

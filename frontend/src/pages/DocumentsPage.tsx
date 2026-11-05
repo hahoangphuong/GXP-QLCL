@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
@@ -43,7 +43,7 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
   const [directId, setDirectId] = useState("");
   const [lookupError, setLookupError] = useState<string | null>(null);
   const navigate = useNavigate();
-  function openById(event: React.FormEvent<HTMLFormElement>) {
+  function openById(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const id = directId.trim();
     if (!CANONICAL_UUID.test(id)) {

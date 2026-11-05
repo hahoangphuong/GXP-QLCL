@@ -72,6 +72,9 @@ describe("full canonical Change Request read workspace", () => {
     expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid");
     expect(screen.getByText("ddk-uuid")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "ddk-uuid" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid");
+    expect(screen.getAllByRole("link", { name: "Tài liệu" }).map(link => link.getAttribute("href")))
+      .toEqual(["/documents/certificates/gcn-uuid", "/documents/business-eligibility-certificates/ddk-uuid"]);
     fireEvent.click(screen.getByRole("button", { name: "Tài liệu" }));
     expect(screen.getByText("quyet-dinh.pdf")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Xem checklist và phiên bản" }))

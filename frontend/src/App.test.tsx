@@ -5582,9 +5582,9 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(link);
 
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.some(([id]) => id === "case-glp")).toBe(true));
-    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.some(([filters]) => filters?.gxp_type === "GLP"
-      && filters?.site_id === "site-1")).toBe(true));
-    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.some(call => call[6] === "line-glp")).toBe(true));
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.some(([filters]) => filters?.gxp_type === "GLP")).toBe(true));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.some(call =>
+      call[0] === "site-1" && call[3] === "GLP" && call[6] === "line-glp")).toBe(true));
   });
 
   it("resolves an explicit result_key on a later page without selecting page one", async () => {

@@ -5557,7 +5557,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Từ khóa: KT-2026-001")).toBeInTheDocument();
   });
 
-  it("builds an exact Dashboard GLP deep link and opens its selected history", async () => {
+  it("resolves Dashboard GLP Case UUID to verified Site/GxP/line and history", async () => {
     const resultKey = "site-1:GLP:canonical:line-glp";
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.getDashboardSummary.mockResolvedValue({
@@ -5568,16 +5568,23 @@ describe("App Slice A.4 search workspace", () => {
     });
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: resultKey, gxp_type: "GLP", production_line_id: "line-glp", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [{ id: "case-glp", source_type: "case", title: "GLP case", occurred_on: "2026-01-01", state: "planned" }] }));
-    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({
+      case_summary: {
+        ...buildCaseWorkspace().case_summary,
+        id: "case-glp", site_id: "site-1", gxp_type: "GLP",
+        production_line_id: "line-glp", production_line_code: "A",
+      },
+    }));
 
     renderApp(["/"]);
     const link = await screen.findByRole("link", { name: "KT-2026-GLP-001" });
-    expect(link).toHaveAttribute("href", expect.stringContaining("gxp_type=GLP"));
-    expect(link).toHaveAttribute("href", expect.stringContaining("result_key=site-1%3AGLP%3Acanonical%3Aline-glp"));
+    expect(link).toHaveAttribute("href", "/cases/case-glp");
     fireEvent.click(link);
 
-    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.at(-1)?.[0]).toMatchObject({ q: "KT-2026-GLP-001", gxp_type: "GLP" }));
-    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-glp"));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.some(([id]) => id === "case-glp")).toBe(true));
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.some(([filters]) => filters?.gxp_type === "GLP"
+      && filters?.site_id === "site-1")).toBe(true));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.some(call => call[6] === "line-glp")).toBe(true));
   });
 
   it("resolves an explicit result_key on a later page without selecting page one", async () => {

@@ -242,6 +242,19 @@ describe("direct document register navigation", () => {
     expect(screen.getByText("Eligibility metadata reached")).toBeInTheDocument();
   });
 
+  it("clears direct UUID when switching the selected owner type", () => {
+    render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);
+    const input = screen.getByLabelText("Mở danh mục tài liệu theo UUID");
+    fireEvent.change(input, { target: { value: "55555555-5555-4555-8555-555555555555" } });
+    expect(input).toHaveValue("55555555-5555-4555-8555-555555555555");
+    fireEvent.click(screen.getByRole("button", { name: "GCN GxP" }));
+    expect(input).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "Mở hồ sơ" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("UUID hợp lệ");
+    fireEvent.click(screen.getByRole("button", { name: "Giấy đủ điều kiện kinh doanh dược" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("rejects invalid UUIDs without routing or reading protected data", () => {
     render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText("Mở danh mục tài liệu theo UUID"), { target: { value: "../other" } });

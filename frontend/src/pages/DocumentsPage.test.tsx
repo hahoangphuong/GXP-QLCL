@@ -315,6 +315,26 @@ describe("contextual document register", () => {
     expect(getDocumentDetail).not.toHaveBeenCalled();
   });
 
+  it("refuses a Case checklist if its canonical Site is missing", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue({
+      ...casePayload(), case_summary: { ...casePayload().case_summary, site_id: "" },
+    });
+    mount("/documents/cases/case-1");
+    expect(await screen.findByText(/thiếu Site canonical/)).toBeInTheDocument();
+    expect(screen.queryByText("Biên bản kiểm tra")).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Change Request checklist if its canonical Site is missing", async () => {
+    vi.mocked(getChangeRequestWorkspace).mockResolvedValue({
+      ...changePayload(), site_id: "",
+    });
+    mount("/documents/change-requests/change-1");
+    expect(await screen.findByText(/thiếu Site canonical/)).toBeInTheDocument();
+    expect(screen.queryByText("Biên bản kiểm tra")).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
   it("refuses metadata from another Case even if the document UUID is selected", async () => {
     vi.mocked(getDocumentDetail).mockResolvedValue({ ...detailPayload(), case_id: "other-case" });
     mount("/documents/cases/case-1");

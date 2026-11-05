@@ -10,8 +10,8 @@ import { ReportsPage } from "./ReportsPage";
 
 vi.mock("../lib/api", () => ({ searchFacilities: vi.fn() }));
 vi.mock("../features/reports/CaseReport", () => ({
-  CaseReport: ({ showDocumentsLink, inspectionQueue }: { showDocumentsLink?: boolean; inspectionQueue: boolean }) =>
-    <output data-testid="cases-report">{inspectionQueue ? "inspection" : "cases"}:{String(showDocumentsLink)}</output>,
+  CaseReport: ({ showDocumentsLink, inspectionQueue, initialState }: { showDocumentsLink?: boolean; inspectionQueue: boolean; initialState?: string }) =>
+    <output data-testid="cases-report">{inspectionQueue ? "inspection" : "cases"}:{String(showDocumentsLink)}:{initialState ?? ""}</output>,
 }));
 vi.mock("../features/reports/CanonicalRecordReport", () => ({
   CanonicalRecordReport: ({ kind, showDocumentsLink }: { kind: string; showDocumentsLink?: boolean }) =>
@@ -115,6 +115,32 @@ describe("ReportsPage operator workflow", () => {
     expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true");
     fireEvent.click(screen.getByRole("button", { name: "Tiến lịch sử" }));
     expect(screen.getByTestId("canonical-report")).toHaveTextContent("certificates:false");
+  });
+
+  it("uses the certificate-decision Case filter only from its explicit supported URL", () => {
+    const first = render(<MemoryRouter initialEntries={["/reports?report=cases&case_state=awaiting_certificate_decision"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:awaiting_certificate_decision");
+    first.unmount();
+    const second = render(<MemoryRouter initialEntries={["/reports?report=cases&case_state=unknown"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:");
+    expect(screen.getByTestId("cases-report")).not.toHaveTextContent("unknown");
+    second.unmount();
+  });
+
+  it("clears a stale Case-specific filter when manually switching report categories", () => {
+    vi.mocked(searchFacilities).mockResolvedValue({ items: [], offset: 0, limit: 100, total_count: 0 });
+    render(<MemoryRouter initialEntries={["/reports?report=cases&case_state=awaiting_certificate_decision"]}>
+      <ReportsPage access={access} statusError={null} /><NavigationHistory />
+    </MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "certificates" } });
+    expect(screen.getByTestId("report-url")).not.toHaveTextContent("case_state=");
+    fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "cases" } });
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:");
+    expect(screen.getByTestId("cases-report")).not.toHaveTextContent("awaiting_certificate_decision");
   });
 
   it("falls back to facilities on an unknown or duplicated report type", async () => {

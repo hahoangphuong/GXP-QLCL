@@ -47,6 +47,8 @@ function NavigationHistory() {
     <output data-testid="report-url">{location.pathname + location.search}</output>
     <button type="button" onClick={() => navigate(-1)}>Lùi lịch sử</button>
     <button type="button" onClick={() => navigate(1)}>Tiến lịch sử</button>
+    <button type="button" onClick={() =>
+      navigate("/reports?report=cases&case_state=awaiting_certificate_decision")}>Mở trực tiếp Case chờ cấp</button>
   </>;
 }
 
@@ -129,6 +131,17 @@ describe("ReportsPage operator workflow", () => {
     expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:");
     expect(screen.getByTestId("cases-report")).not.toHaveTextContent("unknown");
     second.unmount();
+  });
+
+  it("resolves a same-page Case URL change to the new initial filter and restores browser history", () => {
+    render(<MemoryRouter initialEntries={["/reports?report=cases"]}>
+      <ReportsPage access={access} statusError={null} /><NavigationHistory />
+    </MemoryRouter>);
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:");
+    fireEvent.click(screen.getByRole("button", { name: "Mở trực tiếp Case chờ cấp" }));
+    expect(screen.getByTestId("cases-report")).toHaveTextContent("cases:true:awaiting_certificate_decision");
+    fireEvent.click(screen.getByRole("button", { name: "Lùi lịch sử" }));
+    expect(screen.getByTestId("cases-report")).not.toHaveTextContent("awaiting_certificate_decision");
   });
 
   it("clears a stale Case-specific filter when manually switching report categories", () => {

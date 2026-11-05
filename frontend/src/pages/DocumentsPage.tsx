@@ -28,14 +28,38 @@ function documentOwnerMatches(
   scope: Scope,
   id: string,
 ): boolean {
-  if (document.document_id !== item.document_id) return false;
+  if (!item.document_id || document.document_id !== item.document_id) return false;
+  // Match the binary API's exclusive-parent contract. A document with multiple
+  // business owners is ambiguous even if one UUID matches the selected row.
+  const parents = [
+    ["case", document.case_id],
+    ["capa_cycle", document.capa_cycle_id],
+    ["certificate", document.certificate_id],
+    ["business_eligibility_certificate", document.business_eligibility_certificate_id],
+    ["change_request", document.change_request_id],
+  ].filter(([, parentId]) => parentId != null);
+  if (parents.length !== 1) return false;
   if (scope === "change-requests") {
-    return item.parent_scope === "change_request" && item.parent_id === id && document.change_request_id === id;
+    return item.parent_scope === "change_request" && item.parent_id === id
+      && parents[0][0] === "change_request" && parents[0][1] === id;
   }
-  if (item.parent_scope === "case") {
-    return item.parent_id === id && document.case_id === id;
+  return (item.parent_scope === "case" && item.parent_id === id && parents[0][0] === "case" && parents[0][1] === id)
+    || (item.parent_scope === "capa_cycle" && !!item.parent_id
+      && parents[0][0] === "capa_cycle" && parents[0][1] === item.parent_id);
+}
+
+function validateChecklistOwner(items: DocumentChecklistItem[], kind: Scope, id: string): void {
+  const keys = new Set<string>();
+  for (const item of items) {
+    const validParent = kind === "change-requests"
+      ? item.parent_scope === "change_request" && item.parent_id === id
+      : (item.parent_scope === "case" && item.parent_id === id)
+        || (item.parent_scope === "capa_cycle" && !!item.parent_id);
+    if (!validParent || !item.checklist_key || keys.has(item.checklist_key)) {
+      throw new Error("Checklist tài liệu có ngữ cảnh owner không khớp hoặc định danh trùng lặp.");
+    }
+    keys.add(item.checklist_key);
   }
-  return item.parent_scope === "capa_cycle" && document.capa_cycle_id === item.parent_id;
 }
 
 export function DocumentsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
@@ -53,7 +77,7 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
     event.preventDefault();
     const id = directId.trim();
     if (!CANONICAL_UUID.test(id)) {
-      setLookupError("Nhập UUID hợp lệ của Case hoặc Change Request.");
+      setLookupError("Nhập UUID hợp lệ của loại hồ sơ hoặc chứng nhận đã chọn.");
       return;
     }
     setLookupError(null);
@@ -123,6 +147,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     const lookup = kind === "cases"
       ? getCaseWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
           if (workspace.case_summary.id !== id) throw new Error("Case UUID không khớp phản hồi.");
+          validateChecklistOwner(workspace.documents.items, kind, id);
           return {
             name: workspace.case_summary.facility_name,
             subtitle: `Case ${id} • ${workspace.case_summary.gxp_type}`,
@@ -133,6 +158,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
         })
       : getChangeRequestWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
           if (workspace.id !== id) throw new Error("Change Request UUID không khớp phản hồi.");
+          validateChecklistOwner(workspace.documents.items, kind, id);
           return {
             name: workspace.facility_name,
             subtitle: `Yêu cầu thay đổi ${id}`,

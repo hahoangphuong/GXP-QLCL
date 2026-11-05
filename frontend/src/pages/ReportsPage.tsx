@@ -41,8 +41,8 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
     {report === "facilities" ? <FacilityReport access={access} statusError={null} /> :
       (report === "certificates" || report === "change_requests") ?
         <section className="page-section"><h2>{report === "certificates" ? "GCN GxP hiện hành" : "Yêu cầu thay đổi chưa hoàn tất"}</h2>
-          <CanonicalRecordReport key={report} access={access} kind={report} /></section> :
-      <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report} access={access} inspectionQueue={report === "inspection"} /></section>}
+          <CanonicalRecordReport key={report} access={access} kind={report} showDocumentsLink={report === "change_requests"} /></section> :
+      <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report} access={access} inspectionQueue={report === "inspection"} showDocumentsLink /></section>}
   </>;
 }
 

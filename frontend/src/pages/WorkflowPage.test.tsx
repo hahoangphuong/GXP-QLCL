@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
 import { WorkflowPage } from "./WorkflowPage";
@@ -17,6 +17,16 @@ vi.mock("../features/reports/CanonicalRecordReport", () => ({
 const access: ApiAccess = { auth: { username: "reader", role: "reader" }, useStubAuth: true,
   bearerToken: null, canLoadSecureApi: true, accessGeneration: 1 };
 
+function HistoryControls() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <>
+    <output data-testid="url">{location.pathname + location.search}</output>
+    <button type="button" onClick={() => navigate(-1)}>Quay lại lịch sử</button>
+    <button type="button" onClick={() => navigate(1)}>Tiến lịch sử</button>
+  </>;
+}
+
 describe("operator workflow landing", () => {
   it("opens real canonical queues and filters certificate decision by backend Case state", () => {
     render(<MemoryRouter><WorkflowPage access={access} statusError={null} /></MemoryRouter>);
@@ -31,6 +41,42 @@ describe("operator workflow landing", () => {
     fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));
     expect(screen.getByTestId("record-queue")).toHaveTextContent("certificates:false");
     expect(screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" })).toHaveAttribute("href", "/reports");
+  });
+
+  it("restores a bookmarked Certificate or Change Request queue by exact URL", () => {
+    const first = render(<MemoryRouter initialEntries={["/workflow?queue=expiring"]}>
+      <WorkflowPage access={access} statusError={null} /><HistoryControls />
+    </MemoryRouter>);
+    expect(screen.getByTestId("record-queue")).toHaveTextContent("certificates:false");
+    expect(screen.getByRole("button", { name: "GCN sắp hết hạn" })).toHaveAttribute("aria-pressed", "true");
+    first.unmount();
+    render(<MemoryRouter initialEntries={["/workflow?queue=change_requests"]}>
+      <WorkflowPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByTestId("record-queue")).toHaveTextContent("change_requests:true");
+  });
+
+  it("keeps the selected queue in URL history across Back/Forward navigation", () => {
+    render(<MemoryRouter initialEntries={["/workflow?source=dashboard&queue=inspection"]}>
+      <WorkflowPage access={access} statusError={null} /><HistoryControls />
+    </MemoryRouter>);
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("true::true");
+    fireEvent.click(screen.getByRole("button", { name: "Chờ quyết định cấp GCN" }));
+    expect(screen.getByTestId("url")).toHaveTextContent("queue=certificate_decision");
+    expect(screen.getByTestId("url")).toHaveTextContent("source=dashboard");
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("false:awaiting_certificate_decision:true");
+    fireEvent.click(screen.getByRole("button", { name: "Quay lại lịch sử" }));
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("true::true");
+    fireEvent.click(screen.getByRole("button", { name: "Tiến lịch sử" }));
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("false:awaiting_certificate_decision:true");
+  });
+
+  it("ignores unknown or malformed URL queue selections instead of guessing a business category", () => {
+    render(<MemoryRouter initialEntries={["/workflow?queue=GSP&queue=expiring"]}>
+      <WorkflowPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByTestId("case-queue")).toHaveTextContent("false::true");
+    expect(screen.getByRole("button", { name: "Hồ sơ đang xử lý" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("never mounts the operator queue for unauthorized visitors", () => {

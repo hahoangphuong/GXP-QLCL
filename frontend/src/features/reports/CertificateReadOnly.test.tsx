@@ -30,6 +30,7 @@ describe("read-only certificate identity", () => {
     expect((await screen.findAllByText(type, { exact: true })).length).toBeGreaterThan(0);
     expect(screen.getByText("Bảo quản lạnh")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /metadata tài liệu/i })).toHaveAttribute("href", "/documents/certificates/A");
+    expect(screen.getByRole("link", { name: "Quay lại Báo cáo" })).toHaveAttribute("href", "/reports?report=certificates");
     expect(screen.queryByText("SEARCH-RAIL")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /chỉnh sửa|cấp|lưu/i })).not.toBeInTheDocument();
   });

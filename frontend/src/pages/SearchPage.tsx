@@ -836,7 +836,7 @@ export function SearchPage({
     if (historyForUrl) {
       nextParams.set("history_id", historyForUrl);
     }
-    if (requestedGxpCertificateId) nextParams.set("certificate_id", requestedGxpCertificateId);
+    if (requestedGxpCertificateId !== null) nextParams.set("certificate_id", requestedGxpCertificateId);
     if (selectedFacilityTab !== DEFAULT_FACILITY_TAB) {
       nextParams.set("facility_tab", selectedFacilityTab);
     }
@@ -1254,12 +1254,12 @@ export function SearchPage({
         setGxpCertificatesError(null);
         setGxpCertificatesLoading(false);
         const current = certificateSelectionRef.current;
-        const next = requestedGxpCertificateId
+        const next = requestedGxpCertificateId !== null
           ? payload.items.find((item) => item.certificate_id === requestedGxpCertificateId)?.certificate_id ?? null
           : current.gxpOwner === owner && current.gxp
           && payload.items.some((item) => item.certificate_id === current.gxp)
           ? current.gxp : payload.items[0]?.certificate_id ?? null;
-        if (requestedGxpCertificateId && !next) setDeepLinkError("Không tìm thấy giấy chứng nhận trong ngữ cảnh đã chọn.");
+        if (requestedGxpCertificateId !== null && !next) setDeepLinkError("Không tìm thấy giấy chứng nhận trong ngữ cảnh đã chọn.");
         setSelectedGxpCertificateOwner(owner);
         setSelectedGxpCertificateId(next);
       })

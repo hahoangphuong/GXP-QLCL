@@ -2426,13 +2426,13 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getGxpCertificateDetail).not.toHaveBeenCalledWith("cert-A", expect.anything(), expect.anything(), expect.anything());
   });
 
-  it("does not substitute another certificate when the requested UUID is missing", async () => {
+  it.each(["missing", ""])("does not substitute another certificate when the requested UUID is missing or empty (%s)", async (targetId) => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     const cert = { certificate_id: "cert-A", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", context_match_kind: "exact_line", latest_flag: true, certificate_number: "GCN-A", issue_date: null, expiry_date: null, applicable_standard: "WHO-GMP", issuing_authority: null, status: "active" };
     apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [cert] });
-    const params = new URLSearchParams({ site_id: "site-1", result_key: "site-1:GMP:A", gxp_type: "GMP", production_line_id: "line-uuid-1", facility_tab: "Giấy chứng nhận GxP", certificate_id: "missing" });
+    const params = new URLSearchParams({ site_id: "site-1", result_key: "site-1:GMP:A", gxp_type: "GMP", production_line_id: "line-uuid-1", facility_tab: "Giấy chứng nhận GxP", certificate_id: targetId });
     renderApp([`/search?${params}`]);
     expect(await screen.findByText("Không tìm thấy giấy chứng nhận trong ngữ cảnh đã chọn.")).toBeInTheDocument();
     expect(apiMocks.getGxpCertificateDetail).not.toHaveBeenCalled();

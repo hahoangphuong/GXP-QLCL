@@ -43,6 +43,12 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
   const [directId, setDirectId] = useState("");
   const [lookupError, setLookupError] = useState<string | null>(null);
   const navigate = useNavigate();
+  function selectKind(next: typeof kind) {
+    if (next === kind) return;
+    setKind(next);
+    setDirectId("");
+    setLookupError(null);
+  }
   function openById(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const id = directId.trim();
@@ -64,10 +70,10 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
       Chọn một hồ sơ để xem các tài liệu đang có và những mục còn thiếu.</p></header>
     <section className="panel">
       <div className="report-actions" role="group" aria-label="Loại hồ sơ tài liệu">
-        <button type="button" aria-pressed={kind === "cases"} className={kind === "cases" ? "" : "secondary"} onClick={() => setKind("cases")}>Hồ sơ kiểm tra</button>
-        <button type="button" aria-pressed={kind === "change_requests"} className={kind === "change_requests" ? "" : "secondary"} onClick={() => setKind("change_requests")}>Yêu cầu thay đổi</button>
-        <button type="button" aria-pressed={kind === "certificates"} className={kind === "certificates" ? "" : "secondary"} onClick={() => setKind("certificates")}>GCN GxP</button>
-        <button type="button" aria-pressed={kind === "business_eligibility"} className={kind === "business_eligibility" ? "" : "secondary"} onClick={() => setKind("business_eligibility")}>Giấy đủ điều kiện kinh doanh dược</button>
+        <button type="button" aria-pressed={kind === "cases"} className={kind === "cases" ? "" : "secondary"} onClick={() => selectKind("cases")}>Hồ sơ kiểm tra</button>
+        <button type="button" aria-pressed={kind === "change_requests"} className={kind === "change_requests" ? "" : "secondary"} onClick={() => selectKind("change_requests")}>Yêu cầu thay đổi</button>
+        <button type="button" aria-pressed={kind === "certificates"} className={kind === "certificates" ? "" : "secondary"} onClick={() => selectKind("certificates")}>GCN GxP</button>
+        <button type="button" aria-pressed={kind === "business_eligibility"} className={kind === "business_eligibility" ? "" : "secondary"} onClick={() => selectKind("business_eligibility")}>Giấy đủ điều kiện kinh doanh dược</button>
       </div>
       <form onSubmit={openById}>
         <label htmlFor="document-direct-uuid">Mở danh mục tài liệu theo UUID</label>

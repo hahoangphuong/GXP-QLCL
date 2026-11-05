@@ -292,7 +292,8 @@ jobs:
     # Explicitly pinned two-HEAD gate. Never merges/rebases/deploys either
     # branch. Runs only on backend-owner branch push, in a disposable runner.
     if: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')) || (github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-restore-safe-20261017' || github.ref == 'refs/heads/integration/rehearsal-local-restore-20261017'))) || github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011')) || (github.event_name == 'pull_request' && (github.head_ref == 'audit/certificate-case-source-integrity-20261011' || (github.head_ref == 'integration/rehearsal-source-20261017' || (github.head_ref == 'integration/rehearsal-safety-source-20261017' || (github.head_ref == 'integration/rehearsal-restore-safe-20261017' || github.head_ref == 'integration/rehearsal-local-restore-20261017'))))) }}
-    runs-on: ubuntu-latest
+    # The pinned Playwright Chromium build does not support Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16

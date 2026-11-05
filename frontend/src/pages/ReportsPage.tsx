@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { collectFacilityReport, facilityReportCsv, REPORT_PAGE_SIZE } from "../features/reports/facilityReportExport";
 import { CaseReport } from "../features/reports/CaseReport";
+import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
 import { searchFacilities } from "../lib/api";
 import type { FacilitySearchPage, FacilitySearchResult } from "../types";
 
@@ -34,8 +35,13 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
       <option value="facilities">Danh sách cơ sở</option>
       <option value="cases">Hồ sơ đang xử lý</option>
       <option value="inspection">Hồ sơ chuẩn bị và đang kiểm tra</option>
+      <option value="certificates">GCN GxP hiện hành / sắp hết hạn</option>
+      <option value="change_requests">Yêu cầu thay đổi chưa hoàn tất</option>
     </select></label></section>
     {report === "facilities" ? <FacilityReport access={access} statusError={null} /> :
+      (report === "certificates" || report === "change_requests") ?
+        <section className="page-section"><h2>{report === "certificates" ? "GCN GxP hiện hành" : "Yêu cầu thay đổi chưa hoàn tất"}</h2>
+          <CanonicalRecordReport key={report} access={access} kind={report} /></section> :
       <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report} access={access} inspectionQueue={report === "inspection"} /></section>}
   </>;
 }

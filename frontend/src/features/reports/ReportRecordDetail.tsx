@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace, getGxpCertificateDetail } from "../../lib/api";
 import type { ChangeRequestWorkspace, GxpCertificateDetail } from "../../types";
@@ -37,25 +37,19 @@ export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: 
   const current = result?.owner === owner ? result : null;
   const item = current?.certificate;
   const change = current?.change;
+  if (item) {
+    const target = new URLSearchParams({ site_id: item.site_id, gxp_type: item.certificate_type,
+      context_gxp: item.certificate_type, certificate_id: item.certificate_id, facility_tab: "Giấy chứng nhận GxP" });
+    if (item.production_line_id) target.set("production_line_id", item.production_line_id);
+    if (item.line_code) target.set("line_code", item.line_code);
+    return <Navigate to={`/search?${target}`} replace />;
+  }
   return <section className="page-section">
     <header className="section-title"><div><p className="eyebrow">Báo cáo / Chi tiết</p>
       <h2>{kind === "certificates" ? "Chi tiết GCN" : "Chi tiết yêu cầu thay đổi"}</h2>
     </div><Link to="/reports" className="text-link">Quay lại Báo cáo</Link></header>
     {!current ? <p role="status">Đang tải dữ liệu canonical...</p> : current.error ? <p role="alert">{current.error}</p>
-      : item ? <section className="panel">
-        <h3>{item.certificate_number ?? item.certificate_id}</h3>
-        <dl className="persisted-version-fields">
-          <div><dt>Certificate UUID</dt><dd>{item.certificate_id}</dd></div>
-          <div><dt>Cơ sở</dt><dd>{item.facility_name}</dd></div>
-          <div><dt>Công ty</dt><dd>{item.company_name}</dd></div>
-          <div><dt>GxP</dt><dd>{item.certificate_type}</dd></div>
-          <div><dt>Ngày cấp</dt><dd>{item.issue_date ?? "Chưa có"}</dd></div>
-          <div><dt>Ngày hết hạn</dt><dd>{item.expiry_date ?? "Chưa có"}</dd></div>
-          <div><dt>Current</dt><dd>{item.latest_flag ? "Có" : "Không"}</dd></div>
-          <div><dt>Trạng thái</dt><dd>{item.status ?? "Chưa xác minh"}</dd></div>
-          <div><dt>Phạm vi</dt><dd>{item.scope_summary ?? "Chưa có"}</dd></div>
-        </dl>
-      </section> : change ? <section className="panel">
+      : change ? <section className="panel">
         <h3>{change.scope_label ?? "Yêu cầu thay đổi"}</h3>
         <dl className="persisted-version-fields">
           <div><dt>Change Request UUID</dt><dd>{change.id}</dd></div>

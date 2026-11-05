@@ -145,6 +145,7 @@ export type CaseReportPage = { items: CaseReportItem[]; total_count: number; off
 
 export type CertificateReportItem = {
   certificate_id: string;
+  result_key: string;
   certificate_version_id: string;
   site_id: string;
   case_id: string | null;

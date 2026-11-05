@@ -1225,7 +1225,7 @@ class CatalogReadService:
 
     def get_certificate_report(
         self, session: Session, *, gxp_type: str | None, q: str | None,
-        expiry_days: int | None, export: bool, offset: int, limit: int,
+        expiry_days: int | None, export: bool, offset: int, limit: int, number: str | None = None,
     ) -> dict[str, object]:
         """One current Certificate and its explicitly current version per row."""
         if expiry_days is not None and expiry_days not in (30, 60, 90):
@@ -1244,6 +1244,8 @@ class CatalogReadService:
                 Site.site_name.ilike(term), Company.legal_name.ilike(term),
                 CertificateVersion.certificate_number.ilike(term),
             ))
+        if number:
+            conditions.append(CertificateVersion.certificate_number.ilike(f"%{number}%"))
         if expiry_days is not None:
             today = date.today()
             conditions.extend((
@@ -1259,6 +1261,15 @@ class CatalogReadService:
             .outerjoin(ProductionLine, ProductionLine.id == Certificate.production_line_id)
             .where(*conditions)
         )
+        # The flags are authoritative, but inconsistent data must not produce
+        # multiple report rows for the same Certificate.
+        matching = select(Certificate.id).join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id).join(Site, Site.id == Certificate.site_id).join(Company, Company.id == Site.company_id).where(*conditions)
+        conflicts = session.scalar(select(func.count()).select_from(
+            select(CertificateVersion.certificate_id).where(CertificateVersion.is_latest_version.is_(True),
+                CertificateVersion.certificate_id.in_(matching)).group_by(CertificateVersion.certificate_id)
+                .having(func.count() > 1).subquery())) or 0
+        if conflicts:
+            raise HTTPException(status_code=409, detail="Certificate has conflicting latest versions.")
         if export:
             if offset != 0:
                 raise HTTPException(status_code=422, detail="Export offset must be zero.")
@@ -1275,14 +1286,23 @@ class CatalogReadService:
                 .where(*conditions)
             ) or 0
             rows = session.execute(source.order_by(Certificate.id, CertificateVersion.id).offset(offset).limit(limit)).all()
-        items = [
-            {
+        items = []
+        for certificate, version, site, company, line in rows:
+            linked_case = CaseWorkflowService._validate_certificate_linked_case(session, certificate)
+            line_id, line_code, identity = self._line_identity(
+                site_id=site.id, production_line_id=certificate.production_line_id,
+                raw_line_code=self._certificate_line_code(certificate, linked_case),
+                lines={} if line is None else {line.id: line},
+            )
+            items.append({
                 "certificate_id": certificate.id,
+                "result_key": self._build_search_result_key(site.id, gxp_type=certificate.certificate_type,
+                    identity_state=identity, production_line_id=line_id, line_code=line_code),
                 "certificate_version_id": version.id,
                 "site_id": site.id,
                 "case_id": certificate.case_id,
                 "production_line_id": certificate.production_line_id,
-                "line_code": line.code if line is not None else certificate.line_code,
+                "line_code": line_code,
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
                 "gxp_type": certificate.certificate_type,
@@ -1290,9 +1310,7 @@ class CatalogReadService:
                 "issue_date": version.issue_date,
                 "expiry_date": version.expiry_date,
                 "lifecycle_state": version.lifecycle_state,
-            }
-            for certificate, version, site, company, line in rows
-        ]
+            })
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 
     def get_change_request_report(

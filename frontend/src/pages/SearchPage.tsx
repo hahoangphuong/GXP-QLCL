@@ -350,6 +350,7 @@ export function SearchPage({
   const [gxpCertificatesLoading, setGxpCertificatesLoading] = useState(false);
   const [gxpCertificatesError, setGxpCertificatesError] = useState<string | null>(null);
   const [selectedGxpCertificateIdState, setSelectedGxpCertificateId] = useState<string | null>(null);
+  const [requestedGxpCertificateId, setRequestedGxpCertificateId] = useState<string | null>(() => searchParams.get("certificate_id"));
   const [selectedGxpCertificateOwner, setSelectedGxpCertificateOwner] = useState<string | null>(null);
   const [gxpCertificateDetail, setGxpCertificateDetail] = useState<GxpCertificateDetail | null>(null);
   const [gxpCertificateDetailOwner, setGxpCertificateDetailOwner] = useState<string | null>(null);
@@ -677,6 +678,7 @@ export function SearchPage({
     setHistoryResolution(pending.historyId ? "pending" : "none");
     setSelectedResultKey(pending.resultKey);
     setSelectedHistoryId(pending.historyId);
+    setRequestedGxpCertificateId(params.get("certificate_id"));
     setSelectedFacilityTab(resolveFacilityTab(params.get("facility_tab")));
     setActiveTab(params.get("event_tab") ?? DEFAULT_EVENT_TAB);
     setSearchPageRequest({ context: "", offset: 0 });
@@ -832,6 +834,7 @@ export function SearchPage({
     if (historyForUrl) {
       nextParams.set("history_id", historyForUrl);
     }
+    if (requestedGxpCertificateId) nextParams.set("certificate_id", requestedGxpCertificateId);
     if (selectedFacilityTab !== DEFAULT_FACILITY_TAB) {
       nextParams.set("facility_tab", selectedFacilityTab);
     }
@@ -864,6 +867,7 @@ export function SearchPage({
     selectedFacilityTab,
     selectedHistoryId,
     selectedResult,
+    requestedGxpCertificateId,
     pendingDeepLink,
     historyResolution,
     hydratedSearchSignature,
@@ -1244,9 +1248,12 @@ export function SearchPage({
         setGxpCertificatesError(null);
         setGxpCertificatesLoading(false);
         const current = certificateSelectionRef.current;
-        const next = current.gxpOwner === owner && current.gxp
+        const next = requestedGxpCertificateId
+          ? payload.items.find((item) => item.certificate_id === requestedGxpCertificateId)?.certificate_id ?? null
+          : current.gxpOwner === owner && current.gxp
           && payload.items.some((item) => item.certificate_id === current.gxp)
           ? current.gxp : payload.items[0]?.certificate_id ?? null;
+        if (requestedGxpCertificateId && !next) setDeepLinkError("Không tìm thấy giấy chứng nhận trong ngữ cảnh đã chọn.");
         setSelectedGxpCertificateOwner(owner);
         setSelectedGxpCertificateId(next);
       })
@@ -1263,7 +1270,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth.role, auth.username, bearerToken, gxpListOwner, selectedResult, useStubAuth]);
+  }, [auth.role, auth.username, bearerToken, gxpListOwner, selectedResult, useStubAuth, requestedGxpCertificateId]);
 
   useEffect(() => {
     if (!selectedGxpCertificateId || !expectedGxpDetailOwner) {
@@ -1489,6 +1496,7 @@ export function SearchPage({
   }
 
   function selectResultFromTable(resultKey: string) {
+    setRequestedGxpCertificateId(null);
     // Re-activating the settled canonical row is not a context change. Keep
     // its selected history and editors; unresolved deep links remain escapable.
     if (selectedResult?.result_key === resultKey && !deepLinkError
@@ -2597,6 +2605,7 @@ export function SearchPage({
               onEventTabChange={setActiveTab}
               onFacilityTabChange={setSelectedFacilityTab}
               onGxpCertificateSelect={(certificateId) => {
+                setRequestedGxpCertificateId(null);
                 if (!gxpListOwner) return;
                 setSelectedGxpCertificateOwner(gxpListOwner);
                 setSelectedGxpCertificateId(certificateId);

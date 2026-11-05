@@ -13,7 +13,7 @@ const access: ApiAccess = {
   bearerToken: null, canLoadSecureApi: true, accessGeneration: 1,
 };
 const cert = {
-  certificate_id: "cert-uuid", certificate_version_id: "version-uuid", site_id: "site-uuid",
+  certificate_id: "cert-uuid", result_key: "site-uuid:GMP:facility_wide:", certificate_version_id: "version-uuid", site_id: "site-uuid",
   case_id: null, production_line_id: null, line_code: null, facility_name: "Cơ sở GMP",
   company_name: "Công ty A", gxp_type: "GMP", certificate_number: "GCN-123",
   issue_date: "2026-01-01", expiry_date: "2026-12-31", lifecycle_state: "GRANTED",
@@ -32,13 +32,14 @@ beforeEach(() => {
 describe("canonical record report workflow", () => {
   it("filters current Certificates by GxP and expiry window, linking to exact UUID", async () => {
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
-    expect(await screen.findByRole("link", { name: "GCN-123" })).toHaveAttribute("href", "/reports/certificates/cert-uuid");
+    expect(await screen.findByRole("link", { name: "GCN-123" })).toHaveAttribute("href", expect.stringContaining("certificate_id=cert-uuid"));
     expect(screen.getByText("1 GCN")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Loại GxP"), { target: { value: "GMP" } });
     fireEvent.change(screen.getByLabelText("GCN hết hạn trong"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "GCN-123" } });
     fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);
     await waitFor(() => expect(vi.mocked(getCertificateReport).mock.calls.some(([filters]) =>
-      filters?.gxp_type === "GMP" && filters.expiry_days === "30")).toBe(true));
+      filters?.gxp_type === "GMP" && filters.expiry_days === "30" && filters.number === "GCN-123")).toBe(true));
   });
 
   it("shows each Change Request identity without inventing a GxP classification", async () => {

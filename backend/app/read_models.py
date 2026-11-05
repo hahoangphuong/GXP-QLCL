@@ -95,6 +95,7 @@ class CaseReportPageRead(BaseModel):
 
 class CertificateReportItemRead(BaseModel):
     certificate_id: str
+    result_key: str
     certificate_version_id: str
     site_id: str
     case_id: str | None

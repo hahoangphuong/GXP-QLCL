@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace, getGxpCertificateDetail } from "../../lib/api";
@@ -15,8 +15,11 @@ function mount(route: string) {
   return render(<MemoryRouter initialEntries={[route]}><Routes>
     <Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={access} kind="certificates" />} />
     <Route path="/reports/change-requests/:changeRequestId" element={<ReportRecordDetail access={access} kind="change_requests" />} />
+    <Route path="/search" element={<LocationCapture />} />
   </Routes></MemoryRouter>);
 }
+
+function LocationCapture() { return <p>{useLocation().search}</p>; }
 
 beforeEach(() => {
   vi.mocked(getGxpCertificateDetail).mockReset();
@@ -24,6 +27,12 @@ beforeEach(() => {
 });
 
 describe("authorized canonical detail navigation", () => {
+  it("redirects a matching Certificate to its existing workspace with UUID", async () => {
+    vi.mocked(getGxpCertificateDetail).mockResolvedValue({ certificate_id: "cert-uuid", site_id: "site-uuid",
+      certificate_type: "GMP", production_line_id: "line-uuid", line_code: "A" } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    mount("/reports/certificates/cert-uuid");
+    expect(await screen.findByText(/certificate_id=cert-uuid/)).toHaveTextContent("production_line_id=line-uuid");
+  });
   it("fetches exact Certificate UUID and rejects mismatched canonical identity", async () => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({
       certificate_id: "different-id", certificate_number: "GCN-ERROR",

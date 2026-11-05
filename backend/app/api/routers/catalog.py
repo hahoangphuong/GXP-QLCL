@@ -261,6 +261,7 @@ def register_catalog_routes(app, session_factory) -> None:
     def certificate_report(
         gxp_type: str | None = Query(default=None),
         q: str | None = Query(default=None),
+        number: str | None = Query(default=None),
         expiry_days: int | None = Query(default=None),
         export: bool = Query(default=False),
         offset: int = Query(default=0, ge=0),
@@ -271,7 +272,7 @@ def register_catalog_routes(app, session_factory) -> None:
         require_role(user, ALLOWED_READ_ROLES)
         return CertificateReportPageRead(**service.get_certificate_report(
             session, gxp_type=_optional_string_query(gxp_type), q=_optional_string_query(q),
-            expiry_days=expiry_days, export=export, offset=offset, limit=limit,
+            expiry_days=expiry_days, export=export, offset=offset, limit=limit, number=_optional_string_query(number),
         ))
 
     def change_request_report(

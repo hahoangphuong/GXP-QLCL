@@ -75,6 +75,8 @@ def test_certificate_report_is_per_canonical_current_certificate_not_version(ses
     assert len(cert_report(session, expiry_days=90)["items"]) == 2
     assert cert_report(session, q="GCN-OLD")["total_count"] == 0
     assert cert_report(session, q="GCN-REPLACED")["total_count"] == 0
+    assert cert_report(session, q="Công ty", number="GCN-A")["total_count"] == 1
+    assert cert_report(session, q="Công ty", number="GCN-OLD")["total_count"] == 0
 
 
 def test_certificate_report_paging_export_and_validation(session):
@@ -90,6 +92,16 @@ def test_certificate_report_paging_export_and_validation(session):
         assert exc.value.status_code == 422
     with pytest.raises(HTTPException):
         cert_report(session, export=True, offset=1)
+
+
+def test_certificate_report_rejects_multiple_latest_versions_even_outside_window(session):
+    row = cert_report(session)["items"][0]
+    session.add(CertificateVersion(certificate_id=row["certificate_id"], version_no=3,
+        certificate_number="OTHER", expiry_date=date.today() + timedelta(days=500), is_latest_version=True))
+    session.flush()
+    with pytest.raises(HTTPException) as conflict:
+        cert_report(session)
+    assert conflict.value.status_code == 409
 
 
 def test_change_report_is_per_request_site_owned_no_inferred_gxp(session):

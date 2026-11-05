@@ -115,6 +115,6 @@ describe("full canonical Change Request read workspace", () => {
     mount("/reports/change-requests/second-uuid");
     await waitFor(() => expect(screen.getByText("second-uuid")).toBeInTheDocument());
     expect(screen.queryByText("Đổi địa chỉ")).not.toBeInTheDocument();
-    expect(screen.getByText("Thay người đại diện")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Thay người đại diện" })).toBeInTheDocument();
   });
 });

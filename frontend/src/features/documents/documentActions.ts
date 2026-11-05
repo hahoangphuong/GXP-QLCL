@@ -17,7 +17,7 @@ export function resolveDocumentCreation(
     && action.parent_id === item.parent_id);
   const create = matching?.actions.find(action => action.action_key === "create");
   // A source-backed readiness is necessary; button never POSTs from this register.
-  if (!create || create.create_readiness === "UNVERIFIED_VERSION_BINDING") return null;
+  if (!create) return null;
   return create;
 }
 

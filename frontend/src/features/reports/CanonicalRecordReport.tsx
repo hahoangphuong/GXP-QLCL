@@ -10,7 +10,7 @@ type Filters = { gxp_type: string; expiry_days: string; state: string; q: string
 type Page = CertificateReportPage | ChangeRequestReportPage;
 const EMPTY: Filters = { gxp_type: "", expiry_days: "90", state: "", q: "" };
 
-export function CanonicalRecordReport({ access, kind }: { access: ApiAccess; kind: Kind }) {
+export function CanonicalRecordReport({ access, kind, showDocumentsLink = false }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean }) {
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration, kind]);
   const ownerRef = useRef(owner);
@@ -148,7 +148,7 @@ export function CanonicalRecordReport({ access, kind }: { access: ApiAccess; kin
         : <div className="table-scroll"><table className="dense-table"><thead><tr>
           <th>{isCert ? "Số GCN" : "Yêu cầu"}</th><th>Cơ sở</th><th>Công ty</th>
           {isCert ? <><th>GxP</th><th>Ngày cấp</th><th>Hạn GCN</th><th>Trạng thái version</th></>
-            : <><th>Nội dung/phạm vi</th><th>Ngày gửi</th><th>Trạng thái</th></>}
+            : <><th>Nội dung/phạm vi</th><th>Ngày gửi</th><th>Trạng thái</th>{showDocumentsLink && <th>Tài liệu</th>}</>}
         </tr></thead><tbody>
           {isCert ? (rows as CertificateReportItem[]).map(item => <tr key={item.certificate_id}>
             <td><Link className="text-link" to={`/reports/certificates/${encodeURIComponent(item.certificate_id)}`}>{item.certificate_number ?? item.certificate_id}</Link></td>
@@ -158,6 +158,7 @@ export function CanonicalRecordReport({ access, kind }: { access: ApiAccess; kin
             <td><Link className="text-link" to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.scope_label ?? "—"}</td>
             <td>{item.submitted_on ?? "—"}</td><td>{item.state}</td>
+            {showDocumentsLink && <td><Link className="text-link" to={`/documents/change-requests/${encodeURIComponent(item.change_request_id)}`}>Xem tài liệu</Link></td>}
           </tr>)}
         </tbody></table></div>}
       {current?.page && total > 0 && <nav className="report-pagination" aria-label="Phân trang báo cáo">

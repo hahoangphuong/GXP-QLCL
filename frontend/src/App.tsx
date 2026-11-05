@@ -8,7 +8,7 @@ import { decodeOidcCredential, isOidcSessionValid, loadGoogleIdentityScript } fr
 import { clearOidcSession, loadAuthState } from "./lib/storage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AdminSystemStatusPage } from "./pages/AdminSystemStatusPage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { DocumentsPage, DocumentRegister } from "./pages/DocumentsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { SearchPage } from "./pages/SearchPage";
 import { WorkflowPage } from "./pages/WorkflowPage";
@@ -288,15 +288,9 @@ export function App() {
         <Route path="/search" element={<SearchPage access={apiAccess} statusError={statusError} />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/workflow" element={<WorkflowPage access={apiAccess} statusError={statusError} />} />
-        <Route
-          path="/documents"
-          element={
-            <PlaceholderPage
-              title="Tài liệu"
-              description="Document checklist và thao tác theo loại tài liệu sẽ được gắn từ workspace ngữ cảnh thay vì file browser rời."
-            />
-          }
-        />
+        <Route path="/documents" element={<DocumentsPage access={apiAccess} statusError={statusError} />} />
+        <Route path="/documents/cases/:caseId" element={<DocumentRegister access={apiAccess} kind="cases" />} />
+        <Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister access={apiAccess} kind="change-requests" />} />
         <Route path="/reports" element={<ReportsPage access={apiAccess} statusError={statusError} />} />
         <Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={apiAccess} kind="certificates" />} />
         <Route path="/reports/change-requests/:changeRequestId" element={<ReportRecordDetail access={apiAccess} kind="change_requests" />} />

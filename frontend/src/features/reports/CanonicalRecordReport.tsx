@@ -44,8 +44,6 @@ export function CanonicalRecordReport({ access, kind }: { access: ApiAccess; kin
       (error: Error) => { if (live) setRecord({ owner, key, page: null, error: error.message }); },
     );
     return () => { live = false; };
-    // fetchPage is fully owned by these dependency values.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, offset, owner, key, auth, useStubAuth, bearerToken, canLoadSecureApi, kind]);
 
   function apply(event: FormEvent) {

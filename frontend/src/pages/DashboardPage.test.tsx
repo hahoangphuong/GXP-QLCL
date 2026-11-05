@@ -30,6 +30,24 @@ describe("dashboard canonical Case queue", () => {
     expect(screen.getByRole("link", { name: "Xem tài liệu" })).toHaveAttribute("href", "/documents/cases/case%25%2Fuuid");
     expect(screen.getByRole("link", { name: "Mở Bàn công việc" })).toHaveAttribute("href", "/workflow");
   });
+  it("drills actionable metric tiles into shareable canonical workflow queues", async () => {
+    render(<MemoryRouter><DashboardPage access={access} statusError={null} /></MemoryRouter>);
+    await screen.findByRole("heading", { name: "Bảng điều phối nghiệp vụ" });
+    const expected = [
+      ["Cơ sở có hồ sơ đang xử lý", "/workflow?queue=active"],
+      ["Cơ sở chờ kiểm tra", "/workflow?queue=inspection"],
+      ["Cơ sở chờ cấp chứng nhận", "/workflow?queue=certificate_decision"],
+      ["Cơ sở có GCN sắp hết hạn 90 ngày", "/workflow?queue=expiring"],
+      ["Cơ sở có thay đổi chưa hoàn tất", "/workflow?queue=change_requests"],
+    ];
+    for (const [label, href] of expected) {
+      expect(screen.getByRole("link", { name: new RegExp(label) })).toHaveAttribute("href", href);
+    }
+    expect(screen.getByRole("link", { name: /Tổng số cơ sở/ })).toHaveAttribute("href", "/search");
+    expect(screen.getByRole("link", { name: /Cơ sở có GCN còn hiệu lực/ })).toHaveAttribute("href", "/search?certificate_state=active");
+    expect(screen.getByText(/thẻ thống kê đếm cơ sở/i)).toBeInTheDocument();
+  });
+
   it("does not fetch secure queue or show document links without access", () => {
     render(<MemoryRouter><DashboardPage access={{ ...access, canLoadSecureApi: false }} statusError={null} /></MemoryRouter>);
     expect(screen.getByText("Cần đăng nhập")).toBeInTheDocument();

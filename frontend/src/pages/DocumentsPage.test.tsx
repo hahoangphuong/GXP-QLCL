@@ -193,6 +193,47 @@ describe("document binary action and readiness", () => {
   });
 });
 
+describe("direct document register navigation", () => {
+  const caseUuid = "11111111-1111-4111-8111-111111111111";
+  const changeUuid = "22222222-2222-4222-8222-222222222222";
+
+  it("opens an explicitly selected Case UUID without relying on active Case reports", () => {
+    render(<MemoryRouter initialEntries={["/documents"]}><Routes>
+      <Route path="/documents" element={<DocumentsPage access={access} statusError={null} />} />
+      <Route path="/documents/cases/:caseId" element={<p>Case register reached</p>} />
+    </Routes></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Mở danh mục tài liệu theo UUID"), { target: { value: `  ${caseUuid}  ` } });
+    fireEvent.click(screen.getByRole("button", { name: "Mở hồ sơ" }));
+    expect(screen.getByText("Case register reached")).toBeInTheDocument();
+    expect(getCaseWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("navigates to the Change Request register only when that scope is explicitly selected", () => {
+    render(<MemoryRouter initialEntries={["/documents"]}><Routes>
+      <Route path="/documents" element={<DocumentsPage access={access} statusError={null} />} />
+      <Route path="/documents/change-requests/:changeRequestId" element={<p>Change Request register reached</p>} />
+    </Routes></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Yêu cầu thay đổi" }));
+    fireEvent.change(screen.getByLabelText("Mở danh mục tài liệu theo UUID"), { target: { value: changeUuid } });
+    fireEvent.click(screen.getByRole("button", { name: "Mở hồ sơ" }));
+    expect(screen.getByText("Change Request register reached")).toBeInTheDocument();
+  });
+
+  it("rejects invalid UUIDs without routing or reading protected data", () => {
+    render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Mở danh mục tài liệu theo UUID"), { target: { value: "../other" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mở hồ sơ" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("UUID hợp lệ");
+    expect(getCaseWorkspace).not.toHaveBeenCalled();
+    expect(getChangeRequestWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("does not offer direct navigation without authenticated API access", () => {
+    render(<MemoryRouter><DocumentsPage access={{ ...access, canLoadSecureApi: false }} statusError={null} /></MemoryRouter>);
+    expect(screen.queryByRole("button", { name: "Mở hồ sơ" })).not.toBeInTheDocument();
+  });
+});
+
 describe("contextual document register", () => {
   it("offers authenticated Case and Change Request lists with exact document context links", () => {
     render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);

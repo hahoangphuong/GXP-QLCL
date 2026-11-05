@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -8,6 +8,8 @@ import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
 import { hasCurrentActiveDocumentVersion, safeDocumentDownloadName, resolveDocumentCreation } from "../features/documents/documentActions";
+
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Scope = "cases" | "change-requests";
 type Context = {
@@ -38,6 +40,19 @@ function documentOwnerMatches(
 
 export function DocumentsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
   const [kind, setKind] = useState<"cases" | "change_requests">("cases");
+  const [directId, setDirectId] = useState("");
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  function openById(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const id = directId.trim();
+    if (!CANONICAL_UUID.test(id)) {
+      setLookupError("Nhập UUID hợp lệ của Case hoặc Change Request.");
+      return;
+    }
+    setLookupError(null);
+    navigate(`/documents/${kind === "cases" ? "cases" : "change-requests"}/${encodeURIComponent(id)}`);
+  }
   if (statusError) return <ErrorState message={statusError} />;
   if (!access.canLoadSecureApi) return <EmptyState title="Cần đăng nhập" description="Đăng nhập để tra cứu danh mục tài liệu trong hồ sơ có phân quyền." />;
   return <section className="page-section">
@@ -50,6 +65,16 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
         <button type="button" aria-pressed={kind === "cases"} className={kind === "cases" ? "" : "secondary"} onClick={() => setKind("cases")}>Hồ sơ kiểm tra</button>
         <button type="button" aria-pressed={kind === "change_requests"} className={kind === "change_requests" ? "" : "secondary"} onClick={() => setKind("change_requests")}>Yêu cầu thay đổi</button>
       </div>
+      <form onSubmit={openById}>
+        <label htmlFor="document-direct-uuid">Mở danh mục tài liệu theo UUID</label>
+        <div className="report-actions">
+          <input id="document-direct-uuid" value={directId} onChange={event => { setDirectId(event.target.value); setLookupError(null); }}
+            placeholder={kind === "cases" ? "UUID của Case" : "UUID của Change Request"} aria-invalid={Boolean(lookupError)} />
+          <button type="submit">Mở hồ sơ</button>
+        </div>
+        {lookupError && <p role="alert">{lookupError}</p>}
+        <p className="muted-copy">Có thể mở cả hồ sơ không còn trong hàng đợi hiện hành. UUID chỉ dùng để điều hướng; nội dung luôn được xác thực và kiểm tra quyền từ API.</p>
+      </form>
       <p className="muted-copy">Chỉ đọc. Tạo, chỉnh sửa và ban hành tài liệu tiếp tục thực hiện trong workspace theo quyền và readiness hiện có. Không bật tạo QĐKT đang bị chặn.</p>
     </section>
     {kind === "cases"

@@ -1310,6 +1310,7 @@ class CatalogReadService:
                 "issue_date": version.issue_date,
                 "expiry_date": version.expiry_date,
                 "lifecycle_state": version.lifecycle_state,
+                "status": self._derive_certificate_status(CertificateContextRow(certificate=certificate, version=version, line_code=line_code)),
             })
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 

@@ -16,7 +16,7 @@ const cert = {
   certificate_id: "cert-uuid", result_key: "site-uuid:GMP:facility_wide:", certificate_version_id: "version-uuid", site_id: "site-uuid",
   case_id: null, production_line_id: null, line_code: null, facility_name: "Cơ sở GMP",
   company_name: "Công ty A", gxp_type: "GMP", certificate_number: "GCN-123",
-  issue_date: "2026-01-01", expiry_date: "2026-12-31", lifecycle_state: "GRANTED",
+  issue_date: "2026-01-01", expiry_date: "2026-12-31", lifecycle_state: "GRANTED", status: "active",
 };
 const change = {
   change_request_id: "change-uuid", site_id: "site-uuid", legacy_change_request_id: 123,

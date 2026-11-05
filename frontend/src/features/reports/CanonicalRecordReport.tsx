@@ -89,6 +89,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
               { title: "Ngày cấp", get: x => (x as CertificateReportItem).issue_date ?? "" },
               { title: "Ngày hết hạn", get: x => (x as CertificateReportItem).expiry_date ?? "" },
               { title: "Trạng thái version", get: x => (x as CertificateReportItem).lifecycle_state ?? "" },
+              { title: "Tình trạng GCN", get: x => (x as CertificateReportItem).status },
             ]
           : [
               { title: "Change Request UUID", get: x => (x as ChangeRequestReportItem).change_request_id },
@@ -156,13 +157,13 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
         : rows.length === 0 ? <p>Không có kết quả phù hợp.</p>
         : <div className="table-scroll"><table className="dense-table"><thead><tr>
           <th>{isCert ? "Số GCN" : "Yêu cầu"}</th><th>Cơ sở</th><th>Công ty</th>
-          {isCert ? <><th>GxP</th><th>Ngày cấp</th><th>Hạn GCN</th><th>Trạng thái version</th></>
+          {isCert ? <><th>GxP</th><th>Ngày cấp</th><th>Hạn GCN</th><th>Tình trạng GCN</th><th>Trạng thái version</th></>
             : <><th>Nội dung/phạm vi</th><th>Ngày gửi</th><th>Trạng thái</th>{showDocumentsLink && <th>Tài liệu</th>}</>}
         </tr></thead><tbody>
           {isCert ? (rows as CertificateReportItem[]).map(item => <tr key={item.certificate_id}>
             <td>{["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? <Link className="text-link" to={certificateLocation(item)}>{item.certificate_number ?? item.certificate_id}</Link> : <span>{item.certificate_number ?? item.certificate_id} (chưa hỗ trợ mở trực tiếp)</span>}</td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td>
-            <td>{item.issue_date ?? "—"}</td><td>{item.expiry_date ?? "—"}</td><td>{item.lifecycle_state ?? "Chưa xác minh"}</td>
+            <td>{item.issue_date ?? "—"}</td><td>{item.expiry_date ?? "—"}</td><td>{item.status === "expired" ? "Hết hạn" : "Hiện hành"}</td><td>{item.lifecycle_state ?? "Chưa xác minh"}</td>
           </tr>) : (rows as ChangeRequestReportItem[]).map(item => <tr key={item.change_request_id}>
             <td><Link className="text-link" to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.scope_label ?? "—"}</td>

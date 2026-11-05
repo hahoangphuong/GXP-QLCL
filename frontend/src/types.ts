@@ -158,6 +158,7 @@ export type CertificateReportItem = {
   issue_date: string | null;
   expiry_date: string | null;
   lifecycle_state: string | null;
+  status: string;
 };
 export type CertificateReportPage = { items: CertificateReportItem[]; total_count: number; offset: number; limit: number };
 

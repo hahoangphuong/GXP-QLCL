@@ -108,6 +108,7 @@ class CertificateReportItemRead(BaseModel):
     issue_date: date | None
     expiry_date: date | None
     lifecycle_state: str | None
+    status: str
 
 
 class CertificateReportPageRead(BaseModel):

@@ -104,6 +104,15 @@ def test_certificate_report_rejects_multiple_latest_versions_even_outside_window
     assert conflict.value.status_code == 409
 
 
+def test_certificate_status_uses_existing_current_certificate_policy(session):
+    row = cert_report(session)["items"][0]
+    version = session.get(CertificateVersion, row["certificate_version_id"])
+    version.expiry_date = date.today() - timedelta(days=1)
+    session.flush()
+    all_current = cert_report(session, expiry_days=None)["items"]
+    assert next(item for item in all_current if item["certificate_id"] == row["certificate_id"])["status"] == "expired"
+
+
 def test_change_report_is_per_request_site_owned_no_inferred_gxp(session):
     page = change_report(session)
     assert page["total_count"] == 2

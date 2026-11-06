@@ -19,7 +19,7 @@ export function parseCaseReportUrl(params: URLSearchParams, inspection: boolean,
     && (!filters.state || (inspection ? inspectionStates : caseStates).includes(filters.state))
     && (!year || (/^\d{4}$/.test(year) && Number(year) >= 1900 && Number(year) <= 9999))
     && /^(0|[1-9]\d*)$/.test(raw) && Number.isSafeInteger(offset) && offset % 100 === 0
-    && filters.q.length <= 200 && [...filters.q].every(c => c.charCodeAt(0) >= 32 && c.charCodeAt(0) !== 127)
+    && filters.q.length <= 200 && [...filters.q].every(c => { const code = c.charCodeAt(0); return code >= 32 && (code < 127 || code > 159); })
     && !params.has("expiry_days") && !params.has("number");
   return { filters, offset: valid ? offset : 0, valid };
 }

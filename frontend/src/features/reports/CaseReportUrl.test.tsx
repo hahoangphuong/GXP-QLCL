@@ -43,7 +43,7 @@ it("round-trips pagination and resets offset when a new filter is applied", asyn
   fireEvent.change(screen.getByLabelText("Cơ sở, công ty hoặc mã hồ sơ"), { target: { value: "new" } }); fireEvent.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
   await waitFor(() => expect(screen.getByTestId("url")).not.toHaveTextContent("offset=100"));
 });
-it.each(["offset=-1", "offset=1", "offset=1.5", "offset=9007199254740992", "gxp_type=GSP", "state=bad", "opened_year=1899", "opened_year=20xx", "state=planned&state=draft", "case_state=", "case_state=awaiting_certificate_decision&state=planned", `q=${"x".repeat(201)}`])("rejects invalid URL %s without fetching", async query => {
+it.each(["offset=-1", "offset=1", "offset=1.5", "offset=9007199254740992", "gxp_type=GSP", "state=bad", "opened_year=1899", "opened_year=20xx", "state=planned&state=draft", "case_state=", "case_state=awaiting_certificate_decision&state=planned", "q=%0A", "q=%C2%85", `q=${"x".repeat(201)}`])("rejects invalid URL %s without fetching", async query => {
   render(<MemoryRouter initialEntries={[`/reports?report=cases&${query}`]}><CaseReport access={access} inspectionQueue={false} urlState /></MemoryRouter>);
   expect(await screen.findByRole("alert")).toHaveTextContent("không hợp lệ");
   expect(getCaseReport).not.toHaveBeenCalled();

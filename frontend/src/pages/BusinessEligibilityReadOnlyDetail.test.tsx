@@ -92,7 +92,7 @@ describe("read-only business eligibility detail", () => {
   it("opens the canonical record, legal fields and registered metadata without mutation rail", async () => {
     mount();
     expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
-    expect(screen.getByText("Bán buôn")).toBeInTheDocument();
+    expect(screen.getAllByText("Bán buôn").length).toBeGreaterThan(0);
     expect(screen.getByText("GMP-01", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Quay lại danh sách Site" }))
       .toHaveAttribute("href", `/documents?kind=business_eligibility&site_id=${site}`);

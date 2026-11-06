@@ -8,7 +8,7 @@ import {
 } from "../../lib/api";
 import type { DocumentOwnerMetadataInventory, StubAuthState } from "../../types";
 import { CertificateDocumentMetadata } from "./CertificateDocumentMetadata";
-import { useCertificateDocumentMetadata } from "./useCertificateDocumentMetadata";
+import { useCertificateDocumentMetadata, type CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 vi.mock("../../lib/api", () => ({
   getBusinessEligibilityDocumentMetadata: vi.fn(),
@@ -182,7 +182,8 @@ describe("access-bound certificate document metadata ownership", () => {
 
   it("does not reuse old metadata on a same-principal permission role or authentication mode change", async () => {
     loadGxp.mockResolvedValue(inventory("gxp"));
-    const { result, rerender } = renderHook(({ principal, stub }: { principal: StubAuthState; stub: boolean }) =>
+    const { result, rerender } = renderHook<CertificateDocumentMetadataState, { principal: StubAuthState; stub: boolean }>(
+      ({ principal, stub }) =>
       useCertificateDocumentMetadata("gxp", "fixed-context", "gxp-a", principal, stub, null), {
       initialProps: { principal: { username: "reader", role: "reader" } as StubAuthState, stub: true },
     });

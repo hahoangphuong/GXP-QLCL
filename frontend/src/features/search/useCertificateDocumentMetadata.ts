@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   getBusinessEligibilityDocumentMetadata,
@@ -23,31 +23,35 @@ export function useCertificateDocumentMetadata(
   useStubAuth: boolean,
   bearerToken: string | null,
 ): CertificateDocumentMetadataState {
-  const key = context && ownerId ? JSON.stringify([context, kind, ownerId]) : null;
-  const [request, setRequest] = useState<{ key: string; state: CertificateDocumentMetadataState } | null>(null);
+  // Access identity is part of the read owner, not just its effect dependencies.
+  // Never retain a previous principal's metadata during a token/role/session switch.
+  // A transient object avoids serializing bearer credentials into a state key.
+  const owner = useMemo(() => context && ownerId ? {} : null, [
+    context, kind, ownerId, auth.username, auth.role, useStubAuth, bearerToken,
+  ]);
+  const [request, setRequest] = useState<{ owner: object; state: CertificateDocumentMetadataState } | null>(null);
 
   useEffect(() => {
-    if (!key || !ownerId) return;
+    if (!owner || !ownerId) return;
     const controller = new AbortController();
     let cancelled = false;
-    const owner = { key };
-    setRequest({ ...owner, state: { status: "loading" } });
+    setRequest({ owner, state: { status: "loading" } });
     const load = kind === "gxp" ? getGxpCertificateDocumentMetadata : getBusinessEligibilityDocumentMetadata;
     void load(ownerId, auth, useStubAuth, bearerToken, controller.signal)
       .then(data => {
         if (cancelled) return;
-        setRequest({ ...owner, state: validCertificateDocumentInventory(data, kind === "gxp" ? "certificate" : "business_eligibility_certificate", ownerId)
+        setRequest({ owner, state: validCertificateDocumentInventory(data, kind === "gxp" ? "certificate" : "business_eligibility_certificate", ownerId)
           ? { status: "ready", data }
           : { status: "error", httpStatus: null } });
       })
       .catch(error => {
         if (cancelled) return;
         const status = (error as { status?: unknown } | null)?.status;
-        setRequest({ ...owner, state: { status: "error", httpStatus: typeof status === "number" ? status : null } });
+        setRequest({ owner, state: { status: "error", httpStatus: typeof status === "number" ? status : null } });
       });
     return () => { cancelled = true; controller.abort(); };
-  }, [key, ownerId, kind, auth.role, auth.username, useStubAuth, bearerToken]);
+  }, [owner, ownerId, kind, auth.role, auth.username, useStubAuth, bearerToken]);
 
-  if (!key) return { status: "idle" };
-  return request?.key === key ? request.state : { status: "loading" };
+  if (!owner) return { status: "idle" };
+  return request?.owner === owner ? request.state : { status: "loading" };
 }

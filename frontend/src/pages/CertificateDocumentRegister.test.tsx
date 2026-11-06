@@ -168,6 +168,44 @@ describe("certificate document metadata register", () => {
     expect(getGxpCertificateDocumentMetadata).not.toHaveBeenCalled();
   });
 
+  it("immediately hides old registered metadata during same UUID credential reauthentication", async () => {
+    let resolveNew!: (value: DocumentOwnerMetadataInventory) => void;
+    vi.mocked(getGxpCertificateDocumentMetadata)
+      .mockResolvedValueOnce(metadata())
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve; }));
+    const renderPage = (credential: ApiAccess) => <MemoryRouter initialEntries={["/documents/certificates/cert-1"]}>
+      <Routes><Route path="/documents/certificates/:certificateId"
+        element={<CertificateDocumentRegister access={credential} kind="certificate" />} /></Routes>
+    </MemoryRouter>;
+    const view = render(renderPage(access));
+    expect(await screen.findByText("Tệp đã đăng ký")).toBeInTheDocument();
+    view.rerender(renderPage({
+      ...access, bearerToken: "new-token", accessGeneration: 2,
+      auth: { username: "new-reader", role: "reader" },
+    }));
+    expect(screen.queryByText("Tệp đã đăng ký")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Đang tải metadata");
+    await waitFor(() => expect(getGxpCertificateDocumentMetadata).toHaveBeenCalledTimes(2));
+    resolveNew({ ...metadata(), documents: [{
+      ...metadata().documents[0], title: "Tài liệu phiên mới",
+    }] });
+    expect(await screen.findByText("Tài liệu phiên mới")).toBeInTheDocument();
+    expect(screen.queryByText("Tệp đã đăng ký")).not.toBeInTheDocument();
+  });
+
+  it("clears verified document rows when the same owner loses secure API access", async () => {
+    const renderPage = (credential: ApiAccess) => <MemoryRouter initialEntries={["/documents/certificates/cert-1"]}>
+      <Routes><Route path="/documents/certificates/:certificateId"
+        element={<CertificateDocumentRegister access={credential} kind="certificate" />} /></Routes>
+    </MemoryRouter>;
+    const view = render(renderPage(access));
+    expect(await screen.findByText("Tệp đã đăng ký")).toBeInTheDocument();
+    view.rerender(renderPage({ ...access, canLoadSecureApi: false, accessGeneration: 2 }));
+    expect(screen.getByText("Cần đăng nhập")).toBeInTheDocument();
+    expect(screen.queryByText("Tệp đã đăng ký")).not.toBeInTheDocument();
+    expect(getGxpCertificateDocumentMetadata).toHaveBeenCalledTimes(1);
+  });
+
   it("discards stale metadata after navigating to another certificate", async () => {
     let resolveOld!: (value: DocumentOwnerMetadataInventory) => void;
     vi.mocked(getGxpCertificateDocumentMetadata).mockImplementation(id =>

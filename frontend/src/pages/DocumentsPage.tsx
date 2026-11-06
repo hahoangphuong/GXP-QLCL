@@ -8,6 +8,7 @@ import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
 import { hasCurrentActiveDocumentVersion, safeDocumentDownloadName, resolveDocumentCreation } from "../features/documents/documentActions";
+import { EligibilitySiteDocumentBrowser } from "./EligibilitySiteDocumentBrowser";
 
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -117,7 +118,7 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
       : kind === "certificates"
         ? <><p className="muted-copy">Chọn GCN từ danh sách hiện hành để xem metadata tài liệu đã đăng ký theo Certificate UUID. Không xác minh bản gốc, chữ ký hoặc mở tải binary.</p>
             <CanonicalRecordReport key={kind} access={access} kind="certificates" initialCertificateExpiryDays="" /></>
-        : <section className="panel"><p className="muted-copy">Nhập UUID giấy đủ điều kiện kinh doanh dược để xem metadata tài liệu đã đăng ký theo API được phân quyền. Chưa xác minh tệp gốc hoặc chữ ký; không có chức năng tải binary chứng nhận.</p></section>}
+        : <EligibilitySiteDocumentBrowser key={kind} access={access} />}
   </section>;
 }
 

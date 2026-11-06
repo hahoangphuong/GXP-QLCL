@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { listSiteBusinessEligibilityCertificates } from "../lib/api";
 import type { BusinessEligibilityList, BusinessEligibilityListItem } from "../types";
@@ -24,9 +24,12 @@ function verifiedInventory(value: BusinessEligibilityList, siteId: string): Busi
 /** Read-only site-scoped discovery: never promotes a legacy number to a Certificate UUID. */
 export function EligibilitySiteDocumentBrowser({ access }: { access: ApiAccess }) {
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
-  const [draftSite, setDraftSite] = useState("");
-  const [siteId, setSiteId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedSite = searchParams.get("site_id");
+  const siteId = requestedSite && UUID.test(requestedSite) ? requestedSite : "";
+  const [draftSite, setDraftSite] = useState(siteId);
   const [inputError, setInputError] = useState<string | null>(null);
+  useEffect(() => { setDraftSite(siteId); setInputError(null); }, [siteId]);
   const owner = useMemo(() => ({}), [siteId, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
   const [result, setResult] = useState<{
     owner: object; rows: BusinessEligibilityListItem[] | null; error: string | null;
@@ -55,7 +58,12 @@ export function EligibilitySiteDocumentBrowser({ access }: { access: ApiAccess }
       return;
     }
     setInputError(null);
-    setSiteId(nextSite);
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.set("kind", "business_eligibility");
+      next.set("site_id", nextSite);
+      return next;
+    });
   }
 
   if (!canLoadSecureApi) return <p>Cần đăng nhập để tra cứu chứng nhận của Site.</p>;
@@ -70,7 +78,7 @@ export function EligibilitySiteDocumentBrowser({ access }: { access: ApiAccess }
           aria-invalid={Boolean(inputError)} placeholder="UUID cơ sở" />
         <button type="submit">Tra cứu theo Site</button>
       </div>
-      {inputError && <p role="alert">{inputError}</p>}
+      {(inputError || (requestedSite && !siteId ? "Site UUID trong đường dẫn không hợp lệ." : null)) && <p role="alert">{inputError || "Site UUID trong đường dẫn không hợp lệ."}</p>}
     </form>
     {siteId && (!current ? <p role="status">Đang tải giấy đủ điều kiện của Site...</p>
       : current.error ? <p role="alert">{current.error}</p>
@@ -81,7 +89,7 @@ export function EligibilitySiteDocumentBrowser({ access }: { access: ApiAccess }
           <td>{item.certificate_number ?? "Chưa có số giấy"}</td>
           <td>{item.issued_on ?? "—"}</td>
           <td>{item.current_status_text ?? "Chưa ghi nhận"}</td>
-          <td><Link className="text-link" to={`/documents/business-eligibility-certificates/${encodeURIComponent(item.business_eligibility_certificate_id)}`}>Xem metadata</Link></td>
+          <td><Link className="text-link" to={`/documents/business-eligibility-certificates/${encodeURIComponent(item.business_eligibility_certificate_id)}?${new URLSearchParams({ return_site_id: siteId })}`}>Xem metadata</Link></td>
         </tr>)}</tbody>
       </table></div>)}
   </section>;

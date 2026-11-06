@@ -10,6 +10,46 @@ type Filters = { gxp_type: string; expiry_days: string; state: string; q: string
 type Page = CertificateReportPage | ChangeRequestReportPage;
 const EMPTY: Filters = { gxp_type: "", expiry_days: "90", state: "", q: "", number: "" };
 
+// Both report endpoints return a full slice at the requested default limit;
+// export returns one bounded, complete snapshot with limit 10000.
+function validatedPage(page: Page, kind: Kind, filters: Filters, expectedOffset: number, isExport: boolean): Page {
+  const expectedLimit = isExport ? 10000 : 100;
+  if (!page || !Array.isArray(page.items) || page.offset !== expectedOffset
+    || !Number.isSafeInteger(page.total_count) || page.total_count < 0
+    || page.limit !== expectedLimit || page.offset > page.total_count
+    || page.items.length !== Math.min(expectedLimit, page.total_count - page.offset)
+    || (isExport && page.total_count > expectedLimit)) {
+    throw new Error("API trả về phân trang báo cáo không đầy đủ hoặc không hợp lệ.");
+  }
+  const ids = new Set<string>();
+  const validId = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.trim() === value;
+  for (const row of page.items) {
+    if (!row || !validId(row.site_id)) throw new Error("Báo cáo thiếu Site canonical.");
+    const item = row as CertificateReportItem & ChangeRequestReportItem;
+    const id = kind === "certificates" ? item.certificate_id : item.change_request_id;
+    if (!validId(id) || ids.has(id)) throw new Error("Báo cáo có định danh thiếu hoặc trùng.");
+    ids.add(id);
+    if (kind === "certificates") {
+      if (!validId(item.certificate_version_id) || !validId(item.result_key) || !validId(item.gxp_type)
+        || !["active", "expired"].includes(item.status)
+        || (filters.gxp_type && filters.gxp_type !== item.gxp_type)) {
+        throw new Error("Chứng nhận có version, ngữ cảnh hoặc loại GxP không nhất quán.");
+      }
+      // SQL ILIKE supports wildcards and database-specific Unicode collation.
+      // Only check literal ASCII when JavaScript and SQL semantics agree.
+      if (filters.number && (item.certificate_number === null || typeof item.certificate_number !== "string"
+        || (/^[\x20-\x7e]+$/.test(filters.number) && !/[%_\\]/.test(filters.number)
+          && /^[\x20-\x7e]*$/.test(item.certificate_number)
+          && !item.certificate_number.toLowerCase().includes(filters.number.toLowerCase())))) {
+        throw new Error("Số chứng nhận không khớp bộ lọc.");
+      }
+    } else if (!['received', 'under_review'].includes(item.state) || (filters.state && filters.state !== item.state)) {
+      throw new Error("Trạng thái yêu cầu thay đổi không khớp bộ lọc.");
+    }
+  }
+  return page;
+}
+
 function certificateLocation(item: CertificateReportItem): string {
   const params = new URLSearchParams({ site_id: item.site_id, result_key: item.result_key,
     gxp_type: item.gxp_type, certificate_id: item.certificate_id, facility_tab: "Giấy chứng nhận GxP" });
@@ -26,12 +66,12 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
   const [draft, setDraft] = useState<Filters>(EMPTY);
   const [active, setActive] = useState<Filters>(EMPTY);
   const [offset, setOffset] = useState(0);
-  const [record, setRecord] = useState<{ owner: object; key: string; page: Page | null; error: string | null } | null>(null);
+  const requestOwner = useMemo(() => ({}), [owner, active, offset]);
+  const [record, setRecord] = useState<{ owner: object; page: Page | null; error: string | null } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const guard = useRef<object | null>(null);
-  const key = JSON.stringify([active, offset]);
-  const current = record?.owner === owner && record.key === key ? record : null;
+  const current = record?.owner === requestOwner ? record : null;
   const fetchPage = (filters: Filters, isExport: boolean, pageOffset: number): Promise<Page> =>
     kind === "certificates"
       ? getCertificateReport({ ...filters, export: isExport, offset: pageOffset }, auth, useStubAuth, bearerToken)
@@ -47,12 +87,11 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
   useEffect(() => {
     if (!canLoadSecureApi) return;
     let live = true;
-    void fetchPage(active, false, offset).then(
-      page => { if (live) setRecord({ owner, key, page, error: null }); },
-      (error: Error) => { if (live) setRecord({ owner, key, page: null, error: error.message }); },
-    );
+    void fetchPage(active, false, offset).then(page => {
+      if (live) setRecord({ owner: requestOwner, page: validatedPage(page, kind, active, offset, false), error: null });
+    }).catch((error: Error) => { if (live) setRecord({ owner: requestOwner, page: null, error: error.message }); });
     return () => { live = false; };
-  }, [active, offset, owner, key, auth, useStubAuth, bearerToken, canLoadSecureApi, kind]);
+  }, [active, offset, owner, requestOwner, auth, useStubAuth, bearerToken, canLoadSecureApi, kind]);
 
   function apply(event: FormEvent) {
     event.preventDefault();
@@ -71,13 +110,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
     try {
       const result = await fetchPage(active, true, 0);
       if (ownerRef.current !== owner || guard.current !== token) return;
-      const ids = result.items.map(item => kind === "certificates"
-        ? (item as CertificateReportItem).certificate_id
-        : (item as ChangeRequestReportItem).change_request_id);
-      if (result.offset !== 0 || result.total_count > 10000 || result.items.length !== result.total_count
-        || ids.some(id => !id) || new Set(ids).size !== ids.length) {
-        throw new Error("Dữ liệu xuất thiếu, vượt giới hạn hoặc trùng bản ghi.");
-      }
+      validatedPage(result, kind, active, 0, true);
       const columns: { title: string; get: (item: CertificateReportItem | ChangeRequestReportItem) => string }[] =
         kind === "certificates"
           ? [
@@ -112,7 +145,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false 
         document.body.appendChild(anchor); anchor.click(); anchor.remove();
       } finally { URL.revokeObjectURL(url); }
     } catch (error) {
-      if (ownerRef.current === owner) setExportError(error instanceof Error ? error.message : "Không thể xuất báo cáo.");
+      if (ownerRef.current === owner && guard.current === token) setExportError(error instanceof Error ? error.message : "Không thể xuất báo cáo.");
     } finally {
       if (guard.current === token) {
         guard.current = null;

@@ -65,7 +65,7 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
   function selectReport(next: ReportKind) {
     setSearchParams(params => {
       const updated = new URLSearchParams(params);
-      for (const key of ["gxp_type", "expiry_days", "number", "q", "state", "offset"]) updated.delete(key);
+      for (const key of ["gxp_type", "expiry_days", "number", "q", "state", "opened_year", "offset"]) updated.delete(key);
       updated.set("report", next);
       // A report-kind change starts a fresh filter context, not a stale Case queue.
       updated.delete("case_state");
@@ -73,6 +73,7 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
     });
   }
   if (statusError) return <ErrorState message={statusError} />;
+  if (searchParams.getAll("report").length > 1 || (searchParams.has("report") && !REPORT_KINDS.has(searchParams.get("report") as ReportKind))) return <p role="alert">Loại báo cáo không hợp lệ.</p>;
   return <>
     <section className="panel"><label>Loại báo cáo <select value={report} onChange={event => selectReport(event.target.value as ReportKind)}>
       <option value="facilities">Danh sách cơ sở</option>
@@ -86,7 +87,7 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
         <section className="page-section"><h2>{report === "certificates" ? "GCN GxP hiện hành" : "Yêu cầu thay đổi chưa hoàn tất"}</h2>
           <CanonicalRecordReport key={report} access={access} kind={report} urlState showDocumentsLink={report === "change_requests"} /></section> :
       <section className="page-section"><h2>{report === "inspection" ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h2><CaseReport key={report + ":" + initialCaseState} access={access}
-        inspectionQueue={report === "inspection"} showDocumentsLink initialState={initialCaseState} /></section>}
+        inspectionQueue={report === "inspection"} showDocumentsLink initialState={initialCaseState} urlState /></section>}
   </>;
 }
 

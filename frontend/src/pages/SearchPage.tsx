@@ -13,6 +13,7 @@ import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPane
 import { FacilityTable } from "../features/search/FacilityTable";
 import { caseWorkflowQueue } from "../features/search/caseNavigation";
 import { resolveDocumentWorkspace } from "../features/documents/documentNavigation";
+import { caseReportReturn } from "../features/reports/caseReportUrl";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { ReassessmentDialog } from "../features/search/ReassessmentDialog";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
@@ -283,6 +284,8 @@ export function SearchPage({
   const [searchParams, setSearchParams] = useSearchParams();
   const returnQueue = caseWorkflowQueue(searchParams.get("return_queue"));
   const location = useLocation();
+  const returnHint = caseReportReturn(location.state);
+  const reportReturn = returnHint?.startsWith("/workflow?") && new URLSearchParams(returnHint.slice("/workflow?".length)).get("queue") !== returnQueue ? null : returnHint;
   const navigationType = useNavigationType();
   const urlSyncOwner = useId();
   const searchSignature = searchParams.toString();
@@ -2584,7 +2587,8 @@ export function SearchPage({
 
       <div className="search-detail-area">
         <div className="search-context-actions">
-          {returnQueue && <Link className="text-link" to={`/workflow?queue=${returnQueue}`}>Quay lại hàng đợi</Link>}
+          {returnQueue && <Link className="text-link" target={reportReturn?.startsWith("/workflow?") ? "_blank" : undefined} rel={reportReturn?.startsWith("/workflow?") ? "noopener noreferrer" : undefined} to={reportReturn?.startsWith("/workflow?") && location.state?.caseReportCaseId === selectedHistoryId && new URLSearchParams(reportReturn.slice("/workflow?".length)).get("queue") === returnQueue ? reportReturn : `/workflow?queue=${returnQueue}`}>Quay lại hàng đợi</Link>}
+          {reportReturn && location.state?.caseReportCaseId === selectedHistoryId && selectedHistory?.source_type === "case" && <Link className="text-link" to={reportReturn} target="_blank" rel="noopener noreferrer">Mở lại báo cáo hồ sơ (tab mới)</Link>}
           {selectedHistory?.source_type === "case" && <Link className="text-link" target="_blank" rel="noopener noreferrer" to={`/documents/cases/${encodeURIComponent(selectedHistory.id)}`}>Mở danh mục tài liệu (tab mới)</Link>}
           <ActionCard
             actions={workspaceLoading || workspaceError || deepLinkError || !selectedResult

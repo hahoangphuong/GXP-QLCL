@@ -12,7 +12,7 @@ const access: ApiAccess = { auth: { username: "reader", role: "reader" },
 
 function Destination() {
   const location = useLocation();
-  return <output data-testid="resolved-url">{location.pathname + location.search}</output>;
+  return <><output data-testid="resolved-url">{location.pathname + location.search}</output><output data-testid="return-hint">{location.state?.caseReportReturn ?? ""}</output></>;
 }
 function mount(url: string, currentAccess = access) {
   return render(<MemoryRouter initialEntries={[url]}><Routes>
@@ -29,6 +29,23 @@ function workspace(id: string, site = "site-uuid", state = "planned") {
 beforeEach(() => vi.mocked(getCaseWorkspace).mockReset());
 
 describe("canonical Case UUID entry", () => {
+  it("preserves the validated report return alongside its workflow queue", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
+    render(<MemoryRouter initialEntries={[{ pathname: "/cases/case-uuid", search: "?return_queue=inspection", state: { caseReportReturn: "/workflow?queue=inspection&state=planned&offset=100" } }]}><Routes><Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} /><Route path="/search" element={<Destination />} /></Routes></MemoryRouter>);
+    expect(await screen.findByTestId("return-hint")).toHaveTextContent("/workflow?queue=inspection&state=planned&offset=100");
+    expect(screen.getByTestId("resolved-url")).toHaveTextContent("return_queue=inspection");
+  });
+  it("rejects an external return hint", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
+    render(<MemoryRouter initialEntries={[{ pathname: "/cases/case-uuid", state: { caseReportReturn: "https://attacker.example/" } }]}><Routes><Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} /><Route path="/search" element={<Destination />} /></Routes></MemoryRouter>);
+    expect(await screen.findByTestId("return-hint")).toBeEmptyDOMElement();
+  });
+  it("does not adopt a return hint for a different workflow queue", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
+    render(<MemoryRouter initialEntries={[{ pathname: "/cases/case-uuid", search: "?return_queue=active", state: { caseReportReturn: "/workflow?queue=inspection" } }]}><Routes><Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} /><Route path="/search" element={<Destination />} /></Routes></MemoryRouter>);
+    expect(await screen.findByTestId("return-hint")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("resolved-url")).toHaveTextContent("return_queue=active");
+  });
   it("resolves a Case to exact site, GxP, line and history selection", async () => {
     vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
     mount("/cases/case-uuid");

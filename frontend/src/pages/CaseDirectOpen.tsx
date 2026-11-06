@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { getCaseWorkspace } from "../lib/api";
 import type { CaseWorkspace } from "../types";
 import { caseWorkflowQueue, type CaseWorkflowQueue } from "../features/search/caseNavigation";
 import { resolveDocumentWorkspace } from "../features/documents/documentNavigation";
+import { caseReportReturn } from "../features/reports/caseReportUrl";
 
 type Resolved = { owner: object; location: string | null; error: string | null };
 
@@ -64,8 +65,11 @@ function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: Cas
 /** Resolve a Case UUID from the backend before handing it to the editing workspace. */
 export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   const { caseId } = useParams();
+  const location = useLocation();
   const [params] = useSearchParams();
   const queue = caseWorkflowQueue(params.get("return_queue"));
+  const returnHint = caseReportReturn(location.state);
+  const reportReturn = returnHint?.startsWith("/workflow?") && new URLSearchParams(returnHint.slice("/workflow?".length)).get("queue") !== queue ? null : returnHint;
   const documentKey = params.get("document_key");
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [caseId, queue, documentKey, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
@@ -90,7 +94,7 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
 
   if (!canLoadSecureApi) return <section className="page-section"><h2>Cần đăng nhập</h2><p>Đăng nhập để mở hồ sơ được phân quyền.</p></section>;
   if (!caseId) return <p>Thiếu Case UUID.</p>;
-  if (current?.location) return <Navigate to={current.location} replace />;
+  if (current?.location) return <Navigate to={current.location} replace state={reportReturn ? { caseReportReturn: reportReturn, caseReportCaseId: caseId } : undefined} />;
   return <section className="page-section">
     <h2>Định vị hồ sơ</h2>
     {current?.error ? <p role="alert">{current.error}</p> : <p role="status">Đang xác minh Case UUID và ngữ cảnh cơ sở...</p>}

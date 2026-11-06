@@ -71,12 +71,12 @@ describe("operator workflow landing", () => {
     expect(screen.getByTestId("case-queue")).toHaveTextContent("false:awaiting_certificate_decision:true");
   });
 
-  it("ignores unknown or malformed URL queue selections instead of guessing a business category", () => {
+  it("rejects unknown or malformed URL queue selections before loading a category", () => {
     render(<MemoryRouter initialEntries={["/workflow?queue=GSP&queue=expiring"]}>
       <WorkflowPage access={access} statusError={null} />
     </MemoryRouter>);
-    expect(screen.getByTestId("case-queue")).toHaveTextContent("false::true");
-    expect(screen.getByRole("button", { name: "Hồ sơ đang xử lý" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("không hợp lệ");
+    expect(screen.queryByTestId("case-queue")).not.toBeInTheDocument();
   });
 
   it("keeps full-report navigation in the corresponding operator category", () => {

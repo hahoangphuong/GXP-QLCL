@@ -203,4 +203,46 @@ describe("ReportsPage operator workflow", () => {
     expect(screen.getByText("Cần đăng nhập")).toBeInTheDocument();
     expect(vi.mocked(searchFacilities)).not.toHaveBeenCalled();
   });
+
+  it("restores facility report filters and pagination from a bookmark", async () => {
+    vi.mocked(searchFacilities).mockImplementation(async filters => ({
+      items: [row(100)], offset: filters?.offset ?? 0, limit: 100, total_count: 101,
+    }));
+    render(<MemoryRouter initialEntries={["/reports?report=facilities&gxp_type=GLP&q=H%C3%A0&province=HN&offset=100"]}>
+      <ReportsPage access={access} statusError={null} /><NavigationHistory />
+    </MemoryRouter>);
+    expect(await screen.findByText("101 dòng kết quả")).toBeInTheDocument();
+    expect(screen.getByLabelText("Loại GxP")).toHaveValue("GLP");
+    expect(screen.getByLabelText("Từ khóa")).toHaveValue("Hà");
+    expect(screen.getByLabelText("Tỉnh/thành")).toHaveValue("HN");
+    expect(screen.getByText("Trang 2 / 2")).toBeInTheDocument();
+    expect(vi.mocked(searchFacilities).mock.calls.every(([filters]) =>
+      filters?.gxp_type === "GLP" && filters?.q === "Hà" && filters?.province === "HN" && filters?.offset === 100)).toBe(true);
+  });
+
+  it("does not fetch invalid facility report bookmarks", () => {
+    render(<MemoryRouter initialEntries={["/reports?report=facilities&offset=101"]}>
+      <ReportsPage access={access} statusError={null} />
+    </MemoryRouter>);
+    expect(screen.getByRole("alert")).toHaveTextContent("URL báo cáo cơ sở không hợp lệ");
+    expect(vi.mocked(searchFacilities)).not.toHaveBeenCalled();
+  });
+
+  it("keeps unsubmitted facility drafts separate from applied URL filters and restores history", async () => {
+    vi.mocked(searchFacilities).mockResolvedValue({ items: [], offset: 0, limit: 100, total_count: 0 });
+    render(<MemoryRouter initialEntries={["/reports?report=facilities"]}>
+      <ReportsPage access={access} statusError={null} /><NavigationHistory />
+    </MemoryRouter>);
+    await screen.findByText("0 dòng kết quả");
+    fireEvent.change(screen.getByLabelText("Loại GxP"), { target: { value: "GLP" } });
+    expect(screen.getByTestId("report-url")).not.toHaveTextContent("gxp_type=GLP");
+    fireEvent.submit(screen.getByRole("button", { name: "Áp dụng bộ lọc" }).closest("form")!);
+    await waitFor(() => expect(screen.getByTestId("report-url")).toHaveTextContent("gxp_type=GLP"));
+    fireEvent.change(screen.getByLabelText("Loại GxP"), { target: { value: "GMPbb" } });
+    expect(screen.getByTestId("report-url")).not.toHaveTextContent("GMPbb");
+    fireEvent.click(screen.getByRole("button", { name: "Lùi lịch sử" }));
+    expect(screen.getByLabelText("Loại GxP")).toHaveValue("GMP");
+    fireEvent.click(screen.getByRole("button", { name: "Tiến lịch sử" }));
+    expect(screen.getByLabelText("Loại GxP")).toHaveValue("GLP");
+  });
 });

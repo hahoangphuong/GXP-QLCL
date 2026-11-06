@@ -87,7 +87,7 @@ export function CaseApplicationWorkspace({
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useCaseDraftState<FormDraft>("application.draft", currentDraft);
   const [draftVersion, setDraftVersion] = useCaseDraftState("application.draftVersion", caseWorkspace.application.row_version);
-  const [editingField, setEditingField] = useCaseDraftState<"submitted_on" | "dossier_code" | null>("application.editingField", null);
+  const [editingField, setEditingField] = useCaseDraftState<"submitted_on" | "dossier_code" | "applicant_name" | null>("application.editingField", null);
   const [pending, setPending] = useCaseDraftState("application.pending", false);
   const commandLock = useCaseCommandLock("application");
   const requiresReview = commandLock.requiresReview;
@@ -156,7 +156,7 @@ export function CaseApplicationWorkspace({
     try {
       const value = editingField === "submitted_on"
         ? toSubmittedOnPayload(draft.submitted_on)
-        : normalizeText(draft.dossier_code);
+        : normalizeText(draft[editingField]);
       await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
@@ -266,6 +266,30 @@ export function CaseApplicationWorkspace({
               disabled={pending}
               onChange={(event) => setDraft((current) => ({ ...current, dossier_code: event.target.value }))}
               value={draft.dossier_code}
+            />
+          </EditableDetailValue>
+
+          <EditableDetailValue
+            editButtonLabel="Sửa Người nộp hồ sơ"
+            error={editingField === "applicant_name" ? errorMessage : null}
+            isEditing={editingField === "applicant_name"}
+            label="Người nộp hồ sơ"
+            onCancel={cancelEdit}
+            onEdit={() => {
+              setDraftVersion(caseWorkspace.application.row_version);
+              setEditingField("applicant_name");
+              setErrorMessage(null);
+            }}
+            onSave={() => void saveField()}
+            pending={pending}
+            saveDisabled={requiresReview || commandLock.pending}
+            value={caseWorkspace.application.applicant_name}
+          >
+            <input
+              aria-label="Người nộp hồ sơ"
+              disabled={pending}
+              onChange={(event) => setDraft((current) => ({ ...current, applicant_name: event.target.value }))}
+              value={draft.applicant_name}
             />
           </EditableDetailValue>
 

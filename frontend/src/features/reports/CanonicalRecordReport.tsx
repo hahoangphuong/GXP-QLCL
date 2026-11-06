@@ -58,13 +58,13 @@ function certificateLocation(item: CertificateReportItem): string {
   return `/search?${params}`;
 }
 
-export function CanonicalRecordReport({ access, kind, showDocumentsLink = false }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean }) {
+export function CanonicalRecordReport({ access, kind, showDocumentsLink = false, initialCertificateExpiryDays = "90" }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean; initialCertificateExpiryDays?: "90" | "" }) {
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration, kind]);
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const [draft, setDraft] = useState<Filters>(EMPTY);
-  const [active, setActive] = useState<Filters>(EMPTY);
+  const [draft, setDraft] = useState<Filters>(() => ({ ...EMPTY, expiry_days: initialCertificateExpiryDays }));
+  const [active, setActive] = useState<Filters>(() => ({ ...EMPTY, expiry_days: initialCertificateExpiryDays }));
   const [offset, setOffset] = useState(0);
   const requestOwner = useMemo(() => ({}), [owner, active, offset]);
   const [record, setRecord] = useState<{ owner: object; page: Page | null; error: string | null } | null>(null);

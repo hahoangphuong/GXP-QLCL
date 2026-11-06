@@ -10,6 +10,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { AdminSystemStatusPage } from "./pages/AdminSystemStatusPage";
 import { DocumentsPage, DocumentRegister } from "./pages/DocumentsPage";
 import { CertificateDocumentRegister } from "./pages/CertificateDocumentRegister";
+import { BusinessEligibilityReadOnlyDetail } from "./pages/BusinessEligibilityReadOnlyDetail";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { SearchPage } from "./pages/SearchPage";
 import { WorkflowPage } from "./pages/WorkflowPage";
@@ -295,6 +296,7 @@ export function App() {
         <Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister access={apiAccess} kind="change-requests" />} />
         <Route path="/documents/certificates/:certificateId" element={<CertificateDocumentRegister access={apiAccess} kind="certificate" />} />
         <Route path="/documents/business-eligibility-certificates/:eligibilityId" element={<CertificateDocumentRegister access={apiAccess} kind="business_eligibility_certificate" />} />
+        <Route path="/certificates/business-eligibility/:eligibilityId" element={<BusinessEligibilityReadOnlyDetail access={apiAccess} />} />
         <Route path="/reports" element={<ReportsPage access={apiAccess} statusError={statusError} />} />
         <Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={apiAccess} kind="certificates" />} />
         <Route path="/reports/change-requests/:changeRequestId" element={<ChangeRequestReadWorkspace access={apiAccess} />} />

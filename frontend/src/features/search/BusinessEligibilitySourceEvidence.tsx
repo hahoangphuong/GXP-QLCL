@@ -2,6 +2,25 @@ import { useId } from "react";
 import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
 
 const order = ["GMP", "GLP", "GSP", "GDP"] as const;
+/** Excel A1 notation is derived only from recorded 1-based row and column indices. */
+function excelCellAddress(column: number, row: number | null): string | null {
+  if (!Number.isSafeInteger(column) || column < 1 || column > 16384
+    || row === null || !Number.isSafeInteger(row) || row < 1 || row > 1048576) return null;
+  let remaining = column;
+  let letters = "";
+  while (remaining > 0) {
+    remaining -= 1;
+    letters = String.fromCharCode(65 + remaining % 26) + letters;
+    remaining = Math.floor(remaining / 26);
+  }
+  return `${letters}${row}`;
+}
+
+function ExcelCellLocator({ column, row }: { column: number; row: number | null }) {
+  const cell = excelCellAddress(column, row);
+  return <span>{cell ? `${cell} (cột ${column})` : `Không xác định địa chỉ ô (cột ghi nhận: ${column})`}</span>;
+}
+
 
 function failure(status: number | null): string {
   if (status === 401) return "Cần đăng nhập để xem dữ liệu nguồn ĐĐK.";
@@ -51,12 +70,12 @@ export function BusinessEligibilitySourceEvidence({ state }: { state: Eligibilit
           </dl>
           <details className="ddk-source-cell-provenance">
             <summary>Vị trí ô và dấu vân tay nhóm {name}</summary>
-            <p className="workspace-note">Số cột và SHA-256 là metadata nguồn đã ghi nhận, không chứng minh liên kết GxP.</p>
+            <p className="workspace-note">Địa chỉ ô A1 được suy ra từ số hàng và cột do backend ghi nhận; chưa kiểm tra workbook, không chứng minh liên kết GxP. SHA-256 là metadata nguồn đã ghi nhận.</p>
             <dl className="persisted-version-fields">
-              <div><dt>Cột ID CC gốc</dt><dd>{group.id_cc_excel_column}</dd></div>
-              <div><dt>Cột phạm vi chứng nhận</dt><dd>{group.certificate_scope_excel_column}</dd></div>
-              <div><dt>Cột tiêu chuẩn áp dụng</dt><dd>{group.applicable_standard_excel_column}</dd></div>
-              <div><dt>Cột hoạt động kinh doanh</dt><dd>{group.business_activity_excel_column}</dd></div>
+              <div><dt>Ô ID CC gốc (A1)</dt><dd><ExcelCellLocator column={group.id_cc_excel_column} row={state.data.source_row_number} /></dd></div>
+              <div><dt>Ô phạm vi chứng nhận (A1)</dt><dd><ExcelCellLocator column={group.certificate_scope_excel_column} row={state.data.source_row_number} /></dd></div>
+              <div><dt>Ô tiêu chuẩn áp dụng (A1)</dt><dd><ExcelCellLocator column={group.applicable_standard_excel_column} row={state.data.source_row_number} /></dd></div>
+              <div><dt>Ô hoạt động kinh doanh (A1)</dt><dd><ExcelCellLocator column={group.business_activity_excel_column} row={state.data.source_row_number} /></dd></div>
               <div><dt>SHA-256 dữ liệu nhóm ghi nhận</dt><dd>{group.source_values_sha256}</dd></div>
             </dl>
           </details>

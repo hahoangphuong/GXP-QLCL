@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { ApiAccess } from "../App";
-import type { FacilitySearchResult } from "../types";
+import type { FacilitySearchPage, FacilitySearchResult } from "../types";
 import { searchFacilities } from "../lib/api";
 import { ReportsPage } from "./ReportsPage";
 
@@ -250,7 +250,7 @@ describe("ReportsPage operator workflow", () => {
     let releaseExport: ((page: { items: FacilitySearchResult[]; offset: number; limit: number; total_count: number }) => void) | undefined;
     vi.mocked(searchFacilities)
       .mockResolvedValueOnce({ items: [row(0)], offset: 0, limit: 100, total_count: 1 })
-      .mockImplementationOnce(() => new Promise(resolve => { releaseExport = resolve; }));
+      .mockImplementationOnce(() => new Promise<FacilitySearchPage>(resolve => { releaseExport = resolve; }));
     const oldCreate = URL.createObjectURL;
     const create = vi.fn(() => "blob:report-test");
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: create });

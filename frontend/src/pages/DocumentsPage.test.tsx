@@ -1,9 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
-import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
+import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, listSiteBusinessEligibilityCertificates, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { ContextualDocumentAction, DocumentChecklistItem } from "../types";
 import { DocumentsPage, DocumentRegister } from "./DocumentsPage";
 
@@ -355,6 +355,23 @@ describe("contextual document register", () => {
     expect(screen.queryByTestId("change-report")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Site UUID")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tra cứu theo Site" })).toBeInTheDocument();
+  });
+
+  it("opens an eligibility Site bookmark and isolates the Site when changing document kind", async () => {
+    const siteId = "11111111-1111-4111-8111-111111111111";
+    vi.mocked(listSiteBusinessEligibilityCertificates).mockReset().mockResolvedValue({ items: [], issue_readiness: null });
+    function LocationDisplay() { const loc = useLocation(); return <output data-testid="url">{loc.pathname + loc.search}</output>; }
+    render(<MemoryRouter initialEntries={[`/documents?kind=business_eligibility&site_id=${siteId}`]}>
+      <LocationDisplay /><Routes><Route path="/documents" element={<DocumentsPage access={access} statusError={null} />} /></Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("button", { name: "Giấy đủ điều kiện kinh doanh dược" }))
+      .toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText("Site chưa có giấy đủ điều kiện được đăng ký trong hệ thống.")).toBeInTheDocument();
+    expect(listSiteBusinessEligibilityCertificates).toHaveBeenCalledWith(siteId, access.auth, true, null);
+    fireEvent.click(screen.getByRole("button", { name: "GCN GxP" }));
+    expect(screen.getByTestId("url")).toHaveTextContent("/documents?kind=certificates");
+    expect(screen.getByTestId("url")).not.toHaveTextContent("site_id");
+    expect(screen.getByTestId("change-report")).toHaveTextContent("certificates:undefined:all");
   });
 
   it("does not read secure data without a session", () => {

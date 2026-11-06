@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -68,13 +68,23 @@ function validateChecklistOwner(items: DocumentChecklistItem[], kind: Scope, id:
 }
 
 export function DocumentsPage({ access, statusError }: { access: ApiAccess; statusError: string | null }) {
-  const [kind, setKind] = useState<"cases" | "change_requests" | "certificates" | "business_eligibility">("cases");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawKind = searchParams.get("kind");
+  const kind = rawKind === "change_requests" || rawKind === "certificates" || rawKind === "business_eligibility"
+    ? rawKind : "cases";
   const [directId, setDirectId] = useState("");
   const [lookupError, setLookupError] = useState<string | null>(null);
   const navigate = useNavigate();
   function selectKind(next: typeof kind) {
     if (next === kind) return;
-    setKind(next);
+    setSearchParams(previous => {
+      const params = new URLSearchParams(previous);
+      if (next === "cases") params.delete("kind");
+      else params.set("kind", next);
+      // Site belongs exclusively to the eligibility browse context.
+      params.delete("site_id");
+      return params;
+    });
     setDirectId("");
     setLookupError(null);
   }

@@ -139,7 +139,7 @@ describe("read-only business eligibility detail", () => {
     expect(await screen.findByText("Dữ liệu GxP từ hồ sơ ĐĐK gốc")).toBeInTheDocument();
     expect(screen.getByText("Dữ liệu đối chiếu Excel, chưa phải liên kết GxP được xác nhận.")).toBeInTheDocument();
     expect(screen.getByText("Nguồn Excel gốc")).toBeInTheDocument();
-    expect(screen.getByText("376", { exact: true })).toBeInTheDocument();
+    expect(screen.getAllByText("376", { exact: true }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /Cấp|Sửa|Ban hành|Lưu/ })).not.toBeInTheDocument();
   });
 

@@ -265,6 +265,17 @@ export function listSites(auth: StubAuthState, useStubAuth: boolean, bearerToken
   return requestJson<Site[]>("/sites", { auth, useStubAuth, bearerToken });
 }
 
+/** Authorized, bounded name search; returns canonical Site identities, never legacy-ID selection. */
+export function searchSitesByName(
+  query: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<Site[]> {
+  const params = new URLSearchParams({ q: query, limit: "20" });
+  return requestJson<Site[]>(buildApiPath("/sites", params), { auth, useStubAuth, bearerToken });
+}
+
 export function listCases(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseListItem[]> {
   return requestJson<CaseListItem[]>("/cases", { auth, useStubAuth, bearerToken });
 }

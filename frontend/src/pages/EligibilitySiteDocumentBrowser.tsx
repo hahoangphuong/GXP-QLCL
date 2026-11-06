@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { listSiteBusinessEligibilityCertificates } from "../lib/api";
 import type { BusinessEligibilityList, BusinessEligibilityListItem } from "../types";
+import { EligibilitySitePicker } from "./EligibilitySitePicker";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,11 +51,9 @@ export function EligibilitySiteDocumentBrowser({ access }: { access: ApiAccess }
     return () => { live = false; };
   }, [siteId, owner, auth, useStubAuth, bearerToken, canLoadSecureApi]);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextSite = draftSite.trim();
+  function selectSite(nextSite: string) {
     if (!UUID.test(nextSite)) {
-      setInputError("Nhập Site UUID hợp lệ để tra cứu giấy đủ điều kiện.");
+      setInputError("Site UUID được chọn không hợp lệ.");
       return;
     }
     setInputError(null);
@@ -66,10 +65,21 @@ export function EligibilitySiteDocumentBrowser({ access }: { access: ApiAccess }
     });
   }
 
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextSite = draftSite.trim();
+    if (!UUID.test(nextSite)) {
+      setInputError("Nhập Site UUID hợp lệ để tra cứu giấy đủ điều kiện.");
+      return;
+    }
+    selectSite(nextSite);
+  }
+
   if (!canLoadSecureApi) return <p>Cần đăng nhập để tra cứu chứng nhận của Site.</p>;
   return <section className="panel">
     <h3>Tra cứu giấy đủ điều kiện kinh doanh dược theo Site</h3>
-    <p className="muted-copy">Danh sách chỉ đọc từ Site UUID canonical. Chọn giấy để xem metadata đã đăng ký; không xác minh bản gốc, chữ ký hoặc mở tải binary.</p>
+    <p className="muted-copy">Danh sách chỉ đọc theo Site UUID canonical. Có thể tìm cơ sở theo tên hoặc nhập UUID. Chọn giấy để xem chi tiết hoặc metadata; không xác minh bản gốc, chữ ký hoặc tự tải binary.</p>
+    <EligibilitySitePicker access={access} onSelect={selectSite} />
     <form onSubmit={submit}>
       <label htmlFor="eligibility-document-site-id">Site UUID</label>
       <div className="report-actions">

@@ -3,10 +3,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
-import { listSiteBusinessEligibilityCertificates } from "../lib/api";
+import { listSiteBusinessEligibilityCertificates, searchSitesByName } from "../lib/api";
 import { EligibilitySiteDocumentBrowser } from "./EligibilitySiteDocumentBrowser";
 
-vi.mock("../lib/api", () => ({ listSiteBusinessEligibilityCertificates: vi.fn() }));
+vi.mock("../lib/api", () => ({ listSiteBusinessEligibilityCertificates: vi.fn(), searchSitesByName: vi.fn() }));
 
 const siteA = "11111111-1111-4111-8111-111111111111";
 const siteB = "22222222-2222-4222-8222-222222222222";
@@ -38,6 +38,7 @@ const mount = (props = access, path = "/documents") => render(
 
 beforeEach(() => {
   vi.mocked(listSiteBusinessEligibilityCertificates).mockReset().mockResolvedValue(response([row]));
+  vi.mocked(searchSitesByName).mockReset().mockResolvedValue([]);
 });
 
 describe("site-scoped business eligibility document discovery", () => {
@@ -52,6 +53,28 @@ describe("site-scoped business eligibility document discovery", () => {
     expect(screen.getByText("ABC-123")).toBeInTheDocument();
     expect(screen.getByText(/không xác minh bản gốc/)).toBeInTheDocument();
     expect(listSiteBusinessEligibilityCertificates).toHaveBeenCalledWith(siteA, access.auth, true, null);
+  });
+
+  it("selects a name-matched canonical Site and opens its authorized certificate inventory with a bookmark URL", async () => {
+    vi.mocked(searchSitesByName).mockResolvedValueOnce([
+      { id: siteA, company_id: company, site_name: "Cơ sở A", province_name: "Hà Nội", legacy_site_id: 11 },
+      { id: siteB, company_id: company, site_name: "Cơ sở B", province_name: "Đà Nẵng", legacy_site_id: 11 },
+    ]);
+    vi.mocked(listSiteBusinessEligibilityCertificates).mockImplementation(siteId =>
+      Promise.resolve(response([{ ...row, site_id: siteId }])));
+    mount();
+    fireEvent.change(screen.getByLabelText("Tìm cơ sở theo tên"), { target: { value: "Cơ sở" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tìm cơ sở" }));
+    expect(await screen.findByText("Cơ sở B")).toBeInTheDocument();
+    expect(listSiteBusinessEligibilityCertificates).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: `Chọn Site Cơ sở B — ${siteB}` }));
+    expect(await screen.findByRole("link", { name: "Xem chi tiết GCN" }))
+      .toHaveAttribute("href", `/certificates/business-eligibility/${certificate}?site_id=${siteB}`);
+    expect(screen.getByTestId("location")).toHaveTextContent(`kind=business_eligibility&site_id=${siteB}`);
+    expect(screen.getByLabelText("Site UUID")).toHaveValue(siteB);
+    expect(listSiteBusinessEligibilityCertificates).toHaveBeenCalledWith(siteB, access.auth, true, null);
+    expect(screen.getByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteB}`);
   });
 
   it("does not request protected data for malformed Site UUID or signed-out access", () => {

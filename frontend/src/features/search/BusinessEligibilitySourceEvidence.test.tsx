@@ -35,11 +35,11 @@ describe("original ĐĐK source presentation", () => {
   it("keeps four groups, verbatim multiline cells, repeated source tokens and GDP activity without ID CC", () => {
     const { container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
     expect(Array.from(container.querySelectorAll("summary"), node => node.textContent)).toEqual(["GMP", "GLP", "GSP", "GDP"]);
-    const gmp = container.querySelector("details")!;
+    const gmp = container.querySelector("details.ddk-source-group")!;
     expect(gmp.querySelectorAll("dd")[1].textContent).toBe("GMP: dòng 1\n  dòng 2");
     expect(Array.from(gmp.querySelectorAll("li"), node => [node.getAttribute("value"), node.textContent]))
       .toEqual([["1", "17"], ["2", "17"], ["3", "22"]]);
-    const gdp = container.querySelectorAll("details")[3];
+    const gdp = container.querySelectorAll("details.ddk-source-group")[3];
     expect(gdp).toHaveTextContent("GDP: hoạt động nguồn");
     expect(gdp.querySelectorAll("dd")[0]).toHaveTextContent("Ô nguồn trống");
     expect(screen.getByText(/chưa phải liên kết GxP được xác nhận/)).toBeInTheDocument();

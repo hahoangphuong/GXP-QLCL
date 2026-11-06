@@ -57,7 +57,7 @@ export function EligibilitySitePicker({
     event.preventDefault();
     if (!canLoadSecureApi) return;
     const q = query.trim();
-    if (q.length < 2 || q.length > 80 || /[\u0000-\u001f\u007f]/.test(q)) {
+    if (q.length < 2 || q.length > 80 || Array.from(q).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
       setValidation("Nhập từ 2 đến 80 ký tự tên cơ sở hợp lệ.");
       setResult(null);
       return;

@@ -29,7 +29,6 @@ export function validCertificateDocumentInventory(
     seen.add(document.document_id);
     const counts = [document.registered_variant_count, document.registered_version_count, document.registered_current_version_count];
     return counts.every(count => Number.isSafeInteger(count) && count >= 0)
-      && document.registered_current_version_count <= document.registered_version_count
-      && document.registered_version_count >= document.registered_variant_count;
+      && document.registered_current_version_count <= document.registered_version_count;
   });
 }

@@ -285,3 +285,21 @@ it("does not leak an issuance intent or draft between canonical Case sessions", 
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(issue).not.toHaveBeenCalled();
 });
+
+it("preserves typed certificate fields but does not resend after an unknown write result and tab remount", async () => {
+  const issue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Không thể xác minh kết quả cấp"));
+  const view = (show: boolean) => <CaseDraftSession identity="case-A">
+    {show ? <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /> : null}
+  </CaseDraftSession>;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "unknown-result" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(await screen.findByText("Không thể xác minh kết quả cấp")).toBeInTheDocument();
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("unknown-result");
+  expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(issue).toHaveBeenCalledOnce();
+});

@@ -172,7 +172,7 @@ describe("certificate document metadata register", () => {
     let resolveOld!: (value: DocumentOwnerMetadataInventory) => void;
     vi.mocked(getGxpCertificateDocumentMetadata).mockImplementation(id =>
       id === "cert-1" ? new Promise(resolve => { resolveOld = resolve; }) :
-        Promise.resolve({ ...metadata(), owner_id: "cert-2", documents: [] }));
+        Promise.resolve({ ...metadata(), owner_id: "cert-2", metadata_status: "no_registered_document_metadata", documents: [] }));
     render(<MemoryRouter initialEntries={["/documents/certificates/cert-1"]}>
       <Link to="/documents/certificates/cert-2">Mở chứng nhận khác</Link>
       <Routes><Route path="/documents/certificates/:certificateId" element={

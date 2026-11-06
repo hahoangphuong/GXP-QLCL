@@ -29,6 +29,11 @@ describe("case report", () => {
     expect(await screen.findByRole("link", { name: "KT-01" })).toHaveAttribute("href", "/cases/case-a");
     expect(screen.getByRole("link", { name: "Xem tài liệu" })).toHaveAttribute("href", "/documents/cases/case-a");
   });
+  it("preserves the originating workflow queue without trusting its projected Site", async () => {
+    vi.mocked(getCaseReport).mockResolvedValue({ items: [{ ...row, site_id: "stale-site" }], total_count: 1, offset: 0, limit: 100 });
+    render(<MemoryRouter><CaseReport access={access} inspectionQueue returnQueue="inspection" /></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "KT-01" })).toHaveAttribute("href", "/cases/case-a?return_queue=inspection");
+  });
 
   it.each([
     ["unexpected offset", { offset: 100 }],

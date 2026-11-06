@@ -6,15 +6,16 @@ import { getCaseReport } from "../../lib/api";
 import { formatStatusLabel } from "../../lib/presentation";
 import type { CaseReportItem, CaseReportPage } from "../../types";
 import { csvCell } from "./facilityReportExport";
+import type { CaseWorkflowQueue } from "../search/caseNavigation";
 
 type Filters = { gxp_type: string; state: string; q: string; opened_year: string; inspection_queue: boolean };
 const states = ["draft", "application_received", "under_assessment", "planned", "decision_issued", "inspection_in_progress", "inspection_completed", "awaiting_certificate_decision"];
 const inspectionStates = ["planned", "decision_issued", "inspection_in_progress"];
 
-function target(item: CaseReportItem) {
+function target(item: CaseReportItem, queue?: CaseWorkflowQueue) {
   // Resolve this canonical Case through the guarded CaseDirectOpen owner.
   // Never select Site/GxP/line from a potentially stale report projection.
-  return `/cases/${encodeURIComponent(item.case_id)}`;
+  return `/cases/${encodeURIComponent(item.case_id)}` + (queue ? `?return_queue=${queue}` : "");
 }
 
 // Validate every read at the Case report owner boundary, not only CSV exports.
@@ -49,7 +50,7 @@ function validatedCaseReportPage(
   return page;
 }
 
-export function CaseReport({ access, inspectionQueue, initialState = "", showDocumentsLink = false }: { access: ApiAccess; inspectionQueue: boolean; initialState?: string; showDocumentsLink?: boolean }) {
+export function CaseReport({ access, inspectionQueue, initialState = "", showDocumentsLink = false, returnQueue }: { access: ApiAccess; inspectionQueue: boolean; initialState?: string; showDocumentsLink?: boolean; returnQueue?: CaseWorkflowQueue }) {
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration, inspectionQueue]);
   const ownerRef = useRef(owner);
@@ -124,7 +125,7 @@ export function CaseReport({ access, inspectionQueue, initialState = "", showDoc
       <div className="report-actions"><button disabled={exporting}>Áp dụng bộ lọc</button><button type="button" className="secondary" disabled={exporting || !current || !!current.error} onClick={() => void exportCsv()}>{exporting ? "Đang xuất..." : "Xuất CSV (Excel)"}</button></div>
     </form>{exportError && <p role="alert">{exportError}</p>}<p className="muted-copy">CSV UTF-8 xuất toàn bộ kết quả hiện hành, tối đa 10.000 hồ sơ; vượt giới hạn sẽ không tạo tệp.</p></section>
     <section className="panel"><div className="panel-header"><h3>{inspectionQueue ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h3>{current?.data && <span aria-live="polite">{total} hồ sơ</span>}</div>
-      {!current ? <p role="status">Đang tải dữ liệu...</p> : current.error ? <p role="alert">{current.error}</p> : !rows.length ? <p>Không có hồ sơ phù hợp.</p> : <div className="table-scroll"><table className="dense-table"><thead><tr><th>Hồ sơ</th><th>Cơ sở</th><th>Công ty</th><th>GxP</th><th>Trạng thái</th><th>Năm</th>{showDocumentsLink && <th>Tài liệu</th>}</tr></thead><tbody>{rows.map(item => <tr key={item.case_id}><td><Link className="text-link" to={target(item)}>{item.reference_code ?? item.case_id}</Link></td><td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td><td><StatusBadge value={item.state} /></td><td>{item.opened_year ?? "—"}</td>{showDocumentsLink && <td><Link className="text-link" to={`/documents/cases/${encodeURIComponent(item.case_id)}`}>Xem tài liệu</Link></td>}</tr>)}</tbody></table></div>}
+      {!current ? <p role="status">Đang tải dữ liệu...</p> : current.error ? <p role="alert">{current.error}</p> : !rows.length ? <p>Không có hồ sơ phù hợp.</p> : <div className="table-scroll"><table className="dense-table"><thead><tr><th>Hồ sơ</th><th>Cơ sở</th><th>Công ty</th><th>GxP</th><th>Trạng thái</th><th>Năm</th>{showDocumentsLink && <th>Tài liệu</th>}</tr></thead><tbody>{rows.map(item => <tr key={item.case_id}><td><Link className="text-link" to={target(item, returnQueue)}>{item.reference_code ?? item.case_id}</Link></td><td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td><td><StatusBadge value={item.state} /></td><td>{item.opened_year ?? "—"}</td>{showDocumentsLink && <td><Link className="text-link" to={`/documents/cases/${encodeURIComponent(item.case_id)}`}>Xem tài liệu</Link></td>}</tr>)}</tbody></table></div>}
       {current?.data && total > 0 && <nav className="report-pagination" aria-label="Phân trang báo cáo"><button type="button" className="secondary" disabled={!offset || exporting} onClick={() => setOffset(Math.max(0, offset - 100))}>Trang trước</button><span>Trang {Math.floor(offset / 100) + 1} / {Math.ceil(total / 100)}</span><button type="button" className="secondary" disabled={offset + rows.length >= total || exporting} onClick={() => setOffset(offset + 100)}>Trang sau</button></nav>}
     </section>
   </>;

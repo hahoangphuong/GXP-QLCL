@@ -1,35 +1,65 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { getCaseWorkspace } from "../lib/api";
+import type { CaseWorkspace } from "../types";
+import { caseWorkflowQueue, type CaseWorkflowQueue } from "../features/search/caseNavigation";
 
 type Resolved = { owner: object; location: string | null; error: string | null };
 
-function caseSearchLocation(caseId: string, summary: {
-  id: string;
-  site_id: string;
-  gxp_type: string;
-  production_line_id: string | null;
-  production_line_code: string | null;
-}): string {
-  if (summary.id !== caseId || !summary.site_id || !summary.gxp_type) {
+function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: CaseWorkflowQueue | null): string {
+  const summary = workspace.case_summary;
+  const present = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value === value.trim();
+  if (!summary || summary.id !== caseId || !present(summary.site_id) || !present(summary.gxp_type)) {
     throw new Error("Hồ sơ trả về không khớp định danh hoặc thiếu ngữ cảnh.");
+  }
+  const line = summary.production_line_id;
+  const code = summary.production_line_code;
+  if ((line !== null && !present(line)) || (code !== null && !present(code))
+    || (summary.production_line_identity_state === "canonical" && !present(line))
+    || (summary.production_line_identity_state === "legacy_unlinked" && (line !== null || !present(code)))
+    || (summary.production_line_identity_state === "facility_wide" && (line !== null || code !== null))
+    || !["canonical", "legacy_unlinked", "facility_wide"].includes(summary.production_line_identity_state)) {
+    throw new Error("Ngữ cảnh dây chuyền của hồ sơ không nhất quán.");
   }
   const params = new URLSearchParams({
     site_id: summary.site_id,
     gxp_type: summary.gxp_type,
+    context_gxp: summary.gxp_type,
     history_id: caseId,
   });
   if (summary.production_line_id) params.set("production_line_id", summary.production_line_id);
   if (summary.production_line_code) params.set("line_code", summary.production_line_code);
+  if (queue) {
+    params.set("return_queue", queue);
+    // The Case state comes from the authorized workspace, never the queue projection.
+    if (["planned", "decision_issued", "inspection_in_progress"].includes(summary.state)) {
+      params.set("event_tab", "Kiểm tra");
+    } else if (summary.state === "awaiting_certificate_decision"
+      && workspace.certificate_issue_readiness?.action_key === "issue_certificate"
+      && workspace.certificate_issue_readiness.available === true
+      && workspace.certificate_issue_readiness.certificate_type === summary.gxp_type
+      && Array.isArray(workspace.inspection?.approval_actions)
+      && Array.isArray(workspace.remediation?.actions)
+      && Array.isArray(workspace.transition_actions)
+      && !workspace.inspection.approval_actions.some(action => action.available)
+      && !workspace.remediation.actions.some(action => action.available)
+      && !workspace.transition_actions.some(action => action.available)) {
+      // Only suggest this tab when the backend says issue is available and
+      // no other known workflow action competes. The tab still owns all writes.
+      params.set("event_tab", "Chứng nhận GxP");
+    }
+  }
   return "/search?" + params;
 }
 
 /** Resolve a Case UUID from the backend before handing it to the editing workspace. */
 export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   const { caseId } = useParams();
+  const [params] = useSearchParams();
+  const queue = caseWorkflowQueue(params.get("return_queue"));
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
-  const owner = useMemo(() => ({}), [caseId, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
+  const owner = useMemo(() => ({}), [caseId, queue, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
   const [result, setResult] = useState<Resolved | null>(null);
   const current = result?.owner === owner ? result : null;
 
@@ -40,14 +70,14 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
       try {
         const workspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
         if (!live) return;
-        const location = caseSearchLocation(caseId, workspace.case_summary);
+        const location = caseSearchLocation(caseId, workspace, queue);
         setResult({ owner, location, error: null });
       } catch (error) {
         if (live) setResult({ owner, location: null, error: error instanceof Error ? error.message : "Không mở được hồ sơ." });
       }
     })();
     return () => { live = false; };
-  }, [owner, caseId, auth, bearerToken, useStubAuth, canLoadSecureApi]);
+  }, [owner, caseId, queue, auth, bearerToken, useStubAuth, canLoadSecureApi]);
 
   if (!canLoadSecureApi) return <section className="page-section"><h2>Cần đăng nhập</h2><p>Đăng nhập để mở hồ sơ được phân quyền.</p></section>;
   if (!caseId) return <p>Thiếu Case UUID.</p>;
@@ -55,6 +85,6 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   return <section className="page-section">
     <h2>Định vị hồ sơ</h2>
     {current?.error ? <p role="alert">{current.error}</p> : <p role="status">Đang xác minh Case UUID và ngữ cảnh cơ sở...</p>}
-    <Link className="text-link" to="/workflow">Quay lại Bàn công việc</Link>
+    <Link className="text-link" to={queue ? `/workflow?queue=${queue}` : "/workflow"}>Quay lại Bàn công việc</Link>
   </section>;
 }

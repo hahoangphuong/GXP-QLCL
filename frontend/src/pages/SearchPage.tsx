@@ -3,7 +3,7 @@ import { usePersistedCertificateHistory } from "../features/search/usePersistedC
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
 import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
@@ -11,6 +11,7 @@ import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPanel";
 import { FacilityTable } from "../features/search/FacilityTable";
+import { caseWorkflowQueue } from "../features/search/caseNavigation";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { ReassessmentDialog } from "../features/search/ReassessmentDialog";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
@@ -279,6 +280,7 @@ export function SearchPage({
 }) {
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const [searchParams, setSearchParams] = useSearchParams();
+  const returnQueue = caseWorkflowQueue(searchParams.get("return_queue"));
   const location = useLocation();
   const navigationType = useNavigationType();
   const urlSyncOwner = useId();
@@ -302,6 +304,12 @@ export function SearchPage({
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(() => resolveFacilityTab(searchParams.get("facility_tab")));
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
+  const workflowAccessGeneration = useRef<number | null>(canLoadSecureApi ? accessGeneration : null);
+  useEffect(() => {
+    const previous = workflowAccessGeneration.current;
+    if (returnQueue && previous !== null && (!canLoadSecureApi || previous !== accessGeneration)) setActiveTab(DEFAULT_EVENT_TAB);
+    workflowAccessGeneration.current = canLoadSecureApi ? accessGeneration : null;
+  }, [accessGeneration, canLoadSecureApi, returnQueue]);
   const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
   const facilityCommandRegistry = useFacilityCommandRegistry();
   const caseCommandRegistry = useCaseCommandRegistry();
@@ -628,7 +636,13 @@ export function SearchPage({
     return caseOperationOwner.current === owner && isCurrentContext();
   }
   function assertCaseReadbackOwner(payload: CaseWorkspace, caseId: string) {
-    if (payload.case_summary.id !== caseId || (payload.inspection.approval_submissions ?? []).some(item => item.case_id !== caseId)) {
+    const summary = payload.case_summary;
+    const isWorkflowTarget = returnQueue && pendingDeepLink.historyId === caseId;
+    if (summary.id !== caseId || !selectedResult || summary.site_id !== selectedResult.site_id
+      || (selectedResult.gxp_type && summary.gxp_type !== selectedResult.gxp_type)
+      || (isWorkflowTarget && (summary.production_line_id !== pendingDeepLink.productionLineId
+        || (summary.production_line_code ?? null) !== pendingDeepLink.lineCode))
+      || (payload.inspection.approval_submissions ?? []).some(item => item.case_id !== caseId)) {
       throw new Error("Workspace đọc lại không khớp hồ sơ đã chọn.");
     }
   }
@@ -774,6 +788,7 @@ export function SearchPage({
       return;
     }
     const nextParams = new URLSearchParams();
+    if (returnQueue) nextParams.set("return_queue", returnQueue);
     if (deferredGeneralQuery.trim()) {
       nextParams.set("q", deferredGeneralQuery.trim());
     }
@@ -879,6 +894,7 @@ export function SearchPage({
     location.state,
     urlSyncOwner,
     resultResolution,
+    returnQueue,
     searchSignature,
     setSearchParams,
   ]);
@@ -1516,6 +1532,7 @@ export function SearchPage({
     if (selectedResult?.result_key === resultKey && !deepLinkError
       && (resultResolution === "none" || resultResolution === "resolved")
       && (historyResolution === "none" || historyResolution === "resolved")) return;
+    if (returnQueue) setActiveTab(DEFAULT_EVENT_TAB);
     setPendingDeepLink({ resultKey: null, requestedGxpType: null, historyId: null, siteId: null, contextGxp: null, productionLineId: null, lineCode: null });
     setResultResolution("none");
     setResolvedDeepLinkResult(null);
@@ -2429,6 +2446,7 @@ export function SearchPage({
           loading={Boolean(selectedResult) && (workspaceLoading || !workspace)}
           error={deepLinkError ?? (selectedResult && !workspaceLoading ? workspaceError : null)}
           onSelect={(historyId) => {
+            if (returnQueue && historyId !== selectedHistoryId) setActiveTab(DEFAULT_EVENT_TAB);
             setHistoryResolution("none");
             setDeepLinkError(null);
             setSelectedHistoryId(historyId);
@@ -2517,6 +2535,7 @@ export function SearchPage({
 
       <div className="search-detail-area">
         <div className="search-context-actions">
+          {returnQueue && <Link className="text-link" to={`/workflow?queue=${returnQueue}`}>Quay lại hàng đợi</Link>}
           <ActionCard
             actions={workspaceLoading || workspaceError || deepLinkError || !selectedResult
               || (workspace && workspace.history.length > 0 && !selectedHistory) ? undefined : workspace?.action_readiness}

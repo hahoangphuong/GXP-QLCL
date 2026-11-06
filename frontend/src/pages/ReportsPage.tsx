@@ -113,8 +113,9 @@ function FacilityReport({
   // drafts on unrelated component renders.
   useEffect(() => {
     if (parsed) setDraft(parsed.filters);
-  }, [locationKey]);
+  }, [locationKey, parsed]);
   const [page, setPage] = useState<PageState | null>(null);
+  const key = JSON.stringify([locationKey, active, offset]);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const exportGuard = useRef<object | null>(null);
@@ -130,7 +131,6 @@ function FacilityReport({
     setExporting(false);
     setExportError(null);
   }, [owner]);
-  const key = JSON.stringify([locationKey, active, offset]);
   const current = page?.owner === owner && page.key === key ? page : null;
 
   useEffect(() => {

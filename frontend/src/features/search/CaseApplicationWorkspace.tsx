@@ -156,7 +156,7 @@ export function CaseApplicationWorkspace({
     try {
       const value = editingField === "submitted_on"
         ? toSubmittedOnPayload(draft.submitted_on)
-        : normalizeText(draft.dossier_code);
+        : normalizeText(draft[editingField]);
       await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {

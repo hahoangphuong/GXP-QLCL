@@ -444,7 +444,7 @@ it("edits the canonical applicant name with the pinned application version but n
   const canonical = { ...workspace, application: { ...workspace.application, row_version: 7, applicant_name: "Người nộp A", dossier_reference: "LEGACY-READ-ONLY" } };
   render(<CaseDraftSession identity="case-A"><CaseApplicationWorkspace caseWorkspace={canonical} onSave={onSave} onResolveInspectionFolder={vi.fn()} /></CaseDraftSession>);
   expect(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" }));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" }));
   fireEvent.change(screen.getByLabelText("Người nộp hồ sơ"), { target: { value: "  Người nộp B  " } });
   fireEvent.click(screen.getByRole("button", { name: "Lưu Người nộp hồ sơ" }));
   await waitFor(() => expect(onSave).toHaveBeenCalledWith({ expected_version: 7, applicant_name: "Người nộp B" }));
@@ -456,7 +456,7 @@ it("keeps the applicant field draft and original version after a 409 conflict", 
   const canonical = { ...workspace, application: { ...workspace.application, row_version: 3, applicant_name: "Source" } };
   const view = (show: boolean, version: number) => <CaseDraftSession identity="case-A">{show ? <CaseApplicationWorkspace caseWorkspace={{ ...canonical, application: { ...canonical.application, row_version: version } }} onSave={onSave} onResolveInspectionFolder={vi.fn()} /> : null}</CaseDraftSession>;
   const rendered = render(view(true, 3));
-  fireEvent.click(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" }));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" }));
   fireEvent.change(screen.getByLabelText("Người nộp hồ sơ"), { target: { value: "Retained applicant" } });
   rendered.rerender(view(false, 3));
   rendered.rerender(view(true, 9));

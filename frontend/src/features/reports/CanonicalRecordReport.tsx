@@ -163,7 +163,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
       <form onSubmit={apply}>
         <div className="report-filter-grid">
           {isCert && <label>Loại GxP<select value={draft.gxp_type} disabled={exporting} onChange={e => setDraft({ ...draft, gxp_type: e.target.value })}>
-            <option value="">Tất cả</option><option>GMP</option><option>GLP</option><option>GMPbb</option>
+            <option value="">Tất cả</option><option>GMP</option><option>GLP</option><option>GMPbb</option><option>GSP</option><option>GDP</option>
           </select></label>}
           {isCert ? <label>GCN hết hạn trong<select value={draft.expiry_days} disabled={exporting} onChange={e => setDraft({ ...draft, expiry_days: e.target.value })}>
             <option value="90">90 ngày</option><option value="60">60 ngày</option><option value="30">30 ngày</option><option value="">Tất cả GCN hiện hành</option>

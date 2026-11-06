@@ -51,6 +51,26 @@ describe("canonical record report workflow", () => {
       expect.anything(), true, null);
   });
 
+  it.each(["GSP", "GDP"])("filters %s certificates and preserves read-only detail/metadata links", async gxp => {
+    vi.mocked(getCertificateReport).mockResolvedValue({
+      items: [{ ...cert, gxp_type: gxp, result_key: `site-uuid:${gxp}:facility_wide:` }],
+      total_count: 1, limit: 100, offset: 0,
+    });
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" initialCertificateExpiryDays="" /></MemoryRouter>);
+    await screen.findByRole("link", { name: "GCN-123" });
+    fireEvent.change(screen.getByLabelText("Loại GxP"), { target: { value: gxp } });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
+    await waitFor(() => expect(getCertificateReport).toHaveBeenCalledWith(
+      expect.objectContaining({ gxp_type: gxp, expiry_days: "", export: false }),
+      expect.anything(), true, null,
+    ));
+    expect(await screen.findByRole("link", { name: "GCN-123" }))
+      .toHaveAttribute("href", "/reports/certificates/cert-uuid?site_id=site-uuid");
+    expect(screen.getByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", "/documents/certificates/cert-uuid");
+    expect(screen.getByRole("button", { name: "Xuất CSV (Excel)" })).toBeEnabled();
+  });
+
   it("shows each Change Request identity without inventing a GxP classification", async () => {
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="change_requests" /></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "123" })).toHaveAttribute("href", "/reports/change-requests/change-uuid");

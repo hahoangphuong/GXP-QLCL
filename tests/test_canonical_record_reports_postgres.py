@@ -63,6 +63,25 @@ def test_canonical_record_reports_disposable_postgres():
             assert certificates["total_count"] == 1
             assert certificates["items"][0]["certificate_id"] == current.id
             assert certificates["items"][0]["certificate_number"] == "GCN-PG"
+            # GSP/GDP are read-only Certificate types, not GMP editing aliases.
+            gsp = Certificate(site_id=site.id, certificate_type="GSP", latest_flag=True)
+            gdp = Certificate(site_id=site.id, certificate_type="GDP", latest_flag=True)
+            db.add_all([gsp, gdp])
+            db.flush()
+            db.add_all([
+                CertificateVersion(certificate_id=gsp.id, version_no=1,
+                    is_latest_version=True, certificate_number="GSP-PG"),
+                CertificateVersion(certificate_id=gdp.id, version_no=1,
+                    is_latest_version=True, certificate_number="GDP-PG"),
+            ])
+            db.flush()
+            for cert_type, expected_id in (("GSP", gsp.id), ("GDP", gdp.id)):
+                page = service.get_certificate_report(db, gxp_type=cert_type, q=None,
+                    expiry_days=None, export=True, offset=0, limit=100)
+                assert page["total_count"] == 1
+                assert page["items"][0]["certificate_id"] == expected_id
+                assert page["items"][0]["gxp_type"] == cert_type
+                assert page["items"][0]["site_id"] == site.id
             changes = service.get_change_request_report(db, state=None, q="kiểm tra",
                 export=True, offset=0, limit=100)
             assert changes["total_count"] == 2

@@ -79,6 +79,36 @@ def test_certificate_report_is_per_canonical_current_certificate_not_version(ses
     assert cert_report(session, q="Công ty", number="GCN-OLD")["total_count"] == 0
 
 
+def test_certificate_report_filters_gsp_gdp_as_canonical_read_only_types(session):
+    site_id = cert_report(session)["items"][0]["site_id"]
+    gsp = Certificate(site_id=site_id, certificate_type="GSP", latest_flag=True)
+    gdp = Certificate(site_id=site_id, certificate_type="GDP", latest_flag=True)
+    superseded_gsp = Certificate(site_id=site_id, certificate_type="GSP", latest_flag=False)
+    session.add_all([gsp, gdp, superseded_gsp])
+    session.flush()
+    session.add_all([
+        CertificateVersion(certificate_id=gsp.id, version_no=1,
+            certificate_number="GSP-CURRENT", is_latest_version=True),
+        CertificateVersion(certificate_id=gdp.id, version_no=1,
+            certificate_number="GDP-CURRENT", is_latest_version=True),
+        CertificateVersion(certificate_id=superseded_gsp.id, version_no=1,
+            certificate_number="GSP-SUPERSEDED", is_latest_version=True),
+    ])
+    session.flush()
+    for gxp, expected_id in (("GSP", gsp.id), ("GDP", gdp.id)):
+        for export in (False, True):
+            result = cert_report(session, gxp_type=gxp, expiry_days=None, export=export)
+            assert result["total_count"] == 1
+            assert [item["certificate_id"] for item in result["items"]] == [expected_id]
+            assert result["items"][0]["gxp_type"] == gxp
+            assert result["items"][0]["site_id"] == site_id
+        assert cert_report(session, gxp_type=gxp, expiry_days=30)["total_count"] == 0
+    assert cert_report(session, gxp_type="GMP", expiry_days=None)["total_count"] == 2
+    with pytest.raises(HTTPException) as invalid:
+        cert_report(session, gxp_type="UNKNOWN")
+    assert invalid.value.status_code == 422
+
+
 def test_certificate_report_paging_export_and_validation(session):
     a = cert_report(session, offset=0, limit=1)
     b = cert_report(session, offset=1, limit=1)

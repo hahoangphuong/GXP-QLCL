@@ -1230,7 +1230,7 @@ class CatalogReadService:
         """One current Certificate and its explicitly current version per row."""
         if expiry_days is not None and expiry_days not in (30, 60, 90):
             raise HTTPException(status_code=422, detail="Unsupported certificate expiry window.")
-        if gxp_type is not None and gxp_type not in ("GMP", "GLP", "GMPbb"):
+        if gxp_type is not None and gxp_type not in ("GMP", "GLP", "GMPbb", "GSP", "GDP"):
             raise HTTPException(status_code=422, detail="Invalid certificate GxP type.")
         conditions = [
             Certificate.latest_flag.is_(True),

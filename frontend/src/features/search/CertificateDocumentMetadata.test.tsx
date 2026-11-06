@@ -138,6 +138,63 @@ describe("access-bound certificate document metadata ownership", () => {
     expect(result.current).toEqual({ status: "idle" });
   });
 
+  it("hides old metadata synchronously on token switch even with the same certificate and context", async () => {
+    let resolveNew!: (data: DocumentOwnerMetadataInventory) => void;
+    loadGxp.mockResolvedValueOnce(inventory("gxp"))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve; }));
+    const { result, rerender } = renderHook(({ token }) =>
+      useCertificateDocumentMetadata("gxp", "same-site/case", "gxp-a", auth, false, token), {
+      initialProps: { token: "session-one" },
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    rerender({ token: "session-two" });
+    expect(result.current).toEqual({ status: "loading" });
+    await waitFor(() => expect(loadGxp).toHaveBeenCalledTimes(2));
+    await act(async () => resolveNew({
+      ...inventory("gxp"), documents: [{ ...inventory("gxp").documents[0], title: "New session" }],
+    }));
+    expect(result.current.status === "ready" && result.current.data.documents[0].title).toBe("New session");
+    expect(loadGxp.mock.calls[1][3]).toBe("session-two");
+  });
+
+  it("does not display late old-principal success when a new principal accesses the same UUID", async () => {
+    let resolveOld!: (data: DocumentOwnerMetadataInventory) => void;
+    loadDdk.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ ...inventory("ddk"), documents: [{
+        ...inventory("ddk").documents[0], title: "Authorized new reader",
+      }] });
+    const authOld = { username: "old-reader", role: "reader" as const };
+    const authNew = { username: "new-reader", role: "reader" as const };
+    const { result, rerender } = renderHook(({ principal }) =>
+      useCertificateDocumentMetadata("ddk", "site/cert", "ddk-a", principal, true, null), {
+      initialProps: { principal: authOld },
+    });
+    const oldSignal = loadDdk.mock.calls[0][4]!;
+    rerender({ principal: authNew });
+    expect(result.current).toEqual({ status: "loading" });
+    await waitFor(() => expect(loadDdk).toHaveBeenCalledTimes(2));
+    expect(oldSignal.aborted).toBe(true);
+    await waitFor(() => expect(result.current.status === "ready"
+      && result.current.data.documents[0].title).toBe("Authorized new reader"));
+    await act(async () => resolveOld(inventory("ddk")));
+    expect(result.current.status === "ready" && result.current.data.documents[0].title).toBe("Authorized new reader");
+  });
+
+  it("does not reuse old metadata on a same-principal permission role or authentication mode change", async () => {
+    loadGxp.mockResolvedValue(inventory("gxp"));
+    const { result, rerender } = renderHook(({ principal, stub }) =>
+      useCertificateDocumentMetadata("gxp", "fixed-context", "gxp-a", principal, stub, null), {
+      initialProps: { principal: { username: "reader", role: "reader" } as typeof auth, stub: true },
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    rerender({ principal: { username: "reader", role: "admin" } as typeof auth, stub: true });
+    expect(result.current).toEqual({ status: "loading" });
+    await waitFor(() => expect(loadGxp).toHaveBeenCalledTimes(2));
+    rerender({ principal: { username: "reader", role: "admin" } as typeof auth, stub: false });
+    expect(result.current).toEqual({ status: "loading" });
+    await waitFor(() => expect(loadGxp).toHaveBeenCalledTimes(3));
+  });
+
   it.each([401, 403, 404, 409])("keeps HTTP %s local and performs no blind retry", async httpStatus => {
     loadDdk.mockRejectedValue(Object.assign(new Error("unavailable"), { status: httpStatus }));
     const { result } = renderHook(() => useCertificateDocumentMetadata("ddk", "site/access", "ddk-a", auth, false, null));

@@ -186,7 +186,7 @@ describe("canonical report page integrity", () => {
     expect(await screen.findByRole("link", { name: "GCN-A" })).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
-  it("ignores late authorization errors after the report kind changes", async () => {
+  it.each(["401", "403", "409"])("ignores late %s errors after the report kind changes", async code => {
     let reject!: (error: Error) => void;
     vi.mocked(getCertificateReport).mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
     vi.mocked(getChangeRequestReport).mockResolvedValue({ items: [change], total_count: 1, limit: 100, offset: 0 });
@@ -194,8 +194,23 @@ describe("canonical report page integrity", () => {
     await waitFor(() => expect(reject).toBeDefined());
     view.rerender(<MemoryRouter><CanonicalRecordReport access={access} kind="change_requests" /></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "1" })).toBeInTheDocument();
-    await act(async () => reject(new Error("403 stale")));
+    await act(async () => reject(new Error(`${code} stale`)));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "1" })).toBeInTheDocument();
+  });
+  it("discards an old list response after credentials change", async () => {
+    type Page = Awaited<ReturnType<typeof getCertificateReport>>;
+    let old!: (page: Page) => void;
+    const fresh = { ...certificate, certificate_id: "cert-b", certificate_number: "GCN-B" };
+    vi.mocked(getCertificateReport)
+      .mockImplementationOnce(() => new Promise(resolve => { old = resolve; }))
+      .mockResolvedValueOnce({ items: [fresh], total_count: 1, limit: 100, offset: 0 });
+    const view = render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
+    await waitFor(() => expect(old).toBeDefined());
+    view.rerender(<MemoryRouter><CanonicalRecordReport access={{ ...access, accessGeneration: 2 }} kind="certificates" /></MemoryRouter>);
+    expect(await screen.findByText("GCN-B")).toBeInTheDocument();
+    await act(async () => old({ items: [certificate], total_count: 1, limit: 100, offset: 0 }));
+    expect(screen.queryByText("GCN-A")).not.toBeInTheDocument();
+    expect(screen.getByText("GCN-B")).toBeInTheDocument();
   });
 });

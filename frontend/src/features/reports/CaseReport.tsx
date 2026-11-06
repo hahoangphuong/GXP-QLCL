@@ -29,8 +29,8 @@ function validatedCaseReportPage(
     || !Number.isSafeInteger(page.total_count) || page.total_count < 0
     || !Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > (isExport ? 10000 : 200)
     || page.items.length > page.limit || page.items.length > Math.max(0, page.total_count - page.offset)
-    || (!isExport && page.offset > page.total_count)
-    || (page.offset < page.total_count && page.items.length === 0)
+    || (!isExport && (page.limit !== 100 || page.offset > page.total_count
+      || page.items.length !== Math.min(100, page.total_count - page.offset)))
     || (isExport && (page.total_count > 10000 || page.items.length !== page.total_count))) {
     throw new Error("API trả về phân trang Case không đầy đủ hoặc không hợp lệ.");
   }

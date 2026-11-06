@@ -37,6 +37,8 @@ describe("case report", () => {
     ["missing Case UUID", { items: [{ ...row, case_id: "" }] }],
     ["inconsistent page total", { total_count: 0 }],
     ["empty page before the reported total", { items: [] }],
+    ["underfilled first page", { total_count: 2 }],
+    ["reported limit below the fixed client page size", { limit: 1 }],
     ["invalid page limit", { limit: 0 }],
     ["excess page length", { limit: 1, items: [row, { ...row, case_id: "case-b" }], total_count: 2 }],
   ])("rejects %s before rendering any Case or document link", async (_name, change) => {
@@ -72,6 +74,19 @@ describe("case report", () => {
     const second = await screen.findByRole("link", { name: "KT-LAST" });
     expect(second).toHaveAttribute("href", "/cases/last-case");
     expect(screen.getByRole("link", { name: "Xem tài liệu" })).toHaveAttribute("href", "/documents/cases/last-case");
+  });
+
+  it("accepts the genuine last Case page with fewer than 100 rows", async () => {
+    const first = Array.from({ length: 100 }, (_, n) => ({ ...row, case_id: "case-" + n }));
+    vi.mocked(getCaseReport).mockImplementation(async filters => ({
+      items: filters.offset === 100 ? [{ ...row, case_id: "last-page", reference_code: "LAST" }] : first,
+      total_count: 101, offset: filters.offset ?? 0, limit: 100,
+    }));
+    render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} /></MemoryRouter>);
+    await screen.findByText("101 hồ sơ");
+    fireEvent.click(screen.getByRole("button", { name: "Trang sau" }));
+    expect(await screen.findByRole("link", { name: "LAST" })).toHaveAttribute("href", "/cases/last-page");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("rejects CSV export with a foreign Site even when row count is complete", async () => {

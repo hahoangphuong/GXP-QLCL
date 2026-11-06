@@ -71,7 +71,7 @@ describe("original ĐĐK source presentation", () => {
     expect(gmp).toBeInTheDocument();
     fireEvent.click(screen.getByText("Vị trí ô và dấu vân tay nhóm GMP"));
     expect(gmp).toHaveAttribute("open");
-    for (const label of ["Cột ID CC gốc", "Cột phạm vi chứng nhận", "Cột tiêu chuẩn áp dụng", "Cột hoạt động kinh doanh"]) {
+    for (const label of ["Ô ID CC gốc (A1)", "Ô phạm vi chứng nhận (A1)", "Ô tiêu chuẩn áp dụng (A1)", "Ô hoạt động kinh doanh (A1)"]) {
       expect(gmp).toHaveTextContent(label);
     }
     expect(gmp).toHaveTextContent("15");
@@ -82,6 +82,49 @@ describe("original ĐĐK source presentation", () => {
     expect(gmp).toHaveTextContent("không chứng minh liên kết GxP");
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
+  it("renders four exact Excel A1 cell addresses derived from the recorded row and columns", () => {
+    const { container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
+    const group = container.querySelector("details.ddk-source-group")!;
+    fireEvent.click(screen.getByText("Vị trí ô và dấu vân tay nhóm GMP"));
+    const cells = group.querySelector("details.ddk-source-cell-provenance")!;
+    for (const value of ["O43 (cột 15)", "P43 (cột 16)", "Q43 (cột 17)", "R43 (cột 18)"])
+      expect(cells).toHaveTextContent(value);
+    expect(cells).toHaveTextContent("chưa kiểm tra workbook");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("handles Excel AA, AZ, BA and XFD column boundaries without guessing source coordinates", () => {
+    const fixture = sourceFixture();
+    const group = fixture.groups.find(item => item.source_group === "GMP")!;
+    group.id_cc_excel_column = 27;
+    group.certificate_scope_excel_column = 52;
+    group.applicable_standard_excel_column = 53;
+    group.business_activity_excel_column = 16384;
+    fixture.source_row_number = 1048576;
+    const { container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: fixture }} />);
+    const cells = container.querySelector("details.ddk-source-group details.ddk-source-cell-provenance")!;
+    for (const value of ["AA1048576", "AZ1048576", "BA1048576", "XFD1048576"])
+      expect(cells).toHaveTextContent(value);
+  });
+
+  it("does not fabricate A1 locations for absent row, out-of-range or non-integer columns", () => {
+    const fixture = sourceFixture();
+    fixture.source_row_number = null;
+    const { rerender, container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: fixture }} />);
+    const cells = () => container.querySelector("details.ddk-source-group details.ddk-source-cell-provenance")!;
+    expect(cells().textContent?.match(/Không xác định địa chỉ ô/g)).toHaveLength(4);
+    expect(cells()).not.toHaveTextContent("O43");
+    fixture.source_row_number = 43;
+    const group = fixture.groups.find(item => item.source_group === "GMP")!;
+    group.id_cc_excel_column = 0;
+    group.certificate_scope_excel_column = 16385;
+    group.applicable_standard_excel_column = 1.5;
+    group.business_activity_excel_column = 1;
+    rerender(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: fixture }} />);
+    expect(cells().textContent?.match(/Không xác định địa chỉ ô/g)).toHaveLength(3);
+    expect(cells()).toHaveTextContent("A43 (cột 1)");
+  });
+
   it("does not expose prior workbook metadata for unavailable, missing-source or error states", () => {
     const { rerender } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
     expect(screen.getByText("Vị trí và dấu vân tay dữ liệu nguồn Excel")).toBeInTheDocument();

@@ -20,6 +20,17 @@ function deferred<T>() { let resolve!: (value: T) => void; let reject!: (error: 
 const defaults = { onCreateDocument: vi.fn(), onOpenDocument: vi.fn() };
 
 describe("Document workspace identity and focus", () => {
+  it("selects an approved navigation slot without opening, creating or loading it", async () => {
+    const load = vi.fn(async (id: string) => detail(id));
+    const open = vi.fn(); const create = vi.fn();
+    const props = { contextKey: "event", initialSelectionKey: "slot-B", onLoadDocumentDetail: load, onOpenDocument: open, onCreateDocument: create };
+    const view = render(<ContextualDocumentSection {...props} items={[item("A"), item("B")]} />);
+    expect(screen.getByRole("button", { name: "Chọn B" })).toHaveAttribute("aria-pressed", "true");
+    expect(load).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Chọn A" })); await screen.findByText("Detail A");
+    view.rerender(<ContextualDocumentSection {...props} items={[item("A"), item("B")]} />);
+    expect(screen.getByRole("button", { name: "Chọn A" })).toHaveAttribute("aria-pressed", "true");
+  });
   it("R1 rejects an initial binary after same-event A → B → A selection", async () => {
     const pending = deferred<void>(); const opened = vi.fn();
     const a = item("A"); a.actions.push({ action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: [] });

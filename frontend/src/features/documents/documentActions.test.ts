@@ -20,6 +20,7 @@ function action(overrides: Record<string, unknown> = {}) {
     checklist_key: item.checklist_key,
     parent_scope: item.parent_scope,
     parent_id: item.parent_id,
+    family_code: item.family_code, status: item.status, document_id: item.document_id,
     actions: [{
       action_key: "create", available: true,
       create_input_readiness: "CANONICAL_INPUT_READY",

@@ -4,10 +4,11 @@ import type { ApiAccess } from "../App";
 import { getCaseWorkspace } from "../lib/api";
 import type { CaseWorkspace } from "../types";
 import { caseWorkflowQueue, type CaseWorkflowQueue } from "../features/search/caseNavigation";
+import { resolveDocumentWorkspace } from "../features/documents/documentNavigation";
 
 type Resolved = { owner: object; location: string | null; error: string | null };
 
-function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: CaseWorkflowQueue | null): string {
+function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: CaseWorkflowQueue | null, documentKey: string | null): string {
   const summary = workspace.case_summary;
   const present = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value === value.trim();
   if (!summary || summary.id !== caseId || !present(summary.site_id) || !present(summary.gxp_type)) {
@@ -30,8 +31,15 @@ function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: Cas
   });
   if (summary.production_line_id) params.set("production_line_id", summary.production_line_id);
   if (summary.production_line_code) params.set("line_code", summary.production_line_code);
-  if (queue) {
-    params.set("return_queue", queue);
+  const documentTarget = documentKey ? resolveDocumentWorkspace(workspace, caseId, documentKey) : null;
+  if (documentTarget) {
+    params.set("document_key", documentTarget.checklist_key);
+    params.set("document_id", documentTarget.document_id ?? "");
+    params.set("document_parent_scope", documentTarget.parent_scope);
+    params.set("document_parent_id", documentTarget.parent_id);
+  }
+  if (queue) params.set("return_queue", queue);
+  if (queue && !documentKey) {
     // The Case state comes from the authorized workspace, never the queue projection.
     if (["planned", "decision_issued", "inspection_in_progress"].includes(summary.state)) {
       params.set("event_tab", "Kiểm tra");
@@ -58,8 +66,9 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   const { caseId } = useParams();
   const [params] = useSearchParams();
   const queue = caseWorkflowQueue(params.get("return_queue"));
+  const documentKey = params.get("document_key");
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
-  const owner = useMemo(() => ({}), [caseId, queue, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
+  const owner = useMemo(() => ({}), [caseId, queue, documentKey, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
   const [result, setResult] = useState<Resolved | null>(null);
   const current = result?.owner === owner ? result : null;
 
@@ -70,14 +79,14 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
       try {
         const workspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
         if (!live) return;
-        const location = caseSearchLocation(caseId, workspace, queue);
+        const location = caseSearchLocation(caseId, workspace, queue, documentKey);
         setResult({ owner, location, error: null });
       } catch (error) {
         if (live) setResult({ owner, location: null, error: error instanceof Error ? error.message : "Không mở được hồ sơ." });
       }
     })();
     return () => { live = false; };
-  }, [owner, caseId, queue, auth, bearerToken, useStubAuth, canLoadSecureApi]);
+  }, [owner, caseId, queue, documentKey, auth, bearerToken, useStubAuth, canLoadSecureApi]);
 
   if (!canLoadSecureApi) return <section className="page-section"><h2>Cần đăng nhập</h2><p>Đăng nhập để mở hồ sơ được phân quyền.</p></section>;
   if (!caseId) return <p>Thiếu Case UUID.</p>;

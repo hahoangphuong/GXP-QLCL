@@ -42,6 +42,7 @@ import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvide
 import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 export function FacilityWorkspaceTabs({
+  documentNavigationKey,
   accessGeneration = 0,
   gxpVersionHistory,
   eligibilityVersionHistory,
@@ -116,6 +117,7 @@ export function FacilityWorkspaceTabs({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  documentNavigationKey?: string | null;
   accessGeneration?: number | null;
   gxpVersionHistory?: HistoryState<GxpCertificateVersionHistory>;
   eligibilityVersionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
@@ -235,6 +237,7 @@ export function FacilityWorkspaceTabs({
     {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
       <div className="event-workspace-detail-pane detail-pane">
         <EventWorkspace
+          documentNavigationKey={documentNavigationKey}
           accessGeneration={accessGeneration}
           activeTab={activeEventTab}
           caseWorkspace={caseWorkspace}

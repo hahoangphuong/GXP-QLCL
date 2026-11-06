@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
@@ -46,6 +46,48 @@ describe("dashboard canonical Case queue", () => {
     expect(screen.getByRole("link", { name: /Tổng số cơ sở/ })).toHaveAttribute("href", "/search");
     expect(screen.getByRole("link", { name: /Cơ sở có GCN còn hiệu lực/ })).toHaveAttribute("href", "/search?certificate_state=active");
     expect(screen.getByText(/thẻ thống kê đếm cơ sở/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["negative site count", { total_facilities: -1 }],
+    ["fractional Case count", { total_cases: 1.5 }],
+    ["more active Sites than total Sites", { active_cases: 3 }],
+    ["queue length larger than total Cases", { total_cases: 0 }],
+    ["duplicate Case UUID", { total_cases: 2, queue: [summary.queue[0], { ...summary.queue[0] }] }],
+    ["missing Site UUID", { queue: [{ ...summary.queue[0], site_id: "" }] }],
+    ["missing Case identity", { queue: [{ ...summary.queue[0], case_id: "" }] }],
+    ["missing Case state", { queue: [{ ...summary.queue[0], state: "" }] }],
+  ])("rejects %s before showing any Dashboard metrics or Case/document links", async (_name, changes) => {
+    vi.mocked(getDashboardSummary).mockResolvedValue({ ...summary, ...changes });
+    render(<MemoryRouter><DashboardPage access={access} statusError={null} /></MemoryRouter>);
+    expect(await screen.findByText(/API trả về (thống kê|hàng đợi) Dashboard|Hàng đợi Dashboard thiếu/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "KT-2026" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Xem tài liệu" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Tổng số cơ sở/ })).not.toBeInTheDocument();
+  });
+
+  it("accepts distinct Cases at the same Site without falsely classifying them as duplicates", async () => {
+    vi.mocked(getDashboardSummary).mockResolvedValue({
+      ...summary, total_cases: 2,
+      queue: [summary.queue[0], { ...summary.queue[0], case_id: "case-two", reference_code: "KT-2" }],
+    });
+    render(<MemoryRouter><DashboardPage access={access} statusError={null} /></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "KT-2026" })).toHaveAttribute("href", "/cases/case%25%2Fuuid");
+    expect(screen.getByRole("link", { name: "KT-2" })).toHaveAttribute("href", "/cases/case-two");
+    expect(screen.getAllByRole("link", { name: "Xem tài liệu" })).toHaveLength(2);
+  });
+
+  it("does not publish an older summary after credential generation changes", async () => {
+    let resolveOld: (value: DashboardSummary) => void = () => {};
+    vi.mocked(getDashboardSummary)
+      .mockImplementationOnce(() => new Promise<DashboardSummary>(resolve => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ ...summary, queue: [{ ...summary.queue[0], case_id: "new-case", reference_code: "NEW" }] });
+    const { rerender } = render(<MemoryRouter><DashboardPage access={access} statusError={null} /></MemoryRouter>);
+    rerender(<MemoryRouter><DashboardPage access={{ ...access, accessGeneration: 2 }} statusError={null} /></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "NEW" })).toHaveAttribute("href", "/cases/new-case");
+    resolveOld(summary);
+    await waitFor(() => expect(screen.queryByRole("link", { name: "KT-2026" })).not.toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "NEW" })).toBeInTheDocument();
   });
 
   it("does not fetch secure queue or show document links without access", () => {

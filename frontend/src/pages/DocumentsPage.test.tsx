@@ -13,6 +13,7 @@ vi.mock("../lib/api", () => ({
   getDocumentDetail: vi.fn(),
   openCaseDocumentCurrentContent: vi.fn(),
   openCapaCycleDocumentCurrentContent: vi.fn(),
+  listSiteBusinessEligibilityCertificates: vi.fn(),
 }));
 vi.mock("../features/reports/CaseReport", () => ({
   CaseReport: ({ showDocumentsLink }: { showDocumentsLink?: boolean }) =>
@@ -290,7 +291,8 @@ describe("contextual document register", () => {
     expect(getChangeRequestWorkspace).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Giấy đủ điều kiện kinh doanh dược" }));
     expect(screen.queryByTestId("change-report")).not.toBeInTheDocument();
-    expect(screen.getByText(/Nhập UUID giấy đủ điều kiện kinh doanh dược/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Site UUID")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tra cứu theo Site" })).toBeInTheDocument();
   });
 
   it("does not read secure data without a session", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../../App";
 import { getCertificateReport, getChangeRequestReport } from "../../lib/api";
 import type { CertificateReportItem, CertificateReportPage, ChangeRequestReportItem, ChangeRequestReportPage } from "../../types";
@@ -9,6 +9,37 @@ type Kind = "certificates" | "change_requests";
 type Filters = { gxp_type: string; expiry_days: string; state: string; q: string; number: string };
 type Page = CertificateReportPage | ChangeRequestReportPage;
 const EMPTY: Filters = { gxp_type: "", expiry_days: "90", state: "", q: "", number: "" };
+
+function parseReportUrl(params: URLSearchParams, kind: Kind, expiryDefault: string): { filters: Filters; offset: number; valid: boolean } {
+  const names = kind === "certificates" ? ["gxp_type", "expiry_days", "number", "q", "offset"] : ["state", "q", "offset"];
+  const unique = names.every(name => params.getAll(name).length <= 1);
+  const filters = { ...EMPTY, expiry_days: expiryDefault, q: params.get("q") ?? "" };
+  if (kind === "certificates") {
+    filters.gxp_type = params.get("gxp_type") ?? "";
+    filters.expiry_days = params.has("expiry_days") ? params.get("expiry_days")! : expiryDefault;
+    filters.number = params.get("number") ?? "";
+  } else filters.state = params.get("state") ?? "";
+  const rawOffset = params.get("offset") ?? "0";
+  const offset = Number(rawOffset);
+  const valid = unique && /^(0|[1-9]\d*)$/.test(rawOffset) && Number.isSafeInteger(offset) && offset % 100 === 0
+    && ["", "GMP", "GLP", "GMPbb", "GSP", "GDP"].includes(filters.gxp_type)
+    && ["", "30", "60", "90"].includes(filters.expiry_days)
+    && ["", "received", "under_review"].includes(filters.state)
+    && [filters.q, filters.number].every(value => value.length <= 200 && [...value].every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127));
+  return { filters, offset: valid ? offset : 0, valid };
+}
+
+function reportParams(kind: Kind, filters: Filters, offset: number): URLSearchParams {
+  const next = new URLSearchParams({ report: kind });
+  if (kind === "certificates") {
+    if (filters.gxp_type) next.set("gxp_type", filters.gxp_type);
+    next.set("expiry_days", filters.expiry_days);
+    if (filters.number) next.set("number", filters.number);
+  } else if (filters.state) next.set("state", filters.state);
+  if (filters.q) next.set("q", filters.q);
+  if (offset) next.set("offset", String(offset));
+  return next;
+}
 
 // Both report endpoints return a full slice at the requested default limit;
 // export returns one bounded, complete snapshot with limit 10000.
@@ -58,15 +89,23 @@ function certificateLocation(item: CertificateReportItem): string {
   return `/search?${params}`;
 }
 
-export function CanonicalRecordReport({ access, kind, showDocumentsLink = false, initialCertificateExpiryDays = "90" }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean; initialCertificateExpiryDays?: "90" | "" }) {
+export function CanonicalRecordReport({ access, kind, showDocumentsLink = false, initialCertificateExpiryDays = "90", urlState = false }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean; initialCertificateExpiryDays?: "90" | ""; urlState?: boolean }) {
+  const [params, setParams] = useSearchParams();
+  const query = params.toString();
+  const parsed = useMemo(() => parseReportUrl(new URLSearchParams(query), kind, initialCertificateExpiryDays), [query, kind, initialCertificateExpiryDays]);
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration, kind]);
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const [draft, setDraft] = useState<Filters>(() => ({ ...EMPTY, expiry_days: initialCertificateExpiryDays }));
-  const [active, setActive] = useState<Filters>(() => ({ ...EMPTY, expiry_days: initialCertificateExpiryDays }));
-  const [offset, setOffset] = useState(0);
+  const [draft, setDraft] = useState<Filters>(() => urlState && parsed.valid ? parsed.filters : { ...EMPTY, expiry_days: initialCertificateExpiryDays });
+  const [localActive, setActive] = useState<Filters>(() => ({ ...EMPTY, expiry_days: initialCertificateExpiryDays }));
+  const [localOffset, setOffset] = useState(0);
+  const active = urlState ? parsed.filters : localActive;
+  const offset = urlState ? parsed.offset : localOffset;
+  useEffect(() => { if (urlState && parsed.valid) setDraft(parsed.filters); }, [urlState, parsed]);
   const requestOwner = useMemo(() => ({}), [owner, active, offset]);
+  const requestOwnerRef = useRef(requestOwner);
+  requestOwnerRef.current = requestOwner;
   const [record, setRecord] = useState<{ owner: object; page: Page | null; error: string | null } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -85,19 +124,30 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
   }, [owner]);
 
   useEffect(() => {
-    if (!canLoadSecureApi) return;
+    if (!urlState) return;
+    guard.current = null;
+    setExporting(false);
+    setExportError(null);
+  }, [urlState, requestOwner]);
+
+  useEffect(() => {
+    if (!canLoadSecureApi || (urlState && !parsed.valid)) return;
     let live = true;
     void fetchPage(active, false, offset).then(page => {
       if (live) setRecord({ owner: requestOwner, page: validatedPage(page, kind, active, offset, false), error: null });
     }).catch((error: Error) => { if (live) setRecord({ owner: requestOwner, page: null, error: error.message }); });
     return () => { live = false; };
-  }, [active, offset, owner, requestOwner, auth, useStubAuth, bearerToken, canLoadSecureApi, kind]);
+  }, [active, offset, owner, requestOwner, auth, useStubAuth, bearerToken, canLoadSecureApi, kind, urlState, parsed.valid]);
+
+  function updateUrl(filters: Filters, nextOffset: number) {
+    setParams(reportParams(kind, filters, nextOffset));
+  }
 
   function apply(event: FormEvent) {
     event.preventDefault();
     if (guard.current) return;
-    setActive({ ...draft, q: draft.q.trim(), number: draft.number.trim() });
-    setOffset(0);
+    const next = { ...draft, q: draft.q.trim(), number: draft.number.trim() };
+    if (urlState) updateUrl(next, 0); else { setActive(next); setOffset(0); }
     setExportError(null);
   }
 
@@ -109,7 +159,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
     setExportError(null);
     try {
       const result = await fetchPage(active, true, 0);
-      if (ownerRef.current !== owner || guard.current !== token) return;
+      if (ownerRef.current !== owner || requestOwnerRef.current !== requestOwner || guard.current !== token) return;
       validatedPage(result, kind, active, 0, true);
       const columns: { title: string; get: (item: CertificateReportItem | ChangeRequestReportItem) => string }[] =
         kind === "certificates"
@@ -145,7 +195,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
         document.body.appendChild(anchor); anchor.click(); anchor.remove();
       } finally { URL.revokeObjectURL(url); }
     } catch (error) {
-      if (ownerRef.current === owner && guard.current === token) setExportError(error instanceof Error ? error.message : "Không thể xuất báo cáo.");
+      if (ownerRef.current === owner && requestOwnerRef.current === requestOwner && guard.current === token) setExportError(error instanceof Error ? error.message : "Không thể xuất báo cáo.");
     } finally {
       if (guard.current === token) {
         guard.current = null;
@@ -155,6 +205,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
   }
 
   if (!canLoadSecureApi) return <p>Cần đăng nhập để xem báo cáo.</p>;
+  if (urlState && !parsed.valid) return <p role="alert">Tham số báo cáo không hợp lệ. Chọn lại loại báo cáo để bắt đầu.</p>;
   const isCert = kind === "certificates";
   const rows = current?.page?.items ?? [];
   const total = current?.page?.total_count ?? 0;
@@ -194,21 +245,21 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
             : <><th>Nội dung/phạm vi</th><th>Ngày gửi</th><th>Trạng thái</th>{showDocumentsLink && <th>Tài liệu</th>}</>}
         </tr></thead><tbody>
           {isCert ? (rows as CertificateReportItem[]).map(item => <tr key={item.certificate_id}>
-            <td><Link className="text-link" to={["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? certificateLocation(item) : `/reports/certificates/${encodeURIComponent(item.certificate_id)}?${new URLSearchParams({ site_id: item.site_id })}`}>{item.certificate_number ?? item.certificate_id}</Link></td>
+            <td><Link className="text-link" state={urlState ? { reportReturn: `/reports?${reportParams(kind, active, offset)}` } : undefined} to={["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? certificateLocation(item) : `/reports/certificates/${encodeURIComponent(item.certificate_id)}?${new URLSearchParams({ site_id: item.site_id })}`}>{item.certificate_number ?? item.certificate_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td>
             <td>{item.issue_date ?? "—"}</td><td>{item.expiry_date ?? "—"}</td><td>{item.status === "expired" ? "Hết hạn" : "Hiện hành"}</td><td>{item.lifecycle_state ?? "Chưa xác minh"}</td>
             <td><Link className="text-link" to={`/documents/certificates/${encodeURIComponent(item.certificate_id)}`}>Xem metadata</Link></td>
           </tr>) : (rows as ChangeRequestReportItem[]).map(item => <tr key={item.change_request_id}>
-            <td><Link className="text-link" to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
+            <td><Link className="text-link" state={urlState ? { reportReturn: `/reports?${reportParams(kind, active, offset)}` } : undefined} to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.scope_label ?? "—"}</td>
             <td>{item.submitted_on ?? "—"}</td><td>{item.state}</td>
             {showDocumentsLink && <td><Link className="text-link" to={`/documents/change-requests/${encodeURIComponent(item.change_request_id)}`}>Xem tài liệu</Link></td>}
           </tr>)}
         </tbody></table></div>}
       {current?.page && total > 0 && <nav className="report-pagination" aria-label="Phân trang báo cáo">
-        <button type="button" className="secondary" disabled={!offset || exporting} onClick={() => setOffset(Math.max(0, offset - 100))}>Trang trước</button>
+        <button type="button" className="secondary" disabled={!offset || exporting} onClick={() => urlState ? updateUrl(active, Math.max(0, offset - 100)) : setOffset(Math.max(0, offset - 100))}>Trang trước</button>
         <span>Trang {Math.floor(offset / 100) + 1} / {Math.ceil(total / 100)}</span>
-        <button type="button" className="secondary" disabled={offset + rows.length >= total || exporting} onClick={() => setOffset(offset + 100)}>Trang sau</button>
+        <button type="button" className="secondary" disabled={offset + rows.length >= total || exporting} onClick={() => urlState ? updateUrl(active, offset + 100) : setOffset(offset + 100)}>Trang sau</button>
       </nav>}
     </section>
   </>;

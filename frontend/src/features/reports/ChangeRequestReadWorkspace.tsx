@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace } from "../../lib/api";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type { ChangeRequestArtifact, ChangeRequestWorkspace } from "../../types";
 import { ChangeRequestContextPicker } from "./ChangeRequestContextPicker";
+import { reportReturnLocation } from "./reportReturnLocation";
 
 type Section = "request" | "details" | "processing" | "documents";
 const SECTIONS: Array<{ key: Section; label: string }> = [
@@ -42,6 +43,7 @@ function ArtifactTable({ title, items }: { title: string; items: ChangeRequestAr
 
 export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
   const { changeRequestId } = useParams();
+  const returnLocation = reportReturnLocation(useLocation().state, "change_requests");
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [changeRequestId, accessGeneration, auth, bearerToken, useStubAuth, canLoadSecureApi]);
   const [section, setSection] = useState<Section>("request");
@@ -74,7 +76,7 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
   return <section className="page-section">
     <header className="section-title">
       <div><p className="eyebrow">Nghiệp vụ / Thay đổi cơ sở</p><h2>Hồ sơ yêu cầu thay đổi</h2></div>
-      <Link className="text-link" to="/reports">Quay lại Báo cáo</Link>
+      <Link className="text-link" to={returnLocation ?? "/reports"}>Quay lại Báo cáo</Link>
     </header>
     {!current ? <p role="status">Đang tải yêu cầu thay đổi theo UUID...</p>
       : current.error ? <p role="alert">{current.error}</p>

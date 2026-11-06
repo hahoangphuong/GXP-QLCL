@@ -180,7 +180,7 @@ it("edits the canonical planning-sheet name through inspection.plan, pinned to t
     onInspectionPlanSave={save} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()}
     onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()}
     onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} /></CaseDraftSession>);
-  fireEvent.click(screen.getByRole("button", { name: "Sửa Tên bảng kế hoạch" }));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Tên bảng kế hoạch" }));
   fireEvent.change(screen.getByLabelText("Tên bảng kế hoạch"), { target: { value: "  Kế hoạch kỳ 2  " } });
   fireEvent.click(screen.getByRole("button", { name: "Lưu Tên bảng kế hoạch" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({ expected_version: 6, planning_sheet_name: "Kế hoạch kỳ 2" }));

@@ -7,14 +7,15 @@ import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { collectFacilityReport, facilityReportCsv, REPORT_PAGE_SIZE } from "../features/reports/facilityReportExport";
+import { DEFAULT_FACILITY_FILTERS, parseFacilityReportLocation, writeFacilityReportLocation, type FacilityReportFilters } from "../features/reports/facilityReportUrl";
 import { CaseReport } from "../features/reports/CaseReport";
 import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
 import { searchFacilities } from "../lib/api";
 import type { FacilitySearchPage, FacilitySearchResult } from "../types";
 
-type Filters = { gxp_type: "GMP" | "GLP" | "GMPbb"; q: string; province: string };
+type Filters = FacilityReportFilters;
 type PageState = { owner: object; key: string; data: FacilitySearchPage | null; error: string | null };
-const INITIAL_FILTERS: Filters = { gxp_type: "GMP", q: "", province: "" };
+const INITIAL_FILTERS: Filters = DEFAULT_FACILITY_FILTERS;
 
 // Refuse a malformed read page before exposing links based on potentially
 // wrong Site/result_key projections. CSV export validates its own full walk.
@@ -65,7 +66,7 @@ export function ReportsPage({ access, statusError }: { access: ApiAccess; status
   function selectReport(next: ReportKind) {
     setSearchParams(params => {
       const updated = new URLSearchParams(params);
-      for (const key of ["gxp_type", "expiry_days", "number", "q", "state", "opened_year", "offset"]) updated.delete(key);
+      for (const key of ["gxp_type", "expiry_days", "number", "q", "province", "state", "opened_year", "offset"]) updated.delete(key);
       updated.set("report", next);
       // A report-kind change starts a fresh filter context, not a stale Case queue.
       updated.delete("case_state");
@@ -98,28 +99,42 @@ function FacilityReport({
   access: ApiAccess;
   statusError: string | null;
 }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const locationKey = searchParams.toString();
+  const parsed = useMemo(() => parseFacilityReportLocation(new URLSearchParams(locationKey)), [locationKey]);
+  const active = parsed?.filters ?? INITIAL_FILTERS;
+  const offset = parsed?.offset ?? 0;
   const { auth, bearerToken, canLoadSecureApi, useStubAuth, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, bearerToken, canLoadSecureApi, useStubAuth, accessGeneration]);
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const [draft, setDraft] = useState<Filters>(INITIAL_FILTERS);
-  const [active, setActive] = useState<Filters>(INITIAL_FILTERS);
-  const [offset, setOffset] = useState(0);
+  const [draft, setDraft] = useState<Filters>(active);
+  // Back/Forward and deep links restore applied filters without overwriting
+  // drafts on unrelated component renders.
+  useEffect(() => {
+    if (parsed) setDraft(parsed.filters);
+  }, [locationKey]);
   const [page, setPage] = useState<PageState | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const exportGuard = useRef<object | null>(null);
+  const contextRef = useRef(key);
+  contextRef.current = key;
+  useEffect(() => {
+    // Route changes, filter/page changes and unmount revoke in-flight exports.
+    return () => { exportGuard.current = null; };
+  }, [key, owner]);
   useEffect(() => {
     // A new authenticated owner must not inherit an unfinished download lock.
     exportGuard.current = null;
     setExporting(false);
     setExportError(null);
   }, [owner]);
-  const key = JSON.stringify([active, offset]);
+  const key = JSON.stringify([locationKey, active, offset]);
   const current = page?.owner === owner && page.key === key ? page : null;
 
   useEffect(() => {
-    if (!canLoadSecureApi) return;
+    if (!canLoadSecureApi || !parsed) return;
     let cancelled = false;
     void searchFacilities({ ...active, offset, limit: REPORT_PAGE_SIZE }, auth, useStubAuth, bearerToken)
       .then(data => {
@@ -134,31 +149,32 @@ function FacilityReport({
         if (!cancelled) setPage({ owner, key, data: null, error: error.message });
       });
     return () => { cancelled = true; };
-  }, [active, offset, auth, bearerToken, canLoadSecureApi, useStubAuth, owner, key]);
+  }, [active.gxp_type, active.q, active.province, offset, auth, bearerToken, canLoadSecureApi, useStubAuth, owner, key, Boolean(parsed)]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (exportGuard.current) return;
-    setActive({ ...draft, q: draft.q.trim(), province: draft.province.trim() });
-    setOffset(0);
+    const filters = { ...draft, q: draft.q.trim(), province: draft.province.trim() };
+    setSearchParams(params => writeFacilityReportLocation(params, { filters, offset: 0 }));
     setExportError(null);
   }
 
   async function exportReport() {
-    if (exportGuard.current || !canLoadSecureApi) return;
+    if (exportGuard.current || !canLoadSecureApi || !parsed) return;
     const token = {};
     exportGuard.current = token;
     setExporting(true);
     setExportError(null);
     const requestedOwner = owner;
+    const requestedKey = key;
     const filters = { ...active };
     try {
       const rows = await collectFacilityReport(
         (pageOffset, limit) =>
           searchFacilities({ ...filters, offset: pageOffset, limit }, auth, useStubAuth, bearerToken),
-        () => ownerRef.current === requestedOwner && exportGuard.current === token,
+        () => ownerRef.current === requestedOwner && exportGuard.current === token && contextRef.current === requestedKey,
       );
-      if (ownerRef.current !== requestedOwner) return;
+      if (ownerRef.current !== requestedOwner || contextRef.current !== requestedKey || exportGuard.current !== token) return;
       const blob = new Blob([facilityReportCsv(rows)], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       try {
@@ -172,7 +188,7 @@ function FacilityReport({
         URL.revokeObjectURL(url);
       }
     } catch (error) {
-      if (ownerRef.current === requestedOwner) {
+      if (ownerRef.current === requestedOwner && contextRef.current === requestedKey) {
         setExportError(error instanceof Error ? error.message : "Không thể xuất báo cáo.");
       }
     } finally {
@@ -184,6 +200,7 @@ function FacilityReport({
   }
 
   if (statusError) return <ErrorState message={statusError} />;
+  if (!parsed) return <p role="alert">URL báo cáo cơ sở không hợp lệ.</p>;
   if (!canLoadSecureApi) {
     return <EmptyState title="Cần đăng nhập" description="Đăng nhập để xem và xuất danh sách cơ sở được phân quyền." />;
   }
@@ -268,9 +285,9 @@ function FacilityReport({
           )}
         {!loading && !current?.error && total > 0 &&
           <nav className="report-pagination" aria-label="Phân trang báo cáo">
-            <button className="secondary" type="button" disabled={offset === 0 || exporting} onClick={() => setOffset(Math.max(0, offset - REPORT_PAGE_SIZE))}>Trang trước</button>
+            <button className="secondary" type="button" disabled={offset === 0 || exporting} onClick={() => setSearchParams(params => writeFacilityReportLocation(params, { filters: active, offset: Math.max(0, offset - REPORT_PAGE_SIZE) }))}>Trang trước</button>
             <span>Trang {Math.floor(offset / REPORT_PAGE_SIZE) + 1} / {Math.ceil(total / REPORT_PAGE_SIZE)}</span>
-            <button className="secondary" type="button" disabled={offset + rows.length >= total || exporting} onClick={() => setOffset(offset + REPORT_PAGE_SIZE)}>Trang sau</button>
+            <button className="secondary" type="button" disabled={offset + rows.length >= total || exporting} onClick={() => setSearchParams(params => writeFacilityReportLocation(params, { filters: active, offset: offset + REPORT_PAGE_SIZE }))}>Trang sau</button>
           </nav>
         }
       </section>

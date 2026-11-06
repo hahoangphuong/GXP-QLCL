@@ -3,11 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
-import { getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory } from "../lib/api";
-import type { BusinessEligibilityDetail, BusinessEligibilityVersionHistory } from "../types";
+import { getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory, getBusinessEligibilityGxpSourceEvidence } from "../lib/api";
+import type { BusinessEligibilityDetail, BusinessEligibilityVersionHistory, BusinessEligibilityGxpSourceEvidence } from "../types";
 import { BusinessEligibilityReadOnlyDetail } from "./BusinessEligibilityReadOnlyDetail";
 
-vi.mock("../lib/api", () => ({ getBusinessEligibilityDetail: vi.fn(), getBusinessEligibilityVersionHistory: vi.fn() }));
+vi.mock("../lib/api", () => ({ getBusinessEligibilityDetail: vi.fn(), getBusinessEligibilityVersionHistory: vi.fn(), getBusinessEligibilityGxpSourceEvidence: vi.fn() }));
 const idA = "11111111-1111-4111-8111-111111111111";
 const idB = "22222222-2222-4222-8222-222222222222";
 const site = "33333333-3333-4333-8333-333333333333";
@@ -60,6 +60,23 @@ function versionHistory(id = idA): BusinessEligibilityVersionHistory {
     }],
   };
 }
+function originalExcelEvidence(id = idA): BusinessEligibilityGxpSourceEvidence {
+  return {
+    business_eligibility_certificate_id: id, legacy_dkkd_id: 42, source_status: "available",
+    evidence_kind: "original_excel_cells_source_only", canonical_links_included: false,
+    source_workbook_sha256: "a".repeat(64), source_sheet_name: "db.dkkd", source_row_number: 42,
+    groups: (["GMP", "GLP", "GSP", "GDP"] as const).map((name, i) => ({
+      source_group_id: `source-${name}`, source_group: name,
+      id_cc_excel_column: 1 + i, certificate_scope_excel_column: 5 + i,
+      applicable_standard_excel_column: 9 + i, business_activity_excel_column: 13 + i,
+      id_cc_raw: name === "GMP" ? "376" : "", certificate_scope_raw: name === "GMP" ? "Nguồn Excel gốc" : "",
+      applicable_standard_raw: "", business_activity_raw: "", source_values_sha256: "b".repeat(64),
+      reference_tokens: name === "GMP" ? [{
+        source_reference_id: "source-token", token_index: 1, raw_token: "376", parsed_legacy_certificate_id: 376,
+      }] : [],
+    })),
+  };
+}
 function mount(path = `/certificates/business-eligibility/${idA}?site_id=${site}`, props = access) {
   return render(<MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/certificates/business-eligibility/:eligibilityId" element={<BusinessEligibilityReadOnlyDetail access={props} />} />
@@ -68,13 +85,14 @@ function mount(path = `/certificates/business-eligibility/${idA}?site_id=${site}
 beforeEach(() => {
   vi.mocked(getBusinessEligibilityDetail).mockReset().mockResolvedValue(detail());
   vi.mocked(getBusinessEligibilityVersionHistory).mockReset().mockResolvedValue(versionHistory());
+  vi.mocked(getBusinessEligibilityGxpSourceEvidence).mockReset().mockResolvedValue(originalExcelEvidence());
 });
 
 describe("read-only business eligibility detail", () => {
   it("opens the canonical record, legal fields and registered metadata without mutation rail", async () => {
     mount();
     expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
-    expect(screen.getByText("Bán buôn")).toBeInTheDocument();
+    expect(screen.getAllByText("Bán buôn").length).toBeGreaterThan(0);
     expect(screen.getByText("GMP-01", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Quay lại danh sách Site" }))
       .toHaveAttribute("href", `/documents?kind=business_eligibility&site_id=${site}`);
@@ -111,6 +129,66 @@ describe("read-only business eligibility detail", () => {
     mount();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("1 phiên bản đã lưu")).not.toBeInTheDocument();
+  });
+
+  it("shows Excel source cells separately from persisted FK history and never promotes raw ID CC to canonical identity", async () => {
+    mount();
+    expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+    await waitFor(() => expect(getBusinessEligibilityGxpSourceEvidence)
+      .toHaveBeenCalledWith(idA, access.auth, true, null, expect.anything()));
+    expect(await screen.findByText("Dữ liệu GxP từ hồ sơ ĐĐK gốc")).toBeInTheDocument();
+    expect(screen.getByText("Dữ liệu đối chiếu Excel, chưa phải liên kết GxP được xác nhận.")).toBeInTheDocument();
+    expect(screen.getByText("Nguồn Excel gốc")).toBeInTheDocument();
+    expect(screen.getAllByText("376", { exact: true }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Cấp|Sửa|Ban hành|Lưu/ })).not.toBeInTheDocument();
+  });
+
+  it.each(["legacy_identity_missing", "not_in_imported_source"] as const)("renders %s without inventing source values", async source_status => {
+    vi.mocked(getBusinessEligibilityGxpSourceEvidence).mockResolvedValueOnce({
+      ...originalExcelEvidence(), source_status, groups: [],
+    });
+    mount();
+    expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+    expect(await screen.findByText(source_status === "legacy_identity_missing"
+      ? /chưa có định danh legacy/ : /không nằm trong nguồn Excel đã import/)).toBeInTheDocument();
+    expect(screen.queryByText("Nguồn Excel gốc")).not.toBeInTheDocument();
+  });
+
+  it("fails closed on mismatched Certificate and missing or duplicate original Excel groups", async () => {
+    const bad = [
+      { ...originalExcelEvidence(), business_eligibility_certificate_id: idB },
+      { ...originalExcelEvidence(), canonical_links_included: true },
+      { ...originalExcelEvidence(), groups: originalExcelEvidence().groups.slice(0, 3) },
+      { ...originalExcelEvidence(), groups: [
+        originalExcelEvidence().groups[0], originalExcelEvidence().groups[0],
+        originalExcelEvidence().groups[2], originalExcelEvidence().groups[3],
+      ] },
+    ] as BusinessEligibilityGxpSourceEvidence[];
+    for (const invalid of bad) {
+      vi.mocked(getBusinessEligibilityGxpSourceEvidence).mockResolvedValueOnce(invalid);
+      const view = mount();
+      expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+      expect(await screen.findByRole("alert")).toHaveTextContent("Không thể tải dữ liệu nguồn");
+      expect(screen.queryByText("Nguồn Excel gốc")).not.toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it("does not retrieve Excel evidence when canonical detail fails verification", async () => {
+    vi.mocked(getBusinessEligibilityDetail).mockResolvedValueOnce({ ...detail(), site_id: otherSite });
+    mount();
+    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp");
+    expect(getBusinessEligibilityGxpSourceEvidence).not.toHaveBeenCalled();
+  });
+
+  it.each([403, 404, 409])("does not retry Excel source HTTP %s or expose mock data", async status => {
+    vi.mocked(getBusinessEligibilityGxpSourceEvidence).mockRejectedValueOnce(Object.assign(
+      new Error("Protected source unavailable"), { status }));
+    mount();
+    expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(getBusinessEligibilityGxpSourceEvidence).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Nguồn Excel gốc")).not.toBeInTheDocument();
   });
 
   it("does not request version history when detail is unverified or unauthorized", async () => {

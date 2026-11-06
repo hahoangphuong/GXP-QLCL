@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
-import { getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory } from "../lib/api";
-import type { BusinessEligibilityDetail, BusinessEligibilityVersionHistory } from "../types";
+import { getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory, getBusinessEligibilityGxpSourceEvidence } from "../lib/api";
+import type { BusinessEligibilityDetail, BusinessEligibilityVersionHistory, BusinessEligibilityGxpSourceEvidence } from "../types";
+import { BusinessEligibilitySourceEvidence } from "../features/search/BusinessEligibilitySourceEvidence";
+import type { EligibilitySourceState } from "../features/search/useBusinessEligibilitySourceEvidence";
 import { PersistedCertificateHistory } from "../features/search/PersistedCertificateHistory";
 import type { HistoryState } from "../features/search/usePersistedCertificateHistory";
 import { BusinessEligibilityDetailFields } from "../features/search/BusinessEligibilityDetailFields";
@@ -10,6 +12,20 @@ import { BusinessEligibilityDetailFields } from "../features/search/BusinessElig
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Result = { owner: object; detail: BusinessEligibilityDetail | null; error: string | null };
 type HistoryResult = { owner: object; state: HistoryState<BusinessEligibilityVersionHistory> };
+type SourceResult = { owner: object; state: EligibilitySourceState };
+
+function validateOriginalExcelEvidence(value: BusinessEligibilityGxpSourceEvidence, certificateId: string): void {
+  if (!value || value.business_eligibility_certificate_id !== certificateId
+    || value.evidence_kind !== "original_excel_cells_source_only"
+    || value.canonical_links_included !== false
+    || !["available", "legacy_identity_missing", "not_in_imported_source"].includes(value.source_status)
+    || !Array.isArray(value.groups)
+    || (value.source_status === "available" && (value.groups.length !== 4
+      || ["GMP", "GLP", "GSP", "GDP"].some(name => value.groups.filter(group => group.source_group === name).length !== 1)))
+    || (value.source_status !== "available" && value.groups.length !== 0)) {
+    throw new Error("Dữ liệu Excel gốc không khớp chứng nhận hoặc hợp đồng đối chiếu.");
+  }
+}
 
 function validateHistory(value: BusinessEligibilityVersionHistory, detail: BusinessEligibilityDetail): void {
   const ids = new Set<string>();
@@ -73,6 +89,9 @@ export function BusinessEligibilityReadOnlyDetail({ access }: { access: ApiAcces
     ? historyResult.state
     : { status: "loading" as const };
   const detail = current?.detail;
+  const [sourceResult, setSourceResult] = useState<SourceResult | null>(null);
+  const sourceEvidence: EligibilitySourceState = sourceResult?.owner === owner
+    ? sourceResult.state : { status: "loading" };
   const backLink = !invalidSite && siteHint
     ? `/documents?${new URLSearchParams({ kind: "business_eligibility", site_id: siteHint })}`
     : "/documents?kind=business_eligibility";
@@ -108,6 +127,23 @@ export function BusinessEligibilityReadOnlyDetail({ access }: { access: ApiAcces
     return () => { live = false; controller.abort(); };
   }, [owner, detail, eligibilityId, invalidId, invalidSite, auth, useStubAuth, bearerToken, canLoadSecureApi]);
 
+  useEffect(() => {
+    if (!canLoadSecureApi || !detail || !eligibilityId || invalidId || invalidSite) return;
+    let live = true;
+    const controller = new AbortController();
+    void getBusinessEligibilityGxpSourceEvidence(eligibilityId, auth, useStubAuth, bearerToken, controller.signal)
+      .then(value => {
+        validateOriginalExcelEvidence(value, eligibilityId);
+        if (live) setSourceResult({ owner, state: { status: "ready", data: value } });
+      })
+      .catch((error: Error & { status?: number }) => {
+        if (live) setSourceResult({ owner, state: {
+          status: "error", httpStatus: typeof error.status === "number" ? error.status : null,
+        } });
+      });
+    return () => { live = false; controller.abort(); };
+  }, [owner, detail, eligibilityId, invalidId, invalidSite, auth, useStubAuth, bearerToken, canLoadSecureApi]);
+
   if (!canLoadSecureApi) return <section className="page-section"><h2>Cần đăng nhập</h2><p>Đăng nhập để xem chi tiết giấy đủ điều kiện.</p></section>;
   return <section className="page-section">
     <header className="section-title"><div><p className="eyebrow">Chứng nhận / Chỉ đọc</p>
@@ -128,6 +164,7 @@ export function BusinessEligibilityReadOnlyDetail({ access }: { access: ApiAcces
         </dl>
         <BusinessEligibilityDetailFields detail={current.detail} />
         <PersistedCertificateHistory kind="ddk" state={history} />
+        <BusinessEligibilitySourceEvidence state={sourceEvidence} />
         <p><Link className="text-link" to={`/documents/business-eligibility-certificates/${encodeURIComponent(current.detail.business_eligibility_certificate_id)}${siteHint ? `?return_site_id=${encodeURIComponent(siteHint)}` : ""}`}>Xem metadata tài liệu đã đăng ký</Link></p>
         <p className="muted-copy">Metadata tài liệu không đồng nghĩa tệp binary hay bản gốc đã ký được xác minh.</p>
       </section>}

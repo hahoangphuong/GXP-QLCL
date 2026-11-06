@@ -84,11 +84,12 @@ export function EligibilitySiteDocumentBrowser({ access }: { access: ApiAccess }
       : current.error ? <p role="alert">{current.error}</p>
       : current.rows?.length === 0 ? <p>Site chưa có giấy đủ điều kiện được đăng ký trong hệ thống.</p>
       : current.rows && <div className="table-scroll"><table className="dense-table">
-        <thead><tr><th>Số giấy</th><th>Ngày cấp</th><th>Trạng thái ghi nhận</th><th>Metadata tài liệu</th></tr></thead>
+        <thead><tr><th>Số giấy</th><th>Ngày cấp</th><th>Trạng thái ghi nhận</th><th>Chi tiết giấy</th><th>Metadata tài liệu</th></tr></thead>
         <tbody>{current.rows.map(item => <tr key={item.business_eligibility_certificate_id}>
           <td>{item.certificate_number ?? "Chưa có số giấy"}</td>
           <td>{item.issued_on ?? "—"}</td>
           <td>{item.current_status_text ?? "Chưa ghi nhận"}</td>
+          <td><Link className="text-link" to={`/certificates/business-eligibility/${encodeURIComponent(item.business_eligibility_certificate_id)}?${new URLSearchParams({ site_id: siteId })}`}>Xem chi tiết GCN</Link></td>
           <td><Link className="text-link" to={`/documents/business-eligibility-certificates/${encodeURIComponent(item.business_eligibility_certificate_id)}?${new URLSearchParams({ return_site_id: siteId })}`}>Xem metadata</Link></td>
         </tr>)}</tbody>
       </table></div>)}

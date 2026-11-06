@@ -47,6 +47,8 @@ describe("site-scoped business eligibility document discovery", () => {
     submit(siteA);
     expect(await screen.findByRole("link", { name: "Xem metadata" }))
       .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteA}`);
+    expect(screen.getByRole("link", { name: "Xem chi tiết GCN" }))
+      .toHaveAttribute("href", `/certificates/business-eligibility/${certificate}?site_id=${siteA}`);
     expect(screen.getByText("ABC-123")).toBeInTheDocument();
     expect(screen.getByText(/không xác minh bản gốc/)).toBeInTheDocument();
     expect(listSiteBusinessEligibilityCertificates).toHaveBeenCalledWith(siteA, access.auth, true, null);

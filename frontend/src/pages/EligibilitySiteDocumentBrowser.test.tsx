@@ -1,0 +1,97 @@
+import "@testing-library/jest-dom/vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ApiAccess } from "../App";
+import { listSiteBusinessEligibilityCertificates } from "../lib/api";
+import { EligibilitySiteDocumentBrowser } from "./EligibilitySiteDocumentBrowser";
+
+vi.mock("../lib/api", () => ({ listSiteBusinessEligibilityCertificates: vi.fn() }));
+
+const siteA = "11111111-1111-4111-8111-111111111111";
+const siteB = "22222222-2222-4222-8222-222222222222";
+const certificate = "33333333-3333-4333-8333-333333333333";
+const company = "44444444-4444-4444-8444-444444444444";
+const access: ApiAccess = {
+  auth: { username: "reader", role: "reader" }, bearerToken: null,
+  useStubAuth: true, canLoadSecureApi: true, accessGeneration: 1,
+};
+const row = {
+  business_eligibility_certificate_id: certificate, site_id: siteA, company_id: company,
+  latest_flag: true, certificate_number: "ABC-123", issued_on: "2026-01-01",
+  issuance_sequence_text: null, current_status_text: "Còn hiệu lực",
+};
+const response = (items: typeof row[]) => ({ items, issue_readiness: null }) as Awaited<ReturnType<typeof listSiteBusinessEligibilityCertificates>>;
+const submit = (id: string) => {
+  fireEvent.change(screen.getByLabelText("Site UUID"), { target: { value: id } });
+  fireEvent.click(screen.getByRole("button", { name: "Tra cứu theo Site" }));
+};
+const mount = (props = access) => render(
+  <MemoryRouter><EligibilitySiteDocumentBrowser access={props} /></MemoryRouter>,
+);
+
+beforeEach(() => {
+  vi.mocked(listSiteBusinessEligibilityCertificates).mockReset().mockResolvedValue(response([row]));
+});
+
+describe("site-scoped business eligibility document discovery", () => {
+  it("discovers a canonical certificate through the authorized Site API and opens registered metadata", async () => {
+    mount();
+    expect(listSiteBusinessEligibilityCertificates).not.toHaveBeenCalled();
+    submit(siteA);
+    expect(await screen.findByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}`);
+    expect(screen.getByText("ABC-123")).toBeInTheDocument();
+    expect(screen.getByText(/không xác minh bản gốc/)).toBeInTheDocument();
+    expect(listSiteBusinessEligibilityCertificates).toHaveBeenCalledWith(siteA, access.auth, true, null);
+  });
+
+  it("does not request protected data for malformed Site UUID or signed-out access", () => {
+    const ui = mount();
+    submit("../not-site");
+    expect(screen.getByRole("alert")).toHaveTextContent("Site UUID hợp lệ");
+    expect(listSiteBusinessEligibilityCertificates).not.toHaveBeenCalled();
+    ui.unmount();
+    render(<MemoryRouter><EligibilitySiteDocumentBrowser access={{ ...access, canLoadSecureApi: false }} /></MemoryRouter>);
+    expect(screen.getByText(/Cần đăng nhập/)).toBeInTheDocument();
+    expect(listSiteBusinessEligibilityCertificates).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on cross-Site, duplicate and malformed identities", async () => {
+    const ui = mount();
+    vi.mocked(listSiteBusinessEligibilityCertificates).mockResolvedValueOnce(response([{ ...row, site_id: siteB }]));
+    submit(siteA);
+    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp Site canonical");
+    expect(screen.queryByRole("link", { name: "Xem metadata" })).not.toBeInTheDocument();
+    ui.unmount();
+
+    vi.mocked(listSiteBusinessEligibilityCertificates).mockResolvedValueOnce(response([row, row]));
+    mount();
+    submit(siteA);
+    expect(await screen.findByRole("alert")).toHaveTextContent("định danh không hợp lệ");
+    expect(screen.queryByRole("link", { name: "Xem metadata" })).not.toBeInTheDocument();
+  });
+
+  it("does not display obsolete Site A rows or errors after changing to Site B", async () => {
+    let resolveA!: (value: Awaited<ReturnType<typeof listSiteBusinessEligibilityCertificates>>) => void;
+    vi.mocked(listSiteBusinessEligibilityCertificates)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveA = resolve; }))
+      .mockResolvedValueOnce(response([{ ...row, site_id: siteB }]));
+    mount();
+    submit(siteA);
+    submit(siteB);
+    expect(await screen.findByRole("link", { name: "Xem metadata" })).toBeInTheDocument();
+    resolveA(response([row]));
+    await waitFor(() => expect(screen.getAllByRole("link", { name: "Xem metadata" })).toHaveLength(1));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("invalidates prior inventory on credential generation change", async () => {
+    const ui = mount();
+    submit(siteA);
+    expect(await screen.findByRole("link", { name: "Xem metadata" })).toBeInTheDocument();
+    vi.mocked(listSiteBusinessEligibilityCertificates).mockImplementationOnce(() => new Promise(() => {}));
+    ui.rerender(<MemoryRouter><EligibilitySiteDocumentBrowser access={{ ...access, accessGeneration: 2 }} /></MemoryRouter>);
+    expect(screen.queryByRole("link", { name: "Xem metadata" })).not.toBeInTheDocument();
+  });
+});

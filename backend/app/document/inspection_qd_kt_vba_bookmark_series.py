@@ -131,8 +131,10 @@ def _candidate_names(
     first_index: int = -1,
     last_index: int = -1,
 ) -> tuple[str, ...]:
-    if not isinstance(logical_name, str) or not logical_name:
+    if type(logical_name) is not str or not logical_name:
         raise QdKtVbaBookmarkContractError("QDKT_LOGICAL_BOOKMARK_INVALID")
+    if type(first_index) is not int or type(last_index) is not int:
+        raise QdKtVbaBookmarkContractError("QDKT_BOOKMARK_BOUNDS_INVALID")
     # RecordForm.Replace_Bookmark lines 595-600: series mode is selected only
     # by (i >= 0) And (j > 0); k=0 denotes the unnumbered base name.
     if first_index >= 0 and last_index > 0:
@@ -143,6 +145,18 @@ def _candidate_names(
             for index in range(first_index, last_index + 1)
         )
     return (logical_name,)
+
+
+def _physical_names(names: Iterable[str]) -> tuple[str, ...]:
+    if isinstance(names, (str, bytes)):
+        raise QdKtVbaBookmarkContractError("QDKT_PHYSICAL_BOOKMARK_SET_INVALID")
+    try:
+        result = tuple(names)
+    except TypeError as exc:
+        raise QdKtVbaBookmarkContractError("QDKT_PHYSICAL_BOOKMARK_SET_INVALID") from exc
+    if any(type(name) is not str or not name for name in result) or len(set(result)) != len(result):
+        raise QdKtVbaBookmarkContractError("QDKT_PHYSICAL_BOOKMARK_SET_INVALID")
+    return result
 
 
 def resolve_vba_bookmark_targets(
@@ -158,9 +172,7 @@ def resolve_vba_bookmark_targets(
     ``On Error Resume Next``.  Exact generated names are used; near-prefix
     names are never accepted.
     """
-    physical = frozenset(physical_bookmarks)
-    if any(not isinstance(name, str) or not name for name in physical):
-        raise QdKtVbaBookmarkContractError("QDKT_PHYSICAL_BOOKMARK_SET_INVALID")
+    physical = frozenset(_physical_names(physical_bookmarks))
     return tuple(
         name
         for name in _candidate_names(
@@ -177,9 +189,9 @@ def reconcile_qdkt_i2_bookmarks(
     physical_bookmarks: Iterable[str],
 ) -> dict[str, QdKtI2BookmarkOperation]:
     """Reconcile the source-proven series/team operations for QĐKT only."""
-    if gxp_type not in SUPPORTED_GXP_TYPES:
+    if type(gxp_type) is not str or gxp_type not in SUPPORTED_GXP_TYPES:
         raise QdKtVbaBookmarkContractError("QDKT_GXP_TYPE_UNSUPPORTED")
-    physical = tuple(physical_bookmarks)
+    physical = _physical_names(physical_bookmarks)
     result: dict[str, QdKtI2BookmarkOperation] = {}
     for logical_name, rule in _I2_RULES.items():
         branch_reachable = gxp_type in rule.applicable_gxp

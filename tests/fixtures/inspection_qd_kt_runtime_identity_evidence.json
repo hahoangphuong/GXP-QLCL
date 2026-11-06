@@ -1,0 +1,302 @@
+{
+  "build_distribution_survey": {
+    "found_attested_build_or_distribution_mapping": false,
+    "limitation": "Bounded workspace search; no assertion about unavailable original build/distribution systems.",
+    "packages": [
+      {
+        "entries": 4,
+        "path": "artifacts/legacy_audit/batch_a_precommit.zip",
+        "runtime_or_vba_entries": [],
+        "sha256": "85f45b44da814ab6c599ac76a0cd0eeb5474d2c3bb0bb19d61b0e1a5109daa62"
+      },
+      {
+        "entries": 4,
+        "path": "artifacts/legacy_audit/BATCH_B2_PRECOMMIT.zip",
+        "runtime_or_vba_entries": [],
+        "sha256": "549295a5556ab6c2f22daa5bb3abbedc52b887c38412eb6610223561b9a3c30b"
+      },
+      {
+        "entries": 9,
+        "path": "artifacts/legacy_audit/BATCH_B3_PRECOMMIT.zip",
+        "runtime_or_vba_entries": [],
+        "sha256": "83555fafcf65bb5e33b5ba804e50521974ce9b2e551d330758a29133e0349383"
+      }
+    ],
+    "scope": [
+      "legacy/",
+      "artifacts/legacy_audit/*.zip",
+      "git-tracked docs/tools references to GPs.xlam or VBA export/build"
+    ]
+  },
+  "encoding": {
+    "addin_project_codepage": 1252,
+    "package_metadata": {
+      "app_properties_sha256": "37c8f61419a4ca8d85d26c99391cef0306ff0a5acb12e9bd7889a6052be9d758",
+      "application": "Microsoft Excel",
+      "custom_properties_present": false,
+      "manifest_named_members": [],
+      "producer_app_version": "16.0300",
+      "scope": "Office producer metadata only; not an attested VBA build, distribution or loaded Excel version"
+    },
+    "procedures": [
+      {
+        "addin_lines": [
+          650,
+          722
+        ],
+        "category": "ENCODING_AMBIGUOUS",
+        "differences": [
+          {
+            "addin_line": 678,
+            "case": 7,
+            "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"6. Phi\" & ChrW(&H1EBF) & \"u trình PCT - \" & TenCtyx & \" (\" & syear & \")\"",
+            "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"6. Phi\" & ChrW(&H1EBF) & \"u tŕnh PCT - \" & TenCtyx & \" (\" & syear & \")\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "ec",
+                "cp1252_codepoint": "U+00EC",
+                "cp1258_codepoint": "U+0301",
+                "offset": 98
+              }
+            ],
+            "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022362e20506869222026204368725728264831454246292026202275207472ec6e6820504354202d202220262054656e43747978202620222028222026207379656172202620222922",
+            "raw_sha256": "cb2144f38ab1dafe60c335525123174888a776f5349b61602a070dfd5090c83a",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 685
+          },
+          {
+            "addin_line": 681,
+            "case": 8,
+            "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"7. Phi\" & ChrW(&H1EBF) & \"u trình CT - \" & TenCtyx & \" (\" & syear & \")\"",
+            "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"7. Phi\" & ChrW(&H1EBF) & \"u tŕnh CT - \" & TenCtyx & \" (\" & syear & \")\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "ec",
+                "cp1252_codepoint": "U+00EC",
+                "cp1258_codepoint": "U+0301",
+                "offset": 98
+              }
+            ],
+            "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022372e20506869222026204368725728264831454246292026202275207472ec6e68204354202d202220262054656e43747978202620222028222026207379656172202620222922",
+            "raw_sha256": "5d2e7db14d6d7058c7911ebfd2dfca06c7305d698f9dcadc70b95d49a1c56218",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 688
+          },
+          {
+            "addin_line": 691,
+            "case": 11,
+            "cp1252_text": "        tpl = \"10. B\" & ChrW(&H1EA3) & \"ng công c\" & ChrW(&H1EE5) & \" qu\" & ChrW(&H1EA3) & \"n lý r\" & ChrW(&H1EE7) & \"i ro.dotx\"",
+            "cp1258_text": "        tpl = \"10. B\" & ChrW(&H1EA3) & \"ng công c\" & ChrW(&H1EE5) & \" qu\" & ChrW(&H1EA3) & \"n lư r\" & ChrW(&H1EE7) & \"i ro.dotx\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "fd",
+                "cp1252_codepoint": "U+00FD",
+                "cp1258_codepoint": "U+01B0",
+                "offset": 95
+              }
+            ],
+            "raw_hex": "202020202020202074706c203d202231302e204222202620436872572826483145413329202620226e672063f46e672063222026204368725728264831454535292026202220717522202620436872572826483145413329202620226e206cfd207222202620436872572826483145453729202620226920726f2e646f747822",
+            "raw_sha256": "fd2ae7a391ac859d02ac9eeb2c53ca86f44e08b4b5c9369cc8f7ad0e7a993ec0",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 698
+          },
+          {
+            "addin_line": 692,
+            "case": 11,
+            "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"10. Qu\" & ChrW(&H1EA3) & \"n lý r\" & ChrW(&H1EE7) & \"i ro - \" & TenCtyx & \" (\" & syear & \")\"",
+            "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"10. Qu\" & ChrW(&H1EA3) & \"n lư r\" & ChrW(&H1EE7) & \"i ro - \" & TenCtyx & \" (\" & syear & \")\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "fd",
+                "cp1252_codepoint": "U+00FD",
+                "cp1258_codepoint": "U+01B0",
+                "offset": 97
+              }
+            ],
+            "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d202231302e20517522202620436872572826483145413329202620226e206cfd207222202620436872572826483145453729202620226920726f202d202220262054656e43747978202620222028222026207379656172202620222922",
+            "raw_sha256": "6d9e8613ec19d385c49f3f681c8ed4804f41e444c6534de6796b6fc68ed84dc7",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 699
+          },
+          {
+            "addin_line": 694,
+            "case": 12,
+            "cp1252_text": "        tpl = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n tình tr\" & ChrW(&H1EA1) & \"ng.dotx\"",
+            "cp1258_text": "        tpl = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n t́nh tr\" & ChrW(&H1EA1) & \"ng.dotx\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "ec",
+                "cp1252_codepoint": "U+00EC",
+                "cp1258_codepoint": "U+0301",
+                "offset": 50
+              }
+            ],
+            "raw_hex": "202020202020202074706c203d2022612e2043562078e163206e6822202620436872572826483145414429202620226e2074ec6e6820747222202620436872572826483145413129202620226e672e646f747822",
+            "raw_sha256": "c6ffba89562bb8f0765cf854a23294ef1ee71c9b56c37e20abb5a7b753e7d484",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 701
+          },
+          {
+            "addin_line": 696,
+            "case": 12,
+            "cp1252_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n tình tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" KT - \" & TenCtyx '& \" (\" & syear & \")\"",
+            "cp1258_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n t́nh tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" KT - \" & TenCtyx '& \" (\" & syear & \")\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "ec",
+                "cp1252_codepoint": "U+00EC",
+                "cp1258_codepoint": "U+0301",
+                "offset": 107
+              }
+            ],
+            "raw_hex": "20202020202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022612e2043562078e163206e6822202620436872572826483145414429202620226e2074ec6e6820747222202620436872572826483145413129202620226e672063682220262043687257282648314544442920262022204b54202d202220262054656e4374797820272620222028222026207379656172202620222922",
+            "raw_sha256": "752696bd92cd12275bfc5cd14c4a34282307e1b5bf1c76db623f18b345291521",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 703
+          },
+          {
+            "addin_line": 698,
+            "case": 12,
+            "cp1252_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n tình tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" c\" & ChrW(&H1EA5) & \"p CC - \" & TenCtyx '& \" (\" & syear & \")\"",
+            "cp1258_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n t́nh tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" c\" & ChrW(&H1EA5) & \"p CC - \" & TenCtyx '& \" (\" & syear & \")\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "ec",
+                "cp1252_codepoint": "U+00EC",
+                "cp1258_codepoint": "U+0301",
+                "offset": 107
+              }
+            ],
+            "raw_hex": "20202020202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022612e2043562078e163206e6822202620436872572826483145414429202620226e2074ec6e6820747222202620436872572826483145413129202620226e6720636822202620436872572826483145444429202620222063222026204368725728264831454135292026202270204343202d202220262054656e4374797820272620222028222026207379656172202620222922",
+            "raw_sha256": "edf8add37e97a92b05a02dd223888f63e804a95385db5e9abf14127621be336f",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 705
+          },
+          {
+            "addin_line": 702,
+            "case": 13,
+            "cp1252_text": "        tpl = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ý \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \".dotx\"",
+            "cp1258_text": "        tpl = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ư \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \".dotx\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "fd",
+                "cp1252_codepoint": "U+00FD",
+                "cp1258_codepoint": "U+01B0",
+                "offset": 109
+              }
+            ],
+            "raw_hex": "202020202020202074706c203d2022622e2043562074722220262043687257282648314541332920262022206c222026204368725728264831454444292026202269202220262043687257282648313131292026202222202620436872572826483145443329202620226e6720fd20222026204368725728264831313129202620222220262043687257282648314544352920262022692074ea6e2c202220262043687257282648313131292026202222202620436872572826483145434229202620226120636822202620436872572826483145433929202620222e646f747822",
+            "raw_sha256": "e505fb0e3a88256dd86e58827067fa9486279b69886866099ecef0612ec71fb0",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 709
+          },
+          {
+            "addin_line": 703,
+            "case": 13,
+            "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ý \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \" \" & TenCtyx '& \" (\" & syear & \")\"",
+            "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ư \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \" \" & TenCtyx '& \" (\" & syear & \")\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "fd",
+                "cp1252_codepoint": "U+00FD",
+                "cp1258_codepoint": "U+01B0",
+                "offset": 162
+              }
+            ],
+            "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022622e2043562074722220262043687257282648314541332920262022206c222026204368725728264831454444292026202269202220262043687257282648313131292026202222202620436872572826483145443329202620226e6720fd20222026204368725728264831313129202620222220262043687257282648314544352920262022692074ea6e2c20222026204368725728264831313129202620222220262043687257282648314543422920262022612063682220262043687257282648314543392920262022202220262054656e4374797820272620222028222026207379656172202620222922",
+            "raw_sha256": "83be7511b01edbf23c49e4e17f608def1cad37ad5a68d0cee3b8b9a94f652a22",
+            "reachability": "NOT_CASE_2",
+            "zip_line": 710
+          }
+        ],
+        "direct_qdkt_word_text_write": false,
+        "export_codepage_attested": false,
+        "module": "RecordForm.frm",
+        "normalization": "LF only; no Unicode or punctuation normalization",
+        "procedure": "Get_Tpl",
+        "scope": "non-i2 template/filename branches",
+        "zip_lines": [
+          657,
+          729
+        ],
+        "zip_raw_module_sha256": "9c656a194839c5847789f4c12fcae67d392ed64f7053e241426865e527089b1d"
+      },
+      {
+        "addin_lines": [
+          392,
+          421
+        ],
+        "category": "ENCODING_AMBIGUOUS",
+        "differences": [
+          {
+            "addin_line": 419,
+            "case": null,
+            "cp1252_text": "    MsgBoxU \"Không tìm th\" & ChrW(&H1EA5) & \"y danh sách Thanh tra viên\"",
+            "cp1258_text": "    MsgBoxU \"Không t́m th\" & ChrW(&H1EA5) & \"y danh sách Thanh tra viên\"",
+            "differing_byte_decodes": [
+              {
+                "byte_hex": "ec",
+                "cp1252_codepoint": "U+00EC",
+                "cp1258_codepoint": "U+0301",
+                "offset": 20
+              }
+            ],
+            "raw_hex": "202020204d7367426f785520224b68f46e672074ec6d2074682220262043687257282648314541352920262022792064616e682073e16368205468616e6820747261207669ea6e22",
+            "raw_sha256": "4f74827c2239f32c7357f7949e97146bd8669496dfd01e25feaf10ce047f98f1",
+            "reachability": "I2_REACHABLE_FAILURE_HANDLER_NOT_PROVEN_EXECUTED",
+            "zip_line": 426
+          }
+        ],
+        "direct_qdkt_word_text_write": false,
+        "export_codepage_attested": false,
+        "module": "TTVForm.frm",
+        "normalization": "LF only; no Unicode or punctuation normalization",
+        "procedure": "Get_TTV2",
+        "scope": "error message in called team function; do not classify as unreachable from i=2",
+        "zip_lines": [
+          399,
+          428
+        ],
+        "zip_raw_module_sha256": "07201c54e73281abf51889769dcbb152f10088c55b7e8c4980b6520675d478f4"
+      }
+    ],
+    "source_capture_pin": "b2cdf80607d44c4543fa0b90e78e9eecfc10c4ef3ebb8ebdecd5d7c32df279ea",
+    "version_binding": "UNVERIFIED_VERSION_BINDING",
+    "zip_decoder": "tools.trace_inspection_qd_kt_vba._decode: utf-8-sig then cp1258 then cp1252 then latin-1"
+  },
+  "global_blocker": "UNVERIFIED_VERSION_BINDING",
+  "loader": {
+    "artifact": "legacy/Danh sách Kiểm tra GPs.xlsb",
+    "checks_checksum_or_build_identity": false,
+    "limitation": "Source observation only: an already-open same-name add-in or alternate configured path may supply the invoked runtime.",
+    "lines": [
+      20,
+      42
+    ],
+    "loaded_runtime_category": "RUNTIME_IDENTITY_UNVERIFIED",
+    "lookup_and_open_references": [
+      {
+        "line": 27,
+        "text": "    Set wkb = Application.Workbooks(fname)"
+      },
+      {
+        "line": 32,
+        "text": "        Application.Workbooks.Open path1 & fname"
+      },
+      {
+        "line": 33,
+        "text": "        If Err.Number <> 0 Then Err.Clear:   Application.Workbooks.Open path2 & fname"
+      }
+    ],
+    "module": "Module1.bas",
+    "procedure": "Load_Lib",
+    "procedure_utf8_lf_sha256": "f303b4e6691cf745317c63a7e40ed62f42d50c26bf6fe0b0dac427b2a9e11bf3",
+    "project_codepage": 1252,
+    "sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+    "size_bytes": 3284315
+  },
+  "primary_addin_size_bytes": 1017208,
+  "ready_to_render": false,
+  "runtime_identity_verified": false,
+  "schema_version": "qdkt-runtime-identity-evidence/v1"
+}

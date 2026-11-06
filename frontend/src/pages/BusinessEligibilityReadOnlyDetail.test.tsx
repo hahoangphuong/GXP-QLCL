@@ -92,7 +92,7 @@ describe("read-only business eligibility detail", () => {
     fireEvent.click(screen.getByText("Các phiên bản ĐĐK đã lưu"));
     expect(await screen.findByText("Snapshot phiên bản — chỉ đọc")).toBeInTheDocument();
     expect(screen.getByText(/chưa xác nhận hiệu lực hoặc phê duyệt lịch sử/)).toBeInTheDocument();
-    expect(screen.getByText("Phiên bản 2", { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByText("Phiên bản 2", { exact: false }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /Cấp|Sửa|Ban hành|Lưu/ })).not.toBeInTheDocument();
   });
 

@@ -4,12 +4,12 @@ import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace, getGxpCertificateDetail } from "../../lib/api";
 import { formatStatusLabel } from "../../lib/presentation";
 import type { ChangeRequestWorkspace, GxpCertificateDetail } from "../../types";
+import { reportReturnLocation } from "./reportReturnLocation";
 
 export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: "certificates" | "change_requests" }) {
   const params = useParams();
   const location = useLocation();
-  const hint: unknown = location.state?.reportReturn;
-  const reportReturn = typeof hint === "string" && hint.startsWith("/reports?") && hint.length <= 2048 ? hint : null;
+  const reportReturn = reportReturnLocation(location.state, kind);
   const [searchParams] = useSearchParams();
   const expectedSite = searchParams.get("site_id");
   const id = kind === "certificates" ? params.certificateId : params.changeRequestId;

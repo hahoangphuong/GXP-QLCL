@@ -56,6 +56,10 @@ beforeEach(() => {
 });
 
 describe("full canonical Change Request read workspace", () => {
+  it("returns to the originating report filters and page", async () => {
+    render(<MemoryRouter initialEntries={[{ pathname: "/reports/change-requests/cr-uuid", state: { reportReturn: "/reports?report=change_requests&state=received&offset=100" } }]}><Routes><Route path="/reports/change-requests/:changeRequestId" element={<ChangeRequestReadWorkspace access={access} />} /></Routes></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "Quay lại Báo cáo" })).toHaveAttribute("href", "/reports?report=change_requests&state=received&offset=100");
+  });
   it("renders request, detail changes, decisions, affected/issued artifacts and documents", async () => {
     mount("/reports/change-requests/cr-uuid");
     expect(await screen.findByRole("heading", { name: "Hồ sơ yêu cầu thay đổi" })).toBeInTheDocument();

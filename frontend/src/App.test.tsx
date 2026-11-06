@@ -936,6 +936,18 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("preserves the verified Case report and queue return through canonical resolution", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const value = buildCaseWorkspace();
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...value, case_summary: { ...value.case_summary, production_line_id: "line-uuid-1", production_line_code: "A", production_line_identity_state: "canonical" } });
+    render(<MemoryRouter initialEntries={[{ pathname: "/cases/case-1", search: "?return_queue=inspection", state: { caseReportReturn: "/workflow?queue=inspection&state=planned&offset=100" } }]}><App /></MemoryRouter>);
+    const report = await screen.findByRole("link", { name: "Mở lại báo cáo hồ sơ (tab mới)" });
+    expect(report).toHaveAttribute("href", "/workflow?queue=inspection&state=planned&offset=100");
+    expect(report).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "Quay lại hàng đợi" })).toHaveAttribute("href", "/workflow?queue=inspection&state=planned&offset=100");
+  });
   it("opens the verified contextual document slot without loading or opening a binary", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

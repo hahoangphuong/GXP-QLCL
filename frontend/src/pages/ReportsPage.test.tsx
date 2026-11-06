@@ -188,13 +188,13 @@ describe("ReportsPage operator workflow", () => {
     expect(screen.getByTestId("cases-report")).not.toHaveTextContent("awaiting_certificate_decision");
   });
 
-  it("falls back to facilities on an unknown or duplicated report type", async () => {
+  it("rejects an unknown or duplicated report type before fetching", async () => {
     vi.mocked(searchFacilities).mockResolvedValue({ items: [], offset: 0, limit: 100, total_count: 0 });
     render(<MemoryRouter initialEntries={["/reports?report=GSP&report=cases"]}>
       <ReportsPage access={access} statusError={null} />
     </MemoryRouter>);
-    expect(screen.getByLabelText("Loại báo cáo")).toHaveValue("facilities");
-    expect(await screen.findByText("Không có cơ sở phù hợp.")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("không hợp lệ");
+    expect(searchFacilities).not.toHaveBeenCalled();
     expect(screen.queryByTestId("cases-report")).not.toBeInTheDocument();
   });
 

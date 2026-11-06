@@ -34,12 +34,12 @@ afterEach(() => vi.resetAllMocks());
 describe("original ĐĐK source presentation", () => {
   it("keeps four groups, verbatim multiline cells, repeated source tokens and GDP activity without ID CC", () => {
     const { container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
-    expect(Array.from(container.querySelectorAll("summary"), node => node.textContent)).toEqual(["GMP", "GLP", "GSP", "GDP"]);
-    const gmp = container.querySelector("details")!;
+    expect(Array.from(container.querySelectorAll("details.ddk-source-group > summary"), node => node.textContent)).toEqual(["GMP", "GLP", "GSP", "GDP"]);
+    const gmp = container.querySelector("details.ddk-source-group")!;
     expect(gmp.querySelectorAll("dd")[1].textContent).toBe("GMP: dòng 1\n  dòng 2");
     expect(Array.from(gmp.querySelectorAll("li"), node => [node.getAttribute("value"), node.textContent]))
       .toEqual([["1", "17"], ["2", "17"], ["3", "22"]]);
-    const gdp = container.querySelectorAll("details")[3];
+    const gdp = container.querySelectorAll("details.ddk-source-group")[3];
     expect(gdp).toHaveTextContent("GDP: hoạt động nguồn");
     expect(gdp.querySelectorAll("dd")[0]).toHaveTextContent("Ô nguồn trống");
     expect(screen.getByText(/chưa phải liên kết GxP được xác nhận/)).toBeInTheDocument();
@@ -47,6 +47,55 @@ describe("original ĐĐK source presentation", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+  it("shows a recorded workbook locator and fingerprint only when source is available", () => {
+    const { container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
+    const provenance = container.querySelector("details.ddk-source-provenance");
+    expect(provenance).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Vị trí và dấu vân tay dữ liệu nguồn Excel"));
+    expect(provenance).toHaveAttribute("open");
+    expect(provenance).toHaveTextContent("Sheet nguồn");
+    expect(provenance).toHaveTextContent("db.dkkd");
+    expect(provenance).toHaveTextContent("Hàng Excel");
+    expect(provenance).toHaveTextContent("43");
+    expect(provenance).toHaveTextContent("a".repeat(64));
+    expect(provenance).toHaveTextContent("chưa tự đối chiếu tệp workbook");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+  it("shows each GxP group physical column index and source-value SHA without manufacturing links", () => {
+    const { container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
+    const groups = container.querySelectorAll("details.ddk-source-group");
+    expect(groups).toHaveLength(4);
+    expect(container.querySelectorAll("details.ddk-source-cell-provenance")).toHaveLength(4);
+    const gmp = groups[0].querySelector("details.ddk-source-cell-provenance");
+    expect(gmp).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Vị trí ô và dấu vân tay nhóm GMP"));
+    expect(gmp).toHaveAttribute("open");
+    for (const label of ["Cột ID CC gốc", "Cột phạm vi chứng nhận", "Cột tiêu chuẩn áp dụng", "Cột hoạt động kinh doanh"]) {
+      expect(gmp).toHaveTextContent(label);
+    }
+    expect(gmp).toHaveTextContent("15");
+    expect(gmp).toHaveTextContent("16");
+    expect(gmp).toHaveTextContent("17");
+    expect(gmp).toHaveTextContent("18");
+    expect(gmp).toHaveTextContent("b".repeat(64));
+    expect(gmp).toHaveTextContent("không chứng minh liên kết GxP");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+  it("does not expose prior workbook metadata for unavailable, missing-source or error states", () => {
+    const { rerender } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
+    expect(screen.getByText("Vị trí và dấu vân tay dữ liệu nguồn Excel")).toBeInTheDocument();
+    rerender(<BusinessEligibilitySourceEvidence state={{ status: "loading" }} />);
+    expect(screen.queryByText("Vị trí và dấu vân tay dữ liệu nguồn Excel")).not.toBeInTheDocument();
+    rerender(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: {
+      ...sourceFixture(), source_status: "not_in_imported_source", groups: [],
+      source_workbook_sha256: null, source_sheet_name: null, source_row_number: null,
+    } }} />);
+    expect(screen.queryByText("Vị trí và dấu vân tay dữ liệu nguồn Excel")).not.toBeInTheDocument();
+    rerender(<BusinessEligibilitySourceEvidence state={{ status: "error", httpStatus: 403 }} />);
+    expect(screen.queryByText("Vị trí và dấu vân tay dữ liệu nguồn Excel")).not.toBeInTheDocument();
+  });
+
   it.each(["legacy_identity_missing", "not_in_imported_source"] as const)("distinguishes %s from no canonical certificates", source_status => {
     render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: { ...sourceFixture(), source_status, groups: [] } }} />);
     expect(screen.getByRole("status")).toHaveTextContent(source_status === "legacy_identity_missing" ? "chưa có định danh legacy" : "không nằm trong nguồn Excel");

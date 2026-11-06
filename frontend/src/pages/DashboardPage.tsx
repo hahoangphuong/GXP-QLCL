@@ -53,6 +53,37 @@ const METRICS = [
   },
 ] as const;
 
+const COUNT_KEYS: (keyof Omit<DashboardSummary, "queue">)[] = [
+  "total_facilities", "total_cases", "active_cases", "waiting_inspection",
+  "waiting_certificate_decision", "active_certificates",
+  "expiring_certificates_90_days", "incomplete_changes",
+];
+
+// The Dashboard API is an aggregate of distinct Site counts plus a bounded
+// Case queue. Validate its read contract before exposing any Site/Case links.
+// Multiple queue Cases may legitimately share a Site or result_key.
+function validateDashboardSummary(summary: DashboardSummary): DashboardSummary {
+  if (!summary || COUNT_KEYS.some(key => !Number.isSafeInteger(summary[key]) || summary[key] < 0)
+    || !Array.isArray(summary.queue)
+    || summary.queue.length > summary.total_cases
+    || COUNT_KEYS.some(key => key !== "total_cases" && key !== "total_facilities"
+      && summary[key] > summary.total_facilities)) {
+    throw new Error("API trả về thống kê Dashboard không nhất quán.");
+  }
+  const ids = new Set<string>();
+  for (const item of summary.queue) {
+    if (!item || typeof item.case_id !== "string" || !item.case_id.trim()
+      || typeof item.site_id !== "string" || !item.site_id.trim()
+      || typeof item.state !== "string" || !item.state.trim()
+      || typeof item.gxp_type !== "string" || !item.gxp_type.trim()
+      || ids.has(item.case_id)) {
+      throw new Error("Hàng đợi Dashboard thiếu hoặc trùng định danh hồ sơ.");
+    }
+    ids.add(item.case_id);
+  }
+  return summary;
+}
+
 export function DashboardPage({
   access,
   statusError,
@@ -76,7 +107,12 @@ export function DashboardPage({
     let cancelled = false;
     void getDashboardSummary(auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) setResult({ owner, summary: payload, error: null });
+        if (cancelled) return;
+        try {
+          setResult({ owner, summary: validateDashboardSummary(payload), error: null });
+        } catch (error) {
+          setResult({ owner, summary: null, error: error instanceof Error ? error.message : "Dashboard không hợp lệ." });
+        }
       })
       .catch((nextError: Error) => {
         if (!cancelled) setResult({ owner, summary: null, error: nextError.message });

@@ -137,7 +137,7 @@ describe("canonical Site name discovery for business eligibility", () => {
     vi.mocked(searchSitesByName).mockResolvedValueOnce([]);
     const view = mount();
     search("Unknown");
-    expect(await screen.findByRole("status")).toHaveTextContent("Không tìm thấy cơ sở");
+    expect(await screen.findByText("Không tìm thấy cơ sở phù hợp.")).toBeInTheDocument();
     view.unmount();
     vi.mocked(searchSitesByName).mockRejectedValueOnce(new Error("HTTP 403"));
     mount();

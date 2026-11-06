@@ -34,7 +34,7 @@ afterEach(() => vi.resetAllMocks());
 describe("original ĐĐK source presentation", () => {
   it("keeps four groups, verbatim multiline cells, repeated source tokens and GDP activity without ID CC", () => {
     const { container } = render(<BusinessEligibilitySourceEvidence state={{ status: "ready", data: sourceFixture() }} />);
-    expect(Array.from(container.querySelectorAll("summary"), node => node.textContent)).toEqual(["GMP", "GLP", "GSP", "GDP"]);
+    expect(Array.from(container.querySelectorAll("details.ddk-source-group > summary"), node => node.textContent)).toEqual(["GMP", "GLP", "GSP", "GDP"]);
     const gmp = container.querySelector("details.ddk-source-group")!;
     expect(gmp.querySelectorAll("dd")[1].textContent).toBe("GMP: dòng 1\n  dòng 2");
     expect(Array.from(gmp.querySelectorAll("li"), node => [node.getAttribute("value"), node.textContent]))

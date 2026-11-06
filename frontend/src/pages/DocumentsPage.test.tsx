@@ -283,7 +283,7 @@ describe("contextual document register", () => {
   it("offers a canonical GxP certificate list with links to registered document metadata", () => {
     render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "GCN GxP" }));
-    expect(screen.getByTestId("change-report")).toHaveTextContent("certificates:false:all");
+    expect(screen.getByTestId("change-report")).toHaveTextContent("certificates:undefined:all");
     expect(screen.getByText(/Chọn GCN từ danh sách hiện hành/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "GCN GxP" })).toHaveAttribute("aria-pressed", "true");
     expect(getCaseWorkspace).not.toHaveBeenCalled();

@@ -31,6 +31,16 @@ describe("canonical report page integrity", () => {
     expect(screen.queryByRole("link", { name: "Xem metadata" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Xuất CSV/ })).toBeDisabled();
   });
+  it.each(["GSP", "GDP"])("rejects a wrong %s certificate filter without links", async gxp => {
+    vi.mocked(getCertificateReport).mockResolvedValue({ items: [certificate], total_count: 1, limit: 100, offset: 0 });
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
+    await screen.findByRole("link", { name: "GCN-A" });
+    fireEvent.change(screen.getByLabelText("Loại GxP"), { target: { value: gxp } });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không nhất quán");
+    expect(screen.queryByRole("link", { name: "GCN-A" })).not.toBeInTheDocument();
+  });
+
   it("rejects duplicate Change Request identity", async () => {
     vi.mocked(getChangeRequestReport).mockResolvedValue({ items: [change, change], total_count: 2, limit: 100, offset: 0 });
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="change_requests" showDocumentsLink /></MemoryRouter>);

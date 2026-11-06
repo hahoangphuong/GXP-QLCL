@@ -100,13 +100,58 @@ describe("certificate document metadata register", () => {
       ...metadata(), metadata_status: "no_registered_document_metadata",
     });
     const first = mount();
-    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp danh mục");
+    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp chứng nhận");
     first.unmount();
     vi.mocked(getGxpCertificateDocumentMetadata).mockResolvedValue({
       ...metadata(), documents: [metadata().documents[0], metadata().documents[0]],
     });
     mount();
-    expect(await screen.findByRole("alert")).toHaveTextContent("trùng lặp");
+    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp chứng nhận");
+  });
+
+  it.each(["certificate", "business_eligibility_certificate"] as const)(
+    "rejects corrupt %s count/status metadata consistently without granting binary access",
+    async kind => {
+      const isGxp = kind === "certificate";
+      const api = isGxp ? vi.mocked(getGxpCertificateDocumentMetadata) : vi.mocked(getBusinessEligibilityDocumentMetadata);
+      const path = isGxp ? "/documents/certificates/cert-1" : "/documents/business-eligibility-certificates/elig-1";
+      const fixture = metadata(kind);
+      const invalid: DocumentOwnerMetadataInventory[] = [
+        { ...fixture, metadata_status: "registered_metadata_only_unverified", documents: [] },
+        { ...fixture, documents: [{ ...fixture.documents[0], registered_variant_count: -1 }] },
+        { ...fixture, documents: [{ ...fixture.documents[0], registered_version_count: 1.5 }] },
+        { ...fixture, documents: [{ ...fixture.documents[0], registered_current_version_count: 3 }] },
+        { ...fixture, documents: [{ ...fixture.documents[0], registered_variant_count: Number.MAX_SAFE_INTEGER + 1 }] },
+        { ...fixture, documents: [{ ...fixture.documents[0], family_code: "  " }] },
+        { ...fixture, documents: [{ ...fixture.documents[0], document_type_code: "" }] },
+        { ...fixture, documents: [{ ...fixture.documents[0], document_id: " " }] },
+        { ...fixture, documents: [{ ...fixture.documents[0], title: 42 as unknown as string }] },
+      ];
+      for (const item of invalid) {
+        api.mockResolvedValueOnce(item);
+        const view = mount(path);
+        expect(await screen.findByRole("alert")).toHaveTextContent("trạng thái đăng ký/phiên bản không hợp lệ");
+        expect(screen.queryByText("Tệp đã đăng ký")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /Tải|Ban hành|Sửa|Lưu/ })).not.toBeInTheDocument();
+        view.unmount();
+      }
+    },
+  );
+
+  it("never renders malformed document counts after A→B navigation or credential replacement", async () => {
+    const first = metadata();
+    const bad = { ...metadata(), documents: [{ ...metadata().documents[0], registered_current_version_count: 8 }] };
+    vi.mocked(getGxpCertificateDocumentMetadata).mockImplementation(async id => id === "cert-1"
+      ? first : { ...bad, owner_id: id });
+    render(<MemoryRouter initialEntries={["/documents/certificates/cert-1"]}>
+      <Link to="/documents/certificates/cert-2">Mở B</Link>
+      <Routes><Route path="/documents/certificates/:certificateId" element={
+        <CertificateDocumentRegister access={access} kind="certificate" />} /></Routes>
+    </MemoryRouter>);
+    expect(await screen.findByText("Tệp đã đăng ký")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Mở B" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không hợp lệ");
+    expect(screen.queryByText("Tệp đã đăng ký")).not.toBeInTheDocument();
   });
 
   it("shows an empty registered inventory without inventing files or evidence", async () => {

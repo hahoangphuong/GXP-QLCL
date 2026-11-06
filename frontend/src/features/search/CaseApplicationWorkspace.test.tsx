@@ -438,3 +438,30 @@ it("synchronously serializes an application save and isolates other Cases", asyn
   expect(screen.getByRole("button", { name: "Lưu Mã hồ sơ" })).toBeDisabled();
   await act(async () => request.resolve());
 });
+
+it("edits the canonical applicant name with the pinned application version but never writes dossier_reference", async () => {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  const canonical = { ...workspace, application: { ...workspace.application, row_version: 7, applicant_name: "Người nộp A", dossier_reference: "LEGACY-READ-ONLY" } };
+  render(<CaseDraftSession identity="case-A"><CaseApplicationWorkspace caseWorkspace={canonical} onSave={onSave} onResolveInspectionFolder={vi.fn()} /></CaseDraftSession>);
+  expect(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" }));
+  fireEvent.change(screen.getByLabelText("Người nộp hồ sơ"), { target: { value: "  Người nộp B  " } });
+  fireEvent.click(screen.getByRole("button", { name: "Lưu Người nộp hồ sơ" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ expected_version: 7, applicant_name: "Người nộp B" }));
+  expect(JSON.stringify(onSave.mock.calls)).not.toContain("dossier_reference");
+});
+
+it("keeps the applicant field draft and original version after a 409 conflict", async () => {
+  const onSave = vi.fn().mockRejectedValue(Object.assign(new Error("conflict"), { status: 409 }));
+  const canonical = { ...workspace, application: { ...workspace.application, row_version: 3, applicant_name: "Source" } };
+  const view = (show: boolean, version: number) => <CaseDraftSession identity="case-A">{show ? <CaseApplicationWorkspace caseWorkspace={{ ...canonical, application: { ...canonical.application, row_version: version } }} onSave={onSave} onResolveInspectionFolder={vi.fn()} /> : null}</CaseDraftSession>;
+  const rendered = render(view(true, 3));
+  fireEvent.click(screen.getByRole("button", { name: "Sửa Người nộp hồ sơ" }));
+  fireEvent.change(screen.getByLabelText("Người nộp hồ sơ"), { target: { value: "Retained applicant" } });
+  rendered.rerender(view(false, 3));
+  rendered.rerender(view(true, 9));
+  expect(screen.getByLabelText("Người nộp hồ sơ")).toHaveValue("Retained applicant");
+  fireEvent.click(screen.getByRole("button", { name: "Lưu Người nộp hồ sơ" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ expected_version: 3, applicant_name: "Retained applicant" }));
+  expect(screen.getByLabelText("Người nộp hồ sơ")).toHaveValue("Retained applicant");
+});

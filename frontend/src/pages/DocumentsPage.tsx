@@ -116,7 +116,7 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
       : kind === "change_requests" ? <CanonicalRecordReport key={kind} access={access} kind="change_requests" showDocumentsLink />
       : kind === "certificates"
         ? <><p className="muted-copy">Chọn GCN từ danh sách hiện hành để xem metadata tài liệu đã đăng ký theo Certificate UUID. Không xác minh bản gốc, chữ ký hoặc mở tải binary.</p>
-            <CanonicalRecordReport key={kind} access={access} kind="certificates" /></>
+            <CanonicalRecordReport key={kind} access={access} kind="certificates" initialCertificateExpiryDays="" /></>
         : <section className="panel"><p className="muted-copy">Nhập UUID giấy đủ điều kiện kinh doanh dược để xem metadata tài liệu đã đăng ký theo API được phân quyền. Chưa xác minh tệp gốc hoặc chữ ký; không có chức năng tải binary chứng nhận.</p></section>}
   </section>;
 }

@@ -6,7 +6,7 @@ import {
   getBusinessEligibilityDocumentMetadata,
   getGxpCertificateDocumentMetadata,
 } from "../../lib/api";
-import type { DocumentOwnerMetadataInventory } from "../../types";
+import type { DocumentOwnerMetadataInventory, StubAuthState } from "../../types";
 import { CertificateDocumentMetadata } from "./CertificateDocumentMetadata";
 import { useCertificateDocumentMetadata } from "./useCertificateDocumentMetadata";
 
@@ -184,10 +184,10 @@ describe("access-bound certificate document metadata ownership", () => {
     loadGxp.mockResolvedValue(inventory("gxp"));
     const { result, rerender } = renderHook(({ principal, stub }) =>
       useCertificateDocumentMetadata("gxp", "fixed-context", "gxp-a", principal, stub, null), {
-      initialProps: { principal: { username: "reader", role: "reader" } as typeof auth, stub: true },
+      initialProps: { principal: { username: "reader", role: "reader" } as StubAuthState, stub: true },
     });
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    rerender({ principal: { username: "reader", role: "admin" } as typeof auth, stub: true });
+    rerender({ principal: { username: "reader", role: "admin" } as StubAuthState, stub: true });
     expect(result.current).toEqual({ status: "loading" });
     await waitFor(() => expect(loadGxp).toHaveBeenCalledTimes(2));
     rerender({ principal: { username: "reader", role: "admin" } as typeof auth, stub: false });

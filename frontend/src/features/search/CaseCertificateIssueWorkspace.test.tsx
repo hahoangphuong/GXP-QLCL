@@ -225,3 +225,81 @@ describe("CaseCertificateIssueWorkspace", () => {
     expect(screen.queryByRole("dialog", { name: "Cấp giấy chứng nhận GxP" })).not.toBeInTheDocument();
   });
 });
+
+it("retains an unfinished certificate issuance draft and scoped intent across tab remount", async () => {
+  const issue = vi.fn().mockResolvedValue(undefined);
+  const view = (show: boolean) => <CaseDraftSession identity="case-A">
+    {show ? <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /> : null}
+  </CaseDraftSession>;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "119/GCN-QLD" } });
+  fireEvent.change(screen.getByLabelText("Ngày cấp"), { target: { value: "2026-11-07" } });
+  fireEvent.change(screen.getByLabelText("Ngày hết hạn"), { target: { value: "2029-11-07" } });
+  fireEvent.click(screen.getByRole("button", { name: "Thêm phạm vi" }));
+  fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Dây chuyền A" } });
+  rerender(view(false));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  rerender(view(true));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("119/GCN-QLD");
+  expect(screen.getByLabelText("Ngày cấp")).toHaveValue("2026-11-07");
+  expect(screen.getByLabelText("Ngày hết hạn")).toHaveValue("2029-11-07");
+  expect(screen.getByLabelText("Nội dung phạm vi 1")).toHaveValue("Dây chuyền A");
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  await waitFor(() => expect(issue).toHaveBeenCalledOnce());
+  expect(issue).toHaveBeenCalledWith(expect.objectContaining({
+    case_id: "case-A", certificate_number: "119/GCN-QLD",
+    issue_date: "2026-11-07", expiry_date: "2029-11-07",
+    scopes: [expect.objectContaining({ scope_text: "Dây chuyền A", sort_order: 0 })],
+  }));
+});
+
+it("clears the deliberately cancelled issuance draft before a new attempt", () => {
+  const view = <CaseDraftSession identity="case-A">
+    <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={vi.fn()} />
+  </CaseDraftSession>;
+  render(view);
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "unfinished" } });
+  fireEvent.click(screen.getByRole("button", { name: "Thêm phạm vi" }));
+  fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("");
+  expect(screen.queryByLabelText("Nội dung phạm vi 1")).not.toBeInTheDocument();
+});
+
+it("does not leak an issuance intent or draft between canonical Case sessions", () => {
+  const issue = vi.fn();
+  const view = (caseId: string) => <CaseDraftSession identity={caseId}>
+    <CaseCertificateIssueWorkspace caseId={caseId} readiness={readiness()} onIssue={issue} />
+  </CaseDraftSession>;
+  const { rerender } = render(view("case-A"));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "Case A" } });
+  rerender(view("case-B"));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("");
+  rerender(view("case-A"));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(issue).not.toHaveBeenCalled();
+});
+
+it("preserves typed certificate fields but does not resend after an unknown write result and tab remount", async () => {
+  const issue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Không thể xác minh kết quả cấp"));
+  const view = (show: boolean) => <CaseDraftSession identity="case-A">
+    {show ? <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /> : null}
+  </CaseDraftSession>;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "unknown-result" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(await screen.findByText("Không thể xác minh kết quả cấp")).toBeInTheDocument();
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("unknown-result");
+  expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(issue).toHaveBeenCalledOnce();
+});

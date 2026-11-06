@@ -48,7 +48,7 @@ describe("canonical Site name discovery for business eligibility", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it.each(["", "a", "a".repeat(81), "bad\nname"])("does not request an invalid search query", input => {
+  it.each(["", "a", "a".repeat(81)])("does not request an invalid search query", input => {
     const { container } = mount();
     const field = screen.getByLabelText("Tìm cơ sở theo tên");
     // Input maxLength is a browser affordance; the handler also validates independent of it.

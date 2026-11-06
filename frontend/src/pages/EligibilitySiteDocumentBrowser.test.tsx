@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
 import { listSiteBusinessEligibilityCertificates } from "../lib/api";
@@ -26,8 +26,14 @@ const submit = (id: string) => {
   fireEvent.change(screen.getByLabelText("Site UUID"), { target: { value: id } });
   fireEvent.click(screen.getByRole("button", { name: "Tra cứu theo Site" }));
 };
-const mount = (props = access) => render(
-  <MemoryRouter><EligibilitySiteDocumentBrowser access={props} /></MemoryRouter>,
+function UrlControls() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <><output data-testid="location">{location.pathname + location.search}</output>
+    <button onClick={() => navigate(-1)}>Back</button><button onClick={() => navigate(1)}>Forward</button></>;
+}
+const mount = (props = access, path = "/documents") => render(
+  <MemoryRouter initialEntries={[path]}><UrlControls /><EligibilitySiteDocumentBrowser access={props} /></MemoryRouter>,
 );
 
 beforeEach(() => {
@@ -40,7 +46,7 @@ describe("site-scoped business eligibility document discovery", () => {
     expect(listSiteBusinessEligibilityCertificates).not.toHaveBeenCalled();
     submit(siteA);
     expect(await screen.findByRole("link", { name: "Xem metadata" }))
-      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}`);
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteA}`);
     expect(screen.getByText("ABC-123")).toBeInTheDocument();
     expect(screen.getByText(/không xác minh bản gốc/)).toBeInTheDocument();
     expect(listSiteBusinessEligibilityCertificates).toHaveBeenCalledWith(siteA, access.auth, true, null);
@@ -84,6 +90,39 @@ describe("site-scoped business eligibility document discovery", () => {
     resolveA(response([row]));
     await waitFor(() => expect(screen.getAllByRole("link", { name: "Xem metadata" })).toHaveLength(1));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("restores a Site-scoped list from a bookmarked URL and refetches by authorized API", async () => {
+    mount(access, `/documents?kind=business_eligibility&site_id=${siteA}`);
+    expect(await screen.findByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteA}`);
+    expect(screen.getByLabelText("Site UUID")).toHaveValue(siteA);
+    expect(listSiteBusinessEligibilityCertificates).toHaveBeenCalledWith(siteA, access.auth, true, null);
+  });
+
+  it("restores A after Back/Forward without adopting a stale Site B read", async () => {
+    vi.mocked(listSiteBusinessEligibilityCertificates).mockImplementation(id =>
+      Promise.resolve(response([{ ...row, site_id: id }])))
+    mount();
+    submit(siteA);
+    expect(await screen.findByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteA}`);
+    submit(siteB);
+    expect(await screen.findByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteB}`);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteA}`);
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+    expect(await screen.findByRole("link", { name: "Xem metadata" }))
+      .toHaveAttribute("href", `/documents/business-eligibility-certificates/${certificate}?return_site_id=${siteB}`);
+  });
+
+  it("rejects malformed bookmarked Site without making any secure request", () => {
+    mount(access, "/documents?kind=business_eligibility&site_id=wrong-site");
+    expect(screen.getByRole("alert")).toHaveTextContent("Site UUID trong đường dẫn không hợp lệ");
+    expect(listSiteBusinessEligibilityCertificates).not.toHaveBeenCalled();
+    expect(screen.queryByRole("link", { name: "Xem metadata" })).not.toBeInTheDocument();
   });
 
   it("invalidates prior inventory on credential generation change", async () => {

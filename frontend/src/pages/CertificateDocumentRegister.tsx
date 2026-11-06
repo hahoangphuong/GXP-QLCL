@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { getBusinessEligibilityDocumentMetadata, getGxpCertificateDocumentMetadata } from "../lib/api";
 import type { DocumentOwnerMetadataInventory } from "../types";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type OwnerKind = "certificate" | "business_eligibility_certificate";
 type InventoryResult = { owner: object; value: DocumentOwnerMetadataInventory | null; error: string | null };
 
 /** Registration metadata only. Do not follow document IDs into generic detail/binary APIs. */
 export function CertificateDocumentRegister({ access, kind }: { access: ApiAccess; kind: OwnerKind }) {
   const { certificateId, eligibilityId } = useParams();
+  const [params] = useSearchParams();
+  const siteHint = params.get("return_site_id");
+  const backLink = kind === "business_eligibility_certificate"
+    ? siteHint && UUID.test(siteHint)
+      ? `/documents?${new URLSearchParams({ kind: "business_eligibility", site_id: siteHint })}`
+      : "/documents?kind=business_eligibility"
+    : "/documents?kind=certificates";
   const id = kind === "certificate" ? certificateId : eligibilityId;
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [kind, id, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
@@ -47,7 +55,7 @@ export function CertificateDocumentRegister({ access, kind }: { access: ApiAcces
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / Chứng nhận</p>
       <h2>{kind === "certificate" ? "Tài liệu GCN GxP" : "Tài liệu giấy đủ điều kiện kinh doanh dược"}</h2>
-    </div><Link className="text-link" to="/documents">Quay lại danh mục</Link></header>
+    </div><Link className="text-link" to={backLink}>Quay lại danh mục</Link></header>
     {!current ? <p role="status">Đang tải metadata tài liệu chứng nhận...</p>
       : current.error ? <p role="alert">{current.error}</p>
       : current.value && <>

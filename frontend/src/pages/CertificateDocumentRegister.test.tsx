@@ -60,6 +60,26 @@ describe("certificate document metadata register", () => {
     expect(getGxpCertificateDocumentMetadata).not.toHaveBeenCalled();
   });
 
+  it("returns to the exact Site-scoped eligibility list using only a valid UUID hint", async () => {
+    const site = "11111111-1111-4111-8111-111111111111";
+    mount(`/documents/business-eligibility-certificates/elig-1?return_site_id=${site}`);
+    await screen.findByText("Tệp đã đăng ký");
+    expect(screen.getByRole("link", { name: "Quay lại danh mục" }))
+      .toHaveAttribute("href", `/documents?kind=business_eligibility&site_id=${site}`);
+  });
+
+  it("rejects malformed Site return hints and preserves GxP certificate kind", async () => {
+    const first = mount("/documents/business-eligibility-certificates/elig-1?return_site_id=../../bad");
+    await screen.findByText("Tệp đã đăng ký");
+    expect(screen.getByRole("link", { name: "Quay lại danh mục" }))
+      .toHaveAttribute("href", "/documents?kind=business_eligibility");
+    first.unmount();
+    mount("/documents/certificates/cert-1");
+    await screen.findByText("Tệp đã đăng ký");
+    expect(screen.getByRole("link", { name: "Quay lại danh mục" }))
+      .toHaveAttribute("href", "/documents?kind=certificates");
+  });
+
   it("rejects wrong certificate UUID and owner kind without showing metadata rows", async () => {
     vi.mocked(getGxpCertificateDocumentMetadata).mockResolvedValue({ ...metadata(), owner_id: "other-cert" });
     mount();

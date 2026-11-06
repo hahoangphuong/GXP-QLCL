@@ -191,7 +191,7 @@ describe("access-bound certificate document metadata ownership", () => {
     rerender({ principal: { username: "reader", role: "admin" } as StubAuthState, stub: true });
     expect(result.current).toEqual({ status: "loading" });
     await waitFor(() => expect(loadGxp).toHaveBeenCalledTimes(2));
-    rerender({ principal: { username: "reader", role: "admin" } as typeof auth, stub: false });
+    rerender({ principal: { username: "reader", role: "admin" } as StubAuthState, stub: false });
     expect(result.current).toEqual({ status: "loading" });
     await waitFor(() => expect(loadGxp).toHaveBeenCalledTimes(3));
   });

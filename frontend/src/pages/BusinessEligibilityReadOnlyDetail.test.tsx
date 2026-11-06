@@ -110,7 +110,7 @@ describe("read-only business eligibility detail", () => {
     });
     mount();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByText("Snapshot phiên bản — chỉ đọc")).not.toBeInTheDocument();
+    expect(screen.queryByText("1 phiên bản đã lưu")).not.toBeInTheDocument();
   });
 
   it("does not request version history when detail is unverified or unauthorized", async () => {

@@ -275,6 +275,7 @@ function renderCaseStepContent(
   accessGeneration: number | null,
   activeTab: string,
   caseWorkspace: CaseWorkspace,
+  documentNavigationKey: string | null | undefined,
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>,
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
@@ -328,6 +329,7 @@ function renderCaseStepContent(
         </div>
         <div className="registration-document-column">
         <ContextualDocumentSection
+          initialSelectionKey={documentNavigationKey}
           contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
           onCreateDocument={(item, action) =>
@@ -358,6 +360,7 @@ function renderCaseStepContent(
         />
         <div className="inspection-document-column">
           <ContextualDocumentSection
+            initialSelectionKey={documentNavigationKey}
             contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
             createReadiness={inspectionPlanReadiness}
             items={documentItems}
@@ -387,6 +390,7 @@ function renderCaseStepContent(
         />
         <div className="remediation-document-column">
           <ContextualDocumentSection
+            initialSelectionKey={documentNavigationKey}
             contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
             items={documentItems}
             onCreateDocument={(item, action) =>
@@ -406,6 +410,7 @@ function renderCaseStepContent(
         <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="timeline" />
         <div className="processing-document-column">
           <ContextualDocumentSection
+            initialSelectionKey={documentNavigationKey}
             contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
             items={documentItems}
             onCreateDocument={(item, action) =>
@@ -432,6 +437,7 @@ function renderCaseStepContent(
         </div>
         <div className="case-gxp-document-column">
           <ContextualDocumentSection
+            initialSelectionKey={documentNavigationKey}
             contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
             items={documentItems}
             onCreateDocument={(item, action) =>
@@ -474,6 +480,7 @@ function renderChangeRequestStepContent(
 }
 
 export function EventWorkspace({
+  documentNavigationKey,
   accessGeneration = 0,
   selectedHistory,
   caseWorkspace,
@@ -511,6 +518,7 @@ export function EventWorkspace({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  documentNavigationKey?: string | null;
   accessGeneration?: number | null;
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
@@ -615,6 +623,7 @@ export function EventWorkspace({
             accessGeneration,
             effectiveActiveTab,
             caseWorkspace,
+            documentNavigationKey,
             onCaseApplicationSave,
             onCaseAssessmentSave,
             onInspectionPlanSave,

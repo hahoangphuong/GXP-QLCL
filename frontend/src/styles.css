@@ -854,6 +854,11 @@ tr:focus-visible {
   table-layout: fixed;
 }
 
+/* Keep checklist controls usable inside the register's own horizontal scroller. */
+.document-register { grid-template-columns: minmax(0, 1fr); }
+.document-register > .panel { min-width: 0; }
+.document-register-table { min-width: 850px; }
+
 .dense-table thead th {
   position: sticky;
   top: 0;

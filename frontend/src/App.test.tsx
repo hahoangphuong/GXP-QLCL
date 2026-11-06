@@ -936,6 +936,52 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("opens the verified contextual document slot without loading or opening a binary", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const value = buildCaseWorkspace();
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...value, case_summary: { ...value.case_summary,
+      production_line_id: "line-uuid-1", production_line_code: "A", production_line_identity_state: "canonical" } });
+    renderApp(["/search?site_id=site-1&gxp_type=GMP&context_gxp=GMP&production_line_id=line-uuid-1&line_code=A&history_id=case-1&document_key=case%3Acase-1%3ACERTIFICATE_DECISION&document_id=doc-cert-decision&document_parent_scope=case&document_parent_id=case-1"]);
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalled());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalled());
+    expect(await screen.findByRole("button", { name: "Chọn Quyết định cấp CC" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Xử lý tiếp" })).toHaveAttribute("aria-current", "step");
+    expect(apiMocks.getDocumentDetail).not.toHaveBeenCalled();
+    expect(apiMocks.openCaseDocumentCurrentContent).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Mở danh mục tài liệu (tab mới)" })).toHaveAttribute("href", "/documents/cases/case-1");
+  });
+  it("does not apply an intent after a document ID is replaced in the same slot", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const value = buildCaseWorkspace();
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...value, case_summary: { ...value.case_summary,
+      production_line_id: "line-uuid-1", production_line_code: "A", production_line_identity_state: "canonical" } });
+    renderApp(["/search?site_id=site-1&gxp_type=GMP&context_gxp=GMP&production_line_id=line-uuid-1&line_code=A&history_id=case-1&document_key=case%3Acase-1%3ACERTIFICATE_DECISION&document_id=obsolete&document_parent_scope=case&document_parent_id=case-1"]);
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalled());
+    expect(await screen.findByRole("button", { name: "Hồ sơ đăng ký" })).toHaveAttribute("aria-current", "step");
+    expect(screen.queryByRole("button", { name: "Chọn Quyết định cấp CC" })).not.toBeInTheDocument();
+    expect(apiMocks.getDocumentDetail).not.toHaveBeenCalled();
+  });
+  it("opens the exact verified CAPA cycle instead of selecting the newest cycle", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const value = buildCaseWorkspace();
+    const item = { ...value.documents.items[0], checklist_key: "capa_cycle:capa-1:REPORT", label: "Tài liệu CAPA một", family_code: "CAPA_REPORT", parent_scope: "capa_cycle", parent_id: "capa-1", status: "missing", document_id: null };
+    const action = { ...item, workflow_step: "Khắc phục", actions: [{ action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [] }] };
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...value, case_summary: { ...value.case_summary,
+      production_line_id: "line-uuid-1", production_line_code: "A", production_line_identity_state: "canonical" },
+      documents: { items: [item] }, contextual_document_actions: [action], remediation: { cycles: [buildRemediationCycle(), buildRemediationCycle({ capa_cycle_id: "capa-2", round_no: 2 })], actions: [] } });
+    renderApp(["/search?site_id=site-1&gxp_type=GMP&context_gxp=GMP&production_line_id=line-uuid-1&line_code=A&history_id=case-1&document_key=capa_cycle%3Acapa-1%3AREPORT&document_id=&document_parent_scope=capa_cycle&document_parent_id=capa-1"]);
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalled());
+    expect(await screen.findByRole("button", { name: "Chọn Tài liệu CAPA một" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Báo cáo khắc phục" })).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
+    expect(apiMocks.getDocumentDetail).not.toHaveBeenCalled();
+  });
   it("drops the workflow tab suggestion when access generation changes", async () => {
     const route = "/search?return_queue=inspection&site_id=site-1&gxp_type=GMP&context_gxp=GMP&production_line_id=line-uuid-1&line_code=A&history_id=case-1&event_tab=Kiểm+tra";
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

@@ -12,6 +12,7 @@ import { ActionCard } from "../features/search/ActionCard";
 import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPanel";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { caseWorkflowQueue } from "../features/search/caseNavigation";
+import { resolveDocumentWorkspace } from "../features/documents/documentNavigation";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { ReassessmentDialog } from "../features/search/ReassessmentDialog";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
@@ -303,11 +304,20 @@ export function SearchPage({
   const [historyResolution, setHistoryResolution] = useState<ResolutionState>(() => searchParams.get("history_id") ? "pending" : "none");
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(() => resolveFacilityTab(searchParams.get("facility_tab")));
-  const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
+  const [documentHint, setDocumentHint] = useState(() => searchParams.get("document_key"));
+  const documentIntent = useRef({ key: searchParams.get("document_key"), documentId: searchParams.get("document_id"), parentScope: searchParams.get("document_parent_scope"), parentId: searchParams.get("document_parent_id"), caseId: searchParams.get("history_id"), generation: canLoadSecureApi ? accessGeneration : null as number | null, pending: true, locationKey: location.key });
+  const [verifiedDocumentIntent, setVerifiedDocumentIntent] = useState<{ key: string; documentId: string | null; parentScope: string; parentId: string; caseId: string; context: string; generation: number; step: string; cycleId: string | null } | null>(null);
+  const [activeTab, setActiveTab] = useState(searchParams.has("document_key") ? DEFAULT_EVENT_TAB : searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
   const workflowAccessGeneration = useRef<number | null>(canLoadSecureApi ? accessGeneration : null);
   useEffect(() => {
     const previous = workflowAccessGeneration.current;
-    if (returnQueue && previous !== null && (!canLoadSecureApi || previous !== accessGeneration)) setActiveTab(DEFAULT_EVENT_TAB);
+    if (previous === null && canLoadSecureApi && documentIntent.current.pending) documentIntent.current.generation = accessGeneration;
+    if (previous !== null && (!canLoadSecureApi || previous !== accessGeneration)) {
+      if (returnQueue || documentIntent.current.key) setActiveTab(DEFAULT_EVENT_TAB);
+      documentIntent.current.pending = false;
+      setDocumentHint(null);
+      setVerifiedDocumentIntent(null);
+    }
     workflowAccessGeneration.current = canLoadSecureApi ? accessGeneration : null;
   }, [accessGeneration, canLoadSecureApi, returnQueue]);
   const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
@@ -637,7 +647,7 @@ export function SearchPage({
   }
   function assertCaseReadbackOwner(payload: CaseWorkspace, caseId: string) {
     const summary = payload.case_summary;
-    const isWorkflowTarget = returnQueue && pendingDeepLink.historyId === caseId;
+    const isWorkflowTarget = (returnQueue || documentHint) && pendingDeepLink.historyId === caseId;
     if (summary.id !== caseId || !selectedResult || summary.site_id !== selectedResult.site_id
       || (selectedResult.gxp_type && summary.gxp_type !== selectedResult.gxp_type)
       || (isWorkflowTarget && (summary.production_line_id !== pendingDeepLink.productionLineId
@@ -698,7 +708,13 @@ export function SearchPage({
     setSelectedHistoryId(pending.historyId);
     setRequestedGxpCertificateId(params.get("certificate_id"));
     setSelectedFacilityTab(resolveFacilityTab(params.get("facility_tab")));
-    setActiveTab(params.get("event_tab") ?? DEFAULT_EVENT_TAB);
+    if (!params.has("document_key")) setActiveTab(params.get("event_tab") ?? DEFAULT_EVENT_TAB);
+    // Same-route navigation must not redirect an editor with an active draft.
+    if (location.key !== documentIntent.current.locationKey) {
+      documentIntent.current.pending = false;
+      setDocumentHint(null);
+      setVerifiedDocumentIntent(null);
+    }
     setSearchPageRequest({ context: "", offset: 0 });
     setSearchEpoch((current) => current + 1);
     setDeepLinkError(null);
@@ -789,6 +805,12 @@ export function SearchPage({
     }
     const nextParams = new URLSearchParams();
     if (returnQueue) nextParams.set("return_queue", returnQueue);
+    if (documentHint) {
+      nextParams.set("document_key", documentHint);
+      if (documentIntent.current.documentId !== null) nextParams.set("document_id", documentIntent.current.documentId);
+      if (documentIntent.current.parentScope) nextParams.set("document_parent_scope", documentIntent.current.parentScope);
+      if (documentIntent.current.parentId) nextParams.set("document_parent_id", documentIntent.current.parentId);
+    }
     if (deferredGeneralQuery.trim()) {
       nextParams.set("q", deferredGeneralQuery.trim());
     }
@@ -881,6 +903,7 @@ export function SearchPage({
     deferredCertificateScope,
     deferredFacilityName,
     deferredGeneralQuery,
+    documentHint,
     gxpType,
     province,
     selectedFacilityTab,
@@ -1109,7 +1132,24 @@ export function SearchPage({
         if (!cancelled && isCurrentCaseOperation(operationOwner) && caseRequestSequence.current === requestId) {
           assertCaseReadbackOwner(payload, selectedHistoryId);
           setSelectedCaseWorkspace(payload);
-          setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, current));
+          const intent = documentIntent.current;
+          const target = intent.pending && documentHint === intent.key && intent.caseId === selectedHistoryId
+            && intent.generation === accessGeneration && intent.key
+            ? resolveDocumentWorkspace(payload, selectedHistoryId, intent.key) : null;
+          if (intent.pending && intent.caseId === selectedHistoryId) {
+            intent.pending = false;
+            if (target && selectedContext && intent.documentId !== null && intent.documentId === (target.document_id ?? "")
+              && intent.parentScope === target.parent_scope && intent.parentId === target.parent_id) {
+              const cycleId = target.parent_scope === "capa_cycle" ? target.parent_id : null;
+              setVerifiedDocumentIntent({ key: target.checklist_key, documentId: target.document_id, parentScope: target.parent_scope, parentId: target.parent_id, caseId: selectedHistoryId, context: selectedContext, generation: accessGeneration, step: target.workflow_step, cycleId });
+              setActiveTab(target.workflow_step);
+              setSelectedRemediationCycleId(cycleId ?? resolveSelectedRemediationCycleId(payload, null));
+            } else {
+              setDocumentHint(null);
+              setVerifiedDocumentIntent(null);
+              setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, current));
+            }
+          } else setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, current));
           setCaseWorkspaceError(null);
           setCaseWorkspaceLoading(false);
         }
@@ -1533,6 +1573,9 @@ export function SearchPage({
       && (resultResolution === "none" || resultResolution === "resolved")
       && (historyResolution === "none" || historyResolution === "resolved")) return;
     if (returnQueue) setActiveTab(DEFAULT_EVENT_TAB);
+    documentIntent.current.pending = false;
+    setDocumentHint(null);
+    setVerifiedDocumentIntent(null);
     setPendingDeepLink({ resultKey: null, requestedGxpType: null, historyId: null, siteId: null, contextGxp: null, productionLineId: null, lineCode: null });
     setResultResolution("none");
     setResolvedDeepLinkResult(null);
@@ -2447,6 +2490,12 @@ export function SearchPage({
           error={deepLinkError ?? (selectedResult && !workspaceLoading ? workspaceError : null)}
           onSelect={(historyId) => {
             if (returnQueue && historyId !== selectedHistoryId) setActiveTab(DEFAULT_EVENT_TAB);
+            if (historyId !== selectedHistoryId) {
+              if (documentHint) setActiveTab(DEFAULT_EVENT_TAB);
+              documentIntent.current.pending = false;
+              setDocumentHint(null);
+              setVerifiedDocumentIntent(null);
+            }
             setHistoryResolution("none");
             setDeepLinkError(null);
             setSelectedHistoryId(historyId);
@@ -2536,6 +2585,7 @@ export function SearchPage({
       <div className="search-detail-area">
         <div className="search-context-actions">
           {returnQueue && <Link className="text-link" to={`/workflow?queue=${returnQueue}`}>Quay lại hàng đợi</Link>}
+          {selectedHistory?.source_type === "case" && <Link className="text-link" target="_blank" rel="noopener noreferrer" to={`/documents/cases/${encodeURIComponent(selectedHistory.id)}`}>Mở danh mục tài liệu (tab mới)</Link>}
           <ActionCard
             actions={workspaceLoading || workspaceError || deepLinkError || !selectedResult
               || (workspace && workspace.history.length > 0 && !selectedHistory) ? undefined : workspace?.action_readiness}
@@ -2580,6 +2630,15 @@ export function SearchPage({
             <CaseDraftSession identity={selectedContext && selectedHistory ? JSON.stringify([selectedContext, selectedHistory.source_type, selectedHistory.id]) : null} facilityIdentity={selectedContext && selectedResult ? JSON.stringify([accessGeneration, useStubAuth, selectedResult.site_id]) : null} facilityRegistry={facilityCommandRegistry} commandRegistry={caseCommandRegistry}>
             <ApprovalMutationContext.Provider value={{ pending: approvalPhase === "pending", requiresReview: approvalPhase === "review" }}>
             <FacilityWorkspaceTabs
+              documentNavigationKey={verifiedDocumentIntent && selectedCaseWorkspace
+                && verifiedDocumentIntent.context === selectedContext && verifiedDocumentIntent.caseId === selectedHistoryId
+                && verifiedDocumentIntent.generation === accessGeneration && verifiedDocumentIntent.step === activeTab
+                && (verifiedDocumentIntent.cycleId === null || verifiedDocumentIntent.cycleId === selectedRemediationCycleId)
+                && selectedCaseWorkspace.contextual_document_actions.some(item => item.checklist_key === verifiedDocumentIntent.key
+                  && item.document_id === verifiedDocumentIntent.documentId && item.parent_scope === verifiedDocumentIntent.parentScope
+                  && item.parent_id === verifiedDocumentIntent.parentId)
+                && resolveDocumentWorkspace(selectedCaseWorkspace, verifiedDocumentIntent.caseId, verifiedDocumentIntent.key)
+                ? verifiedDocumentIntent.key : null}
               activeEventTab={activeTab}
               caseWorkspace={selectedCaseWorkspace}
               caseWorkspaceError={caseWorkspaceError?.historyId === selectedHistoryId ? caseWorkspaceError.message : null}
@@ -2635,7 +2694,12 @@ export function SearchPage({
               onIssueBusinessEligibility={handleIssueBusinessEligibility}
               onEligibilityCertificateEditLatestVersion={handleBusinessEligibilityLatestVersionUpdate}
               onEligibilityCertificatePromote={handleBusinessEligibilityPromote}
-              onEventTabChange={setActiveTab}
+              onEventTabChange={(tab) => {
+                documentIntent.current.pending = false;
+                setDocumentHint(null);
+                setVerifiedDocumentIntent(null);
+                setActiveTab(tab);
+              }}
               onFacilityTabChange={setSelectedFacilityTab}
               onGxpCertificateSelect={(certificateId) => {
                 setRequestedGxpCertificateId(null);

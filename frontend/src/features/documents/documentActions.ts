@@ -11,14 +11,16 @@ export function resolveDocumentCreation(
   item: DocumentChecklistItem,
 ): ContextualDocumentActionAvailability | null {
   if (item.status !== "missing") return null;
-  const matching = actions.find(action =>
+  const matching = actions.filter(action =>
     action.checklist_key === item.checklist_key
     && action.parent_scope === item.parent_scope
-    && action.parent_id === item.parent_id);
-  const create = matching?.actions.find(action => action.action_key === "create");
+    && action.parent_id === item.parent_id
+    && action.family_code === item.family_code && action.status === item.status
+    && action.document_id === item.document_id);
+  if (matching.length !== 1 || !Array.isArray(matching[0].actions)) return null;
+  const creates = matching[0].actions.filter(action => action.action_key === "create");
   // A source-backed readiness is necessary; button never POSTs from this register.
-  if (!create) return null;
-  return create;
+  return creates.length === 1 ? creates[0] : null;
 }
 
 export function safeDocumentDownloadName(

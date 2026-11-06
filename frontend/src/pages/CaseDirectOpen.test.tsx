@@ -132,6 +132,28 @@ describe("canonical Case UUID entry", () => {
     expect(uri.searchParams.get("context_gxp")).toBe("GMP");
     expect(uri.searchParams.has("production_line_id")).toBe(false);
   });
+  it("forwards a matching document hint only after canonical revalidation", async () => {
+    const value = workspace("case-uuid");
+    const item = { checklist_key: "case:case-uuid:PLAN", parent_scope: "case", parent_id: "case-uuid", family_code: "PLAN", status: "missing", document_id: null };
+    value.documents = { items: [item as typeof value.documents.items[number]] };
+    value.contextual_document_actions = [{ ...item, workflow_step: "Kiểm tra", actions: [{ action_key: "create", available: true }] } as typeof value.contextual_document_actions[number]];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/cases/case-uuid?return_queue=inspection&document_key=case%3Acase-uuid%3APLAN");
+    const uri = new URL((await screen.findByTestId("resolved-url")).textContent!, "https://app.test");
+    expect(uri.searchParams.get("document_key")).toBe(item.checklist_key);
+    expect(uri.searchParams.get("return_queue")).toBe("inspection");
+    expect(uri.searchParams.has("event_tab")).toBe(false);
+  });
+  it("falls back to general Case when the hinted document belongs elsewhere", async () => {
+    const value = workspace("case-uuid");
+    value.documents = { items: [] };
+    value.contextual_document_actions = [];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/cases/case-uuid?document_key=foreign");
+    const uri = new URL((await screen.findByTestId("resolved-url")).textContent!, "https://app.test");
+    expect(uri.searchParams.has("document_key")).toBe(false);
+    expect(uri.searchParams.has("event_tab")).toBe(false);
+  });
   it("ignores the first A response after navigating A to B to A", async () => {
     type Workspace = Awaited<ReturnType<typeof getCaseWorkspace>>;
     let first!: (value: Workspace) => void;

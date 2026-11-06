@@ -31,9 +31,10 @@ function blockedReadinessMessage(reasons: string[]): string {
   return reasons.map(reason => KHKT_BLOCKED_REASON_LABELS[reason] ?? reason).join(" ");
 }
 
-export function ContextualDocumentSection({ items, contextKey, createReadiness, onRetryCreateReadiness, onOpenDocument, onLoadDocumentDetail, onCreateDocument }: {
+export function ContextualDocumentSection({ items, contextKey, initialSelectionKey, createReadiness, onRetryCreateReadiness, onOpenDocument, onLoadDocumentDetail, onCreateDocument }: {
   items: ContextualDocumentAction[];
   contextKey?: string;
+  initialSelectionKey?: string | null;
   createReadiness?: CaseInspectionPlanReadinessState | null;
   onRetryCreateReadiness?: () => void;
   onOpenDocument: (item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>;
@@ -65,6 +66,7 @@ export function ContextualDocumentSection({ items, contextKey, createReadiness, 
   const pendingHistory = useRef<Request | null>(null);
   const operationFocus = useRef<(Selection & { generation: number; element: HTMLElement }) | null>(null);
   const selectedIdentity = useRef(selection);
+  const appliedNavigation = useRef<string | null>(null);
   useLayoutEffect(() => { selectedIdentity.current = selection; }, [selection]);
   useLayoutEffect(() => {
     if (committed.current?.context !== context) {
@@ -111,6 +113,16 @@ export function ContextualDocumentSection({ items, contextKey, createReadiness, 
     setSelection(target);
     return selectionGeneration.current;
   }
+  useLayoutEffect(() => {
+    if (!initialSelectionKey) return;
+    const item = items.find(candidate => candidate.checklist_key === initialSelectionKey);
+    const token = JSON.stringify([context, initialSelectionKey, item?.document_id]);
+    if (!item || appliedNavigation.current === token) return;
+    appliedNavigation.current = token;
+    select({ context, key: item.checklist_key, id: item.document_id });
+    setFocusKey(item.checklist_key);
+    // Selection only: do not fetch history, open binary or invoke create.
+  }, [context, initialSelectionKey, items]);
   function currentSelection(target: Selection, generation: number) {
     return current(target) && selectionGeneration.current === generation && sameSelection(selectedIdentity.current, target);
   }

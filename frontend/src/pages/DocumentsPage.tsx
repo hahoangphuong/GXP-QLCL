@@ -6,13 +6,15 @@ import { ErrorState } from "../components/ErrorState";
 import { CaseReport } from "../features/reports/CaseReport";
 import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
-import type { ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
+import type { CaseWorkspace, ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
 import { hasCurrentActiveDocumentVersion, safeDocumentDownloadName, resolveDocumentCreation } from "../features/documents/documentActions";
+import { resolveDocumentWorkspace } from "../features/documents/documentNavigation";
 import { EligibilitySiteDocumentBrowser } from "./EligibilitySiteDocumentBrowser";
 
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Scope = "cases" | "change-requests";
+type DocumentSelection = { owner: object; key: string; id: string };
 type Context = {
   owner: object;
   name: string;
@@ -20,6 +22,7 @@ type Context = {
   siteId: string;
   items: DocumentChecklistItem[];
   actions: ContextualDocumentAction[];
+  workspace?: CaseWorkspace;
   error: string | null;
 };
 
@@ -29,7 +32,8 @@ function documentOwnerMatches(
   scope: Scope,
   id: string,
 ): boolean {
-  if (!item.document_id || document.document_id !== item.document_id) return false;
+  if (!item.document_id || document.document_id !== item.document_id
+    || (item.family_code !== null && document.family_code !== item.family_code)) return false;
   // Match the binary API's exclusive-parent contract. A document with multiple
   // business owners is ambiguous even if one UUID matches the selected row.
   const parents = [
@@ -49,13 +53,13 @@ function documentOwnerMatches(
       && parents[0][0] === "capa_cycle" && parents[0][1] === item.parent_id);
 }
 
-function validateChecklistOwner(items: DocumentChecklistItem[], kind: Scope, id: string): void {
+function validateChecklistOwner(items: DocumentChecklistItem[], kind: Scope, id: string, cycleIds: string[] = []): void {
   const keys = new Set<string>();
   for (const item of items) {
     const validParent = kind === "change-requests"
       ? item.parent_scope === "change_request" && item.parent_id === id
       : (item.parent_scope === "case" && item.parent_id === id)
-        || (item.parent_scope === "capa_cycle" && !!item.parent_id);
+        || (item.parent_scope === "capa_cycle" && !!item.parent_id && cycleIds.filter(cycleId => cycleId === item.parent_id).length === 1);
     if (!validParent || !item.checklist_key || keys.has(item.checklist_key)) {
       throw new Error("Checklist tài liệu có ngữ cảnh owner không khớp hoặc định danh trùng lặp.");
     }
@@ -128,22 +132,26 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [id, kind, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
   const [source, setSource] = useState<Context | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<{ owner: object; id: string; value: DocumentDetail | null; error: string | null } | null>(null);
+  const [selection, setSelection] = useState<DocumentSelection | null>(null);
+  const [detail, setDetail] = useState<{ owner: object; selection: DocumentSelection; value: DocumentDetail | null; error: string | null } | null>(null);
   const [filter, setFilter] = useState<"all" | "available" | "missing">("all");
   const [query, setQuery] = useState("");
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const downloadToken = useRef<object | null>(null);
   const currentOwnerRef = useRef(owner);
-  const selectedIdRef = useRef(selectedId);
+  const selectedRef = useRef(selection);
   currentOwnerRef.current = owner;
-  selectedIdRef.current = selectedId;
-  useEffect(() => { downloadToken.current = null; setDownloadPending(false); setDownloadError(null); }, [owner]);
+  selectedRef.current = selection;
+  useEffect(() => {
+    downloadToken.current = null; setDownloadPending(false); setDownloadError(null);
+    return () => { downloadToken.current = null; };
+  }, [owner]);
+  useEffect(() => { downloadToken.current = null; setDownloadPending(false); setDownloadError(null); }, [selection]);
 
   const context = source?.owner === owner ? source : null;
-  const currentItem = context?.items.find(item => item.document_id === selectedId) ?? null;
-  const visibleDetail = detail?.owner === owner && detail.id === selectedId ? detail : null;
+  const currentItem = selection?.owner === owner ? context?.items.find(item => item.checklist_key === selection.key && item.document_id === selection.id) ?? null : null;
+  const visibleDetail = detail?.owner === owner && detail.selection === selection ? detail : null;
 
   useEffect(() => {
     if (!canLoadSecureApi || !id) return;
@@ -151,13 +159,14 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     const lookup = kind === "cases"
       ? getCaseWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
           if (workspace.case_summary.id !== id || !workspace.case_summary.site_id) throw new Error("Case UUID không khớp phản hồi hoặc thiếu Site canonical.");
-          validateChecklistOwner(workspace.documents.items, kind, id);
+          validateChecklistOwner(workspace.documents.items, kind, id, (workspace.remediation?.cycles ?? []).map(cycle => cycle.capa_cycle_id));
           return {
             name: workspace.case_summary.facility_name,
             subtitle: `Case ${id} • ${workspace.case_summary.gxp_type}`,
             siteId: workspace.case_summary.site_id,
             items: workspace.documents.items,
             actions: workspace.contextual_document_actions ?? [],
+            workspace,
           };
         })
       : getChangeRequestWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
@@ -180,21 +189,22 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
   }, [id, owner, kind, auth, useStubAuth, bearerToken, canLoadSecureApi]);
 
   useEffect(() => {
-    if (!canLoadSecureApi || !id || !currentItem?.document_id || !currentItem.detail_available) return;
+    if (!canLoadSecureApi || !id || !selection || !currentItem?.document_id || !currentItem.detail_available) return;
     const item = currentItem;
     let live = true;
     void getDocumentDetail(item.document_id!, auth, useStubAuth, bearerToken).then(value => {
       if (!documentOwnerMatches(value, item, kind, id)) throw new Error("Tài liệu không thuộc ngữ cảnh hồ sơ đã chọn.");
-      if (live) setDetail({ owner, id: item.document_id!, value, error: null });
+      if (live) setDetail({ owner, selection, value, error: null });
     }).catch((error: Error) => {
-      if (live) setDetail({ owner, id: item.document_id!, value: null, error: error.message });
+      if (live) setDetail({ owner, selection, value: null, error: error.message });
     });
     return () => { live = false; };
-  }, [auth, bearerToken, canLoadSecureApi, currentItem, id, kind, owner, useStubAuth]);
+  }, [auth, bearerToken, canLoadSecureApi, currentItem, id, kind, owner, selection, useStubAuth]);
 
   async function downloadCurrentFile() {
     const item = currentItem;
-    const documentId = selectedId;
+    const target = selection;
+    const documentId = target?.id;
     if (kind !== "cases" || !canLoadSecureApi || !id || !documentId
       || !item || !item.detail_available || !visibleDetail?.value
       || !documentOwnerMatches(visibleDetail.value, item, kind, id)
@@ -210,7 +220,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
           ? await openCapaCycleDocumentCurrentContent(id, item.parent_id, documentId, auth, useStubAuth, bearerToken)
           : null;
       if (!result || currentOwnerRef.current !== owner
-        || selectedIdRef.current !== documentId || downloadToken.current !== token) return;
+        || selectedRef.current !== target || downloadToken.current !== token) return;
       const name = safeDocumentDownloadName(result.filename, item.original_filename);
       const url = URL.createObjectURL(result.blob);
       try {
@@ -224,7 +234,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
     } catch (error) {
-      if (currentOwnerRef.current === owner && selectedIdRef.current === documentId
+      if (currentOwnerRef.current === owner && selectedRef.current === target
         && downloadToken.current === token) {
         setDownloadError(error instanceof Error ? error.message : "Không thể tải tệp hiện hành.");
       }
@@ -246,7 +256,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
   const available = context?.items.filter(item => item.status === "available").length ?? 0;
   const missing = context?.items.filter(item => item.status === "missing").length ?? 0;
 
-  return <section className="page-section">
+  return <section className="page-section document-register">
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / {kind === "cases" ? "Case" : "Change Request"}</p>
       <h2>Danh mục tài liệu</h2>
@@ -273,7 +283,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
         <section className="panel">
           <h3>Danh mục tài liệu</h3>
           {items.length === 0 ? <p>Không có mục tài liệu phù hợp.</p> :
-            <div className="table-scroll"><table className="dense-table">
+            <div className="table-scroll"><table className="dense-table document-register-table">
               <thead><tr><th>Tài liệu</th><th>Nhóm</th><th>Trạng thái</th><th>Tệp hiện có</th><th>Ngày ban hành</th><th>Chi tiết</th><th>Hành động</th></tr></thead>
               <tbody>{items.map(item => <tr key={item.checklist_key}>
                 <td>{item.label}</td>
@@ -282,21 +292,24 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
                 <td>{item.original_filename ?? "—"}</td>
                 <td>{item.issued_on ?? "—"}</td>
                 <td>{item.status === "available" && item.document_id && item.detail_available ?
-                  <button type="button" className="secondary" aria-pressed={selectedId === item.document_id}
-                    onClick={() => { setSelectedId(item.document_id); setDownloadError(null); }}>Xem chi tiết</button> : "—"}</td>
-                <td>{item.status === "missing" && kind === "cases" ? (() => {
+                  <button type="button" className="secondary" aria-pressed={selection?.owner === owner && selection.key === item.checklist_key && selection.id === item.document_id}
+                    onClick={() => { setSelection(current => current?.owner === owner && current.key === item.checklist_key && current.id === item.document_id ? current : { owner, key: item.checklist_key, id: item.document_id! }); setDownloadError(null); }}>Xem chi tiết</button> : "—"}</td>
+                <td>{kind === "cases" && context.workspace ? (() => {
+                  const target = resolveDocumentWorkspace(context.workspace!, id, item.checklist_key);
+                  const location = target ? `/cases/${encodeURIComponent(id)}?${new URLSearchParams({ document_key: target.checklist_key })}` : `/cases/${encodeURIComponent(id)}`;
+                  if (item.status === "available") return target ? <Link className="text-link" to={location}>Đến workspace tài liệu</Link> : "—";
                   const readiness = resolveDocumentCreation(context.actions, item);
                   if (!readiness) return "Chưa có thao tác tạo được xác nhận";
                   return readiness.available && readiness.create_input_readiness !== "CANONICAL_INPUT_BLOCKED"
-                    ? <Link className="text-link" to={`/cases/${encodeURIComponent(id)}`}>Đến workspace để tạo</Link>
+                    ? <Link className="text-link" to={location}>Đến workspace để tạo</Link>
                     : <span title={readiness.disabled_reason ?? undefined}>Chưa sẵn sàng{readiness.disabled_reason ? `: ${readiness.disabled_reason}` : ""}</span>;
                 })() : "—"}</td>
               </tr>)}</tbody>
             </table></div>}
         </section>
-        {selectedId && currentItem && <section className="panel">
+        {selection && currentItem && <section className="panel">
           <div className="panel-header"><h3>Chi tiết: {currentItem.label}</h3>
-            <button type="button" className="secondary" onClick={() => setSelectedId(null)}>Đóng</button>
+            <button type="button" className="secondary" onClick={() => setSelection(null)}>Đóng</button>
           </div>
           {!visibleDetail ? <p role="status">Đang tải chi tiết tài liệu...</p> :
             visibleDetail.error ? <p role="alert">{visibleDetail.error}</p> :

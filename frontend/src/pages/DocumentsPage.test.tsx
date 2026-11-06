@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
@@ -57,7 +57,7 @@ function casePayload(id = "case-1") {
     case_summary: { id, facility_name: "Cơ sở A", site_id: "site-1", gxp_type: "GMP" },
     documents: { items: [caseDocument, missingDocument] },
     contextual_document_actions: [{
-      checklist_key: missingDocument.checklist_key, parent_scope: "case", parent_id: "case-1",
+      ...missingDocument,
       actions: [{ action_key: "create", available: false, disabled_reason: "QĐKT chưa đủ bằng chứng" }],
     }] as unknown as ContextualDocumentAction[],
   } as Awaited<ReturnType<typeof getCaseWorkspace>>;
@@ -120,6 +120,67 @@ afterEach(() => {
 });
 
 describe("document binary action and readiness", () => {
+  it("selects the exact checklist slot when two slots share one document ID", async () => {
+    const second = { ...caseDocument, checklist_key: "case:case-1:SECOND", label: "Bản khác" };
+    vi.mocked(getCaseWorkspace).mockResolvedValue({ ...casePayload(), documents: { items: [caseDocument, second] } });
+    mount("/documents/cases/case-1");
+    const buttons = await screen.findAllByRole("button", { name: "Xem chi tiết" });
+    fireEvent.click(buttons[0]);
+    await screen.findByText(/Phiên bản 2:/);
+    fireEvent.click(buttons[1]);
+    expect(await screen.findByRole("heading", { name: "Chi tiết: Bản khác" })).toBeInTheDocument();
+  });
+  it("does not download an old A binary after selecting B then A", async () => {
+    const second = { ...caseDocument, checklist_key: "case:case-1:SECOND", label: "Bản khác", document_id: "doc-2" };
+    vi.mocked(getCaseWorkspace).mockResolvedValue({ ...casePayload(), documents: { items: [caseDocument, second] } });
+    vi.mocked(getDocumentDetail).mockImplementation(async id => ({ ...detailPayload(), document_id: id }));
+    let finish!: (result: Awaited<ReturnType<typeof openCaseDocumentCurrentContent>>) => void;
+    vi.mocked(openCaseDocumentCurrentContent).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const create = vi.fn(() => "blob:stale");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: create });
+    mount("/documents/cases/case-1");
+    const buttons = await screen.findAllByRole("button", { name: "Xem chi tiết" });
+    fireEvent.click(buttons[0]);
+    await screen.findByText(/Phiên bản 2:/);
+    fireEvent.click(screen.getByRole("button", { name: "Tải tệp hiện hành" }));
+    await waitFor(() => expect(finish).toBeDefined());
+    fireEvent.click(buttons[1]);
+    await screen.findByRole("heading", { name: "Chi tiết: Bản khác" });
+    fireEvent.click(buttons[0]);
+    await screen.findByText(/Phiên bản 2:/);
+    await act(async () => finish({ blob: new Blob(["old"]), contentType: "application/octet-stream", filename: "old.docx" }));
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("rejects a CAPA checklist slot whose cycle is not owned by the Case", async () => {
+    const foreign = { ...caseDocument, checklist_key: "capa:foreign:REPORT", parent_scope: "capa_cycle" as const, parent_id: "foreign" };
+    vi.mocked(getCaseWorkspace).mockResolvedValue({ ...casePayload(), documents: { items: [foreign] }, remediation: { cycles: [], actions: [] } });
+    mount("/documents/cases/case-1");
+    expect(await screen.findByText(/Checklist tài liệu có ngữ cảnh owner không khớp/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xem chi tiết" })).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+  it("links an eligible missing document to its specific canonical Case intent", async () => {
+    const value = casePayload();
+    value.contextual_document_actions = [{ ...missingDocument, workflow_step: "Kiểm tra", actions: [
+      { action_key: "create", available: true, create_input_readiness: "CANONICAL_INPUT_READY" },
+    ] } as ContextualDocumentAction];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/documents/cases/case-1");
+    const link = await screen.findByRole("link", { name: "Đến workspace để tạo" });
+    expect(link.getAttribute("href")).toContain("document_key=");
+  });
+  it("links an available Case-owned document to its verified workspace slot", async () => {
+    const value = casePayload();
+    value.contextual_document_actions = [{ ...caseDocument, workflow_step: "Kiểm tra", actions: [
+      { action_key: "history", label: "Lịch sử", available: true, disabled_reason: null, required_permissions: [] },
+    ] } as ContextualDocumentAction];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/documents/cases/case-1");
+    const link = await screen.findByRole("link", { name: "Đến workspace tài liệu" });
+    expect(link.getAttribute("href")).toContain("document_key=");
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+    expect(openCaseDocumentCurrentContent).not.toHaveBeenCalled();
+  });
   it("downloads the current Case-owned file using the authorized binary endpoint", async () => {
     const objectUrl = vi.fn(() => "blob:case-current");
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: objectUrl });
@@ -163,6 +224,7 @@ describe("document binary action and readiness", () => {
     vi.mocked(getCaseWorkspace).mockResolvedValue({
       ...casePayload(),
       documents: { items: [capaDocument] },
+      remediation: { cycles: [{ capa_cycle_id: "cycle-1" } as Awaited<ReturnType<typeof getCaseWorkspace>>["remediation"]["cycles"][number]], actions: [] },
     });
     vi.mocked(getDocumentDetail).mockResolvedValue({
       ...detailPayload(), document_id: "capa-doc", case_id: null, capa_cycle_id: "cycle-1",
@@ -385,6 +447,7 @@ describe("contextual document register", () => {
       parent_scope: "capa_cycle" as const, parent_id: "cycle-1", document_id: "capa-doc" };
     vi.mocked(getCaseWorkspace).mockResolvedValue({
       ...casePayload(), documents: { items: [capaDocument] },
+      remediation: { cycles: [{ capa_cycle_id: "cycle-1" } as Awaited<ReturnType<typeof getCaseWorkspace>>["remediation"]["cycles"][number]], actions: [] },
     });
     vi.mocked(getDocumentDetail).mockResolvedValue({
       ...detailPayload(), document_id: "capa-doc", capa_cycle_id: "cycle-1", case_id: "case-1",

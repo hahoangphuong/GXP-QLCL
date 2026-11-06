@@ -3,11 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
-import { getBusinessEligibilityDetail } from "../lib/api";
-import type { BusinessEligibilityDetail } from "../types";
+import { getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory } from "../lib/api";
+import type { BusinessEligibilityDetail, BusinessEligibilityVersionHistory } from "../types";
 import { BusinessEligibilityReadOnlyDetail } from "./BusinessEligibilityReadOnlyDetail";
 
-vi.mock("../lib/api", () => ({ getBusinessEligibilityDetail: vi.fn() }));
+vi.mock("../lib/api", () => ({ getBusinessEligibilityDetail: vi.fn(), getBusinessEligibilityVersionHistory: vi.fn() }));
 const idA = "11111111-1111-4111-8111-111111111111";
 const idB = "22222222-2222-4222-8222-222222222222";
 const site = "33333333-3333-4333-8333-333333333333";
@@ -38,6 +38,28 @@ function detail(id = idA): BusinessEligibilityDetail {
       required_permissions: ["certificate.edit"], expected_version: 4 }],
   };
 }
+function versionHistory(id = idA): BusinessEligibilityVersionHistory {
+  return {
+    business_eligibility_certificate_id: id, legacy_dkkd_id: 42, site_id: site, company_id: company,
+    aggregate_latest_flag: true, latest_version_id: "77777777-7777-4777-8777-777777777777",
+    latest_selection_method: "max_persisted_version_no",
+    gxp_source_tokens_included: false, canonical_link_status: "stored_fk_only_not_validated",
+    versions: [{
+      business_eligibility_version_id: "77777777-7777-4777-8777-777777777777",
+      version_no: 2, row_version: 4, certificate_number: "GCN-ĐĐK-01",
+      issued_on: "2026-03-01", expires_on: null, notes: null,
+      decision_reference: "QD-01", issuance_sequence_text: "2", issuance_history_text: null,
+      professional_responsible_person_name: "Người phụ trách",
+      quality_assurance_person_name: "Người QA",
+      professional_qualification_text: null, professional_license_number: null,
+      professional_license_issued_on: null, professional_license_issuer: null,
+      responsible_license_issued_on: null, responsible_license_issuer: null,
+      business_activity_text: "Bán buôn", current_status_text: "Còn hiệu lực",
+      handled_by_name: null, application_dossier_reference: null,
+      stored_link_records: [{ link_id: "88888888-8888-4888-8888-888888888888", certificate_id: basis, link_role: "source_certificate" }],
+    }],
+  };
+}
 function mount(path = `/certificates/business-eligibility/${idA}?site_id=${site}`, props = access) {
   return render(<MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/certificates/business-eligibility/:eligibilityId" element={<BusinessEligibilityReadOnlyDetail access={props} />} />
@@ -45,6 +67,7 @@ function mount(path = `/certificates/business-eligibility/${idA}?site_id=${site}
 }
 beforeEach(() => {
   vi.mocked(getBusinessEligibilityDetail).mockReset().mockResolvedValue(detail());
+  vi.mocked(getBusinessEligibilityVersionHistory).mockReset().mockResolvedValue(versionHistory());
 });
 
 describe("read-only business eligibility detail", () => {
@@ -59,6 +82,45 @@ describe("read-only business eligibility detail", () => {
       .toHaveAttribute("href", `/documents/business-eligibility-certificates/${idA}?return_site_id=${site}`);
     expect(getBusinessEligibilityDetail).toHaveBeenCalledWith(idA, access.auth, true, null);
     expect(screen.queryByRole("button", { name: /Cấp|Lưu|Sửa|Ban hành|Tải/ })).not.toBeInTheDocument();
+  });
+
+  it("displays persisted version snapshots and stored FK links without treating them as verified source", async () => {
+    mount();
+    expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+    expect(await screen.findByText("Các phiên bản ĐĐK đã lưu")).toBeInTheDocument();
+    await waitFor(() => expect(getBusinessEligibilityVersionHistory).toHaveBeenCalledWith(idA, access.auth, true, null, expect.anything()));
+    fireEvent.click(screen.getByText("Các phiên bản ĐĐK đã lưu"));
+    expect(await screen.findByText("Snapshot phiên bản — chỉ đọc")).toBeInTheDocument();
+    expect(screen.getByText(/chưa xác nhận hiệu lực hoặc phê duyệt lịch sử/)).toBeInTheDocument();
+    expect(screen.getAllByText("Phiên bản 2", { exact: false }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Cấp|Sửa|Ban hành|Lưu/ })).not.toBeInTheDocument();
+  });
+
+  it("does not use cross-Site or malformed version history as canonical evidence", async () => {
+    vi.mocked(getBusinessEligibilityVersionHistory).mockResolvedValueOnce({
+      ...versionHistory(), site_id: otherSite,
+    });
+    const a = mount();
+    expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("GCN-ĐĐK-01", { exact: false })).toBeInTheDocument();
+    a.unmount();
+    vi.mocked(getBusinessEligibilityVersionHistory).mockResolvedValueOnce({
+      ...versionHistory(), versions: [versionHistory().versions[0], versionHistory().versions[0]],
+    });
+    mount();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("1 phiên bản đã lưu")).not.toBeInTheDocument();
+  });
+
+  it("does not request version history when detail is unverified or unauthorized", async () => {
+    vi.mocked(getBusinessEligibilityDetail).mockResolvedValueOnce({ ...detail(), site_id: otherSite });
+    const view = mount();
+    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp");
+    expect(getBusinessEligibilityVersionHistory).not.toHaveBeenCalled();
+    view.unmount();
+    mount(`/certificates/business-eligibility/${idA}`, { ...access, canLoadSecureApi: false });
+    expect(getBusinessEligibilityVersionHistory).not.toHaveBeenCalled();
   });
 
   it("does not read protected data with invalid URL identity or no authorization", () => {

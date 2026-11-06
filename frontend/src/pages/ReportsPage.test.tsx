@@ -245,4 +245,28 @@ describe("ReportsPage operator workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tiến lịch sử" }));
     expect(screen.getByLabelText("Loại GxP")).toHaveValue("GLP");
   });
+
+  it("does not generate a facility CSV from a late export after changing report", async () => {
+    let releaseExport: ((page: { items: FacilitySearchResult[]; offset: number; limit: number; total_count: number }) => void) | undefined;
+    vi.mocked(searchFacilities)
+      .mockResolvedValueOnce({ items: [row(0)], offset: 0, limit: 100, total_count: 1 })
+      .mockImplementationOnce(() => new Promise(resolve => { releaseExport = resolve; }));
+    const oldCreate = URL.createObjectURL;
+    const create = vi.fn(() => "blob:report-test");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: create });
+    try {
+      render(<MemoryRouter initialEntries={["/reports?report=facilities"]}>
+        <ReportsPage access={access} statusError={null} /><NavigationHistory />
+      </MemoryRouter>);
+      await screen.findByText("1 dòng kết quả");
+      fireEvent.click(screen.getByRole("button", { name: "Xuất CSV (Excel)" }));
+      await waitFor(() => expect(releaseExport).toBeDefined());
+      fireEvent.change(screen.getByLabelText("Loại báo cáo"), { target: { value: "cases" } });
+      releaseExport!({ items: [row(0)], offset: 0, limit: 100, total_count: 1 });
+      await waitFor(() => expect(screen.getByTestId("cases-report")).toBeInTheDocument());
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", { configurable: true, value: oldCreate });
+    }
+  });
 });

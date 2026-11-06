@@ -182,7 +182,7 @@ describe("access-bound certificate document metadata ownership", () => {
 
   it("does not reuse old metadata on a same-principal permission role or authentication mode change", async () => {
     loadGxp.mockResolvedValue(inventory("gxp"));
-    const { result, rerender } = renderHook(({ principal, stub }) =>
+    const { result, rerender } = renderHook(({ principal, stub }: { principal: StubAuthState; stub: boolean }) =>
       useCertificateDocumentMetadata("gxp", "fixed-context", "gxp-a", principal, stub, null), {
       initialProps: { principal: { username: "reader", role: "reader" } as StubAuthState, stub: true },
     });

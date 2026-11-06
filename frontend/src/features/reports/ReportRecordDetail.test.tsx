@@ -27,6 +27,12 @@ beforeEach(() => {
 });
 
 describe("authorized canonical detail navigation", () => {
+  it("returns to the exact report context supplied by an internal navigation", async () => {
+    vi.mocked(getChangeRequestWorkspace).mockResolvedValue({ id: "change-uuid", site_id: "site-uuid", facility_name: "Cơ sở", company_name: "Công ty", scope_label: "Đổi tên", state: "received" } as Awaited<ReturnType<typeof getChangeRequestWorkspace>>);
+    render(<MemoryRouter initialEntries={[{ pathname: "/reports/change-requests/change-uuid", state: { reportReturn: "/reports?report=change_requests&state=received&offset=100" } }]}><Routes><Route path="/reports/change-requests/:changeRequestId" element={<ReportRecordDetail access={access} kind="change_requests" />} /></Routes></MemoryRouter>);
+    expect(await screen.findByText("change-uuid")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Quay lại Báo cáo" })).toHaveAttribute("href", "/reports?report=change_requests&state=received&offset=100");
+  });
   it.each(["GMP", "GLP", "GMPbb"])("redirects a matching %s Certificate to its existing workspace with UUID", async (type) => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({ certificate_id: "cert-uuid", site_id: "site-uuid",
       certificate_type: type, production_line_id: "line-uuid", line_code: "A" } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);

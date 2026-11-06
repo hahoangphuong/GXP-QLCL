@@ -280,6 +280,19 @@ describe("contextual document register", () => {
     expect(getCaseWorkspace).not.toHaveBeenCalled();
   });
 
+  it("offers a canonical GxP certificate list with links to registered document metadata", () => {
+    render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "GCN GxP" }));
+    expect(screen.getByTestId("change-report")).toHaveTextContent("certificates:false");
+    expect(screen.getByText(/Chọn GCN từ danh sách hiện hành/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GCN GxP" })).toHaveAttribute("aria-pressed", "true");
+    expect(getCaseWorkspace).not.toHaveBeenCalled();
+    expect(getChangeRequestWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Giấy đủ điều kiện kinh doanh dược" }));
+    expect(screen.queryByTestId("change-report")).not.toBeInTheDocument();
+    expect(screen.getByText(/Nhập UUID giấy đủ điều kiện kinh doanh dược/)).toBeInTheDocument();
+  });
+
   it("does not read secure data without a session", () => {
     render(<MemoryRouter><DocumentsPage access={{ ...access, canLoadSecureApi: false }} statusError={null} /></MemoryRouter>);
     expect(screen.getByText("Cần đăng nhập")).toBeInTheDocument();

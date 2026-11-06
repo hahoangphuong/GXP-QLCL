@@ -101,9 +101,8 @@ describe("site-scoped business eligibility document discovery", () => {
   });
 
   it("restores A after Back/Forward without adopting a stale Site B read", async () => {
-    vi.mocked(listSiteBusinessEligibilityCertificates).mockResolvedValueOnce(response([row]))
-      .mockResolvedValueOnce(response([{ ...row, site_id: siteB }]))
-      .mockResolvedValueOnce(response([row]));
+    vi.mocked(listSiteBusinessEligibilityCertificates).mockImplementation(id =>
+      Promise.resolve(response([{ ...row, site_id: id }])))
     mount();
     submit(siteA);
     expect(await screen.findByRole("link", { name: "Xem metadata" }))

@@ -122,7 +122,11 @@ function FacilityReport({
   const contextRef = useRef(key);
   contextRef.current = key;
   useEffect(() => {
-    // Route changes, filter/page changes and unmount revoke in-flight exports.
+    // When URL or auth owner changes, keep the UI actionable while revoking
+    // an older export. Cleanup also covers navigation/unmount.
+    exportGuard.current = null;
+    setExporting(false);
+    setExportError(null);
     return () => { exportGuard.current = null; };
   }, [key, owner]);
   useEffect(() => {
@@ -149,7 +153,7 @@ function FacilityReport({
         if (!cancelled) setPage({ owner, key, data: null, error: error.message });
       });
     return () => { cancelled = true; };
-  }, [active.gxp_type, active.q, active.province, offset, auth, bearerToken, canLoadSecureApi, useStubAuth, owner, key, Boolean(parsed)]);
+  }, [active, parsed, offset, auth, bearerToken, canLoadSecureApi, useStubAuth, owner, key]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

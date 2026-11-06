@@ -138,7 +138,12 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
   // tab but never crosses canonical Case/access-session boundaries.
   const [intent, setIntent] = useCaseDraftState<{ caseId: string; readiness: CertificateIssueActionReadiness } | null>("certificate.issue.intent", null);
   const [draft, setDraft] = useCaseDraftState<IssueDraft>("certificate.issue.draft", emptyIssueDraft);
-  const [intentCaseId, setIntentCaseId] = useState(caseId);
+  const visibleIntent = intent?.caseId === caseId ? intent : null;
+  useEffect(() => {
+    // In fallback (no CaseDraftSession), retire an old Case intent only after
+    // commit. Never write external-store state while rendering a new owner.
+    setIntent(current => current?.caseId === caseId ? current : null);
+  }, [caseId, setIntent]);
   const commandLock = useCaseCommandLock(`certificate.issue:${caseId}`);
   async function issueOwned(payload: CertificateIssueRequest) {
     const command = commandLock.acquire();
@@ -152,10 +157,6 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
       commandLock.release(command);
     }
   }
-  if (intentCaseId !== caseId) {
-    setIntentCaseId(caseId);
-    setIntent(null);
-  }
   if (!readiness || readiness.action_key !== "issue_certificate") return null;
   return <section className="workspace-section certificate-issue-section">
     <div className="certificate-action-bar">
@@ -163,7 +164,7 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
       {!readiness.available && readiness.reason_code ? <span>{readiness.reason_code}</span> : null}
     </div>
     {commandLock.requiresReview ? <p role="alert">Chưa xác minh kết quả cấp chứng nhận trước; không gửi lại.</p> : null}
-    {intent ? <CertificateIssueDialog caseId={intent.caseId} onClose={() => setIntent(current => current === intent ? null : current)} onIssue={issueOwned} draft={draft} setDraft={setDraft} readiness={intent.readiness}
-      saveAvailable={!commandLock.pending && !commandLock.requiresReview && readiness.available && readiness.certificate_type === intent.readiness.certificate_type && readiness.issuance_basis === intent.readiness.issuance_basis} /> : null}
+    {visibleIntent ? <CertificateIssueDialog caseId={visibleIntent.caseId} onClose={() => setIntent(current => current === visibleIntent ? null : current)} onIssue={issueOwned} draft={draft} setDraft={setDraft} readiness={visibleIntent.readiness}
+      saveAvailable={!commandLock.pending && !commandLock.requiresReview && readiness.available && readiness.certificate_type === visibleIntent.readiness.certificate_type && readiness.issuance_basis === visibleIntent.readiness.issuance_basis} /> : null}
   </section>;
 }

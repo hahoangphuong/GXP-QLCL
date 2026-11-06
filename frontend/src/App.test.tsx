@@ -936,6 +936,41 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("drops the workflow tab suggestion when access generation changes", async () => {
+    const route = "/search?return_queue=inspection&site_id=site-1&gxp_type=GMP&context_gxp=GMP&production_line_id=line-uuid-1&line_code=A&history_id=case-1&event_tab=Kiểm+tra";
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const item = buildCaseWorkspace();
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...item, case_summary: { ...item.case_summary,
+      production_line_id: "line-uuid-1", production_line_code: "A", production_line_identity_state: "canonical" } });
+    const { credentialCallback } = await renderOidcSearch(route);
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    expect(await screen.findByRole("button", { name: "Kiểm tra thực tế" })).toHaveAttribute("aria-current", "step");
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hồ sơ đăng ký" })).toHaveAttribute("aria-current", "step"));
+  });
+  it("rejects a Case workspace whose Site differs from the selected canonical facility", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const other = buildCaseWorkspace();
+    other.case_summary.site_id = "other-site";
+    apiMocks.getCaseWorkspace.mockResolvedValue(other);
+    renderApp(["/search?site_id=site-1&gxp_type=GMP&production_line_id=line-uuid-1&history_id=case-1"]);
+    expect(await screen.findByText("Workspace đọc lại không khớp hồ sơ đã chọn.")).toBeInTheDocument();
+    expect(screen.queryByText("HS-001")).not.toBeInTheDocument();
+  });
+  it("rejects a workflow Case readback for a different production line", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const other = buildCaseWorkspace();
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...other, case_summary: { ...other.case_summary,
+      production_line_id: "wrong-line", production_line_code: "A", production_line_identity_state: "canonical" } });
+    renderApp(["/search?return_queue=inspection&site_id=site-1&gxp_type=GMP&context_gxp=GMP&production_line_id=line-uuid-1&line_code=A&history_id=case-1&event_tab=Kiểm+tra"]);
+    expect(await screen.findByText("Workspace đọc lại không khớp hồ sơ đã chọn.")).toBeInTheDocument();
+    expect(screen.queryByText("HS-001")).not.toBeInTheDocument();
+  });
   it("discards eligibility issuance readback that finishes after a tab round trip", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

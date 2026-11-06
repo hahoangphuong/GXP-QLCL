@@ -59,7 +59,7 @@ export function WorkflowPage({ access, statusError }: { access: ApiAccess; statu
     </section>
     {queue === "change_requests" ? <CanonicalRecordReport key={queue} access={access} kind="change_requests" showDocumentsLink /> :
       queue === "expiring" ? <CanonicalRecordReport key={queue} access={access} kind="certificates" /> :
-        <CaseReport key={queue} access={access} inspectionQueue={queue === "inspection"} showDocumentsLink
+        <CaseReport key={queue} access={access} inspectionQueue={queue === "inspection"} showDocumentsLink returnQueue={queue}
           initialState={queue === "certificate_decision" ? "awaiting_certificate_decision" : ""} />}
   </section>;
 }

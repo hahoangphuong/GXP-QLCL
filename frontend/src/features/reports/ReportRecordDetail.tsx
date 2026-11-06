@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace, getGxpCertificateDetail } from "../../lib/api";
 import { formatStatusLabel } from "../../lib/presentation";
@@ -7,6 +7,9 @@ import type { ChangeRequestWorkspace, GxpCertificateDetail } from "../../types";
 
 export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: "certificates" | "change_requests" }) {
   const params = useParams();
+  const location = useLocation();
+  const hint: unknown = location.state?.reportReturn;
+  const reportReturn = typeof hint === "string" && hint.startsWith("/reports?") && hint.length <= 2048 ? hint : null;
   const [searchParams] = useSearchParams();
   const expectedSite = searchParams.get("site_id");
   const id = kind === "certificates" ? params.certificateId : params.changeRequestId;
@@ -51,7 +54,7 @@ export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: 
   if (item) {
     if (!["GMP", "GLP", "GMPbb"].includes(item.certificate_type)) {
       return <section className="page-section">
-        <header className="section-title"><div><p className="eyebrow">Báo cáo / Chứng nhận</p><h2>Chi tiết GCN {item.certificate_type}</h2></div><Link className="text-link" to="/reports?report=certificates">Quay lại Báo cáo</Link></header>
+        <header className="section-title"><div><p className="eyebrow">Báo cáo / Chứng nhận</p><h2>Chi tiết GCN {item.certificate_type}</h2></div><Link className="text-link" to={reportReturn ?? "/reports?report=certificates"}>Quay lại Báo cáo</Link></header>
         <section className="panel">
           <p>Chỉ xem thông tin canonical; chưa hỗ trợ chỉnh sửa hoặc cấp GCN loại {item.certificate_type} tại đây.</p>
           <dl className="persisted-version-fields">
@@ -87,7 +90,7 @@ export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: 
   return <section className="page-section">
     <header className="section-title"><div><p className="eyebrow">Báo cáo / Chi tiết</p>
       <h2>{kind === "certificates" ? "Chi tiết GCN" : "Chi tiết yêu cầu thay đổi"}</h2>
-    </div><Link to={kind === "certificates" ? "/reports?report=certificates" : "/reports"} className="text-link">Quay lại Báo cáo</Link></header>
+    </div><Link to={reportReturn ?? (kind === "certificates" ? "/reports?report=certificates" : "/reports")} className="text-link">Quay lại Báo cáo</Link></header>
     {!current ? <p role="status">Đang tải dữ liệu canonical...</p> : current.error ? <p role="alert">{current.error}</p>
       : change ? <section className="panel">
         <h3>{change.scope_label ?? "Yêu cầu thay đổi"}</h3>

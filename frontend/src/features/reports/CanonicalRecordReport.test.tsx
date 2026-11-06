@@ -43,6 +43,14 @@ describe("canonical record report workflow", () => {
       filters?.gxp_type === "GMP" && filters.expiry_days === "30" && filters.number === "GCN-123")).toBe(true));
   });
 
+  it("can start in all-current certificate mode for document browsing without changing report defaults", async () => {
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" initialCertificateExpiryDays="" /></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "Xem metadata" })).toHaveAttribute("href", "/documents/certificates/cert-uuid");
+    expect(screen.getByLabelText("GCN hết hạn trong")).toHaveValue("");
+    expect(getCertificateReport).toHaveBeenCalledWith(expect.objectContaining({ expiry_days: "", offset: 0, export: false }),
+      expect.anything(), true, null);
+  });
+
   it("shows each Change Request identity without inventing a GxP classification", async () => {
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="change_requests" /></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "123" })).toHaveAttribute("href", "/reports/change-requests/change-uuid");

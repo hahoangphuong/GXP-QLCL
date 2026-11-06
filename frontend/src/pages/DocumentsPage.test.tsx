@@ -19,8 +19,8 @@ vi.mock("../features/reports/CaseReport", () => ({
     <output data-testid="case-report">{String(showDocumentsLink)}</output>,
 }));
 vi.mock("../features/reports/CanonicalRecordReport", () => ({
-  CanonicalRecordReport: ({ kind, showDocumentsLink }: { kind: string; showDocumentsLink?: boolean }) =>
-    <output data-testid="change-report">{kind}:{String(showDocumentsLink)}</output>,
+  CanonicalRecordReport: ({ kind, showDocumentsLink, initialCertificateExpiryDays }: { kind: string; showDocumentsLink?: boolean; initialCertificateExpiryDays?: string }) =>
+    <output data-testid="change-report">{kind}:{String(showDocumentsLink)}:{initialCertificateExpiryDays === "" ? "all" : "default"}</output>,
 }));
 
 const access: ApiAccess = {
@@ -278,6 +278,19 @@ describe("contextual document register", () => {
     fireEvent.click(screen.getByRole("button", { name: "Yêu cầu thay đổi" }));
     expect(screen.getByTestId("change-report")).toHaveTextContent("change_requests:true");
     expect(getCaseWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("offers a canonical GxP certificate list with links to registered document metadata", () => {
+    render(<MemoryRouter><DocumentsPage access={access} statusError={null} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "GCN GxP" }));
+    expect(screen.getByTestId("change-report")).toHaveTextContent("certificates:undefined:all");
+    expect(screen.getByText(/Chọn GCN từ danh sách hiện hành/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GCN GxP" })).toHaveAttribute("aria-pressed", "true");
+    expect(getCaseWorkspace).not.toHaveBeenCalled();
+    expect(getChangeRequestWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Giấy đủ điều kiện kinh doanh dược" }));
+    expect(screen.queryByTestId("change-report")).not.toBeInTheDocument();
+    expect(screen.getByText(/Nhập UUID giấy đủ điều kiện kinh doanh dược/)).toBeInTheDocument();
   });
 
   it("does not read secure data without a session", () => {

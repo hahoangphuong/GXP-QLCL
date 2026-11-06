@@ -90,8 +90,8 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
   return <section className="page-section">
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu</p><h2>Danh mục tài liệu theo hồ sơ</h2>
-    </div><p className="section-copy">Tài liệu gắn với Case hoặc Change Request thực, không phải thư mục tệp dùng chung.
-      Chọn một hồ sơ để xem các tài liệu đang có và những mục còn thiếu.</p></header>
+    </div><p className="section-copy">Tài liệu gắn với Case, Change Request hoặc chứng nhận được phân quyền, không phải thư mục tệp dùng chung.
+      Chọn Case hoặc Change Request để xem checklist; với chứng nhận, xem metadata tài liệu đã đăng ký theo UUID.</p></header>
     <section className="panel">
       <div className="report-actions" role="group" aria-label="Loại hồ sơ tài liệu">
         <button type="button" aria-pressed={kind === "cases"} className={kind === "cases" ? "" : "secondary"} onClick={() => selectKind("cases")}>Hồ sơ kiểm tra</button>
@@ -114,7 +114,10 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
     {kind === "cases"
       ? <CaseReport key={kind} access={access} inspectionQueue={false} showDocumentsLink />
       : kind === "change_requests" ? <CanonicalRecordReport key={kind} access={access} kind="change_requests" showDocumentsLink />
-      : <section className="panel"><p className="muted-copy">Nhập UUID chứng nhận để xem metadata tài liệu đã đăng ký theo API được phân quyền. Chưa xác minh tệp gốc hoặc chữ ký; không có chức năng tải binary chứng nhận.</p></section>}
+      : kind === "certificates"
+        ? <><p className="muted-copy">Chọn GCN từ danh sách hiện hành để xem metadata tài liệu đã đăng ký theo Certificate UUID. Không xác minh bản gốc, chữ ký hoặc mở tải binary.</p>
+            <CanonicalRecordReport key={kind} access={access} kind="certificates" initialCertificateExpiryDays="" /></>
+        : <section className="panel"><p className="muted-copy">Nhập UUID giấy đủ điều kiện kinh doanh dược để xem metadata tài liệu đã đăng ký theo API được phân quyền. Chưa xác minh tệp gốc hoặc chữ ký; không có chức năng tải binary chứng nhận.</p></section>}
   </section>;
 }
 

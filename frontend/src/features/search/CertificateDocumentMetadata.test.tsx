@@ -145,6 +145,26 @@ describe("access-bound certificate document metadata ownership", () => {
     expect(loadDdk).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["gxp", "ddk"] as const)(
+    "rejects inconsistent %s metadata status and safe-integer overflow in the Search owner",
+    async kind => {
+      const api = kind === "gxp" ? loadGxp : loadDdk;
+      const id = kind === "gxp" ? "gxp-a" : "ddk-a";
+      api.mockResolvedValueOnce({ ...inventory(kind), metadata_status: "registered_metadata_only_unverified", documents: [] })
+        .mockResolvedValueOnce({ ...inventory(kind), documents: [{
+          ...inventory(kind).documents[0], registered_variant_count: Number.MAX_SAFE_INTEGER + 1,
+        }] });
+      const { result, rerender } = renderHook(({ scope }) =>
+        useCertificateDocumentMetadata(kind, scope, id, auth, false, null), {
+        initialProps: { scope: "first" },
+      });
+      await waitFor(() => expect(result.current).toEqual({ status: "error", httpStatus: null }));
+      rerender({ scope: "second" });
+      await waitFor(() => expect(api).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(result.current).toEqual({ status: "error", httpStatus: null }));
+    },
+  );
+
   it("fails closed on mismatched owner, forbidden verification claims and malformed counts", async () => {
     loadGxp
       .mockResolvedValueOnce({ ...inventory("gxp", "other") })

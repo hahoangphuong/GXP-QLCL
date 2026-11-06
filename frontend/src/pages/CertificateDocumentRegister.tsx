@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { getBusinessEligibilityDocumentMetadata, getGxpCertificateDocumentMetadata } from "../lib/api";
 import type { DocumentOwnerMetadataInventory } from "../types";
+import { validCertificateDocumentInventory } from "../features/search/certificateDocumentInventory";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type OwnerKind = "certificate" | "business_eligibility_certificate";
@@ -31,16 +32,8 @@ export function CertificateDocumentRegister({ access, kind }: { access: ApiAcces
       ? getGxpCertificateDocumentMetadata(id, auth, useStubAuth, bearerToken)
       : getBusinessEligibilityDocumentMetadata(id, auth, useStubAuth, bearerToken);
     void read.then(value => {
-      if (value.owner_id !== id || value.owner_kind !== kind
-        || value.binary_verified !== false || value.original_signed_document_verified !== false
-        || !["no_registered_document_metadata", "registered_metadata_only_unverified"].includes(value.metadata_status)) {
-        throw new Error("Nguồn metadata không khớp chứng nhận hoặc trạng thái xác minh.");
-      }
-      if (value.metadata_status === "no_registered_document_metadata" && value.documents.length !== 0) {
-        throw new Error("Trạng thái metadata không khớp danh mục tài liệu.");
-      }
-      if (new Set(value.documents.map(item => item.document_id)).size !== value.documents.length) {
-        throw new Error("Danh mục tài liệu chứa định danh trùng lặp.");
+      if (!validCertificateDocumentInventory(value, kind, id)) {
+        throw new Error("Nguồn metadata không khớp chứng nhận hoặc trạng thái đăng ký/phiên bản không hợp lệ.");
       }
       if (live) setInventory({ owner, value, error: null });
     }).catch((error: Error) => {

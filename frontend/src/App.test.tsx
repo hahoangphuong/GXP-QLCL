@@ -5607,7 +5607,7 @@ describe("App Slice A.4 search workspace", () => {
       case_summary: {
         ...buildCaseWorkspace().case_summary,
         id: "case-glp", site_id: "site-1", gxp_type: "GLP",
-        production_line_id: "line-glp", production_line_code: "A",
+        production_line_id: "line-glp", production_line_code: "A", production_line_identity_state: "canonical",
       },
     }));
 

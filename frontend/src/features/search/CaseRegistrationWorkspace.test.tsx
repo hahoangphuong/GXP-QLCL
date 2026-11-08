@@ -171,6 +171,7 @@ it.each([
   ["assessed_on", "Ngày thẩm định", "2026-04-05", { assessed_on: "2026-04-05T00:00:00Z" }],
   ["assessor_name", "Người thẩm định", "New assessor", { assessor_name: "New assessor" }],
   ["assessment_result", "Kết quả thẩm định", "Cần hoàn thiện hồ sơ", { assessment_result: "Cần hoàn thiện hồ sơ" }],
+  ["notes", "Ghi chú thẩm định", "Cần bổ sung tài liệu", { notes: "Cần bổ sung tài liệu" }],
 ] as const)("updates only selected assessment field %s without sending unrelated canonical metadata", async (_field, label, input, payload) => {
   const onSave = vi.fn().mockResolvedValue(undefined);
   render(registration(workspace, vi.fn(), onSave));

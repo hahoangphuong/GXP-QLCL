@@ -102,13 +102,12 @@ export function CaseProcessingWorkspace({
     setPending(true);
     setErrorMessage(null);
     try {
-      await onSave({
-        expected_version: draftVersion,
-        assessed_on: toDateTimePayload(draft.assessed_on),
-        assessor_name: normalizeText(draft.assessor_name),
-        assessment_result: normalizeText(draft.assessment_result),
-        notes: normalizeText(draft.notes),
-      });
+      // The backend applies only provided fields. Sending the entire draft
+      // would rewrite unrelated assessment metadata whenever one field changes.
+      const value = editingField === "assessed_on"
+        ? toDateTimePayload(draft.assessed_on)
+        : normalizeText(draft[editingField]);
+      await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
@@ -208,6 +207,32 @@ export function CaseProcessingWorkspace({
               onChange={(event) => setDraft((current) => ({ ...current, assessment_result: event.target.value }))}
               rows={4}
               value={draft.assessment_result}
+            />
+          </EditableDetailValue>
+          <EditableDetailValue
+            editButtonLabel="Sửa Ghi chú thẩm định"
+            error={editingField === "notes" ? errorMessage : null}
+            isEditing={editingField === "notes"}
+            label="Ghi chú thẩm định"
+            multiline
+            onCancel={cancelEdit}
+            onEdit={() => {
+              setDraftVersion(caseWorkspace.processing.row_version);
+              setEditingField("notes");
+              setErrorMessage(null);
+            }}
+            onSave={() => void saveField()}
+            pending={pending}
+            saveDisabled={requiresReview || commandLock.pending}
+            value={caseWorkspace.processing.notes}
+          >
+            <textarea
+              aria-label="Ghi chú thẩm định"
+              className="inspection-textarea"
+              disabled={pending}
+              onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+              rows={3}
+              value={draft.notes}
             />
           </EditableDetailValue>
         </div>

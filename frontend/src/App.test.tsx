@@ -4841,10 +4841,7 @@ describe("App Slice A.4 search workspace", () => {
       "case-1",
       {
         expected_version: 2,
-        assessed_on: "2026-08-08T00:00:00Z",
         assessor_name: "Chuyên viên C",
-        assessment_result: "Đề xuất cấp chứng nhận",
-        notes: null,
       },
       expect.objectContaining({ username: "operator.local", role: "inspector" }),
       true,

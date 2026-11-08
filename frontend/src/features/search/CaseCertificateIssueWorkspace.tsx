@@ -4,6 +4,7 @@ import type { CertificateIssueActionReadiness, CertificateIssueRequest } from ".
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 import { useCaseCommandLock, useCaseDraftState } from "./CaseDraftSession";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { caseReadinessReason } from "./caseReadinessReason";
 
 type ScopeDraft = CertificateIssueRequest["scopes"][number];
 type IssueDraft = {
@@ -157,11 +158,11 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
       commandLock.release(command);
     }
   }
-  if (!readiness || readiness.action_key !== "issue_certificate") return null;
+  if (!readiness || readiness.action_key !== "issue_certificate") return <p className="workspace-note">Chưa có thông tin về điều kiện cấp chứng nhận.</p>;
   return <section className="workspace-section certificate-issue-section">
     <div className="certificate-action-bar">
       <button disabled={!readiness.available || commandLock.pending || commandLock.requiresReview} onClick={() => { setDraft(emptyIssueDraft()); setIntent({ caseId, readiness }); }} title={readiness.reason_code ?? undefined} type="button">{readiness.label}</button>
-      {!readiness.available && readiness.reason_code ? <span>{readiness.reason_code}</span> : null}
+      {!readiness.available && readiness.reason_code ? <span>{caseReadinessReason(readiness.reason_code)}</span> : null}
     </div>
     {commandLock.requiresReview ? <p role="alert">Chưa xác minh kết quả cấp chứng nhận trước; không gửi lại.</p> : null}
     {visibleIntent ? <CertificateIssueDialog caseId={visibleIntent.caseId} onClose={() => setIntent(current => current === visibleIntent ? null : current)} onIssue={issueOwned} draft={draft} setDraft={setDraft} readiness={visibleIntent.readiness}

@@ -1467,6 +1467,8 @@ tr:focus-visible {
   min-height: 0;
 }
 
+.case-transition-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+
 .event-workspace-body.has-scope-context .event-scope-context {
   overflow: hidden;
 }

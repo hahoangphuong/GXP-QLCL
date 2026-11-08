@@ -27,6 +27,13 @@ const available = (action_key: string, expected_version: number | null = 4) => (
 });
 
 describe("CaseApprovalWorkspace", () => {
+  it("explains the backend requirement to complete PCT before creating CT", () => {
+    const onCreate = vi.fn();
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({ approval_actions: [{ ...available("create_approval_ct"), available: false, reason_code: "completed_pct_required" }] })} onCreate={onCreate} onComplete={vi.fn()} />);
+    expect(screen.getByText(/Cần hoàn tất một lần trình PCT trước khi tạo trình CT/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
   it("does not mutate when backend PCT readiness is unavailable", () => {
     const onCreate = vi.fn();
     render(<CaseApprovalWorkspace caseWorkspace={workspace({ approval_actions: [{ ...available("create_approval_pct"), available: false, reason_code: "missing_permission" }] })} onCreate={onCreate} onComplete={vi.fn()} />);

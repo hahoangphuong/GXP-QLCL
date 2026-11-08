@@ -1,10 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { ContextualDocumentSection } from "./ContextualDocumentSection";
 export { ContextualDocumentSection } from "./ContextualDocumentSection";
 
 import { EmptyState } from "../../components/EmptyState";
-import { formatCompactDate } from "../../lib/presentation";
+import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
   BusinessEligibilityDetail,
   CapaCycleAssessRequest,
@@ -560,6 +560,20 @@ export function EventWorkspace({
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
 }) {
+  const rootRef = useRef<HTMLElement>(null);
+  const pendingLifecycleFocus = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const caseId = pendingLifecycleFocus.current;
+    if (!caseId) return;
+    if (selectedHistory?.id !== caseId || selectedHistory.source_type !== "case") {
+      pendingLifecycleFocus.current = null;
+      return;
+    }
+    if (activeTab === "Kiểm tra" && !caseWorkspaceLoading && !caseWorkspaceError && caseWorkspace?.case_summary.id === caseId) {
+      const target = rootRef.current?.querySelector<HTMLElement>("[data-case-lifecycle]");
+      if (target) { pendingLifecycleFocus.current = null; target.focus(); }
+    }
+  }, [activeTab, caseWorkspace, caseWorkspaceError, caseWorkspaceLoading, selectedHistory]);
   if (!selectedHistory) {
     return (
       <EmptyState
@@ -577,7 +591,7 @@ export function EventWorkspace({
   const effectiveActiveTab = tabs.some((tab) => tab === activeTab) ? activeTab : tabs[0];
 
   return (
-    <section className="event-workspace">
+    <section className="event-workspace" ref={rootRef}>
       <nav aria-label="Quy trình xử lý sự kiện" className="workflow-stepper">
         <ol className="workflow-step-list">
           {tabs.map((tab, index) => (
@@ -586,7 +600,7 @@ export function EventWorkspace({
                 aria-label={selectedHistory.source_type === "case" ? CASE_EVENT_LABELS[tab] ?? tab : tab}
                 aria-current={effectiveActiveTab === tab ? "step" : undefined}
                 className={effectiveActiveTab === tab ? "workflow-step active" : "workflow-step"}
-                onClick={() => onTabChange(tab)}
+                onClick={() => { pendingLifecycleFocus.current = null; onTabChange(tab); }}
                 type="button"
               >
                 <span className="workflow-step-index">{index + 1}</span>
@@ -598,6 +612,12 @@ export function EventWorkspace({
       </nav>
       <div className={selectedHistory.source_type === "case" && caseWorkspace ? "workspace-body event-workspace-body has-scope-context" : "workspace-body event-workspace-body"}>
         <div className="event-step-content">
+        {selectedHistory.source_type === "case" && caseWorkspace && !caseWorkspaceLoading && !caseWorkspaceError && effectiveActiveTab !== "Kiểm tra" ? (
+          <div className="case-transition-navigation">
+            <span>Trạng thái hồ sơ: {formatStatusLabel(caseWorkspace.case_summary.state)}</span>
+            {(caseWorkspace.transition_actions ?? []).length > 0 ? <button type="button" className="secondary" onClick={() => { pendingLifecycleFocus.current = selectedHistory.id; onTabChange("Kiểm tra"); }}>Xem chuyển trạng thái hồ sơ</button> : null}
+          </div>
+        ) : null}
         {selectedHistory.source_type === "change_request" ? (
           changeRequestWorkspaceLoading ? (
             <EmptyState title="Đang tải workspace thay đổi" description="Đang lấy dữ liệu đọc theo yêu cầu thay đổi đã chọn từ authenticated API." />

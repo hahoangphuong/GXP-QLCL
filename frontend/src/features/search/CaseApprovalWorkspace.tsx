@@ -158,6 +158,11 @@ function CaseApprovalEditor({
         <span>Ngày hoàn tất: {formatCompactDate(item.completed_on)}</span>
         <span>Giờ hoàn tất: {item.completed_time ?? "Chưa có"}</span>
         {item.stage === "CT" ? <span>PCT: {parent ? `lần ${parent.round_no}${parent.reference ? ` — ${parent.reference}` : ""}` : item.pct_submission_id ?? "Chưa có"}</span> : null}
+        {item.stage === "PCT" && item.completed_on !== null && action("create_approval_ct")?.available ? (
+          <button disabled={pending !== null || ownerPending || requiresReview} onClick={() => { setParentId(item.approval_submission_id); parentSelect.current?.focus(); }} type="button">
+            Dùng PCT lần {item.round_no} để tạo trình CT
+          </button>
+        ) : null}
         {parent ? <button disabled={pending !== null || ownerPending} onClick={() => { setParentId(parent.approval_submission_id); parentSelect.current?.focus(); }} type="button">Chọn PCT lần {parent.round_no} cho trình CT</button> : null}
         <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null || ownerPending} requiresReview={requiresReview} onComplete={complete} />
         {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{caseReadinessReason(readiness.reason_code)}</span> : null}

@@ -56,6 +56,34 @@ it("keeps issuance locked when the entire Case workspace owner unmounts", async 
   await act(async () => finish());
 });
 
+it("retains the full certificate draft for inspection after an unverified issue, refusing cancel and Escape", async () => {
+  const issue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Canonical readback unavailable"));
+  const view = (show: boolean) => <CaseDraftSession identity="case-A">
+    {show ? <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /> : null}
+  </CaseDraftSession>;
+  const { rerender } = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "GCN draft needing reconciliation" } });
+  fireEvent.click(screen.getByRole("button", { name: "Thêm phạm vi" }));
+  fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Phạm vi đã nhập" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(await screen.findByText("Canonical readback unavailable")).toBeInTheDocument();
+  const dialog = screen.getByRole("dialog", { name: "Cấp giấy chứng nhận GxP" });
+  expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+  expect(within(dialog).getByRole("status")).toHaveTextContent("Giữ biểu mẫu để sao chép dữ liệu");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(dialog).toBeInTheDocument();
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN draft needing reconciliation");
+  expect(screen.getByLabelText("Nội dung phạm vi 1")).toHaveValue("Phạm vi đã nhập");
+  rerender(view(false));
+  rerender(view(true));
+  expect(screen.getByRole("dialog", { name: "Cấp giấy chứng nhận GxP" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Hủy" })).toBeDisabled();
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN draft needing reconciliation");
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(issue).toHaveBeenCalledOnce();
+});
+
 it("does not allow another issuance after an unknown result", async () => {
   const issue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Chưa xác minh kết quả"));
   render(<CaseDraftSession identity="case-A"><CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /></CaseDraftSession>);

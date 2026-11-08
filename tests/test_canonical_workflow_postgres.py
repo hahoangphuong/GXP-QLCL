@@ -185,6 +185,11 @@ def test_approval_parent_identity_and_terminal_guard(pg_engine):
     ct2 = approval(pg_engine, case_id, "CT", second["approval_submission_id"])
     assert ct1["pct_submission_id"] != ct2["pct_submission_id"]
     with Session(pg_engine) as session:
+        workspace = CATALOG.get_case_workspace(session, case_id=case_id, user=USER)
+        records = list(reversed(workspace["inspection"]["approval_submissions"]))
+        parents = {row["approval_submission_id"]: row["pct_submission_id"] for row in records if row["stage"] == "CT"}
+        assert parents == {ct1["approval_submission_id"]: first["approval_submission_id"],
+                           ct2["approval_submission_id"]: second["approval_submission_id"]}
         audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
     for parent in (unfinished, other, ct1):
         with pytest.raises(HTTPException) as blocked:

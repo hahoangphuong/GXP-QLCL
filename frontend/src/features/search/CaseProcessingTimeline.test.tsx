@@ -43,6 +43,55 @@ describe("Processing timeline presentation and ownership", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it("renders canonical plan/outcome milestones readably while preserving raw evidence", () => {
+    const save = vi.fn();
+    const plan = JSON.stringify({
+      stage: "inspection_plan", plan_start_on: "2026-08-20", plan_end_on: null,
+      planning_sheet_name: "KHKT canonical", decision_reference: "QD-21",
+      decision_date: "2026-08-19", reason: "Schedule recorded", future_key: "Preserved",
+    });
+    const outcome = JSON.stringify({
+      stage: "inspection_outcome", inspected_on: "2026-08-23",
+      inspected_to_on: "2026-08-24", outcome_result: "Cần CAPA",
+      minutes_recorded_on: "2026-08-25", minutes_recorded_time: "14:30",
+      compliance_due_on: null,
+    });
+    const decision = JSON.stringify({ stage: "inspection_decision", decision_reference: "QD-21", decision_date: null });
+    const value = { ...workspace, processing: { ...workspace.processing, events: [
+      { event_type: "plan_created", occurred_at: "2026-08-20", payload: plan },
+      { event_type: "outcome_recorded", occurred_at: "2026-08-25", payload: outcome },
+      { event_type: "decision_issued", occurred_at: "2026-08-19", payload: decision },
+    ] } } as CaseWorkspace;
+    render(<CaseProcessingWorkspace caseWorkspace={value} onSave={save} view="timeline" />);
+    const rows = screen.getAllByRole("row");
+    expect(within(rows[1]).getByText(/Tên kế hoạch: KHKT canonical/)).toHaveTextContent("Từ ngày: 20-08-2026");
+    expect(within(rows[1]).getByText(/Tên kế hoạch: KHKT canonical/)).toHaveTextContent("Ngày QĐKT: 19-08-2026");
+    expect(within(rows[2]).getByText(/Từ ngày kiểm tra: 23-08-2026/)).toHaveTextContent("Đến ngày kiểm tra: 24-08-2026");
+    expect(within(rows[2]).getByText(/Từ ngày kiểm tra: 23-08-2026/)).toHaveTextContent("Ngày biên bản: 25-08-2026");
+    expect(within(rows[3]).getByText("Tham chiếu QĐKT: QD-21")).toBeInTheDocument();
+    const rawDetails = screen.getAllByText("Dữ liệu sự kiện gốc");
+    expect(rawDetails).toHaveLength(3);
+    expect(within(rows[1]).getByText(plan)).toBeInTheDocument();
+    expect(within(rows[2]).getByText(outcome)).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("keeps unknown, malformed and mismatched timeline payloads literal and safe", () => {
+    const raw = '{"stage":"inspection_plan", "unknown": "kept"}';
+    const value = { ...workspace, processing: { ...workspace.processing, events: [
+      { event_type: "plan_created", occurred_at: null, payload: "not valid JSON {" },
+      { event_type: "plan_created", occurred_at: null, payload: raw },
+      { event_type: "outcome_recorded", occurred_at: null, payload: '{"stage":"inspection_plan","outcome_result":"Mismatched"}' },
+    ] } } as CaseWorkspace;
+    const save = vi.fn();
+    render(<CaseProcessingWorkspace caseWorkspace={value} onSave={save} view="timeline" />);
+    expect(screen.getByText("not valid JSON {")).toBeInTheDocument();
+    expect(screen.getByText(raw)).toBeInTheDocument();
+    expect(screen.getByText('{"stage":"inspection_plan","outcome_result":"Mismatched"}')).toBeInTheDocument();
+    expect(screen.queryByText("Dữ liệu sự kiện gốc")).not.toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("replaces event context and shows the empty state without stale data or a mutation", () => {
     const save = vi.fn();
     const { rerender } = render(<CaseProcessingWorkspace caseWorkspace={workspace} onSave={save} view="timeline" />);

@@ -3319,11 +3319,11 @@ class CaseWorkflowService:
             else None,
             payload=self._build_stage_payload(
                 stage="inspection_plan",
-                plan_start_on=None if plan_start_on is None else plan_start_on.isoformat(),
-                plan_end_on=None if plan_end_on is None else plan_end_on.isoformat(),
-                planning_sheet_name=planning_sheet_name,
-                decision_reference=decision_reference,
-                decision_date=None if decision_date is None else decision_date.isoformat(),
+                plan_start_on=None if stage.plan_start_on is None else stage.plan_start_on.isoformat(),
+                plan_end_on=None if stage.plan_end_on is None else stage.plan_end_on.isoformat(),
+                planning_sheet_name=stage.planning_sheet_name,
+                decision_reference=stage.decision_reference,
+                decision_date=None if stage.decision_date is None else stage.decision_date.isoformat(),
                 reason=reason,
             ),
         )
@@ -3517,7 +3517,7 @@ class CaseWorkflowService:
             payload=self._build_stage_payload(
                 stage="inspection_outcome",
                 inspected_on=None if stage.inspected_on is None else stage.inspected_on.isoformat(),
-                inspected_to_on=None if canonical_end is None else canonical_end.isoformat(),
+                inspected_to_on=None if stage.inspected_to_on is None else stage.inspected_to_on.isoformat(),
                 outcome_result=stage.outcome_result,
                 minutes_recorded_on=None if stage.minutes_recorded_on is None else stage.minutes_recorded_on.isoformat(),
                 minutes_recorded_time=None if stage.minutes_recorded_time is None else stage.minutes_recorded_time.isoformat(),

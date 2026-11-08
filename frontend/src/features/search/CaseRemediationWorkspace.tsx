@@ -229,6 +229,8 @@ export function CaseRemediationWorkspace({
   }
 
   const createAvailable = isActionAvailable(caseWorkspace, "create_capa_cycle");
+  const latestCycle = cycles.at(-1) ?? null;
+  const rejectedLatestCycle = latestCycle?.status === "rejected" ? latestCycle : null;
   const updateAvailable = isActionAvailable(caseWorkspace, "update_capa_cycle", selectedCycle?.capa_cycle_id);
   const submitAvailable = isActionAvailable(caseWorkspace, "submit_capa_cycle", selectedCycle?.capa_cycle_id);
   const assessAvailable = isActionAvailable(caseWorkspace, "assess_capa_cycle", selectedCycle?.capa_cycle_id);
@@ -238,7 +240,7 @@ export function CaseRemediationWorkspace({
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isCommandBlocked) {
+    if (!createAvailable || isCommandBlocked) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
@@ -370,6 +372,7 @@ export function CaseRemediationWorkspace({
   }
 
   function startCreate() {
+    if (!createAvailable || isCommandBlocked || hasOpenEditor) return;
     setCreateCaseVersion(caseWorkspace.case_summary.row_version);
     setDraft(buildCycleDraft(null));
     setErrorMessage(null);
@@ -397,12 +400,13 @@ export function CaseRemediationWorkspace({
           </div>
           {createAvailable ? (
             <div className="panel-actions panel-actions-tight">
-              <button disabled={pendingAction !== null || hasOpenEditor} onClick={startCreate} type="button">
-                Thêm vòng khắc phục
+              <button disabled={isCommandBlocked || hasOpenEditor} onClick={startCreate} type="button">
+                {rejectedLatestCycle ? "Tạo vòng khắc phục tiếp theo" : "Thêm vòng khắc phục"}
               </button>
             </div>
           ) : null}
         </div>
+        {rejectedLatestCycle ? <p className="workspace-note" role="status">Vòng khắc phục {rejectedLatestCycle.round_no} không được chấp nhận. Có thể chỉnh sửa và gửi lại vòng này nếu được phép, hoặc tạo vòng tiếp theo khi backend cho phép. Chưa được chuyển hồ sơ sang quyết định cấp GCN.</p> : null}
         {cycles.length > 0 ? (
           <div className="table-scroll table-scroll-history">
             <table className="dense-table capa-cycle-table">
@@ -461,6 +465,7 @@ export function CaseRemediationWorkspace({
         <section className="workspace-section">
           <h4>Vòng khắc phục mới</h4>
           <form className="case-application-form" onSubmit={handleCreateSubmit}>
+            {!createAvailable ? <p className="workspace-note" role="alert">Điều kiện tạo vòng khắc phục đã thay đổi. Giữ bản nháp; hủy biểu mẫu rồi kiểm tra lại hồ sơ.</p> : null}
             <div className="detail-grid compact-grid detail-form-matrix case-application-form-grid">
               <label className="case-application-field">
                 <span>Số tham chiếu đến</span>
@@ -501,7 +506,7 @@ export function CaseRemediationWorkspace({
               </p>
             ) : null}
             <div className="panel-actions panel-actions-tight">
-              <button disabled={isCommandBlocked} type="submit">
+              <button disabled={!createAvailable || isCommandBlocked} type="submit">
                 {pendingAction === "create" ? "Đang tạo..." : "Tạo vòng khắc phục"}
               </button>
               <button className="secondary" disabled={pendingAction !== null} onClick={cancelEditor} type="button">

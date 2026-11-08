@@ -279,11 +279,16 @@ export function CaseRemediationWorkspace({
     setPendingAction("update");
     setErrorMessage(null);
     try {
+      // Backend Pydantic fields_set owns partial updates: submitting unrelated
+      // draft fields could silently overwrite canonical CAPA values.
+      const fieldValue = editingField === "requested_on"
+        ? normalizeText(draft.requested_on)
+        : editingField === "incoming_reference"
+          ? normalizeText(draft.incoming_reference)
+          : normalizeText(draft.notes);
       await onUpdateCycle(selectedCycle.capa_cycle_id, {
         expected_version: draftVersion,
-        incoming_reference: normalizeText(draft.incoming_reference),
-        requested_on: normalizeText(draft.requested_on),
-        notes: normalizeText(draft.notes),
+        [editingField]: fieldValue,
       });
       if (isCurrentCycleOperation(operationOwner)) {
         setEditingField(null);

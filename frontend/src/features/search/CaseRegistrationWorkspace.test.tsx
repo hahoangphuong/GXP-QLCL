@@ -96,7 +96,7 @@ describe("registration presentation preserves existing editor owners", () => {
     await act(async () => rejectSave(Object.assign(new Error("conflict"), { status: 409 })));
     expect(screen.getByLabelText("Người thẩm định")).toHaveValue("retained draft");
     expect(screen.getByRole("alert")).toHaveTextContent("đã bị thay đổi");
-    expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: 7, assessed_on: "2026-01-20T00:00:00Z", assessor_name: "retained draft", assessment_result: "Đạt", notes: null });
+    expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: 7, assessor_name: "retained draft" });
     fireEvent.keyDown(screen.getByLabelText("Người thẩm định"), { key: "Escape" });
     expect(screen.getByRole("button", { name: "Sửa Người thẩm định" })).toHaveTextContent("Assessor");
     expect(save).toHaveBeenCalledOnce();
@@ -141,7 +141,7 @@ describe("registration presentation preserves existing editor owners", () => {
     expect(screen.getByLabelText("Kết quả thẩm định")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Hủy sửa Kết quả thẩm định" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
-    expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: 7, assessed_on: "2026-01-20T00:00:00Z", assessor_name: "Assessor", assessment_result: "unsaved result", notes: null });
+    expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: 7, assessment_result: "unsaved result" });
     await act(async () => rejectSave(Object.assign(new Error("stale"), { status: 409 })));
     expect(screen.getByLabelText("Kết quả thẩm định")).toHaveValue("unsaved result");
     expect(screen.getByRole("alert")).toHaveTextContent("đã bị thay đổi");
@@ -164,4 +164,18 @@ it("keeps an uncertain assessment locked across Case switches", async () => {
   fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
   expect(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" })).toBeDisabled();
   expect(save).toHaveBeenCalledOnce();
+});
+
+
+it.each([
+  ["assessed_on", "Ngày thẩm định", "2026-04-05", { assessed_on: "2026-04-05T00:00:00Z" }],
+  ["assessor_name", "Người thẩm định", "New assessor", { assessor_name: "New assessor" }],
+  ["assessment_result", "Kết quả thẩm định", "Cần hoàn thiện hồ sơ", { assessment_result: "Cần hoàn thiện hồ sơ" }],
+] as const)("updates only selected assessment field %s without sending unrelated canonical metadata", async (_field, label, input, payload) => {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  render(registration(workspace, vi.fn(), onSave));
+  fireEvent.doubleClick(screen.getByRole("button", { name: `Sửa ${label}` }));
+  fireEvent.change(screen.getByLabelText(label), { target: { value: input } });
+  fireEvent.click(screen.getByRole("button", { name: `Lưu ${label}` }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 7, ...payload }));
 });

@@ -6624,6 +6624,37 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 
+  it("holds GxP version edit after a successful POST whose canonical detail readback fails", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    apiMocks.getGxpCertificateDetail.mockResolvedValue({
+      certificate_id: "cert-successor-1", site_id: "site-1", row_version: 11,
+      certificate_number: "GMP-DRAFT", issue_date: null, expiry_date: null, scopes: [],
+    });
+    apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    const dialog = await screen.findByRole("dialog", { name: "Sửa giấy chứng nhận GxP" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Số GCN" }), { target: { value: "GMP-UNVERIFIED" } });
+    // The initial certificate detail has loaded; fail only the canonical GET
+    // which follows the successful version-write POST.
+    apiMocks.getGxpCertificateDetail.mockRejectedValueOnce(new Error("canonical GET failed"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Chưa thể xác minh kết quả cập nhật chứng nhận");
+    expect(within(dialog).getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+    expect(within(dialog).getByRole("textbox", { name: "Số GCN" })).toHaveValue("GMP-UNVERIFIED");
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledTimes(1);
+  });
+
   it("edits an issued DDKD successor with its artifact-owned token and site GxP basis", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

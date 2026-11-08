@@ -27,6 +27,41 @@ const available = (action_key: string, expected_version: number | null = 4) => (
 });
 
 describe("CaseApprovalWorkspace", () => {
+  it("requires a submitted date whenever a time is entered for PCT, without discarding the draft", async () => {
+    const onCreate = vi.fn().mockResolvedValue({});
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({ approval_actions: [available("create_approval_pct")] })} onCreate={onCreate} onComplete={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Giờ trình"), { target: { value: "09:30" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Cần nhập ngày trình");
+    expect(screen.getByRole("button", { name: "Tạo trình PCT" })).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Giờ trình")).toHaveValue("09:30");
+
+    fireEvent.change(screen.getByLabelText("Ngày trình"), { target: { value: "2026-11-08" } });
+    expect(screen.queryByText(/Cần nhập ngày trình trước/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo trình PCT" }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith("PCT", expect.objectContaining({
+      submitted_on: "2026-11-08", submitted_time: "09:30", pct_submission_id: null,
+    })));
+  });
+
+  it("requires a submitted date for CT as well and preserves its exact completed PCT parent", async () => {
+    const onCreate = vi.fn().mockResolvedValue({});
+    const pct = { approval_submission_id: "pct-2", case_id: "case-1", row_version: 3, stage: "PCT" as const, round_no: 2, reference: "PCT-2", submitted_on: null, submitted_time: null, completed_on: "2026-11-06", completed_time: null, pct_submission_id: null };
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({
+      approval_actions: [available("create_approval_ct")], approval_submissions: [pct],
+    })} onCreate={onCreate} onComplete={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("PCT hoàn tất cho CT"), { target: { value: "pct-2" } });
+    fireEvent.change(screen.getByLabelText("Giờ trình"), { target: { value: "10:45" } });
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Ngày trình"), { target: { value: "2026-11-08" } });
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo trình CT" }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith("CT", expect.objectContaining({
+      submitted_on: "2026-11-08", submitted_time: "10:45", pct_submission_id: "pct-2",
+    })));
+  });
+
   it("lets an operator return from a CT to its exact completed PCT and reuse it without creating a submission", () => {
     const onCreate = vi.fn();
     const pct = (id: string, round: number, reference: string) => ({ approval_submission_id: id, case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: round, reference, submitted_on: null, submitted_time: null, completed_on: "2026-10-01", completed_time: null, pct_submission_id: null });

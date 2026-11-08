@@ -639,8 +639,8 @@ it("blocks a second create after the selected cycle changes while create is pend
   fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
   fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
   view.rerender(<CaseRemediationWorkspace caseWorkspace={initial} selectedCycleId="capa-2" {...view.handlers} />);
-  fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
-  expect(screen.getByRole("button", { name: "Tạo vòng khắc phục" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Thêm vòng khắc phục" })).toBeDisabled();
+  expect(view.handlers.onCreateCycle).toHaveBeenCalledOnce();
   await act(async () => request.resolve());
 });
 
@@ -655,7 +655,7 @@ describe("CAPA rejected-cycle continuation", () => {
     fireEvent.click(button);
     expect(screen.getByRole("heading", { name: "Vòng khắc phục mới" })).toBeInTheDocument();
     expect(view.handlers.onCreateCycle).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Ngày yêu cầu vòng khắc phục"), { target: { value: "2026-11-08" } });
+    fireEvent.change(screen.getByLabelText("Ngày yêu cầu"), { target: { value: "2026-11-08" } });
     fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
     await waitFor(() => expect(view.handlers.onCreateCycle).toHaveBeenCalledWith(expect.objectContaining({
       expected_case_version: 8, requested_on: "2026-11-08",
@@ -667,12 +667,12 @@ describe("CAPA rejected-cycle continuation", () => {
     const ready = workspace([rejected], [action("create_capa_cycle", true, 8)]);
     const view = renderWorkspace(ready);
     fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục tiếp theo" }));
-    fireEvent.change(screen.getByLabelText("Ngày yêu cầu vòng khắc phục"), { target: { value: "2026-11-09" } });
+    fireEvent.change(screen.getByLabelText("Ngày yêu cầu"), { target: { value: "2026-11-09" } });
     const revoked = workspace([rejected], [action("create_capa_cycle", false, 8)]);
     view.rerender(<CaseRemediationWorkspace caseWorkspace={revoked} selectedCycleId="capa-1" {...view.handlers} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Điều kiện tạo vòng khắc phục đã thay đổi");
     expect(screen.getByRole("button", { name: "Tạo vòng khắc phục" })).toBeDisabled();
-    expect(screen.getByLabelText("Ngày yêu cầu vòng khắc phục")).toHaveValue("2026-11-09");
+    expect(screen.getByLabelText("Ngày yêu cầu")).toHaveValue("2026-11-09");
     fireEvent.submit(screen.getByRole("button", { name: "Tạo vòng khắc phục" }).closest("form")!);
     expect(view.handlers.onCreateCycle).not.toHaveBeenCalled();
   });

@@ -32,6 +32,51 @@ describe("CaseLifecycleActions", () => {
     expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("Draft");
   });
 
+  it("holds the exact reviewed reason read-only and disables cancellation after an unverified transition", async () => {
+    const onTransition = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("transition outcome unknown"));
+    const editor = (show: boolean) => <CaseDraftSession identity="case-A">
+      {show ? <CaseLifecycleActions caseWorkspace={workspace([action()])} onTransition={onTransition} /> : null}
+    </CaseDraftSession>;
+    const view = render(editor(true));
+    const input = screen.getByLabelText("Lý do chuyển trạng thái");
+    fireEvent.change(input, { target: { value: "Lý do kết thúc cần đối chiếu" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển theo policy" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("transition outcome unknown");
+    expect(input).toHaveAttribute("readonly");
+    expect(input).toHaveValue("Lý do kết thúc cần đối chiếu");
+    expect(screen.getByRole("status")).toHaveTextContent("Lý do đã gửi được giữ nguyên");
+    const cancel = screen.getByRole("button", { name: "Hủy nhập lý do chuyển trạng thái" });
+    expect(cancel).toBeDisabled();
+    fireEvent.change(input, { target: { value: "Attempt to overwrite original request" } });
+    fireEvent.click(cancel);
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển theo policy" }));
+    expect(input).toHaveValue("Lý do kết thúc cần đối chiếu");
+    expect(onTransition).toHaveBeenCalledOnce();
+    expect(onTransition).toHaveBeenCalledWith({
+      expected_version: 18, target_state: "planned", reason: "Lý do kết thúc cần đối chiếu",
+    });
+    view.rerender(editor(false));
+    view.rerender(editor(true));
+    expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("Lý do kết thúc cần đối chiếu");
+    expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Hủy nhập lý do chuyển trạng thái" })).toBeDisabled();
+    expect(onTransition).toHaveBeenCalledOnce();
+  });
+
+  it("allows explicit revision and cancel when a transition is definitively rejected", async () => {
+    const onTransition = vi.fn().mockRejectedValue(Object.assign(new Error("stale version"), { status: 409 }));
+    render(<CaseLifecycleActions caseWorkspace={workspace([action()])} onTransition={onTransition} />);
+    fireEvent.change(screen.getByLabelText("Lý do chuyển trạng thái"), { target: { value: "Stale attempt" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển theo policy" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("stale version");
+    const input = screen.getByLabelText("Lý do chuyển trạng thái");
+    expect(input).not.toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Hủy nhập lý do chuyển trạng thái" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Hủy nhập lý do chuyển trạng thái" }));
+    expect(input).toHaveValue("");
+    expect(onTransition).toHaveBeenCalledOnce();
+  });
+
   it("serializes repeated activation before the pending render", () => {
     const onTransition = vi.fn(() => new Promise<void>(() => {}));
     render(<CaseLifecycleActions caseWorkspace={workspace([action()])} onTransition={onTransition} />);

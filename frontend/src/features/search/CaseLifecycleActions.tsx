@@ -40,12 +40,13 @@ function CaseLifecycleEditor({ caseWorkspace, onTransition }: Props) {
     finally { commandLock.release(command); inFlight.current = false; setPendingKey(null); }
   }
   return <section className="workspace-section case-lifecycle-actions" data-case-lifecycle tabIndex={-1} aria-label="Chuyển trạng thái hồ sơ"><h4>Chuyển trạng thái hồ sơ</h4>
-    <input aria-label="Lý do chuyển trạng thái" disabled={pendingKey !== null} onChange={(event) => { if (intent === null) setIntent((caseWorkspace.transition_actions ?? []).map(action => ({ ...action }))); setReason(event.target.value); }} value={reason} />
+    <input aria-label="Lý do chuyển trạng thái" disabled={pendingKey !== null} readOnly={commandLock.requiresReview} onChange={(event) => { if (commandLock.requiresReview) return; if (intent === null) setIntent((caseWorkspace.transition_actions ?? []).map(action => ({ ...action }))); setReason(event.target.value); }} value={reason} />
     <div className="panel-actions">{(caseWorkspace.transition_actions ?? []).map((action) => <button disabled={!action.available || !action.target_state || !numericVersion(action.expected_version) || !numericVersion(reviewedAction(action)?.expected_version) || pendingKey !== null || commandLock.pending || commandLock.requiresReview} key={action.action_key} onClick={() => void execute(action)} type="button">{pendingKey === action.action_key ? "Đang chuyển..." : actionLabel(action)}</button>)}
-      {intent !== null ? <button disabled={pendingKey !== null} onClick={() => { setReason(""); setIntent(null); setError(null); }} type="button">Hủy nhập lý do chuyển trạng thái</button> : null}
+      {intent !== null ? <button disabled={pendingKey !== null || commandLock.requiresReview} onClick={() => { if (commandLock.requiresReview) return; setReason(""); setIntent(null); setError(null); }} type="button">Hủy nhập lý do chuyển trạng thái</button> : null}
     </div>
     {(caseWorkspace.transition_actions ?? []).filter((action) => !action.available && action.reason_code).map((action) => <p className="workspace-note" key={action.action_key}>{actionLabel(action)}: {caseReadinessReason(action.reason_code!)}</p>)}
     {error || commandLock.requiresReview ? <p className="form-error" role="alert">{error ?? "Chưa xác minh kết quả chuyển trạng thái. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
+    {commandLock.requiresReview ? <p className="workspace-note" role="status">Lý do đã gửi được giữ nguyên để đối chiếu; có thể sao chép nhưng không sửa, hủy hoặc gửi lại khi kết quả chuyển trạng thái chưa xác minh.</p> : null}
   </section>;
 }
 

@@ -846,6 +846,102 @@ def test_upsert_case_assessment_persists_stage_and_event_when_assessed_on_presen
         assert session.scalars(select(InspectionEvent).where(InspectionEvent.event_type == "assessment_completed")).first() is not None
 
 
+
+def test_assessment_partial_field_updates_preserve_canonical_metadata_and_milestone():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    actor = build_authenticated_user("manager01", "manager")
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    with Session(engine) as session:
+        first = service.upsert_case_assessment(
+            session,
+            case_id=case_id,
+            expected_version=None,
+            assessed_on=datetime(2026, 8, 16, 8, 30, tzinfo=timezone.utc),
+            assessor_name="Inspector A",
+            assessment_result="initial",
+            notes="Keep original notes",
+            reason=None,
+            user=actor,
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        changed = service.upsert_case_assessment(
+            session,
+            case_id=case_id,
+            expected_version=first["row_version"],
+            assessed_on=None,
+            assessor_name=None,
+            assessment_result="revised",
+            notes=None,
+            reason=None,
+            user=actor,
+            fields_set={"assessment_result"},
+        )
+        session.commit()
+        stage = session.scalars(select(CaseAssessment).where(CaseAssessment.case_id == case_id)).one()
+        assert stage.assessment_result == "revised"
+        assert stage.assessor_name == "Inspector A"
+        assert stage.notes == "Keep original notes"
+        assert stage.assessed_on is not None
+        assert changed["inspection_event_id"] is not None
+        milestone = session.scalars(
+            select(InspectionEvent).where(InspectionEvent.id == changed["inspection_event_id"])
+        ).one()
+        assert milestone.event_type == "assessment_completed"
+
+    with Session(engine) as session:
+        metadata_only = service.upsert_case_assessment(
+            session,
+            case_id=case_id,
+            expected_version=changed["row_version"],
+            assessed_on=None,
+            assessor_name=None,
+            assessment_result=None,
+            notes="Updated note",
+            reason=None,
+            user=actor,
+            fields_set={"notes"},
+        )
+        session.commit()
+        assert metadata_only["inspection_event_id"] is None
+        stage = session.scalars(select(CaseAssessment).where(CaseAssessment.case_id == case_id)).one()
+        assert stage.notes == "Updated note"
+        assert stage.assessment_result == "revised"
+        assert stage.assessor_name == "Inspector A"
+
+
+def test_assessment_partial_field_without_canonical_date_does_not_complete_milestone():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+    with Session(engine) as session:
+        result = service.upsert_case_assessment(
+            session,
+            case_id=case_id,
+            expected_version=None,
+            assessed_on=None,
+            assessor_name="Inspector A",
+            assessment_result=None,
+            notes=None,
+            reason=None,
+            user=build_authenticated_user("manager01", "manager"),
+            fields_set={"assessor_name"},
+        )
+        session.commit()
+        assert result["inspection_event_id"] is None
+        stage = session.scalars(select(CaseAssessment).where(CaseAssessment.case_id == case_id)).one()
+        assert stage.assessor_name == "Inspector A"
+        assert stage.assessed_on is None
+
+
 def test_upsert_inspection_plan_persists_stage():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

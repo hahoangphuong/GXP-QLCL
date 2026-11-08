@@ -125,6 +125,11 @@ jobs:
           test "${DATABASE_URL}" = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test"
           python -m pytest tests/test_output_finalization_rollback_postgres.py -q -p no:cacheprovider -rs
 
+      - name: Verify canonical workflow on isolated PostgreSQL schema
+        env:
+          GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
+        run: python -m pytest tests/test_canonical_workflow_postgres.py -q -p no:cacheprovider
+
       - name: Run backend tests
         run: python -m pytest -q
 

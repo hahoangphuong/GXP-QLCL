@@ -481,8 +481,18 @@ function InspectionOutcomeSection({
     }
   }, [currentDraft, editingField]);
 
+  // Backend rejects a minutes time without its date. These are separate
+  // field-owned writes, so respect the *canonical* value of the other field.
+  // Never auto-clear a different field or silently compose a multi-field write.
+  const minutesDependencyError =
+    editingField === "minutes_recorded_time" && draft.minutes_recorded_time.trim() && !caseWorkspace.inspection.minutes_recorded_on
+      ? "Lưu ngày biên bản trước khi nhập giờ biên bản."
+      : editingField === "minutes_recorded_on" && !draft.minutes_recorded_on.trim() && !!caseWorkspace.inspection.minutes_recorded_time
+        ? "Xóa giờ biên bản và lưu trước khi xóa ngày biên bản."
+        : null;
+
   async function saveField() {
-    if (!editingField || pending || commandLock.pending || commandLock.requiresReview) {
+    if (!editingField || pending || commandLock.pending || commandLock.requiresReview || minutesDependencyError) {
       return;
     }
     const command = commandLock.acquire();
@@ -522,7 +532,7 @@ function InspectionOutcomeSection({
       <div className="detail-grid compact-grid detail-form-matrix">
         <div className="inspection-date-fields">
           <DetailValue label="Ngày kiểm tra" multiline value={formatInspectionPeriods(caseWorkspace.inspection.inspection_period_segments ?? [])} />
-          <EditableDetailValue editButtonLabel="Sửa Ngày biên bản" error={!commandLock.requiresReview && editingField === "minutes_recorded_on" ? errorMessage : null} isEditing={editingField === "minutes_recorded_on"} label="Ngày biên bản/report" onCancel={cancelEdit} onEdit={() => startEdit("minutes_recorded_on")} onSave={() => void saveField()} pending={pending} saveDisabled={commandLock.pending || commandLock.requiresReview} value={formatCompactDate(caseWorkspace.inspection.minutes_recorded_on)}>
+          <EditableDetailValue editButtonLabel="Sửa Ngày biên bản" error={!commandLock.requiresReview && editingField === "minutes_recorded_on" ? minutesDependencyError || errorMessage : null} isEditing={editingField === "minutes_recorded_on"} label="Ngày biên bản/report" onCancel={cancelEdit} onEdit={() => startEdit("minutes_recorded_on")} onSave={() => void saveField()} pending={pending} saveDisabled={commandLock.pending || commandLock.requiresReview || !!minutesDependencyError} value={formatCompactDate(caseWorkspace.inspection.minutes_recorded_on)}>
             <input aria-label="Ngày biên bản/report" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, minutes_recorded_on: event.target.value }))} type="date" value={draft.minutes_recorded_on} />
           </EditableDetailValue>
         </div>
@@ -558,7 +568,7 @@ function InspectionOutcomeSection({
 
           <DetailValue label="Thời điểm thực hiện" value={formatCompactDate(caseWorkspace.inspection.executed_on)} />
 
-          <EditableDetailValue editButtonLabel="Sửa Giờ biên bản" error={!commandLock.requiresReview && editingField === "minutes_recorded_time" ? errorMessage : null} isEditing={editingField === "minutes_recorded_time"} label="Giờ biên bản/report" onCancel={cancelEdit} onEdit={() => startEdit("minutes_recorded_time")} onSave={() => void saveField()} pending={pending} saveDisabled={commandLock.pending || commandLock.requiresReview} value={caseWorkspace.inspection.minutes_recorded_time}>
+          <EditableDetailValue editButtonLabel="Sửa Giờ biên bản" error={!commandLock.requiresReview && editingField === "minutes_recorded_time" ? minutesDependencyError || errorMessage : null} isEditing={editingField === "minutes_recorded_time"} label="Giờ biên bản/report" onCancel={cancelEdit} onEdit={() => startEdit("minutes_recorded_time")} onSave={() => void saveField()} pending={pending} saveDisabled={commandLock.pending || commandLock.requiresReview || !!minutesDependencyError} value={caseWorkspace.inspection.minutes_recorded_time}>
             <input aria-label="Giờ biên bản/report" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, minutes_recorded_time: event.target.value }))} type="time" value={draft.minutes_recorded_time} />
           </EditableDetailValue>
           <EditableDetailValue editButtonLabel="Sửa Hạn tuân thủ" error={!commandLock.requiresReview && editingField === "compliance_due_on" ? errorMessage : null} isEditing={editingField === "compliance_due_on"} label="Hạn tuân thủ/tái kiểm tra" onCancel={cancelEdit} onEdit={() => startEdit("compliance_due_on")} onSave={() => void saveField()} pending={pending} saveDisabled={commandLock.pending || commandLock.requiresReview} value={formatCompactDate(caseWorkspace.inspection.compliance_due_on)}>

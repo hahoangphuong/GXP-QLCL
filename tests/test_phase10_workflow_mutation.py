@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.base import Base
-from backend.app.db.enums import CaseState
+from backend.app.db.enums import CaseState, InspectionEventType
 from backend.app.db.models.phase1 import (
     AuditEvent,
     BusinessEligibilityCertificate,
@@ -1021,7 +1021,7 @@ def test_plan_created_event_uses_canonical_metadata_across_separate_field_edits(
         event = session.scalars(
             select(InspectionEvent).where(
                 InspectionEvent.case_id == case_id,
-                InspectionEvent.event_type == "plan_created",
+                InspectionEvent.event_type == InspectionEventType.PLAN_CREATED,
             )
         ).one()
         payload = json.loads(event.payload)
@@ -1052,7 +1052,7 @@ def test_plan_created_event_uses_canonical_metadata_across_separate_field_edits(
         assert second["inspection_event_id"] is None
         assert session.scalar(select(func.count(InspectionEvent.id)).where(
             InspectionEvent.case_id == case_id,
-            InspectionEvent.event_type == "plan_created",
+            InspectionEvent.event_type == InspectionEventType.PLAN_CREATED,
         )) == 1
 
 
@@ -1100,7 +1100,7 @@ def test_outcome_recorded_event_uses_canonical_period_and_minutes_from_prior_upd
         session.commit()
         event = session.scalars(select(InspectionEvent).where(
             InspectionEvent.case_id == case_id,
-            InspectionEvent.event_type == "outcome_recorded",
+            InspectionEvent.event_type == InspectionEventType.OUTCOME_RECORDED,
         )).one()
         payload = json.loads(event.payload)
         assert payload["inspected_on"] == "2026-08-23"

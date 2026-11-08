@@ -1,4 +1,5 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
+import { raiseGxpCertificateVersionWriteFailure } from "../features/search/gxpCertificateVersionWriteRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
@@ -2254,7 +2255,7 @@ export function SearchPage({
         staleError.status = 409;
         throw staleError;
       }
-      throw error;
+      raiseGxpCertificateVersionWriteFailure(error, mutationAccepted);
     }
   }
 

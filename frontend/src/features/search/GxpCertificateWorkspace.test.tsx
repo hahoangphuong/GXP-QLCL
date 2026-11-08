@@ -39,7 +39,7 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
 it("distinguishes a verified non-current Certificate candidate from explicit promotion", () => {
   const promote = vi.fn();
   const candidate = { ...detail(), latest_flag: false, status: "superseded" as const, action_readiness: [
-    { action_key: "promote_current", label: "Đặt làm chứng nhận hiện hành", available: true, reason_code: null, expected_version: 7, required_permissions: ["certificate.issue"] },
+    { action_key: "promote_current" as const, label: "Đặt làm chứng nhận hiện hành", available: true, reason_code: null, expected_version: 7, required_permissions: ["certificate.issue"] },
   ] };
   render(<GxpCertificateWorkspace
     detail={candidate} detailError={null} detailLoading={false}

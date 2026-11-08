@@ -186,6 +186,18 @@ export function GxpCertificateWorkspace({
 }) {
   const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
   const selectedEditLock = useFacilityCommandLock(`gxp-certificate-version:${selectedCertificateId ?? "none"}`);
+  const promotionLock = useFacilityCommandLock(`gxp-certificate-promote:${selectedCertificateId ?? "none"}`);
+  async function promoteCurrent(expectedVersion: number) {
+    const command = promotionLock.acquire();
+    if (!command) return;
+    try {
+      await onPromoteCurrent(expectedVersion);
+    } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) promotionLock.requireReview(command);
+    } finally {
+      promotionLock.release(command);
+    }
+  }
   const [draftSelection, setDraftSelection] = useState(selectedCertificateId);
   if (draftSelection !== selectedCertificateId) {
     setDraftSelection(selectedCertificateId);
@@ -276,8 +288,8 @@ export function GxpCertificateWorkspace({
                   {edit ? <button disabled={!edit.available || promotionPending || selectedEditLock.pending || selectedEditLock.requiresReview} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
                   {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}
                   {promote ? <button
-                    disabled={!promote.available || promotionPending}
-                    onClick={() => void onPromoteCurrent(promote.expected_version)}
+                    disabled={!promote.available || promotionPending || promotionLock.pending || promotionLock.requiresReview}
+                    onClick={() => void promoteCurrent(promote.expected_version)}
                     title={promote.reason_code ?? undefined}
                     type="button"
                   >
@@ -285,6 +297,7 @@ export function GxpCertificateWorkspace({
                   </button> : null}
                   {!promote?.available && promote?.reason_code ? <span>{promote.reason_code}</span> : null}
                   {promotionError ? <span role="alert">{promotionError}</span> : null}
+                  {promotionLock.requiresReview ? <span className="workspace-note" role="status">Kết quả đặt chứng nhận hiện hành chưa được xác minh. Không gửi lại; kiểm tra Certificate canonical trước khi thao tác tiếp.</span> : null}
                 </div>
               );
             })()}

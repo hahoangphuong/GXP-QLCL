@@ -6630,11 +6630,18 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
     apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
-    apiMocks.getGxpCertificateDetail.mockResolvedValue({
-      certificate_id: "cert-successor-1", site_id: "site-1", row_version: 11,
-      certificate_number: "GMP-DRAFT", issue_date: null, expiry_date: null, scopes: [],
+    let writeAccepted = false;
+    apiMocks.getGxpCertificateDetail.mockImplementation(async () => {
+      if (writeAccepted) throw new Error("canonical GET failed");
+      return {
+        certificate_id: "cert-successor-1", site_id: "site-1", row_version: 11,
+        certificate_number: "GMP-DRAFT", issue_date: null, expiry_date: null, scopes: [],
+      };
     });
-    apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
+    apiMocks.upsertGxpCertificateLatestVersion.mockImplementation(async () => {
+      writeAccepted = true;
+      return null;
+    });
     const { container } = renderApp(["/search"]);
     await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
@@ -6642,10 +6649,10 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
     const dialog = await screen.findByRole("dialog", { name: "Sửa giấy chứng nhận GxP" });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Số GCN" }), { target: { value: "GMP-UNVERIFIED" } });
-    // The initial certificate detail has loaded; fail only the canonical GET
-    // which follows the successful version-write POST.
-    apiMocks.getGxpCertificateDetail.mockRejectedValueOnce(new Error("canonical GET failed"));
+    // GET behavior is keyed to the actual accepted POST, not a fragile
+    // sequence count that can be consumed by concurrent initial loaders.
     fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+    await waitFor(() => expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledTimes(1));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Chưa thể xác minh kết quả cập nhật chứng nhận");
     expect(within(dialog).getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();

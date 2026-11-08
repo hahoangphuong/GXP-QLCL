@@ -561,16 +561,17 @@ export function EventWorkspace({
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
 }) {
   const rootRef = useRef<HTMLElement>(null);
-  const pendingLifecycleFocus = useRef<string | null>(null);
+  const pendingLifecycleFocus = useRef<{ caseId: string; target: "lifecycle" | "final" } | null>(null);
   useLayoutEffect(() => {
-    const caseId = pendingLifecycleFocus.current;
-    if (!caseId) return;
+    const request = pendingLifecycleFocus.current;
+    if (!request) return;
+    const { caseId, target: targetName } = request;
     if (selectedHistory?.id !== caseId || selectedHistory.source_type !== "case") {
       pendingLifecycleFocus.current = null;
       return;
     }
     if (activeTab === "Kiểm tra" && !caseWorkspaceLoading && !caseWorkspaceError && caseWorkspace?.case_summary.id === caseId) {
-      const target = rootRef.current?.querySelector<HTMLElement>("[data-case-lifecycle]");
+      const target = rootRef.current?.querySelector<HTMLElement>(targetName === "final" ? "[data-case-final-evaluation]" : "[data-case-lifecycle]");
       if (target) { pendingLifecycleFocus.current = null; target.focus(); }
     }
   }, [activeTab, caseWorkspace, caseWorkspaceError, caseWorkspaceLoading, selectedHistory]);
@@ -615,7 +616,8 @@ export function EventWorkspace({
         {selectedHistory.source_type === "case" && caseWorkspace && !caseWorkspaceLoading && !caseWorkspaceError && effectiveActiveTab !== "Kiểm tra" ? (
           <div className="case-transition-navigation">
             <span>Trạng thái hồ sơ: {formatStatusLabel(caseWorkspace.case_summary.state)}</span>
-            {(caseWorkspace.transition_actions ?? []).length > 0 ? <button type="button" className="secondary" onClick={() => { pendingLifecycleFocus.current = selectedHistory.id; onTabChange("Kiểm tra"); }}>Xem chuyển trạng thái hồ sơ</button> : null}
+            {(caseWorkspace.transition_actions ?? []).length > 0 ? <button type="button" className="secondary" onClick={() => { pendingLifecycleFocus.current = { caseId: selectedHistory.id, target: "lifecycle" }; onTabChange("Kiểm tra"); }}>Xem chuyển trạng thái hồ sơ</button> : null}
+            {effectiveActiveTab === "Khắc phục" && caseWorkspace.inspection.final_evaluation_readiness?.available ? <button type="button" className="secondary" onClick={() => { pendingLifecycleFocus.current = { caseId: selectedHistory.id, target: "final" }; onTabChange("Kiểm tra"); }}>Đến đánh giá cuối cùng</button> : null}
           </div>
         ) : null}
         {selectedHistory.source_type === "change_request" ? (

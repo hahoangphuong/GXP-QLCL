@@ -79,6 +79,50 @@ it("distinguishes a verified non-current Certificate candidate from explicit pro
   expect(promote).not.toHaveBeenCalled();
 });
 
+it("holds unverified current promotion across tab remount without locking another certificate", async () => {
+  const promote = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("unverified current"));
+  const candidate = { ...detail(), latest_flag: false, action_readiness: [
+    { action_key: "promote_current" as const, label: "Đặt làm chứng nhận hiện hành",
+      available: true, reason_code: null, expected_version: 7, required_permissions: ["certificate.issue"] },
+  ] };
+  const props = { detail: candidate, detailError: null, detailLoading: false, items: [{ ...items[0], latest_flag: false }],
+    listError: null, listLoading: false, onEditLatestVersion: vi.fn(), onPromoteCurrent: promote,
+    onSelectCertificate: vi.fn(), promotionError: null, promotionPending: false, selectedCertificateId: "cert-1" };
+  const editor = (show: boolean, id = "cert-1") => <CaseDraftSession identity="case-A" facilityIdentity="site-1">
+    {show ? <GxpCertificateWorkspace {...props} selectedCertificateId={id}
+      items={[{ ...items[0], certificate_id: id, latest_flag: false }]}
+      detail={{ ...candidate, certificate_id: id }} /> : null}
+  </CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+  await waitFor(() => expect(promote).toHaveBeenCalledOnce());
+  expect(await screen.findByRole("status", { name: "" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeDisabled();
+  view.rerender(editor(false));
+  view.rerender(editor(true));
+  expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeDisabled();
+  view.rerender(editor(true, "cert-2"));
+  expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled();
+  view.rerender(editor(true));
+  expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeDisabled();
+  expect(promote).toHaveBeenCalledOnce();
+});
+
+it("does not retain a recovery lock for a definitively rejected current promotion", async () => {
+  const promote = vi.fn().mockRejectedValue(Object.assign(new Error("No permission"), { status: 403 }));
+  render(<GxpCertificateWorkspace
+    detail={{ ...detail(), latest_flag: false, action_readiness: [
+      { action_key: "promote_current", label: "Đặt làm chứng nhận hiện hành", available: true,
+        reason_code: null, expected_version: 7, required_permissions: ["certificate.issue"] },
+    ] }}
+    detailError={null} detailLoading={false} items={[{ ...items[0], latest_flag: false }]}
+    listError={null} listLoading={false} onEditLatestVersion={vi.fn()} onPromoteCurrent={promote}
+    onSelectCertificate={vi.fn()} promotionError={null} promotionPending={false} selectedCertificateId="cert-1" />);
+  fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+  await waitFor(() => expect(promote).toHaveBeenCalledOnce());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled());
+});
+
 it("discards an editor on A to B to A and ignores its late completion", async () => {
   let finish!: () => void;
   const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));

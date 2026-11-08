@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { CaseDraftSession } from "./CaseDraftSession";
 import type { GxpCertificateDetail, GxpCertificateListItem } from "../../types";
 
 const items: GxpCertificateListItem[] = [{
@@ -36,6 +37,31 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
   />);
   return onEditLatestVersion;
 }
+
+it("keeps the certificate-specific recovery lock across same-facility tab remount and protects other certificate identities", async () => {
+  const onEdit = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("unverified"));
+  const props = { detail: detail(), detailError: null, detailLoading: false, items, listError: null,
+    listLoading: false, onEditLatestVersion: onEdit, onPromoteCurrent: vi.fn(), onSelectCertificate: vi.fn(),
+    promotionError: null, promotionPending: false, selectedCertificateId: "cert-1" };
+  const editor = (show: boolean, id = "cert-1") => <CaseDraftSession identity="case-A" facilityIdentity="site-1">
+    {show ? <GxpCertificateWorkspace {...props} selectedCertificateId={id}
+      detail={{ ...detail(), certificate_id: id }}
+      items={[{ ...items[0], certificate_id: id }]} /> : null}
+  </CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("unverified");
+  view.rerender(editor(false));
+  view.rerender(editor(true));
+  expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  expect(onEdit).toHaveBeenCalledOnce();
+  view.rerender(editor(true, "cert-2"));
+  expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeEnabled();
+  view.rerender(editor(true));
+  expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeDisabled();
+});
 
 it("distinguishes a verified non-current Certificate candidate from explicit promotion", () => {
   const promote = vi.fn();

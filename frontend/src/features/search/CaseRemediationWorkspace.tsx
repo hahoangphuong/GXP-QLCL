@@ -36,6 +36,12 @@ function normalizeText(value: string): string | null {
   return normalized || null;
 }
 
+// The backend owns the exact CAPA decision vocabulary; a free-text verdict
+// makes an otherwise permitted operator action fail with HTTP 422.
+function isCapaDecision(value: string): value is "accepted" | "rejected" {
+  return value === "accepted" || value === "rejected";
+}
+
 function buildCycleDraft(cycle: CaseWorkspaceRemediationCycle | null): CycleDraft {
   return {
     incoming_reference: cycle?.incoming_reference ?? "",
@@ -328,7 +334,7 @@ export function CaseRemediationWorkspace({
   }
 
   async function handleAssessAction() {
-    if (!selectedCycle || isCommandBlocked || draftVersion === null) {
+    if (!selectedCycle || !assessAvailable || isCommandBlocked || draftVersion === null || !draft.assessed_on.trim() || !isCapaDecision(draft.result)) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
@@ -340,7 +346,7 @@ export function CaseRemediationWorkspace({
       await onAssessCycle(selectedCycle.capa_cycle_id, {
         expected_version: draftVersion,
         assessed_on: draft.assessed_on,
-        result: draft.result.trim(),
+        result: draft.result,
         notes: normalizeText(draft.notes),
       });
       if (isCurrentCycleOperation(operationOwner)) setDraftChanged(false);
@@ -519,7 +525,7 @@ export function CaseRemediationWorkspace({
                 ) : null}
                 {assessAvailable ? (
                   <button
-                    disabled={isCommandBlocked || !draft.assessed_on.trim() || !draft.result.trim()}
+                    disabled={isCommandBlocked || !draft.assessed_on.trim() || !isCapaDecision(draft.result)}
                     onClick={() => void handleAssessAction()}
                     type="button"
                   >
@@ -642,12 +648,16 @@ export function CaseRemediationWorkspace({
                 </label>
                 <label className="case-application-field">
                   <span>Kết quả đánh giá</span>
-                  <input
+                  <select
                     aria-label="Kết quả đánh giá khắc phục"
                     disabled={isPending || !assessAvailable}
                     onChange={(event) => changeDraft("result", event.target.value)}
-                    value={draft.result}
-                  />
+                    value={isCapaDecision(draft.result) ? draft.result : ""}
+                  >
+                    <option value="">Chọn kết quả đánh giá</option>
+                    <option value="accepted">Chấp nhận khắc phục</option>
+                    <option value="rejected">Không chấp nhận khắc phục</option>
+                  </select>
                 </label>
                 <label className="case-application-field case-application-field-full">
                   <span>Ghi chú dùng cho thao tác</span>

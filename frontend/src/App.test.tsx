@@ -3648,8 +3648,6 @@ describe("App Slice A.4 search workspace", () => {
       "capa-1",
       {
         expected_version: 4,
-        incoming_reference: null,
-        requested_on: "2026-08-07",
         notes: "Bản nháp mới",
       },
       expect.objectContaining({ username: "operator.local", role: "inspector" }),

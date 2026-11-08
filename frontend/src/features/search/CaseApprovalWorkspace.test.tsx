@@ -27,6 +27,30 @@ const available = (action_key: string, expected_version: number | null = 4) => (
 });
 
 describe("CaseApprovalWorkspace", () => {
+  it("lets an operator return from a CT to its exact completed PCT and reuse it without creating a submission", () => {
+    const onCreate = vi.fn();
+    const pct = (id: string, round: number, reference: string) => ({ approval_submission_id: id, case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: round, reference, submitted_on: null, submitted_time: null, completed_on: "2026-10-01", completed_time: null, pct_submission_id: null });
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({ approval_actions: [available("create_approval_ct")], approval_submissions: [pct("pct-1", 1, "PCT-A"), pct("pct-2", 2, "PCT-B"), { ...pct("ct-1", 1, "CT-A"), stage: "CT", pct_submission_id: "pct-2" }] })} onCreate={onCreate} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn PCT lần 2 cho trình CT" }));
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("pct-2");
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeEnabled();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByRole("option", { name: /PCT lần 2.*PCT-B/ })).toHaveValue("pct-2");
+  });
+  it("preserves the selected PCT across tab remount without carrying it to another Case", () => {
+    const pct = { approval_submission_id: "pct-2", case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: 2, reference: "PCT-B", submitted_on: null, submitted_time: null, completed_on: "2026-10-01", completed_time: null, pct_submission_id: null };
+    const onCreate = vi.fn();
+    const editor = (identity: string, show: boolean) => <CaseDraftSession identity={identity}>{show ? <CaseApprovalWorkspace caseWorkspace={workspace({ approval_actions: [available("create_approval_ct")], approval_submissions: [pct] })} onCreate={onCreate} onComplete={vi.fn()} /> : null}</CaseDraftSession>;
+    const view = render(editor("case-A", true));
+    fireEvent.change(screen.getByLabelText("PCT hoàn tất cho CT"), { target: { value: "pct-2" } });
+    view.rerender(editor("case-A", false));
+    view.rerender(editor("case-A", true));
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("pct-2");
+    view.rerender(editor("case-B", true));
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("");
+    expect(onCreate).not.toHaveBeenCalled();
+  });
   it("explains the backend requirement to complete PCT before creating CT", () => {
     const onCreate = vi.fn();
     render(<CaseApprovalWorkspace caseWorkspace={workspace({ approval_actions: [{ ...available("create_approval_ct"), available: false, reason_code: "completed_pct_required" }] })} onCreate={onCreate} onComplete={vi.fn()} />);

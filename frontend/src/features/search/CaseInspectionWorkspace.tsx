@@ -644,7 +644,7 @@ function CaseInspectionEditor({
         <InspectionPeriodSection caseWorkspace={caseWorkspace} onSave={onInspectionPeriodSegmentsSave} />
         <CaseApprovalWorkspace caseWorkspace={caseWorkspace} onComplete={onCompleteApprovalSubmission} onCreate={onCreateApprovalSubmission} />
         <CaseLifecycleActions caseWorkspace={caseWorkspace} onTransition={onTransitionCase} />
-        <section className="workspace-section">
+        <section className="workspace-section" data-case-final-evaluation tabIndex={-1} aria-label="Khu vực đánh giá cuối cùng">
           <h4>Đánh giá cuối cùng</h4>
           <DetailValue label="Giá trị đã chốt" value={caseWorkspace.inspection.final_evaluation} />
           {caseWorkspace.inspection.final_evaluation === null || finalDraftVersion !== undefined ? (

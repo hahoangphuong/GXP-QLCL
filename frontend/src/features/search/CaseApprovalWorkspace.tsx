@@ -71,6 +71,7 @@ function CaseApprovalEditor({
   const [submittedTime, setSubmittedTime] = useCaseDraftState("approval.create.submittedTime", "");
   const [createReason, setCreateReason] = useCaseDraftState("approval.create.createReason", "");
   const [parentId, setParentId] = useCaseDraftState("approval.create.parentId", "");
+  const parentSelect = useRef<HTMLSelectElement>(null);
   const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
   const { pending: ownerPending, requiresReview } = useContext(ApprovalMutationContext);
@@ -133,9 +134,9 @@ function CaseApprovalEditor({
       <input aria-label="Giờ trình" disabled={pending !== null || ownerPending} type="time" value={submittedTime} onChange={(event) => setSubmittedTime(event.target.value)} />
       <input aria-label="Lý do tạo trình" disabled={pending !== null || ownerPending} value={createReason} onChange={(event) => setCreateReason(event.target.value)} />
       <button disabled={!action("create_approval_pct")?.available || pending !== null || ownerPending || requiresReview} onClick={() => void create("PCT")} type="button">Tạo trình PCT</button>
-      <select aria-label="PCT hoàn tất cho CT" disabled={pending !== null || ownerPending} value={parentId} onChange={(event) => setParentId(event.target.value)}>
+      <select ref={parentSelect} aria-label="PCT hoàn tất cho CT" disabled={pending !== null || ownerPending} value={parentId} onChange={(event) => setParentId(event.target.value)}>
         <option value="">Chọn PCT đã hoàn tất</option>
-        {completedPct.map((item) => <option key={item.approval_submission_id} value={item.approval_submission_id}>PCT lần {item.round_no}</option>)}
+        {completedPct.map((item) => <option key={item.approval_submission_id} value={item.approval_submission_id}>PCT lần {item.round_no}{item.reference ? ` — ${item.reference}` : ""} — {formatCompactDate(item.completed_on)}</option>)}
       </select>
       <button disabled={!action("create_approval_ct")?.available || !hasSelectedParent || pending !== null || ownerPending || requiresReview} onClick={() => void create("CT")} type="button">Tạo trình CT</button>
     </div>
@@ -146,6 +147,7 @@ function CaseApprovalEditor({
     {action("create_approval_ct")?.available && completedPct.length > 0 && !hasSelectedParent ? <p className="workspace-note">Chọn một trình PCT đã hoàn tất để tạo trình CT.</p> : null}
     {submissions.map((item) => {
       const readiness = action(`complete_approval:${item.approval_submission_id}`);
+      const parent = item.stage === "CT" ? completedPct.find((pct) => pct.approval_submission_id === item.pct_submission_id) : undefined;
       return <div className="inspection-team-member" key={item.approval_submission_id}>
         <strong>{item.stage} lần {item.round_no}</strong>
         <span>{item.reference ?? "Chưa có tham chiếu"}</span>
@@ -153,7 +155,8 @@ function CaseApprovalEditor({
         <span>Giờ trình: {item.submitted_time ?? "Chưa có"}</span>
         <span>Ngày hoàn tất: {formatCompactDate(item.completed_on)}</span>
         <span>Giờ hoàn tất: {item.completed_time ?? "Chưa có"}</span>
-        {item.stage === "CT" ? <span>PCT: {item.pct_submission_id ?? "Chưa có"}</span> : null}
+        {item.stage === "CT" ? <span>PCT: {parent ? `lần ${parent.round_no}${parent.reference ? ` — ${parent.reference}` : ""}` : item.pct_submission_id ?? "Chưa có"}</span> : null}
+        {parent ? <button disabled={pending !== null || ownerPending} onClick={() => { setParentId(parent.approval_submission_id); parentSelect.current?.focus(); }} type="button">Chọn PCT lần {parent.round_no} cho trình CT</button> : null}
         <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null || ownerPending} requiresReview={requiresReview} onComplete={complete} />
         {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{caseReadinessReason(readiness.reason_code)}</span> : null}
       </div>;

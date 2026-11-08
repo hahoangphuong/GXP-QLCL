@@ -185,3 +185,68 @@ it("edits the canonical planning-sheet name through inspection.plan, pinned to t
   fireEvent.click(screen.getByRole("button", { name: "Lưu Tên bảng kế hoạch" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({ expected_version: 6, planning_sheet_name: "Kế hoạch kỳ 2" }));
 });
+
+describe("Inspection minutes canonical date/time prerequisites", () => {
+  const renderMinutes = (inspection: Partial<CaseWorkspace["inspection"]> = {}, onSave = vi.fn().mockResolvedValue(undefined)) => {
+    const props = {
+      onInspectionOutcomeSave: onSave, onInspectionPeriodSegmentsSave: vi.fn(), onInspectionPlanSave: vi.fn(),
+      onInspectionTeamSave: vi.fn(), onLoadInspectionTeamIdentityOptions: vi.fn(),
+      onCreateApprovalSubmission: vi.fn(), onCompleteApprovalSubmission: vi.fn(), onTransitionCase: vi.fn(),
+    };
+    return { ...render(<CaseDraftSession identity="case-1"><CaseInspectionWorkspace
+      caseWorkspace={workspace({ outcome_row_version: 6, ...inspection })} {...props}
+    /></CaseDraftSession>), onSave };
+  };
+
+  it("does not send minutes time until the date is canonically saved", async () => {
+    const { onSave } = renderMinutes();
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Giờ biên bản" }));
+    fireEvent.change(screen.getByLabelText("Giờ biên bản/report"), { target: { value: "09:30" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Lưu ngày biên bản trước");
+    expect(screen.getByRole("button", { name: "Lưu Giờ biên bản/report" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByLabelText("Giờ biên bản/report"), { key: "Enter" });
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Hủy sửa Giờ biên bản/report" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Ngày biên bản" }));
+    fireEvent.change(screen.getByLabelText("Ngày biên bản/report"), { target: { value: "2026-10-12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Ngày biên bản/report" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 6, minutes_recorded_on: "2026-10-12" }));
+  });
+
+  it("does not silently erase an existing time when clearing the minutes date", () => {
+    const { onSave } = renderMinutes({ minutes_recorded_on: "2026-10-10", minutes_recorded_time: "15:30" });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Ngày biên bản" }));
+    fireEvent.change(screen.getByLabelText("Ngày biên bản/report"), { target: { value: "" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Xóa giờ biên bản và lưu trước");
+    expect(screen.getByRole("button", { name: "Lưu Ngày biên bản/report" })).toBeDisabled();
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Hủy sửa Ngày biên bản/report" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Giờ biên bản" }));
+    fireEvent.change(screen.getByLabelText("Giờ biên bản/report"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Giờ biên bản/report" }));
+    expect(onSave).toHaveBeenCalledWith({ expected_version: 6, minutes_recorded_time: null });
+  });
+
+  it("can save time after a canonical date exists without resubmitting the date", async () => {
+    const { onSave } = renderMinutes({ minutes_recorded_on: "2026-10-12" });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Giờ biên bản" }));
+    fireEvent.change(screen.getByLabelText("Giờ biên bản/report"), { target: { value: "09:30" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Giờ biên bản/report" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 6, minutes_recorded_time: "09:30" }));
+  });
+
+  it("keeps the edit-start version and visible draft on a minutes time conflict", async () => {
+    const onSave = vi.fn().mockRejectedValue(Object.assign(new Error("conflict"), { status: 409 }));
+    const initial = workspace({ outcome_row_version: 6, minutes_recorded_on: "2026-10-12" });
+    const props = { onInspectionOutcomeSave: onSave, onInspectionPeriodSegmentsSave: vi.fn(), onInspectionPlanSave: vi.fn(), onInspectionTeamSave: vi.fn(), onLoadInspectionTeamIdentityOptions: vi.fn(), onCreateApprovalSubmission: vi.fn(), onCompleteApprovalSubmission: vi.fn(), onTransitionCase: vi.fn() };
+    const view = render(<CaseDraftSession identity="case-1"><CaseInspectionWorkspace caseWorkspace={initial} {...props}/></CaseDraftSession>);
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Giờ biên bản" }));
+    fireEvent.change(screen.getByLabelText("Giờ biên bản/report"), { target: { value: "14:45" } });
+    view.rerender(<CaseDraftSession identity="case-1"><CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: 7, minutes_recorded_on: "2026-10-12", minutes_recorded_time: "10:00" })} {...props}/></CaseDraftSession>);
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Giờ biên bản/report" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 6, minutes_recorded_time: "14:45" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText("Giờ biên bản/report")).toHaveValue("14:45");
+  });
+});

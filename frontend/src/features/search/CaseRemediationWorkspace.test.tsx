@@ -255,9 +255,9 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     await waitFor(() => expect(ready.handlers.onSubmitCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2, submitted_on: "2026-09-05" })));
 
     fireEvent.change(ready.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
-    fireEvent.change(ready.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "Đạt" } });
+    fireEvent.change(ready.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
     fireEvent.click(ready.getByRole("button", { name: "Đánh giá" }));
-    await waitFor(() => expect(ready.handlers.onAssessCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2, assessed_on: "2026-09-06", result: "Đạt" })));
+    await waitFor(() => expect(ready.handlers.onAssessCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2, assessed_on: "2026-09-06", result: "accepted" })));
   });
 
   it("fails closed when readiness is missing or unavailable and never invokes a lifecycle mutation", () => {
@@ -281,7 +281,7 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
 
     fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
     fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
-    fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "Đạt" } });
+    fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
     fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Bản nháp của người dùng" } });
 
     view.rerender(
@@ -293,7 +293,7 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     );
     expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-05");
     expect(screen.getByLabelText("Ngày đánh giá khắc phục")).toHaveValue("2026-09-06");
-    expect(screen.getByLabelText("Kết quả đánh giá khắc phục")).toHaveValue("Đạt");
+    expect(screen.getByLabelText("Kết quả đánh giá khắc phục")).toHaveValue("accepted");
     expect(screen.getByLabelText("Ghi chú thao tác khắc phục")).toHaveValue("Bản nháp của người dùng");
     expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Đánh giá" })).toBeEnabled();
@@ -302,7 +302,7 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     await waitFor(() => expect(view.handlers.onSubmitCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2, submitted_on: "2026-09-05", notes: "Bản nháp của người dùng" })));
     await waitFor(() => expect(screen.getByRole("button", { name: "Đánh giá" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Đánh giá" }));
-    await waitFor(() => expect(view.handlers.onAssessCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2, assessed_on: "2026-09-06", result: "Đạt", notes: "Bản nháp của người dùng" })));
+    await waitFor(() => expect(view.handlers.onAssessCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2, assessed_on: "2026-09-06", result: "accepted", notes: "Bản nháp của người dùng" })));
   });
 
   it("keeps command input when an unrelated field editor closes without a new cycle version", async () => {

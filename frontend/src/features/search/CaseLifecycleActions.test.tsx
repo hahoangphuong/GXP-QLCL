@@ -14,6 +14,14 @@ function workspace(actions: CaseWorkspace["transition_actions"]): CaseWorkspace 
 describe("CaseLifecycleActions", () => {
   const action = (version = 18) => ({ action_key: "opaque-transition", label: "Chuyển theo policy", target_state: "planned", available: true, expected_version: version, reason_code: null, required_permissions: ["case.edit"] });
 
+  it("explains the backend CAPA blocker without enabling or submitting the transition", () => {
+    const onTransition = vi.fn();
+    render(<CaseLifecycleActions caseWorkspace={workspace([{ ...action(), available: false, reason_code: "latest_capa_not_accepted" }])} onTransition={onTransition} />);
+    expect(screen.getByText(/Vòng khắc phục gần nhất chưa được chấp nhận/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chuyển theo policy" })).toBeDisabled();
+    expect(onTransition).not.toHaveBeenCalled();
+  });
+
   it("blocks another transition when the result cannot be verified", async () => {
     const onTransition = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("unverified"));
     render(<CaseLifecycleActions caseWorkspace={workspace([action()])} onTransition={onTransition} />);
@@ -79,7 +87,7 @@ describe("CaseLifecycleActions", () => {
     expect(screen.getByRole("button", { name: "Chuyển theo policy" })).toBeDisabled();
   });
 
-  it.each([403, 409, 422, undefined])("retains reason and token on %s without automatic retry", async status => {
+  it.each([401, 403, 409, 422, undefined])("retains reason and token on %s without automatic retry", async status => {
     const onTransition = vi.fn().mockRejectedValue(Object.assign(new Error("Rejected transition"), { status }));
     const view = render(<CaseLifecycleActions caseWorkspace={workspace([action()])} onTransition={onTransition} />);
     fireEvent.change(screen.getByLabelText("Lý do chuyển trạng thái"), { target: { value: "Keep this reason" } });

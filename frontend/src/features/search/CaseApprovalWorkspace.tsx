@@ -1,4 +1,5 @@
 import { useCaseDraftState } from "./CaseDraftSession";
+import { caseReadinessReason } from "./caseReadinessReason";
 import { useContext, useMemo, useRef, useState } from "react";
 
 import { formatCompactDate } from "../../lib/presentation";
@@ -138,6 +139,11 @@ function CaseApprovalEditor({
       </select>
       <button disabled={!action("create_approval_ct")?.available || !hasSelectedParent || pending !== null || ownerPending || requiresReview} onClick={() => void create("CT")} type="button">Tạo trình CT</button>
     </div>
+    {(["pct", "ct"] as const).map(stage => {
+      const readiness = action(`create_approval_${stage}`);
+      return readiness && !readiness.available && readiness.reason_code ? <p className="workspace-note" key={stage}>Tạo trình {stage.toUpperCase()}: {caseReadinessReason(readiness.reason_code)}</p> : null;
+    })}
+    {action("create_approval_ct")?.available && completedPct.length > 0 && !hasSelectedParent ? <p className="workspace-note">Chọn một trình PCT đã hoàn tất để tạo trình CT.</p> : null}
     {submissions.map((item) => {
       const readiness = action(`complete_approval:${item.approval_submission_id}`);
       return <div className="inspection-team-member" key={item.approval_submission_id}>
@@ -149,7 +155,7 @@ function CaseApprovalEditor({
         <span>Giờ hoàn tất: {item.completed_time ?? "Chưa có"}</span>
         {item.stage === "CT" ? <span>PCT: {item.pct_submission_id ?? "Chưa có"}</span> : null}
         <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null || ownerPending} requiresReview={requiresReview} onComplete={complete} />
-        {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{readiness.reason_code}</span> : null}
+        {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{caseReadinessReason(readiness.reason_code)}</span> : null}
       </div>;
     })}
     {error ? <p className="form-error" role="alert">{error}</p> : null}

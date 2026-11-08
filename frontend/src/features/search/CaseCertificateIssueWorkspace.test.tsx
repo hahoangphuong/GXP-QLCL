@@ -81,6 +81,22 @@ it("retains the pending issuance lock through Case A to B to A", async () => {
 });
 
 describe("CaseCertificateIssueWorkspace", () => {
+  it("explains when a GMP Case already has an issued certificate without offering another issuance", () => {
+    const issue = renderWorkspace(vi.fn(), { ...readiness(false), reason_code: "gmp_case_already_issued" });
+    expect(screen.getByText(/Hồ sơ GMP đã có chứng nhận được cấp/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+    expect(issue).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["latest_capa_not_accepted", "Vòng khắc phục gần nhất chưa được chấp nhận"],
+    ["case_state_not_eligible", "Trạng thái hồ sơ chưa cho phép cấp chứng nhận"],
+    ["missing_permission", "Tài khoản không có quyền thực hiện thao tác này"],
+  ])("explains backend issuance blocker %s without issuing", (code, message) => {
+    const issue = renderWorkspace(vi.fn(), { ...readiness(false), reason_code: code });
+    expect(screen.getByText(new RegExp(message))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+    expect(issue).not.toHaveBeenCalled();
+  });
   it("submits only once before pending renders", async () => {
     let finish!: () => void;
     const issue = renderWorkspace(vi.fn(() => new Promise<void>(resolve => { finish = resolve; })));

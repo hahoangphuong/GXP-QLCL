@@ -567,9 +567,9 @@ export type CapaCycleCreateRequest = {
 
 export type CapaCycleUpdateRequest = {
   expected_version: number;
-  requested_on: string | null;
+  requested_on?: string | null;
   incoming_reference?: string | null;
-  notes: string | null;
+  notes?: string | null;
   reason?: string | null;
 };
 

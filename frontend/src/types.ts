@@ -676,10 +676,10 @@ export type EvaluationScopeUpsertRequest = {
 
 export type CaseAssessmentUpsertRequest = {
   expected_version: number | null;
-  assessed_on: string | null;
-  assessor_name: string | null;
-  assessment_result: string | null;
-  notes: string | null;
+  assessed_on?: string | null;
+  assessor_name?: string | null;
+  assessment_result?: string | null;
+  notes?: string | null;
   reason?: string | null;
 };
 

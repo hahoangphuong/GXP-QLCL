@@ -3207,12 +3207,12 @@ class CaseWorkflowService:
         inspection_event = self._write_inspection_event(
             session,
             case_id=row.id,
-            event_type=InspectionEventType.ASSESSMENT_COMPLETED if assessed_on is not None and milestone_changed else None,
+            event_type=InspectionEventType.ASSESSMENT_COMPLETED if stage.assessed_on is not None and milestone_changed else None,
             payload=self._build_stage_payload(
                 stage="case_assessment",
-                assessed_on=None if assessed_on is None else assessed_on.isoformat(),
-                assessor_name=assessor_name,
-                assessment_result=assessment_result,
+                assessed_on=None if stage.assessed_on is None else stage.assessed_on.isoformat(),
+                assessor_name=stage.assessor_name,
+                assessment_result=stage.assessment_result,
                 reason=reason,
             ),
         )

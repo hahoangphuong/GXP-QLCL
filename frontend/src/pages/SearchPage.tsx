@@ -1,4 +1,5 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
+import { raiseGxpCertificateVersionWriteFailure } from "../features/search/gxpCertificateVersionWriteRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
@@ -2254,14 +2255,7 @@ export function SearchPage({
         staleError.status = 409;
         throw staleError;
       }
-      if (mutationAccepted || apiError.status == null || apiError.status >= 500) {
-        // The write may have committed even if canonical readback or transport
-        // failed. Never treat this as a safe, immediately repeatable edit.
-        throw new CaseFieldMutationRecoveryError(
-          "Chưa thể xác minh kết quả cập nhật chứng nhận. Không gửi lại; giữ bản nháp và kiểm tra dữ liệu canonical.",
-        );
-      }
-      throw error;
+      raiseGxpCertificateVersionWriteFailure(error, mutationAccepted);
     }
   }
 

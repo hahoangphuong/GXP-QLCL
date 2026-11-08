@@ -123,6 +123,64 @@ it("does not retain a recovery lock for a definitively rejected current promotio
   await waitFor(() => expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled());
 });
 
+it("uses one Certificate write fence: a pending version edit blocks current promotion", async () => {
+  let finish!: () => void;
+  const edit = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const promote = vi.fn();
+  const both = { ...detail(), latest_flag: false, action_readiness: [
+    ...detail().action_readiness!,
+    { action_key: "promote_current" as const, label: "Đặt làm chứng nhận hiện hành",
+      available: true, reason_code: null, expected_version: 7, required_permissions: ["certificate.issue"] },
+  ] };
+  render(<CaseDraftSession identity="case-A" facilityIdentity="site-1">
+    <GxpCertificateWorkspace detail={both} detailError={null} detailLoading={false}
+      items={[{ ...items[0], latest_flag: false }]} listError={null} listLoading={false}
+      onEditLatestVersion={edit} onPromoteCurrent={promote} onSelectCertificate={vi.fn()}
+      promotionError={null} promotionPending={false} selectedCertificateId="cert-1" />
+  </CaseDraftSession>);
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+  expect(edit).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+  expect(promote).not.toHaveBeenCalled();
+  await act(async () => finish());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled());
+});
+
+it("uses one Certificate write fence: an unverified promotion also blocks version editing after remount", async () => {
+  const promote = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("promotion unverified"));
+  const edit = vi.fn();
+  const both = { ...detail(), latest_flag: false, action_readiness: [
+    ...detail().action_readiness!,
+    { action_key: "promote_current" as const, label: "Đặt làm chứng nhận hiện hành",
+      available: true, reason_code: null, expected_version: 7, required_permissions: ["certificate.issue"] },
+  ] };
+  const props = { detail: both, detailError: null, detailLoading: false, items: [{ ...items[0], latest_flag: false }],
+    listError: null, listLoading: false, onEditLatestVersion: edit, onPromoteCurrent: promote,
+    onSelectCertificate: vi.fn(), promotionError: null, promotionPending: false, selectedCertificateId: "cert-1" };
+  const editor = (show: boolean, id = "cert-1") => <CaseDraftSession identity="case-A" facilityIdentity="site-1">
+    {show ? <GxpCertificateWorkspace {...props} selectedCertificateId={id}
+      detail={{ ...both, certificate_id: id }}
+      items={[{ ...items[0], certificate_id: id, latest_flag: false }]} /> : null}
+  </CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeDisabled());
+  expect(promote).toHaveBeenCalledOnce();
+  view.rerender(editor(false));
+  view.rerender(editor(true));
+  expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(edit).not.toHaveBeenCalled();
+  view.rerender(editor(true, "cert-2"));
+  expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeEnabled();
+  view.rerender(editor(true));
+  expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeDisabled();
+});
+
 it("discards an editor on A to B to A and ignores its late completion", async () => {
   let finish!: () => void;
   const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));

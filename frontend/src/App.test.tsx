@@ -943,7 +943,9 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     const value = buildCaseWorkspace();
     apiMocks.getCaseWorkspace.mockResolvedValue({ ...value, inspection: { ...value.inspection, final_evaluation: null, final_evaluation_readiness: { action_key: "finalize_inspection_outcome", label: "Chốt đánh giá cuối cùng", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6 } } });
-    renderApp(["/search?gxp_type=GMP&result_key=site-1%3AGMP%3AA&history_id=case-1&event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
+    renderApp(["/search?gxp_type=GMP&result_key=site-1%3AGMP%3AA&history_id=case-1"]);
+    const capaTab = await screen.findByRole("button", { name: "Báo cáo khắc phục" });
+    await act(async () => { fireEvent.click(capaTab); });
     const link = await screen.findByRole("button", { name: "Đến đánh giá cuối cùng" });
     const reads = apiMocks.getCaseWorkspace.mock.calls.length;
     await act(async () => { fireEvent.click(link); });

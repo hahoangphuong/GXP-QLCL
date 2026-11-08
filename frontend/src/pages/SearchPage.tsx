@@ -1,5 +1,5 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
-import { raiseGxpCertificateVersionWriteFailure } from "../features/search/gxpCertificateVersionWriteRecovery";
+import { raiseGxpCertificateVersionWriteFailure, raiseGxpCertificatePromotionFailure } from "../features/search/gxpCertificateVersionWriteRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
@@ -2183,8 +2183,10 @@ export function SearchPage({
     setGxpPromotionOwner(detailOwner);
     setGxpCertificatePromotionPending(true);
     setGxpPromotionFailure(null);
+    let mutationAccepted = false;
     try {
       await promoteGxpCertificateCurrent(selectedGxpCertificateId, expectedVersion, auth, useStubAuth, bearerToken);
+      mutationAccepted = true;
       const [detailPayload, listPayload] = await Promise.all([
         getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken),
         listSiteGxpCertificates(
@@ -2203,7 +2205,16 @@ export function SearchPage({
       setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
     } catch (error) {
-      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner && certificateSelectionRef.current.gxpGeneration === generation) setGxpPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành." });
+      let resultError: unknown = error;
+      try {
+        raiseGxpCertificatePromotionFailure(error, mutationAccepted);
+      } catch (classifiedError) {
+        resultError = classifiedError;
+      }
+      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner && certificateSelectionRef.current.gxpGeneration === generation) {
+        setGxpPromotionFailure({ owner: detailOwner, message: resultError instanceof Error ? resultError.message : "Không thể cập nhật chứng nhận hiện hành." });
+      }
+      if (resultError instanceof CaseFieldMutationRecoveryError) throw resultError;
     } finally {
       certificatePromotionsInFlight.current.delete(operation);
       if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner && certificateSelectionRef.current.gxpGeneration === generation) setGxpCertificatePromotionPending(false);

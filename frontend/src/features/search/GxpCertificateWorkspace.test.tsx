@@ -96,7 +96,7 @@ it("holds unverified current promotion across tab remount without locking anothe
   const view = render(editor(true));
   fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
   await waitFor(() => expect(promote).toHaveBeenCalledOnce());
-  expect(await screen.findByRole("status", { name: "" })).toBeInTheDocument();
+  expect(await screen.findByText(/Kết quả đặt chứng nhận hiện hành chưa được xác minh/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeDisabled();
   view.rerender(editor(false));
   view.rerender(editor(true));

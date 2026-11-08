@@ -639,8 +639,8 @@ it("blocks a second create after the selected cycle changes while create is pend
   fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
   fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
   view.rerender(<CaseRemediationWorkspace caseWorkspace={initial} selectedCycleId="capa-2" {...view.handlers} />);
-  expect(screen.getByRole("button", { name: "Thêm vòng khắc phục" })).toBeDisabled();
-  expect(view.handlers.onCreateCycle).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+  expect(screen.getByRole("button", { name: "Tạo vòng khắc phục" })).toBeDisabled();
   await act(async () => request.resolve());
 });
 

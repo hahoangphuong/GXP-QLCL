@@ -139,7 +139,7 @@ function InspectionPlanSection({
   const currentDraft = useMemo(() => buildPlanDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useCaseDraftState<InspectionPlanDraft>("plan.draft", currentDraft);
   const [draftVersion, setDraftVersion] = useCaseDraftState("plan.draftVersion", caseWorkspace.inspection.plan_row_version);
-  const [editingField, setEditingField] = useCaseDraftState<"plan_start_on" | "plan_end_on" | "decision_reference" | "decision_date" | null>("plan.editingField", null);
+  const [editingField, setEditingField] = useCaseDraftState<"plan_start_on" | "plan_end_on" | "planning_sheet_name" | "decision_reference" | "decision_date" | null>("plan.editingField", null);
   const [pending, setPending] = useCaseDraftState("plan.pending", false);
   const commandLock = useCaseCommandLock("inspection.plan");
   const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("plan.errorMessage", null);
@@ -245,6 +245,25 @@ function InspectionPlanSection({
             onChange={(event) => setDraft((current) => ({ ...current, plan_start_on: event.target.value }))}
             type="date"
             value={draft.plan_start_on}
+          />
+        </EditableDetailValue>
+        <EditableDetailValue
+          editButtonLabel="Sửa Tên bảng kế hoạch"
+          error={!commandLock.requiresReview && editingField === "planning_sheet_name" ? errorMessage : null}
+          isEditing={editingField === "planning_sheet_name"}
+          label="Tên bảng kế hoạch"
+          onCancel={cancelEdit}
+          onEdit={() => startEdit("planning_sheet_name")}
+          onSave={() => void saveField()}
+          pending={pending}
+          saveDisabled={commandLock.pending || commandLock.requiresReview}
+          value={caseWorkspace.inspection.planning_sheet_name}
+        >
+          <input
+            aria-label="Tên bảng kế hoạch"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, planning_sheet_name: event.target.value }))}
+            value={draft.planning_sheet_name}
           />
         </EditableDetailValue>
         <DetailValue label="Gợi ý tài liệu legacy (chỉ đọc)" value={caseWorkspace.inspection.decision_document_hint} />

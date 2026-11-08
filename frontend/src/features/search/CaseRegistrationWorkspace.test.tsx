@@ -106,7 +106,7 @@ describe("registration presentation preserves existing editor owners", () => {
     const { container } = render(registration());
     expect(screen.getByRole("heading", { name: "Thông tin hồ sơ" })).toHaveClass("sr-only");
     expect(Array.from(container.querySelectorAll(".case-application-primary .detail-label, .case-assessment-metadata .detail-label")).map(node => node.textContent))
-      .toEqual(["Ngày nộp", "Mã hồ sơ", "Ngày thẩm định", "Người thẩm định"]);
+      .toEqual(["Ngày nộp", "Mã hồ sơ", "Người nộp hồ sơ", "Ngày thẩm định", "Người thẩm định"]);
     expect(container.querySelector(".case-assessment-result")).toContainElement(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
     const disclosure = screen.getByText("Thông tin bổ sung").closest("details");
     expect(disclosure).not.toHaveAttribute("open");

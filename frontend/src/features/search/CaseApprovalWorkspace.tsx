@@ -85,11 +85,12 @@ function CaseApprovalEditor({
   );
   const completedPct = submissions.filter((item) => item.stage === "PCT" && item.completed_on !== null);
   const hasSelectedParent = completedPct.some((item) => item.approval_submission_id === parentId);
+  const submittedTimeRequiresDate = Boolean(submittedTime && !submittedOn);
   const action = (key: string) => (caseWorkspace.inspection.approval_actions ?? []).find((item) => item.action_key === key);
 
   async function create(stage: "PCT" | "CT") {
     const readiness = action(`create_approval_${stage.toLowerCase()}`);
-    if (!readiness?.available || inFlight.current || ownerPending || requiresReview || (stage === "CT" && !parentId)) return;
+    if (!readiness?.available || inFlight.current || ownerPending || requiresReview || submittedTimeRequiresDate || (stage === "CT" && !parentId)) return;
     if (stage === "CT" && !hasSelectedParent) return;
     inFlight.current = true;
     setPending(readiness.action_key);
@@ -133,13 +134,14 @@ function CaseApprovalEditor({
       <input aria-label="Ngày trình" disabled={pending !== null || ownerPending} type="date" value={submittedOn} onChange={(event) => setSubmittedOn(event.target.value)} />
       <input aria-label="Giờ trình" disabled={pending !== null || ownerPending} type="time" value={submittedTime} onChange={(event) => setSubmittedTime(event.target.value)} />
       <input aria-label="Lý do tạo trình" disabled={pending !== null || ownerPending} value={createReason} onChange={(event) => setCreateReason(event.target.value)} />
-      <button disabled={!action("create_approval_pct")?.available || pending !== null || ownerPending || requiresReview} onClick={() => void create("PCT")} type="button">Tạo trình PCT</button>
+      <button disabled={!action("create_approval_pct")?.available || submittedTimeRequiresDate || pending !== null || ownerPending || requiresReview} onClick={() => void create("PCT")} type="button">Tạo trình PCT</button>
       <select ref={parentSelect} aria-label="PCT hoàn tất cho CT" disabled={pending !== null || ownerPending} value={parentId} onChange={(event) => setParentId(event.target.value)}>
         <option value="">Chọn PCT đã hoàn tất</option>
         {completedPct.map((item) => <option key={item.approval_submission_id} value={item.approval_submission_id}>PCT lần {item.round_no}{item.reference ? ` — ${item.reference}` : ""} — {formatCompactDate(item.completed_on)}</option>)}
       </select>
-      <button disabled={!action("create_approval_ct")?.available || !hasSelectedParent || pending !== null || ownerPending || requiresReview} onClick={() => void create("CT")} type="button">Tạo trình CT</button>
+      <button disabled={!action("create_approval_ct")?.available || !hasSelectedParent || submittedTimeRequiresDate || pending !== null || ownerPending || requiresReview} onClick={() => void create("CT")} type="button">Tạo trình CT</button>
     </div>
+    {submittedTimeRequiresDate ? <p className="workspace-note" role="alert">Cần nhập ngày trình trước khi ghi giờ trình PCT/CT.</p> : null}
     {(["pct", "ct"] as const).map(stage => {
       const readiness = action(`create_approval_${stage}`);
       return readiness && !readiness.available && readiness.reason_code ? <p className="workspace-note" key={stage}>Tạo trình {stage.toUpperCase()}: {caseReadinessReason(readiness.reason_code)}</p> : null;

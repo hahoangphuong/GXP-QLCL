@@ -46,6 +46,7 @@ const apiMocks = vi.hoisted(() => ({
   upsertEvaluationScope: vi.fn(),
   upsertInspectionPlan: vi.fn(),
   upsertInspectionOutcome: vi.fn(),
+  finalizeInspectionOutcome: vi.fn(),
   upsertInspectionPeriodSegments: vi.fn(),
   createInspectionApprovalSubmission: vi.fn(),
   completeInspectionApprovalSubmission: vi.fn(),
@@ -936,6 +937,23 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("returns from CAPA to the backend-ready final evaluation without a write or extra read", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const value = buildCaseWorkspace();
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...value, inspection: { ...value.inspection, final_evaluation: null, final_evaluation_readiness: { action_key: "finalize_inspection_outcome", label: "Chốt đánh giá cuối cùng", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6 } } });
+    renderApp(["/search?gxp_type=GMP&result_key=site-1%3AGMP%3AA&history_id=case-1"]);
+    const capaTab = await screen.findByRole("button", { name: "Báo cáo khắc phục" });
+    await act(async () => { fireEvent.click(capaTab); });
+    const link = await screen.findByRole("button", { name: "Đến đánh giá cuối cùng" });
+    const reads = apiMocks.getCaseWorkspace.mock.calls.length;
+    await act(async () => { fireEvent.click(link); });
+    expect(await screen.findByRole("region", { name: "Khu vực đánh giá cuối cùng" })).toHaveFocus();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(reads);
+    expect(apiMocks.finalizeInspectionOutcome).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
+  });
   it("offers navigation to the backend transition owner from the certificate step without mutating", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

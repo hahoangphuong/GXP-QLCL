@@ -209,6 +209,32 @@ export function CaseProcessingWorkspace({
               value={draft.assessment_result}
             />
           </EditableDetailValue>
+          <EditableDetailValue
+            editButtonLabel="Sửa Ghi chú thẩm định"
+            error={editingField === "notes" ? errorMessage : null}
+            isEditing={editingField === "notes"}
+            label="Ghi chú thẩm định"
+            multiline
+            onCancel={cancelEdit}
+            onEdit={() => {
+              setDraftVersion(caseWorkspace.processing.row_version);
+              setEditingField("notes");
+              setErrorMessage(null);
+            }}
+            onSave={() => void saveField()}
+            pending={pending}
+            saveDisabled={requiresReview || commandLock.pending}
+            value={caseWorkspace.processing.notes}
+          >
+            <textarea
+              aria-label="Ghi chú thẩm định"
+              className="inspection-textarea"
+              disabled={pending}
+              onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+              rows={3}
+              value={draft.notes}
+            />
+          </EditableDetailValue>
         </div>
         </div>
       </section> : null}

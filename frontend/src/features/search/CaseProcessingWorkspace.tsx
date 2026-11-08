@@ -102,13 +102,12 @@ export function CaseProcessingWorkspace({
     setPending(true);
     setErrorMessage(null);
     try {
-      await onSave({
-        expected_version: draftVersion,
-        assessed_on: toDateTimePayload(draft.assessed_on),
-        assessor_name: normalizeText(draft.assessor_name),
-        assessment_result: normalizeText(draft.assessment_result),
-        notes: normalizeText(draft.notes),
-      });
+      // The backend applies only provided fields. Sending the entire draft
+      // would rewrite unrelated assessment metadata whenever one field changes.
+      const value = editingField === "assessed_on"
+        ? toDateTimePayload(draft.assessed_on)
+        : normalizeText(draft[editingField]);
+      await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);

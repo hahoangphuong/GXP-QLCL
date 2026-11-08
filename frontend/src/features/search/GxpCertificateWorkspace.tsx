@@ -10,6 +10,8 @@ import type { CertificateLatestVersionUpsertRequest, CertificateScope, GxpCertif
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 import { useCertificateRows } from "./useCertificateRows";
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
+import { useFacilityCommandLock } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import { CertificateDocumentMetadata } from "./CertificateDocumentMetadata";
 import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
@@ -42,14 +44,16 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   const [error, setError] = useState<string | null>(null);
   const [conflicted, setConflicted] = useState(false);
   const dialogRef = useCertificateDialogFocus();
+  const editLock = useFacilityCommandLock(`gxp-certificate-version:${detail.certificate_id}`);
+  const requiresReview = editLock.requiresReview;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) onClose();
+      if (event.key === "Escape" && !pending && !requiresReview) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, pending]);
+  }, [onClose, pending, requiresReview]);
 
   function updateScope(index: number, field: keyof ScopeDraft, value: string | number | null) {
     setScopes((current) => current.map((scope, scopeIndex) => scopeIndex === index ? { ...scope, [field]: value } : scope));
@@ -75,7 +79,9 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }
 
   async function submit() {
-    if (inFlight.current || conflicted || !saveAvailable) return;
+    if (inFlight.current || conflicted || !saveAvailable || editLock.pending || requiresReview) return;
+    const command = editLock.acquire();
+    if (!command) return;
     inFlight.current = true;
     setPending(true);
     setError(null);
@@ -95,6 +101,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
       });
       onClose();
     } catch (nextError) {
+      if (nextError instanceof CaseFieldMutationRecoveryError) editLock.requireReview(command);
       const apiError = nextError as Error & { status?: number };
       if (apiError.status === 409) {
         setError(apiError.message);
@@ -104,6 +111,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
       }
       setError(nextError instanceof Error ? nextError.message : "Không thể cập nhật giấy chứng nhận.");
     } finally {
+      editLock.release(command);
       inFlight.current = false;
       setPending(false);
     }
@@ -136,9 +144,10 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {conflicted ? <p className="workspace-note">Bản nháp được giữ để đối chiếu. Sao chép nội dung cần giữ, đóng và mở lại form sau khi kiểm tra dữ liệu mới.</p> : null}
+      {requiresReview ? <p className="workspace-note" role="status">Kết quả cập nhật phiên bản chứng nhận chưa được xác minh. Không lưu lại hoặc hủy biểu mẫu; sao chép dữ liệu và kiểm tra bản ghi canonical.</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
-        <button disabled={pending || conflicted || !saveAvailable} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : "Lưu thay đổi"}</button>
-        <button disabled={pending} onClick={onClose} type="button">Hủy</button>
+        <button disabled={pending || conflicted || !saveAvailable || editLock.pending || requiresReview} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : "Lưu thay đổi"}</button>
+        <button disabled={pending || requiresReview} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
   </div>;
@@ -176,6 +185,19 @@ export function GxpCertificateWorkspace({
   onEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
 }) {
   const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
+  const selectedEditLock = useFacilityCommandLock(`gxp-certificate-version:${selectedCertificateId ?? "none"}`);
+  const promotionLock = useFacilityCommandLock(`gxp-certificate-promote:${selectedCertificateId ?? "none"}`);
+  async function promoteCurrent(expectedVersion: number) {
+    const command = promotionLock.acquire();
+    if (!command) return;
+    try {
+      await onPromoteCurrent(expectedVersion);
+    } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) promotionLock.requireReview(command);
+    } finally {
+      promotionLock.release(command);
+    }
+  }
   const [draftSelection, setDraftSelection] = useState(selectedCertificateId);
   if (draftSelection !== selectedCertificateId) {
     setDraftSelection(selectedCertificateId);
@@ -263,11 +285,11 @@ export function GxpCertificateWorkspace({
               if (!promote && !edit) return null;
               return (
                 <div className="certificate-action-bar">
-                  {edit ? <button disabled={!edit.available || promotionPending} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
+                  {edit ? <button disabled={!edit.available || promotionPending || selectedEditLock.pending || selectedEditLock.requiresReview} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
                   {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}
                   {promote ? <button
-                    disabled={!promote.available || promotionPending}
-                    onClick={() => void onPromoteCurrent(promote.expected_version)}
+                    disabled={!promote.available || promotionPending || promotionLock.pending || promotionLock.requiresReview}
+                    onClick={() => void promoteCurrent(promote.expected_version)}
                     title={promote.reason_code ?? undefined}
                     type="button"
                   >
@@ -275,6 +297,7 @@ export function GxpCertificateWorkspace({
                   </button> : null}
                   {!promote?.available && promote?.reason_code ? <span>{promote.reason_code}</span> : null}
                   {promotionError ? <span role="alert">{promotionError}</span> : null}
+                  {promotionLock.requiresReview ? <span className="workspace-note" role="status">Kết quả đặt chứng nhận hiện hành chưa được xác minh. Không gửi lại; kiểm tra Certificate canonical trước khi thao tác tiếp.</span> : null}
                 </div>
               );
             })()}
@@ -282,7 +305,7 @@ export function GxpCertificateWorkspace({
         )}
         {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="gxp" state={versionHistory} /> : null}
       </section>
-      {visibleDraft ? <GxpCertificateEditDialog detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} saveAvailable={!detailLoading && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(current => current === visibleDraft ? null : current)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
+      {visibleDraft ? <GxpCertificateEditDialog detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} saveAvailable={!detailLoading && !selectedEditLock.pending && !selectedEditLock.requiresReview && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(current => current === visibleDraft ? null : current)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
     </div>
   );
 }

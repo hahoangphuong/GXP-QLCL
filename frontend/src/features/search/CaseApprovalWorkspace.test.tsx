@@ -62,6 +62,47 @@ describe("CaseApprovalWorkspace", () => {
     })));
   });
 
+  it("selects the exact completed PCT directly from its history row for a CT without mutation", async () => {
+    const onCreate = vi.fn().mockResolvedValue({});
+    const pct = (id: string, round: number, completed_on: string | null) => ({
+      approval_submission_id: id, case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: round,
+      reference: id, submitted_on: null, submitted_time: null, completed_on, completed_time: null, pct_submission_id: null,
+    });
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({
+      approval_actions: [available("create_approval_ct")],
+      approval_submissions: [pct("pct-first", 1, "2026-11-01"), pct("pct-incomplete", 2, null), pct("pct-third", 3, "2026-11-07")],
+    })} onCreate={onCreate} onComplete={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Dùng PCT lần 2 để tạo trình CT" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dùng PCT lần 3 để tạo trình CT" }));
+    const selector = screen.getByLabelText("PCT hoàn tất cho CT");
+    expect(selector).toHaveValue("pct-third");
+    expect(selector).toHaveFocus();
+    expect(onCreate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Tham chiếu trình"), { target: { value: "CT theo PCT lần 3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo trình CT" }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith("CT", expect.objectContaining({
+      pct_submission_id: "pct-third", reference: "CT theo PCT lần 3",
+    })));
+  });
+
+  it("withdraws the PCT row shortcut when canonical CT creation is no longer available", () => {
+    const onCreate = vi.fn();
+    const submission = { approval_submission_id: "pct-completed", case_id: "case-1", row_version: 2,
+      stage: "PCT" as const, round_no: 1, reference: null, submitted_on: null, submitted_time: null,
+      completed_on: "2026-11-07", completed_time: null, pct_submission_id: null };
+    const view = render(<CaseApprovalWorkspace caseWorkspace={workspace({
+      approval_actions: [available("create_approval_ct")], approval_submissions: [submission],
+    })} onCreate={onCreate} onComplete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Dùng PCT lần 1 để tạo trình CT" })).toBeEnabled();
+    view.rerender(<CaseApprovalWorkspace caseWorkspace={workspace({
+      approval_actions: [{ ...available("create_approval_ct"), available: false, reason_code: "missing_permission" }],
+      approval_submissions: [submission],
+    })} onCreate={onCreate} onComplete={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Dùng PCT lần 1 để tạo trình CT" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
   it("lets an operator return from a CT to its exact completed PCT and reuse it without creating a submission", () => {
     const onCreate = vi.fn();
     const pct = (id: string, round: number, reference: string) => ({ approval_submission_id: id, case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: round, reference, submitted_on: null, submitted_time: null, completed_on: "2026-10-01", completed_time: null, pct_submission_id: null });

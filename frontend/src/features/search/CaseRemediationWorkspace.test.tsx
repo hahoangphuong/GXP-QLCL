@@ -628,3 +628,70 @@ it("blocks a second create after the selected cycle changes while create is pend
   expect(screen.getByRole("button", { name: "Tạo vòng khắc phục" })).toBeDisabled();
   await act(async () => request.resolve());
 });
+
+describe("CAPA assessment decision vocabulary", () => {
+  it.each([
+    ["accepted", "Chấp nhận khắc phục"],
+    ["rejected", "Không chấp nhận khắc phục"],
+  ] as const)("submits the authorized %s decision with a pinned version instead of localized display text", async (decision, label) => {
+    const current = cycle({ status: "submitted", submitted_on: "2026-10-02", row_version: 8 });
+    const handlers = {
+      onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(), onSubmitCycle: vi.fn(),
+      onAssessCycle: vi.fn().mockResolvedValue(undefined),
+    };
+    render(<CaseDraftSession identity="case-1"><CaseRemediationWorkspace
+      caseWorkspace={workspace([current], [action("assess_capa_cycle:capa-1", true, 8)])}
+      selectedCycleId="capa-1" {...handlers} /></CaseDraftSession>);
+    const result = screen.getByRole("combobox", { name: "Kết quả đánh giá khắc phục" });
+    expect(result).toHaveValue("");
+    expect(screen.getByRole("option", { name: label })).toHaveValue(decision);
+    expect(screen.getByRole("button", { name: "Đánh giá" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-10-03" } });
+    fireEvent.change(result, { target: { value: decision } });
+    fireEvent.click(screen.getByRole("button", { name: "Đánh giá" }));
+    await waitFor(() => expect(handlers.onAssessCycle).toHaveBeenCalledExactlyOnceWith(
+      "capa-1", expect.objectContaining({ expected_version: 8, assessed_on: "2026-10-03", result: decision }),
+    ));
+    expect(JSON.stringify(handlers.onAssessCycle.mock.calls)).not.toContain(label);
+  });
+
+  it("fails closed for unsupported historical results and blocks a decision without an assessment date", async () => {
+    const handlers = {
+      onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(), onSubmitCycle: vi.fn(),
+      onAssessCycle: vi.fn().mockResolvedValue(undefined),
+    };
+    render(<CaseRemediationWorkspace
+      caseWorkspace={workspace([cycle({ status: "submitted", row_version: 7, result: "legacy-unknown" })], [action("assess_capa_cycle:capa-1", true, 7)])}
+      selectedCycleId="capa-1" {...handlers} />);
+    const decision = screen.getByRole("combobox", { name: "Kết quả đánh giá khắc phục" });
+    expect(decision).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Đánh giá" })).toBeDisabled();
+    fireEvent.change(decision, { target: { value: "accepted" } });
+    expect(screen.getByRole("button", { name: "Đánh giá" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-10-04" } });
+    expect(screen.getByRole("button", { name: "Đánh giá" })).toBeEnabled();
+    expect(handlers.onAssessCycle).not.toHaveBeenCalled();
+  });
+
+  it("retains the selected decision and prevents resubmission after unknown assessment outcome and tab remount", async () => {
+    const handlers = {
+      onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(), onSubmitCycle: vi.fn(),
+      onAssessCycle: vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("readback unverified")),
+    };
+    const current = workspace([cycle({ status: "submitted", row_version: 4 })], [action("assess_capa_cycle:capa-1", true, 4)]);
+    const view = (show: boolean) => <CaseDraftSession identity="case-1">
+      {show ? <CaseRemediationWorkspace caseWorkspace={current} selectedCycleId="capa-1" {...handlers} /> : null}
+    </CaseDraftSession>;
+    const rendered = render(view(true));
+    fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-10-05" } });
+    fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "rejected" } });
+    fireEvent.click(screen.getByRole("button", { name: "Đánh giá" }));
+    await waitFor(() => expect(handlers.onAssessCycle).toHaveBeenCalledOnce());
+    rendered.rerender(view(false));
+    rendered.rerender(view(true));
+    expect(screen.getByRole("combobox", { name: "Kết quả đánh giá khắc phục" })).toHaveValue("rejected");
+    expect(screen.getByRole("button", { name: "Đánh giá" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Đánh giá" }));
+    expect(handlers.onAssessCycle).toHaveBeenCalledOnce();
+  });
+});

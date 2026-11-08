@@ -44,7 +44,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   const [error, setError] = useState<string | null>(null);
   const [conflicted, setConflicted] = useState(false);
   const dialogRef = useCertificateDialogFocus();
-  const editLock = useFacilityCommandLock(`gxp-certificate-version:${detail.certificate_id}`);
+  const editLock = useFacilityCommandLock(`gxp-certificate-write:${detail.certificate_id}`);
   const requiresReview = editLock.requiresReview;
 
   useEffect(() => {
@@ -185,8 +185,8 @@ export function GxpCertificateWorkspace({
   onEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
 }) {
   const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
-  const selectedEditLock = useFacilityCommandLock(`gxp-certificate-version:${selectedCertificateId ?? "none"}`);
-  const promotionLock = useFacilityCommandLock(`gxp-certificate-promote:${selectedCertificateId ?? "none"}`);
+  const selectedEditLock = useFacilityCommandLock(`gxp-certificate-write:${selectedCertificateId ?? "none"}`);
+  const promotionLock = useFacilityCommandLock(`gxp-certificate-write:${selectedCertificateId ?? "none"}`);
   async function promoteCurrent(expectedVersion: number) {
     const command = promotionLock.acquire();
     if (!command) return;

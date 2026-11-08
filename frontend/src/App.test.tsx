@@ -936,6 +936,30 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("offers navigation to the backend transition owner from the certificate step without mutating", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const value = buildCaseWorkspace({ transition_actions: [{ action_key: "transition:closed", label: "closed", target_state: "closed", available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"] }] });
+    apiMocks.getCaseWorkspace.mockResolvedValue(value);
+    renderApp(["/search?gxp_type=GMP&result_key=site-1%3AGMP%3AA&history_id=case-1&event_tab=Ch%E1%BB%A9ng+nh%E1%BA%ADn+GxP"]);
+    const link = await screen.findByRole("button", { name: "Xem chuyển trạng thái hồ sơ" });
+    const requests = apiMocks.getCaseWorkspace.mock.calls.length;
+    await act(async () => { fireEvent.click(link); });
+    expect(await screen.findByRole("region", { name: "Chuyển trạng thái hồ sơ" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /Đã đóng hồ sơ/ })).toBeEnabled();
+    expect(apiMocks.transitionCase).not.toHaveBeenCalled();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(requests);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" })); });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ", { exact: true }), { target: { value: "Nháp chưa lưu" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Xem chuyển trạng thái hồ sơ" })); });
+    expect(await screen.findByRole("region", { name: "Chuyển trạng thái hồ sơ" })).toHaveFocus();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" })); });
+    expect(screen.getByLabelText("Mã hồ sơ", { exact: true })).toHaveValue("Nháp chưa lưu");
+    expect(apiMocks.upsertCaseApplication).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
+  });
   it("preserves the verified Case report and queue return through canonical resolution", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

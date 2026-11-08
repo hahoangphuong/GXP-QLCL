@@ -1,5 +1,7 @@
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import { useCaseCommandLock, useCaseDraftState, useCaseDraftRef } from "./CaseDraftSession";
+import { formatStatusLabel } from "../../lib/presentation";
+import { caseReadinessReason } from "./caseReadinessReason";
 
 import type { CaseTransitionRequest, CaseWorkspace } from "../../types";
 
@@ -7,6 +9,9 @@ type Props = { caseWorkspace: CaseWorkspace; onTransition: (payload: CaseTransit
 type Action = CaseWorkspace["transition_actions"][number];
 function numericVersion(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+function actionLabel(action: Action): string {
+  return action.target_state && action.label === action.target_state ? `Chuyển: ${formatStatusLabel(action.target_state)}` : action.label;
 }
 
 function CaseLifecycleEditor({ caseWorkspace, onTransition }: Props) {
@@ -34,12 +39,12 @@ function CaseLifecycleEditor({ caseWorkspace, onTransition }: Props) {
     catch (value) { if (value instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command); setError(value instanceof Error ? value.message : "Không thể chuyển trạng thái hồ sơ."); }
     finally { commandLock.release(command); inFlight.current = false; setPendingKey(null); }
   }
-  return <section className="workspace-section case-lifecycle-actions"><h4>Chuyển trạng thái hồ sơ</h4>
+  return <section className="workspace-section case-lifecycle-actions" data-case-lifecycle tabIndex={-1} aria-label="Chuyển trạng thái hồ sơ"><h4>Chuyển trạng thái hồ sơ</h4>
     <input aria-label="Lý do chuyển trạng thái" disabled={pendingKey !== null} onChange={(event) => { if (intent === null) setIntent((caseWorkspace.transition_actions ?? []).map(action => ({ ...action }))); setReason(event.target.value); }} value={reason} />
-    <div className="panel-actions">{(caseWorkspace.transition_actions ?? []).map((action) => <button disabled={!action.available || !action.target_state || !numericVersion(action.expected_version) || !numericVersion(reviewedAction(action)?.expected_version) || pendingKey !== null || commandLock.pending || commandLock.requiresReview} key={action.action_key} onClick={() => void execute(action)} type="button">{pendingKey === action.action_key ? "Đang chuyển..." : action.label}</button>)}
+    <div className="panel-actions">{(caseWorkspace.transition_actions ?? []).map((action) => <button disabled={!action.available || !action.target_state || !numericVersion(action.expected_version) || !numericVersion(reviewedAction(action)?.expected_version) || pendingKey !== null || commandLock.pending || commandLock.requiresReview} key={action.action_key} onClick={() => void execute(action)} type="button">{pendingKey === action.action_key ? "Đang chuyển..." : actionLabel(action)}</button>)}
       {intent !== null ? <button disabled={pendingKey !== null} onClick={() => { setReason(""); setIntent(null); setError(null); }} type="button">Hủy nhập lý do chuyển trạng thái</button> : null}
     </div>
-    {(caseWorkspace.transition_actions ?? []).filter((action) => !action.available && action.reason_code).map((action) => <p className="workspace-note" key={action.action_key}>{action.label}: {action.reason_code}</p>)}
+    {(caseWorkspace.transition_actions ?? []).filter((action) => !action.available && action.reason_code).map((action) => <p className="workspace-note" key={action.action_key}>{actionLabel(action)}: {caseReadinessReason(action.reason_code!)}</p>)}
     {error || commandLock.requiresReview ? <p className="form-error" role="alert">{error ?? "Chưa xác minh kết quả chuyển trạng thái. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
   </section>;
 }

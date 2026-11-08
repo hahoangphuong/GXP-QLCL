@@ -2272,22 +2272,15 @@ export function SearchPage({
       async () => {
         const workspace = await refreshSelectedCaseWorkspace(payload.case_id, undefined, operationOwner);
         if (!workspace || !isCurrentCaseOperation(operationOwner)) return null;
-        if (selectedFacilityTab === "Giấy chứng nhận GxP" && gxpListOwner) {
-          const listOwner = gxpListOwner;
-          const detailOwner = JSON.stringify(["gxp-detail", listOwner, certificateId]);
-          const [detailPayload, listPayload] = await Promise.all([
-            getGxpCertificateDetail(certificateId, auth, useStubAuth, bearerToken),
-            listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken, selectedResult.production_line_id),
-          ]);
-          if (!isCurrentCaseOperation(operationOwner) || certificateOwnerRef.current.gxpList !== listOwner) return null;
-          setSelectedGxpCertificateOwner(listOwner);
-          setSelectedGxpCertificateId(certificateId);
-          setGxpCertificateDetailOwner(detailOwner);
-          setGxpCertificateDetail(detailPayload);
-          setGxpCertificatesOwner(listOwner);
-          setGxpCertificates(listPayload.items);
-          setGxpCertificateDetailFailure(null);
+        // Issuance creates a non-current Certificate candidate. After the
+        // canonical Case readback, continue to its exact UUID for review.
+        // The existing certificate-list/detail loaders verify membership and
+        // identity before displaying it; promotion remains a separate action.
+        if (!certificateId) {
+          throw new Error("Phản hồi tạo GCN không có định danh Certificate để đối chiếu.");
         }
+        setRequestedGxpCertificateId(certificateId);
+        setSelectedFacilityTab("Giấy chứng nhận GxP");
         return workspace;
       },
     );

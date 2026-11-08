@@ -18,10 +18,11 @@ function emptyIssueDraft(): IssueDraft {
   return { certificateNumber: "", issueDate: "", expiryDate: "", reason: "", scopes: [] };
 }
 
-function CertificateIssueDialog({ caseId, readiness, saveAvailable, draft, setDraft, onClose, onIssue }: {
+function CertificateIssueDialog({ caseId, readiness, saveAvailable, closeAvailable, draft, setDraft, onClose, onIssue }: {
   caseId: string;
   readiness: CertificateIssueActionReadiness;
   saveAvailable: boolean;
+  closeAvailable: boolean;
   draft: IssueDraft;
   setDraft: (value: IssueDraft | ((current: IssueDraft) => IssueDraft)) => void;
   onClose: () => void;
@@ -35,11 +36,11 @@ function CertificateIssueDialog({ caseId, readiness, saveAvailable, draft, setDr
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) onClose();
+      if (event.key === "Escape" && !pending && closeAvailable) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, pending]);
+  }, [onClose, pending, closeAvailable]);
 
   function updateScope(index: number, field: keyof ScopeDraft, value: string | number | null) {
     setDraft((current) => ({ ...current, scopes: current.scopes.map((scope, scopeIndex) => scopeIndex === index ? { ...scope, [field]: value } : scope) }));
@@ -122,9 +123,10 @@ function CertificateIssueDialog({ caseId, readiness, saveAvailable, draft, setDr
         </div>)}
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {!closeAvailable ? <p className="workspace-note" role="status">Kết quả cấp chứng nhận chưa được xác minh. Giữ biểu mẫu để sao chép dữ liệu và kiểm tra hồ sơ canonical; không gửi lại hoặc hủy bản nháp trong lúc này.</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
         <button disabled={pending || !saveAvailable} onClick={() => void submit()} type="button">{pending ? "Đang cấp..." : "Cấp giấy chứng nhận"}</button>
-        <button disabled={pending} onClick={onClose} type="button">Hủy</button>
+        <button disabled={pending || !closeAvailable} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
   </div>;
@@ -166,6 +168,7 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
     </div>
     {commandLock.requiresReview ? <p role="alert">Chưa xác minh kết quả cấp chứng nhận trước; không gửi lại.</p> : null}
     {visibleIntent ? <CertificateIssueDialog caseId={visibleIntent.caseId} onClose={() => setIntent(current => current === visibleIntent ? null : current)} onIssue={issueOwned} draft={draft} setDraft={setDraft} readiness={visibleIntent.readiness}
-      saveAvailable={!commandLock.pending && !commandLock.requiresReview && readiness.available && readiness.certificate_type === visibleIntent.readiness.certificate_type && readiness.issuance_basis === visibleIntent.readiness.issuance_basis} /> : null}
+      saveAvailable={!commandLock.pending && !commandLock.requiresReview && readiness.available && readiness.certificate_type === visibleIntent.readiness.certificate_type && readiness.issuance_basis === visibleIntent.readiness.issuance_basis}
+      closeAvailable={!commandLock.requiresReview} /> : null}
   </section>;
 }

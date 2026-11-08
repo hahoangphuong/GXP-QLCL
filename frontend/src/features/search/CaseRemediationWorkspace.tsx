@@ -372,7 +372,9 @@ export function CaseRemediationWorkspace({
   }
 
   function startCreate() {
-    if (!createAvailable || isCommandBlocked || hasOpenEditor) return;
+    // Opening a new draft is safe even while an older request is unresolved.
+    // Only the mutation is locked; a new draft must remain editable.
+    if (!createAvailable || pendingAction !== null || hasOpenEditor) return;
     setCreateCaseVersion(caseWorkspace.case_summary.row_version);
     setDraft(buildCycleDraft(null));
     setErrorMessage(null);
@@ -400,7 +402,7 @@ export function CaseRemediationWorkspace({
           </div>
           {createAvailable ? (
             <div className="panel-actions panel-actions-tight">
-              <button disabled={isCommandBlocked || hasOpenEditor} onClick={startCreate} type="button">
+              <button disabled={pendingAction !== null || hasOpenEditor} onClick={startCreate} type="button">
                 {rejectedLatestCycle ? "Tạo vòng khắc phục tiếp theo" : "Thêm vòng khắc phục"}
               </button>
             </div>

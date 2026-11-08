@@ -5188,7 +5188,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
   });
 
-  it("issues from the selected case and refreshes only its workspace without promoting the new certificate", async () => {
+  it("continues from issued Case to its exact non-current Certificate UUID without promoting", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
@@ -5204,10 +5204,25 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getCaseWorkspace
       .mockResolvedValueOnce(buildCaseWorkspace({ certificate_issue_readiness: certificateIssueReadiness }))
       .mockResolvedValueOnce(buildCaseWorkspace({ certificate_issue_readiness: { ...certificateIssueReadiness, available: false, reason_code: "certificate_already_issued" } }));
+    const candidate = {
+      certificate_id: "cert-new", site_id: "site-1", case_id: "case-1",
+      certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1",
+      context_match_kind: "exact_line", latest_flag: false, certificate_number: "GCN-NEW",
+      issue_date: null, expiry_date: null, applicable_standard: "WHO-GMP",
+      issuing_authority: null, status: "superseded",
+    };
+    const existing = { ...candidate, certificate_id: "cert-existing", certificate_number: "GCN-OLD", latest_flag: true };
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [existing, candidate] });
+    apiMocks.getGxpCertificateDetail.mockResolvedValue({
+      ...candidate, row_version: 1, issuance_basis: "inspection_case", facility_name: "Nhà máy A",
+      company_name: "Công ty A", scope_summary: null, scopes: [], action_readiness: [{
+        action_key: "promote_current", label: "Đặt làm chứng nhận hiện hành", available: true,
+        reason_code: null, expected_version: 1, required_permissions: ["certificate.issue"],
+      }],
+    });
     apiMocks.issueGxpCertificate.mockResolvedValue({ certificate_id: "cert-new", row_version: 1, latest_flag: false });
 
     renderApp(["/search"]);
-
     fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GPs" }));
     fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GxP" }));
     const dialog = screen.getByRole("dialog", { name: "Cấp giấy chứng nhận GxP" });
@@ -5217,21 +5232,24 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.issueGxpCertificate).toHaveBeenCalledWith(
       "site-1",
       expect.objectContaining({
-        case_id: "case-1",
-        certificate_type: "GMP",
-        issuance_basis: "inspection_case",
-        certificate_number: "GCN-NEW",
-        scopes: [],
+        case_id: "case-1", certificate_type: "GMP", issuance_basis: "inspection_case",
+        certificate_number: "GCN-NEW", scopes: [],
       }),
       expect.objectContaining({ username: "operator.local", role: "inspector" }),
-      true,
-      null,
+      true, null,
     ));
     await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2));
-    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("table", { name: "Danh mục GCN GxP" })).toBeInTheDocument();
+    expect(await screen.findByText(/Chứng nhận này chưa là chứng nhận hiện hành/)).toBeInTheDocument();
+    const list = screen.getByRole("table", { name: "Danh mục GCN GxP" });
+    expect(within(list).getByText("GCN-NEW").closest("tr")).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledExactlyOnceWith("cert-new", expect.anything(), true, null);
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.promoteGxpCertificateCurrent).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled();
+    await flushSearchUrlSync();
   });
 
   it.each([

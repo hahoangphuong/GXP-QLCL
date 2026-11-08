@@ -255,6 +255,7 @@ export function GxpCertificateWorkspace({
         ) : !detail ? <EmptyState title="Chưa chọn GCN GxP" description="Chọn một giấy trong danh mục." /> : (
           <>
             <GxpCertificateDetailFields detail={detail} />
+            {!detail.latest_flag ? <p className="workspace-note" role="status">Chứng nhận này chưa là chứng nhận hiện hành. Kiểm tra thông tin và chỉ thực hiện “Đặt làm chứng nhận hiện hành” riêng khi backend cho phép; thao tác tạo chứng nhận không tự đặt hiện hành.</p> : null}
             {documentMetadata ? <CertificateDocumentMetadata state={documentMetadata} /> : null}
             {(() => {
               const promote = (detail.action_readiness ?? []).find((action) => action.action_key === "promote_current");

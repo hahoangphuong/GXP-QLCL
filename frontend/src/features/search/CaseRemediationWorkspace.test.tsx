@@ -80,7 +80,7 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     ["Ghi chú", "Ghi chú", "Ghi chú khắc phục", "Ghi chú mới", { notes: "Ghi chú mới" }],
   ])("updates only the edited CAPA field for %s", async (editLabel, saveLabel, inputLabel, value, expectedField) => {
     const view = renderWorkspace(workspace([cycle()], [action("update_capa_cycle:capa-1")]));
-    fireEvent.click(screen.getByRole("button", { name: `Sửa ${editLabel}` }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: `Sửa ${editLabel}` }));
     fireEvent.change(screen.getByLabelText(inputLabel), { target: { value } });
     fireEvent.click(screen.getByRole("button", { name: `Lưu ${saveLabel}` }));
     await waitFor(() => expect(view.handlers.onUpdateCycle).toHaveBeenCalledOnce());

@@ -36,6 +36,22 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
   return onEditLatestVersion;
 }
 
+it("distinguishes a verified non-current Certificate candidate from explicit promotion", () => {
+  const promote = vi.fn();
+  const candidate = { ...detail(), latest_flag: false, status: "superseded" as const, action_readiness: [
+    { action_key: "promote_current", label: "Đặt làm chứng nhận hiện hành", available: true, reason_code: null, expected_version: 7, required_permissions: ["certificate.issue"] },
+  ] };
+  render(<GxpCertificateWorkspace
+    detail={candidate} detailError={null} detailLoading={false}
+    items={[{ ...items[0], latest_flag: false }]} listError={null} listLoading={false}
+    onEditLatestVersion={vi.fn()} onPromoteCurrent={promote} onSelectCertificate={vi.fn()}
+    promotionError={null} promotionPending={false} selectedCertificateId="cert-1"
+  />);
+  expect(screen.getByRole("status")).toHaveTextContent("chưa là chứng nhận hiện hành");
+  expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled();
+  expect(promote).not.toHaveBeenCalled();
+});
+
 it("discards an editor on A to B to A and ignores its late completion", async () => {
   let finish!: () => void;
   const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));

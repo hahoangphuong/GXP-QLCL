@@ -58,6 +58,49 @@ function buildDraft(caseWorkspace: CaseWorkspace): ProcessingDraft {
   };
 }
 
+// Present known canonical inspection events without hiding their original evidence.
+// Unknown/legacy formats remain unchanged rather than being interpreted as new truth.
+const TIMELINE_FIELDS: Record<string, { stage: string; fields: Array<[string, string, boolean?]> }> = {
+  plan_created: { stage: "inspection_plan", fields: [
+    ["planning_sheet_name", "Tên kế hoạch"], ["plan_start_on", "Từ ngày", true],
+    ["plan_end_on", "Đến ngày", true], ["decision_reference", "Tham chiếu QĐKT"],
+    ["decision_date", "Ngày QĐKT", true], ["reason", "Lý do"],
+  ] },
+  decision_issued: { stage: "inspection_decision", fields: [
+    ["decision_reference", "Tham chiếu QĐKT"], ["decision_date", "Ngày QĐKT", true],
+    ["reason", "Lý do"],
+  ] },
+  outcome_recorded: { stage: "inspection_outcome", fields: [
+    ["inspected_on", "Từ ngày kiểm tra", true], ["inspected_to_on", "Đến ngày kiểm tra", true],
+    ["outcome_result", "Kết quả"], ["minutes_recorded_on", "Ngày biên bản", true],
+    ["minutes_recorded_time", "Giờ biên bản"], ["compliance_due_on", "Hạn tuân thủ", true],
+    ["reason", "Lý do"],
+  ] },
+};
+
+function InspectionTimelinePayload({ eventType, payload }: { eventType: string; payload: string | null }) {
+  const config = TIMELINE_FIELDS[eventType];
+  if (!payload || !config) return <>{payload ?? "Chưa có"}</>;
+  let parsed: unknown;
+  try { parsed = JSON.parse(payload); } catch { return <>{payload}</>; }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return <>{payload}</>;
+  const record = parsed as Record<string, unknown>;
+  if (record.stage !== config.stage) return <>{payload}</>;
+  const summary = config.fields.flatMap(([key, label, isDate]) => {
+    const value = record[key];
+    if (typeof value !== "string" || !value.trim()) return [];
+    return [`${label}: ${isDate ? formatCompactDate(value) : value}`];
+  });
+  if (summary.length === 0) return <>{payload}</>;
+  return <>
+    <span>{summary.join(" · ")}</span>
+    <details>
+      <summary>Dữ liệu sự kiện gốc</summary>
+      <code style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{payload}</code>
+    </details>
+  </>;
+}
+
 const PROCESSING_EVENT_LABELS: Record<string, string> = {
   application_submitted: "Tiếp nhận hồ sơ",
   assessment_completed: "Thẩm định hoàn tất",
@@ -261,7 +304,7 @@ export function CaseProcessingWorkspace({
                   <tr key={`${event.event_type}:${event.occurred_at ?? "none"}:${index}`}>
                     <td>{PROCESSING_EVENT_LABELS[event.event_type] ?? event.event_type}</td>
                     <td>{formatCompactDate(event.occurred_at)}</td>
-                    <td>{event.payload ?? "Chưa có"}</td>
+                    <td><InspectionTimelinePayload eventType={event.event_type} payload={event.payload} /></td>
                   </tr>
                 ))}
               </tbody>

@@ -319,6 +319,25 @@ def test_incomplete_candidate_requires_edit_before_current_promotion(pg_engine):
           expected_version=revised["row_version"], reason=None)
 
 
+def test_readiness_rejects_unaccepted_capa_even_on_imported_eligible_case(pg_engine):
+    # A legacy snapshot may already be in the decision state with an unaccepted
+    # CAPA; current transitions never create this combination. Keep it
+    # synthetic and verify the persisted policy without repairing history.
+    case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as session:
+        session.get(Case, case_id).state = CaseState.AWAITING_CERTIFICATE_DECISION
+        session.add(CapaCycle(case_id=case_id, round_no=1, status="rejected", result="rejected"))
+        session.commit()
+    with Session(pg_engine) as session:
+        ready = SERVICE.get_case_certificate_issue_readiness(session, case_id=case_id, user=USER)
+        assert not ready["available"] and ready["reason_code"] == "latest_capa_not_accepted"
+    with pytest.raises(HTTPException) as blocked:
+        issue(pg_engine, case_id, site_id)
+    assert blocked.value.status_code == 409
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(Certificate).where(Certificate.case_id == case_id)) == 0
+
+
 def test_approval_timestamp_defaults_survive_migration_round_trip(pg_engine):
     def defaults():
         with pg_engine.connect() as conn:

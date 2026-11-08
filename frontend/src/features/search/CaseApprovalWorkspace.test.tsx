@@ -49,6 +49,8 @@ describe("CaseApprovalWorkspace", () => {
     expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("pct-2");
     view.rerender(editor("case-B", true));
     expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("");
+    view.rerender(editor("case-A", true));
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("");
     expect(onCreate).not.toHaveBeenCalled();
   });
   it("explains the backend requirement to complete PCT before creating CT", () => {

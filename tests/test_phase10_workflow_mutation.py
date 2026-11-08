@@ -973,6 +973,144 @@ def test_upsert_inspection_plan_persists_stage():
         assert row.decision_reference == "QD-01"
 
 
+
+def test_plan_created_event_uses_canonical_metadata_across_separate_field_edits():
+    """Operators save plan metadata and dates independently; timeline must not lose earlier values."""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    actor = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    with Session(engine) as session:
+        metadata = service.upsert_inspection_plan(
+            session,
+            case_id=case_id,
+            expected_version=None,
+            plan_start_on=None,
+            plan_end_on=None,
+            planning_sheet_name="KHKT canonical",
+            decision_document_hint=None,
+            decision_reference="QD-21",
+            decision_date=date(2026, 8, 19),
+            reason="Prepared separately",
+            user=actor,
+            fields_set={"planning_sheet_name", "decision_reference", "decision_date"},
+        )
+        session.commit()
+        events = list(session.scalars(select(InspectionEvent).where(InspectionEvent.case_id == case_id)))
+        assert [item.event_type.value for item in events] == ["decision_issued"]
+
+    with Session(engine) as session:
+        created = service.upsert_inspection_plan(
+            session,
+            case_id=case_id,
+            expected_version=metadata["row_version"],
+            plan_start_on=date(2026, 8, 20),
+            plan_end_on=None,
+            planning_sheet_name=None,
+            decision_document_hint=None,
+            decision_reference=None,
+            decision_date=None,
+            reason="Schedule recorded",
+            user=actor,
+            fields_set={"plan_start_on"},
+        )
+        session.commit()
+        event = session.scalars(
+            select(InspectionEvent).where(
+                InspectionEvent.case_id == case_id,
+                InspectionEvent.event_type == "plan_created",
+            )
+        ).one()
+        payload = json.loads(event.payload)
+        assert payload["plan_start_on"] == "2026-08-20"
+        assert payload["plan_end_on"] is None
+        assert payload["planning_sheet_name"] == "KHKT canonical"
+        assert payload["decision_reference"] == "QD-21"
+        assert payload["decision_date"] == "2026-08-19"
+        assert payload["reason"] == "Schedule recorded"
+        assert created["inspection_event_id"] == event.id
+
+    with Session(engine) as session:
+        second = service.upsert_inspection_plan(
+            session,
+            case_id=case_id,
+            expected_version=created["row_version"],
+            plan_start_on=None,
+            plan_end_on=date(2026, 8, 22),
+            planning_sheet_name=None,
+            decision_document_hint=None,
+            decision_reference=None,
+            decision_date=None,
+            reason=None,
+            user=actor,
+            fields_set={"plan_end_on"},
+        )
+        session.commit()
+        assert second["inspection_event_id"] is None
+        assert session.scalar(select(func.count(InspectionEvent.id)).where(
+            InspectionEvent.case_id == case_id,
+            InspectionEvent.event_type == "plan_created",
+        )) == 1
+
+
+def test_outcome_recorded_event_uses_canonical_period_and_minutes_from_prior_updates():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    actor = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    with Session(engine) as session:
+        prior = service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            expected_version=None,
+            inspected_on=date(2026, 8, 23),
+            inspected_to_on=date(2026, 8, 24),
+            decision_reference=None,
+            bbkt_reference=None,
+            outcome_result=None,
+            minutes_recorded_on=date(2026, 8, 25),
+            reason="Visit and minutes saved",
+            user=actor,
+            fields_set={"inspected_on", "inspected_to_on", "minutes_recorded_on"},
+        )
+        session.commit()
+        assert prior["inspection_event_id"] is None
+
+    with Session(engine) as session:
+        result = service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            expected_version=prior["row_version"],
+            inspected_on=None,
+            inspected_to_on=None,
+            decision_reference=None,
+            bbkt_reference=None,
+            outcome_result="Đề nghị khắc phục",
+            minutes_recorded_on=None,
+            reason="Outcome recorded independently",
+            user=actor,
+            fields_set={"outcome_result"},
+        )
+        session.commit()
+        event = session.scalars(select(InspectionEvent).where(
+            InspectionEvent.case_id == case_id,
+            InspectionEvent.event_type == "outcome_recorded",
+        )).one()
+        payload = json.loads(event.payload)
+        assert payload["inspected_on"] == "2026-08-23"
+        assert payload["inspected_to_on"] == "2026-08-24"
+        assert payload["minutes_recorded_on"] == "2026-08-25"
+        assert payload["outcome_result"] == "Đề nghị khắc phục"
+        assert payload["reason"] == "Outcome recorded independently"
+        assert result["inspection_event_id"] == event.id
+
+
 def test_upsert_inspection_plan_route_enforces_auth_and_returns_read_model(tmp_path):
     database_path = tmp_path / "workflow-plan-route.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"

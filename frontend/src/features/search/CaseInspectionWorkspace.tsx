@@ -618,7 +618,7 @@ function CaseInspectionEditor({
   };
 
   async function finalize() {
-    if (finalizationPending || !onFinalizeInspectionOutcome || !finalization.available || !finalEvaluation.trim() || finalDraftVersion == null) return;
+    if (finalizationPending || finalLock.pending || finalLock.requiresReview || !onFinalizeInspectionOutcome || !finalization.available || !finalEvaluation.trim() || finalDraftVersion == null) return;
     const command = finalLock.acquire();
     if (!command) return;
     setFinalizationPending(true);
@@ -649,15 +649,16 @@ function CaseInspectionEditor({
           <DetailValue label="Giá trị đã chốt" value={caseWorkspace.inspection.final_evaluation} />
           {caseWorkspace.inspection.final_evaluation === null || finalDraftVersion !== undefined ? (
             <div aria-label="Chốt đánh giá cuối cùng" className="panel-actions panel-actions-tight inspection-final-actions" role="group">
-              <input aria-label="Đánh giá cuối cùng" disabled={!finalization.available || finalizationPending} onChange={(event) => { if (finalDraftVersion === undefined) setFinalDraftVersion(finalization.expected_version); setFinalEvaluation(event.target.value); }} value={finalEvaluation} />
+              <input aria-label="Đánh giá cuối cùng" disabled={(!finalization.available && !finalLock.requiresReview) || finalizationPending} readOnly={finalLock.requiresReview} onChange={(event) => { if (finalLock.requiresReview) return; if (finalDraftVersion === undefined) setFinalDraftVersion(finalization.expected_version); setFinalEvaluation(event.target.value); }} value={finalEvaluation} />
               <button disabled={!onFinalizeInspectionOutcome || !finalization.available || finalizationPending || finalLock.pending || finalLock.requiresReview || finalDraftVersion == null || !finalEvaluation.trim()} onClick={() => void finalize()} type="button">
                 {finalizationPending ? "Đang chốt..." : finalization.label}
               </button>
-              {finalDraftVersion !== undefined ? <button disabled={finalizationPending} onClick={() => { setFinalEvaluation(""); setFinalDraftVersion(undefined); setFinalizationError(null); }} type="button">Hủy nhập đánh giá</button> : null}
+              {finalDraftVersion !== undefined ? <button disabled={finalizationPending || finalLock.requiresReview} onClick={() => { if (finalLock.requiresReview) return; setFinalEvaluation(""); setFinalDraftVersion(undefined); setFinalizationError(null); }} type="button">Hủy nhập đánh giá</button> : null}
             </div>
           ) : null}
           {!finalization.available && finalization.reason_code ? <p className="workspace-note">Không thể chốt: {finalization.reason_code}.</p> : null}
           {finalizationError || finalLock.requiresReview ? <p className="form-error" role="alert">{finalizationError ?? "Chưa xác minh kết quả chốt. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
+          {finalLock.requiresReview ? <p className="workspace-note" role="status">Giữ nguyên đánh giá cuối cùng đã gửi để sao chép và đối chiếu với hồ sơ canonical; không sửa, hủy hay gửi lại khi kết quả chốt chưa xác minh.</p> : null}
         </section>
       </div>
     </div>

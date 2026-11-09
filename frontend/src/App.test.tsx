@@ -4144,7 +4144,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("tab", { name: "Thông tin chung" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it.each(["success", "failure"])("isolates reassessment %s from a new dialog after source A → B → A", async result => {
+  it.each(["success", "failure"])("fences an in-flight reassessment through source A → B → A and reconciles %s safely", async result => {
     const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "closed" }));
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -4156,17 +4156,34 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
     await screen.findByText("HS-001");
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "Original A standard" } });
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
     fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-B"));
     fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-A"));
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "New A draft" } });
-    await act(async () => { if (result === "success") resolve({ case_id: "created-from-old-A" }); else reject(buildApiError("Old create failure", 409)); });
-    expect(within(screen.getByRole("dialog")).getByLabelText("Tiêu chuẩn áp dụng")).toHaveValue("New A draft");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
+    const standard = within(dialog).getByLabelText("Tiêu chuẩn áp dụng");
+    expect(standard).toHaveValue("Original A standard");
+    expect(standard).toHaveAttribute("readonly");
+    expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+    fireEvent.change(standard, { target: { value: "New A draft" } });
+    expect(standard).toHaveValue("Original A standard");
+    await act(async () => {
+      if (result === "success") resolve({ case_id: "created-from-old-A" });
+      else reject(buildApiError("Old create rejected", 409));
+    });
+    if (result === "success") {
+      expect(await within(dialog).findByRole("status")).toHaveTextContent("Chưa xác minh kết quả tạo hồ sơ tái đánh giá");
+      expect(standard).toHaveAttribute("readonly");
+      expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeDisabled();
+    } else {
+      await waitFor(() => expect(standard).not.toHaveAttribute("readonly"));
+      fireEvent.change(standard, { target: { value: "New A draft" } });
+      expect(standard).toHaveValue("New A draft");
+    }
     expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
   });

@@ -4,7 +4,7 @@ import { raiseBusinessEligibilityWriteFailure } from "../features/search/busines
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
-import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
@@ -677,7 +677,15 @@ export function SearchPage({
   const reassessmentOperationKey = selectedResult && reassessmentIntent ? JSON.stringify([
     "reassessment.create", accessGeneration, selectedResult.site_id, selectedContext, reassessmentIntent.sourceCaseId,
   ]) : null;
-  const reassessmentPhase = reassessmentOperationKey ? facilityCommandRegistry.state(reassessmentOperationKey) : "idle";
+  const subscribeReassessment = useCallback((notify: () => void) => facilityCommandRegistry.subscribe(notify), [facilityCommandRegistry]);
+  const reassessmentSnapshot = useCallback(
+    () => reassessmentOperationKey ? facilityCommandRegistry.state(reassessmentOperationKey) : "idle",
+    [facilityCommandRegistry, reassessmentOperationKey],
+  );
+  // An old POST may settle after A→B→A without the old owner's setState.
+  // Subscribe to the scoped command registry so this visible draft still
+  // switches from pending to review/released on the correct Case.
+  const reassessmentPhase = useSyncExternalStore(subscribeReassessment, reassessmentSnapshot, reassessmentSnapshot);
   const createChangeRequestAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_change_request") ?? null;
   const changeRequestDialogOpen =

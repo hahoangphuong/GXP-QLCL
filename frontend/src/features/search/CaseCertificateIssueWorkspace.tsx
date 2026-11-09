@@ -114,9 +114,9 @@ function CertificateIssueDialog({ caseId, readiness, saveAvailable, closeAvailab
         <div className="certificate-scope-editor-header"><h3>Phạm vi chứng nhận</h3><button disabled={pending || !closeAvailable} onClick={addScope} type="button">Thêm phạm vi</button></div>
         <p className="certificate-scope-note">Khởi tạo rỗng: chưa có ánh xạ nghiệp vụ được xác nhận từ phạm vi đánh giá sang phạm vi chứng nhận.</p>
         {draft.scopes.map((scope, index) => <div className="certificate-scope-row" key={`${scope.sort_order}-${index}`}>
-          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "scope_key", event.target.value) value={scope.scope_key ?? ""} /></label>
-          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "scope_text", event.target.value) value={scope.scope_text} /></label>
-          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "language_code", event.target.value) value={scope.language_code} /></label>
+          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "scope_key", event.target.value)} value={scope.scope_key ?? ""} /></label>
+          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "scope_text", event.target.value)} value={scope.scope_text} /></label>
+          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
           <div aria-label={`Thứ tự phạm vi ${index + 1}`} className="certificate-scope-order">{scope.sort_order}</div>
           <div className="certificate-scope-actions">
             <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || !closeAvailable || index === 0} onClick={() => moveScope(index, -1)} type="button">Lên</button>

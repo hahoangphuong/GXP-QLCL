@@ -199,6 +199,107 @@ it.each(["access", "site"] as const)("does not expose the old issue draft after 
   expect(screen.getByLabelText("Số GCN ĐĐK")).toHaveValue("new synthetic draft");
 });
 
+describe("business eligibility aggregate mutation safety", () => {
+  it("retains exact version edit details, canonical basis, and disables promotion after an unknown outcome", async () => {
+    const props = baseProps();
+    props.onEditLatestVersion = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("version readback unknown"));
+    const view = (show: boolean, id = "dkkd-1") => <CaseDraftSession identity="case-A" facilityIdentity="access-A:site-1">
+      {show ? <BusinessEligibilityWorkspace {...props} selectedCertificateId={id}
+        detail={{ ...detail(), business_eligibility_certificate_id: id }}
+        items={[{ ...items[0], business_eligibility_certificate_id: id }]} /> : null}
+    </CaseDraftSession>;
+    const r = render(view(true));
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+    const dialog = screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" }), { target: { value: "DDK-PENDING" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Ghi chú ĐĐK" }), { target: { value: "Ghi chú cần đối chiếu" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("version readback unknown");
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Giữ nguyên dữ liệu đã gửi");
+    expect(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveAttribute("readonly");
+    expect(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveValue("DDK-PENDING");
+    expect(within(dialog).getByRole("textbox", { name: "Ghi chú ĐĐK" })).toHaveValue("Ghi chú cần đối chiếu");
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+    expect(within(dialog).getByRole("checkbox", { name: /Chọn căn cứ GMP A/ })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" }), { target: { value: "Changed after submission" } });
+    expect(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveValue("DDK-PENDING");
+    expect(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).toBeDisabled();
+    expect(props.onEditLatestVersion).toHaveBeenCalledOnce();
+    expect(props.onEditLatestVersion).toHaveBeenCalledWith(expect.objectContaining({
+      certificate_number: "DDK-PENDING", notes: "Ghi chú cần đối chiếu", expected_version: 4,
+      linked_certificates: [{ certificate_id: "cert-1", link_role: "source_certificate" }],
+    }));
+    r.rerender(view(false));
+    r.rerender(view(true));
+    expect(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).toBeDisabled();
+    r.rerender(view(true, "dkkd-2"));
+    expect(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" })).toBeEnabled();
+    r.rerender(view(true));
+    expect(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" })).toBeDisabled();
+  });
+
+  it("fences edits while an explicit promotion remains unverified and isolates another Certificate UUID", async () => {
+    const props = baseProps();
+    props.onPromoteCurrent = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("promotion readback unknown"));
+    const view = (show: boolean, id = "dkkd-1") => <CaseDraftSession identity="case-A" facilityIdentity="access-A:site-1">
+      {show ? <BusinessEligibilityWorkspace {...props} selectedCertificateId={id}
+        detail={{ ...detail(), business_eligibility_certificate_id: id }}
+        items={[{ ...items[0], business_eligibility_certificate_id: id }]} /> : null}
+    </CaseDraftSession>;
+    const r = render(view(true));
+    fireEvent.click(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" }));
+    expect(await screen.findByText(/Chưa xác minh kết quả cập nhật hoặc đặt hiện hành/)).toBeInTheDocument();
+    expect(props.onPromoteCurrent).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).toBeDisabled();
+    r.rerender(view(false)); r.rerender(view(true));
+    expect(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" })).toBeDisabled();
+    r.rerender(view(true, "dkkd-2"));
+    expect(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" })).toBeEnabled();
+    r.rerender(view(true));
+    expect(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).toBeDisabled();
+  });
+
+  it("does not promote while the same Certificate version edit is pending, and releases on verified completion", async () => {
+    let finish!: () => void;
+    const props = baseProps();
+    props.onEditLatestVersion = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    render(<CaseDraftSession identity="case-A" facilityIdentity="access-A:site-1">
+      <BusinessEligibilityWorkspace {...props} />
+    </CaseDraftSession>);
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    expect(props.onEditLatestVersion).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" }));
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+    await act(async () => finish());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).toBeEnabled());
+  });
+
+  it("retains and freezes issued eligibility GCN fields if issuance cannot be verified", async () => {
+    const props = baseProps();
+    props.onIssue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("issue readback unknown"));
+    render(<CaseDraftSession identity="case-A" facilityIdentity="access-A:site-1">
+      <BusinessEligibilityWorkspace {...props} />
+    </CaseDraftSession>);
+    fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+    const dialog = screen.getByRole("dialog", { name: "Cấp GCN đủ điều kiện" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" }), { target: { value: "ISSUE-UNVERIFIED" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cấp GCN" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("issue readback unknown");
+    expect(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveAttribute("readonly");
+    expect(within(dialog).getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveValue("ISSUE-UNVERIFIED");
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(props.onIssue).toHaveBeenCalledOnce();
+  });
+});
+
 describe("Eligibility certificate keyboard and identity", () => {
   it.each(["issue", "edit"])("submits %s only once before pending renders", async mode => {
     let finish!: () => void;

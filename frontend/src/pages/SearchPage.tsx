@@ -1,5 +1,6 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
 import { raiseGxpCertificateVersionWriteFailure, raiseGxpCertificatePromotionFailure } from "../features/search/gxpCertificateVersionWriteRecovery";
+import { raiseBusinessEligibilityWriteFailure } from "../features/search/businessEligibilityWriteRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
@@ -2113,7 +2114,8 @@ export function SearchPage({
         bearerToken,
       );
       mutationAccepted = true;
-      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      if (!canonical) throw new Error("Chưa đọc lại được GCN đủ điều kiện canonical sau cập nhật.");
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted) {
@@ -2126,7 +2128,7 @@ export function SearchPage({
         staleError.status = 409;
         throw staleError;
       }
-      throw error;
+      raiseBusinessEligibilityWriteFailure(error, mutationAccepted, "version");
     }
   }
 
@@ -2153,7 +2155,8 @@ export function SearchPage({
         bearerToken,
       );
       mutationAccepted = true;
-      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      if (!canonical) throw new Error("Chưa đọc lại được trạng thái hiện hành canonical của GCN đủ điều kiện.");
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted && selectedEligibilityCertificateId) {
@@ -2163,7 +2166,16 @@ export function SearchPage({
           // Keep the original promotion conflict as the actionable error.
         }
       }
-      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) setEligibilityPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành." });
+      let resultError: unknown = error;
+      try {
+        raiseBusinessEligibilityWriteFailure(error, mutationAccepted, "promotion");
+      } catch (classified) {
+        resultError = classified;
+      }
+      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) {
+        setEligibilityPromotionFailure({ owner: detailOwner, message: resultError instanceof Error ? resultError.message : "Không thể cập nhật GCN đủ điều kiện hiện hành." });
+      }
+      if (resultError instanceof CaseFieldMutationRecoveryError) throw resultError;
     } finally {
       certificatePromotionsInFlight.current.delete(operation);
       if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) setEligibilityPromotionPending(false);

@@ -43,10 +43,12 @@ function CertificateIssueDialog({ caseId, readiness, saveAvailable, closeAvailab
   }, [onClose, pending, closeAvailable]);
 
   function updateScope(index: number, field: keyof ScopeDraft, value: string | number | null) {
+    if (!closeAvailable) return;
     setDraft((current) => ({ ...current, scopes: current.scopes.map((scope, scopeIndex) => scopeIndex === index ? { ...scope, [field]: value } : scope) }));
   }
 
   function addScope() {
+    if (!closeAvailable) return;
     setDraft((current) => ({ ...current, scopes: [...current.scopes, {
       scope_key: null,
       scope_text: "",
@@ -56,6 +58,7 @@ function CertificateIssueDialog({ caseId, readiness, saveAvailable, closeAvailab
   }
 
   function moveScope(index: number, direction: -1 | 1) {
+    if (!closeAvailable) return;
     setDraft((current) => {
       const destination = index + direction;
       if (destination < 0 || destination >= current.scopes.length) return current;
@@ -102,23 +105,23 @@ function CertificateIssueDialog({ caseId, readiness, saveAvailable, closeAvailab
       </header>
       <div className="certificate-edit-fields">
         <label>Loại GxP<span aria-label="Loại GxP" className="certificate-readonly-value">{readiness.certificate_type}</span></label>
-        <label>Số GCN<input aria-label="Số GCN" disabled={pending} onChange={(event) => setDraft(current => ({ ...current, certificateNumber: event.target.value }))} value={draft.certificateNumber} /></label>
-        <label>Ngày cấp<input aria-label="Ngày cấp" disabled={pending} onChange={(event) => setDraft(current => ({ ...current, issueDate: event.target.value }))} type="date" value={draft.issueDate} /></label>
-        <label>Ngày hết hạn<input aria-label="Ngày hết hạn" disabled={pending} onChange={(event) => setDraft(current => ({ ...current, expiryDate: event.target.value }))} type="date" value={draft.expiryDate} /></label>
-        <label className="certificate-edit-reason">Lý do cấp<textarea aria-label="Lý do cấp" disabled={pending} onChange={(event) => setDraft(current => ({ ...current, reason: event.target.value }))} value={draft.reason} /></label>
+        <label>Số GCN<input aria-label="Số GCN" disabled={pending} readOnly={!closeAvailable} onChange={(event) => { if (closeAvailable) setDraft(current => ({ ...current, certificateNumber: event.target.value })); }} value={draft.certificateNumber} /></label>
+        <label>Ngày cấp<input aria-label="Ngày cấp" disabled={pending} readOnly={!closeAvailable} onChange={(event) => { if (closeAvailable) setDraft(current => ({ ...current, issueDate: event.target.value })); }} type="date" value={draft.issueDate} /></label>
+        <label>Ngày hết hạn<input aria-label="Ngày hết hạn" disabled={pending} readOnly={!closeAvailable} onChange={(event) => { if (closeAvailable) setDraft(current => ({ ...current, expiryDate: event.target.value })); }} type="date" value={draft.expiryDate} /></label>
+        <label className="certificate-edit-reason">Lý do cấp<textarea aria-label="Lý do cấp" disabled={pending} readOnly={!closeAvailable} onChange={(event) => { if (closeAvailable) setDraft(current => ({ ...current, reason: event.target.value })); }} value={draft.reason} /></label>
       </div>
       <section aria-label="Phạm vi chứng nhận có cấu trúc" className="certificate-scope-editor">
-        <div className="certificate-scope-editor-header"><h3>Phạm vi chứng nhận</h3><button disabled={pending} onClick={addScope} type="button">Thêm phạm vi</button></div>
+        <div className="certificate-scope-editor-header"><h3>Phạm vi chứng nhận</h3><button disabled={pending || !closeAvailable} onClick={addScope} type="button">Thêm phạm vi</button></div>
         <p className="certificate-scope-note">Khởi tạo rỗng: chưa có ánh xạ nghiệp vụ được xác nhận từ phạm vi đánh giá sang phạm vi chứng nhận.</p>
         {draft.scopes.map((scope, index) => <div className="certificate-scope-row" key={`${scope.sort_order}-${index}`}>
-          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} onChange={(event) => updateScope(index, "scope_key", event.target.value)} value={scope.scope_key ?? ""} /></label>
-          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} onChange={(event) => updateScope(index, "scope_text", event.target.value)} value={scope.scope_text} /></label>
-          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
+          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "scope_key", event.target.value)} value={scope.scope_key ?? ""} /></label>
+          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "scope_text", event.target.value)} value={scope.scope_text} /></label>
+          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} readOnly={!closeAvailable} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
           <div aria-label={`Thứ tự phạm vi ${index + 1}`} className="certificate-scope-order">{scope.sort_order}</div>
           <div className="certificate-scope-actions">
-            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || index === 0} onClick={() => moveScope(index, -1)} type="button">Lên</button>
-            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || index === draft.scopes.length - 1} onClick={() => moveScope(index, 1)} type="button">Xuống</button>
-            <button aria-label={`Xóa phạm vi ${index + 1}`} disabled={pending} onClick={() => setDraft(current => ({ ...current, scopes: current.scopes.filter((_, scopeIndex) => scopeIndex !== index).map((scope, sort_order) => ({ ...scope, sort_order })) }))} type="button">Xóa</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || !closeAvailable || index === 0} onClick={() => moveScope(index, -1)} type="button">Lên</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || !closeAvailable || index === draft.scopes.length - 1} onClick={() => moveScope(index, 1)} type="button">Xuống</button>
+            <button aria-label={`Xóa phạm vi ${index + 1}`} disabled={pending || !closeAvailable} onClick={() => { if (!closeAvailable) return; setDraft(current => ({ ...current, scopes: current.scopes.filter((_, scopeIndex) => scopeIndex !== index).map((scope, sort_order) => ({ ...scope, sort_order })) })); }} type="button">Xóa</button>
           </div>
         </div>)}
       </section>

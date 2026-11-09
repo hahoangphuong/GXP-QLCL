@@ -84,6 +84,65 @@ it("retains the full certificate draft for inspection after an unverified issue,
   expect(issue).toHaveBeenCalledOnce();
 });
 
+it("preserves the exact GCN issuance payload as copyable read-only fields after an unverified issue", async () => {
+  const issue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("canonical result unavailable"));
+  const editor = (show: boolean) => <CaseDraftSession identity="case-A">
+    {show ? <CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /> : null}
+  </CaseDraftSession>;
+  const view = render(editor(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "GCN-123" } });
+  fireEvent.change(screen.getByLabelText("Ngày cấp"), { target: { value: "2026-11-09" } });
+  fireEvent.change(screen.getByLabelText("Ngày hết hạn"), { target: { value: "2029-11-09" } });
+  fireEvent.change(screen.getByLabelText("Lý do cấp"), { target: { value: "Quyết định phê duyệt" } });
+  fireEvent.click(screen.getByRole("button", { name: "Thêm phạm vi" }));
+  fireEvent.change(screen.getByLabelText("Mã phạm vi 1"), { target: { value: "sterile" } });
+  fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Sản xuất vô trùng" } });
+  fireEvent.change(screen.getByLabelText("Ngôn ngữ phạm vi 1"), { target: { value: "vi" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(await screen.findByText("canonical result unavailable")).toBeInTheDocument();
+  const fields = [
+    ["Số GCN", "GCN-123"], ["Ngày cấp", "2026-11-09"],
+    ["Ngày hết hạn", "2029-11-09"], ["Lý do cấp", "Quyết định phê duyệt"],
+    ["Mã phạm vi 1", "sterile"], ["Nội dung phạm vi 1", "Sản xuất vô trùng"],
+    ["Ngôn ngữ phạm vi 1", "vi"],
+  ];
+  for (const [label, value] of fields) {
+    expect(screen.getByLabelText(label)).toHaveValue(value);
+    expect(screen.getByLabelText(label)).toHaveAttribute("readonly");
+  }
+  for (const name of ["Thêm phạm vi", "Xóa phạm vi 1", "Đưa phạm vi 1 lên", "Đưa phạm vi 1 xuống", "Cấp giấy chứng nhận", "Hủy"]) {
+    expect(screen.getByRole("button", { name })).toBeDisabled();
+  }
+  fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Altered after POST" } });
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "Altered GCN" } });
+  fireEvent.click(screen.getByRole("button", { name: "Xóa phạm vi 1" }));
+  view.rerender(editor(false));
+  view.rerender(editor(true));
+  for (const [label, value] of fields) expect(screen.getByLabelText(label)).toHaveValue(value);
+  expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+  expect(issue).toHaveBeenCalledOnce();
+  expect(issue).toHaveBeenCalledWith(expect.objectContaining({
+    certificate_number: "GCN-123", issue_date: "2026-11-09",
+    expiry_date: "2029-11-09", scopes: [expect.objectContaining({
+      scope_key: "sterile", scope_text: "Sản xuất vô trùng", language_code: "vi",
+    })],
+  }));
+});
+
+it("retains editable issue fields after a definitive rejection", async () => {
+  const issue = vi.fn().mockRejectedValue(Object.assign(new Error("not permitted"), { status: 403 }));
+  renderWorkspace(issue);
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "First attempt" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(await screen.findByText("not permitted")).toBeInTheDocument();
+  expect(screen.getByLabelText("Số GCN")).not.toHaveAttribute("readonly");
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "Revised after definitive error" } });
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("Revised after definitive error");
+  expect(screen.getByRole("button", { name: "Hủy" })).toBeEnabled();
+});
+
 it("does not allow another issuance after an unknown result", async () => {
   const issue = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Chưa xác minh kết quả"));
   render(<CaseDraftSession identity="case-A"><CaseCertificateIssueWorkspace caseId="case-A" readiness={readiness()} onIssue={issue} /></CaseDraftSession>);

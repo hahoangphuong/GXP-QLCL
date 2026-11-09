@@ -1895,6 +1895,54 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["accepted_without_canonical", "unknown_transport"] as const)(
+    "never retries reassessment Case creation after %s and preserves the submitted standard",
+    async (failureMode) => {
+      apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+      apiMocks.searchFacilities.mockResolvedValue({
+        items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100,
+      });
+      const ready = buildWorkspace({
+        action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case"
+          ? { ...item, readiness_status: "available", required_permissions: ["case.edit"] } : item),
+      });
+      // The second GET may succeed but must contain the exact newly-created Case UUID.
+      apiMocks.getFacilityWorkspace.mockResolvedValue(ready);
+      apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+      if (failureMode === "accepted_without_canonical") {
+        apiMocks.createInspectionCase.mockResolvedValue({
+          case_id: "case-not-yet-visible", site_id: "site-1", gxp_type: "GMP", line_code: "A",
+          inspection_type: "Tái", applicable_standard: "WHO-GMP", state: "draft",
+          row_version: 1, legacy_inspection_id: null, legacy_inspection_code: null, audit_event_id: "audit-accepted",
+        });
+      } else {
+        apiMocks.createInspectionCase.mockRejectedValue(new TypeError("transport ended before response"));
+      }
+      renderApp(["/search"]);
+      expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled());
+      fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+      const dialog = await screen.findByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
+      const standard = within(dialog).getByRole("textbox", { name: "Tiêu chuẩn áp dụng" });
+      fireEvent.change(standard, { target: { value: "WHO-GMP" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent("Không gửi lại");
+      expect(within(dialog).getByRole("status")).toHaveTextContent("Giữ nguyên tiêu chuẩn đã gửi");
+      expect(standard).toHaveAttribute("readonly");
+      expect(standard).toHaveValue("WHO-GMP");
+      expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(dialog).toBeInTheDocument();
+      fireEvent.change(standard, { target: { value: "Mismatched repeated request" } });
+      fireEvent.submit(dialog.querySelector("form")!);
+      expect(standard).toHaveValue("WHO-GMP");
+      expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+      expect(dialog).toBeInTheDocument();
+    },
+  );
+
   it("uses the canonical GMPbb value in the vertical result rail", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({

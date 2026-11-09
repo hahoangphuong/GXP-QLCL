@@ -238,7 +238,8 @@ export function FacilityWorkspaceTabs({
     && !gxpCertificatesLoading && !gxpCertificatesError
     && !gxpCertificateDetailLoading && !gxpCertificateDetailError
     && !!selectedGxpCertificateId
-    && gxpCertificates.some(item => item.certificate_id === selectedGxpCertificateId)
+    && gxpCertificates.some(item => item.certificate_id === selectedGxpCertificateId
+      && item.case_id === selectedHistory.id && item.site_id === summary.site_id)
     && gxpCertificateDetail?.certificate_id === selectedGxpCertificateId
     && gxpCertificateDetail.case_id === selectedHistory.id
     && gxpCertificateDetail.site_id === summary.site_id;

@@ -98,13 +98,14 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   const commandLock = useCaseCommandLock("inspection.period");
   const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("period.errorMessage", null);
   const readiness = caseWorkspace.inspection.inspection_period_edit_readiness;
+  const frozen = pending || commandLock.pending || commandLock.requiresReview;
   const [draftVersion, setDraftVersion] = useCaseDraftState<number | null>("period.draftVersion", null);
   useEffect(() => {
     if (!editing) setSegments((caseWorkspace.inspection.inspection_period_segments ?? []).map(({ ordinal, started_on, ended_on }) => ({ ordinal, started_on: normalizeDateInputValue(started_on), ended_on: normalizeDateInputValue(ended_on) })));
   }, [caseWorkspace.inspection.inspection_period_segments, editing]);
   const renumber = (next: InspectionPeriodSegmentsUpsertRequest["segments"]) => next.map((segment, index) => ({ ...segment, ordinal: index + 1 }));
   async function save() {
-    if (pending || !readiness?.available) return;
+    if (frozen || !readiness?.available) return;
     const command = commandLock.acquire();
     if (!command) return;
     setPending(true); setErrorMessage(null);
@@ -113,19 +114,20 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
     finally { commandLock.release(command); setPending(false); }
   }
   return <section className="workspace-section inspection-period-section">
-    <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || pending || editing} onClick={() => { setDraftVersion(readiness?.expected_version ?? null); setEditing(true); setErrorMessage(null); }} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
+    <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || frozen || editing} onClick={() => { setDraftVersion(readiness?.expected_version ?? null); setEditing(true); setErrorMessage(null); }} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
     {!readiness?.available && readiness?.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
     {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={formatInspectionPeriods(segments)} /> : <div className="inspection-period-editor">
       {segments.map((segment, index) => <div className="inspection-team-edit-row" key={segment.ordinal}>
-        <span>Lần {index + 1}</span><input aria-label={`Từ ngày lần ${index + 1}`} disabled={pending} onChange={(event) => setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, started_on: event.target.value } : item))} type="date" value={segment.started_on} />
-        <input aria-label={`Đến ngày lần ${index + 1}`} disabled={pending} onChange={(event) => setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ended_on: event.target.value } : item))} type="date" value={segment.ended_on} />
-        <button disabled={pending || index === 0} onClick={() => setSegments((current) => { const next=[...current]; [next[index - 1], next[index]]=[next[index], next[index - 1]]; return renumber(next); })} type="button">Lên</button>
-        <button disabled={pending || index === segments.length - 1} onClick={() => setSegments((current) => { const next=[...current]; [next[index + 1], next[index]]=[next[index], next[index + 1]]; return renumber(next); })} type="button">Xuống</button>
-        <button disabled={pending} onClick={() => setSegments((current) => renumber(current.filter((_, itemIndex) => itemIndex !== index)))} type="button">Xóa</button>
+        <span>Lần {index + 1}</span><input aria-label={`Từ ngày lần ${index + 1}`} disabled={pending || commandLock.pending} readOnly={commandLock.requiresReview} onChange={(event) => { if (frozen) return; setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, started_on: event.target.value } : item)); }} type="date" value={segment.started_on} />
+        <input aria-label={`Đến ngày lần ${index + 1}`} disabled={pending || commandLock.pending} readOnly={commandLock.requiresReview} onChange={(event) => { if (frozen) return; setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ended_on: event.target.value } : item)); }} type="date" value={segment.ended_on} />
+        <button disabled={frozen || index === 0} onClick={() => { if (frozen) return; setSegments((current) => { const next=[...current]; [next[index - 1], next[index]]=[next[index], next[index - 1]]; return renumber(next); }); }} type="button">Lên</button>
+        <button disabled={frozen || index === segments.length - 1} onClick={() => { if (frozen) return; setSegments((current) => { const next=[...current]; [next[index + 1], next[index]]=[next[index], next[index + 1]]; return renumber(next); }); }} type="button">Xuống</button>
+        <button disabled={frozen} onClick={() => { if (frozen) return; setSegments((current) => renumber(current.filter((_, itemIndex) => itemIndex !== index))); }} type="button">Xóa</button>
       </div>)}
-      <div className="panel-actions"><button disabled={pending} onClick={() => setSegments((current) => [...current, { ordinal: current.length + 1, started_on: "", ended_on: "" }])} type="button">Thêm lần kiểm tra</button><button disabled={pending || commandLock.pending || commandLock.requiresReview} onClick={() => void save()} type="button">Lưu các đợt kiểm tra</button><button disabled={pending} onClick={() => setEditing(false)} type="button">Hủy</button></div>
+      <div className="panel-actions"><button disabled={frozen} onClick={() => { if (frozen) return; setSegments((current) => [...current, { ordinal: current.length + 1, started_on: "", ended_on: "" }]); }} type="button">Thêm lần kiểm tra</button><button disabled={frozen} onClick={() => void save()} type="button">Lưu các đợt kiểm tra</button><button disabled={frozen} onClick={() => { if (!frozen) setEditing(false); }} type="button">Hủy</button></div>
     </div>}
     {errorMessage || commandLock.requiresReview ? <p className="form-error" role="alert">{errorMessage ?? "Chưa xác minh kết quả lưu. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
+    {commandLock.requiresReview ? <p className="workspace-note" role="status">Các đợt kiểm tra đã gửi được giữ nguyên để đối chiếu; không sửa, đổi thứ tự, xóa, hủy hoặc gửi lại khi kết quả chưa xác minh.</p> : null}
   </section>;
 }
 

@@ -231,3 +231,33 @@ it("retains the uncertain inspection plan lock through Case A → B → A", asyn
   expect(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" })).toBeDisabled();
   expect(handlers.onInspectionPlanSave).toHaveBeenCalledOnce();
 });
+
+
+it("freezes exact inspection periods after an unverified canonical write", async () => {
+  const view = setup();
+  view.handlers.onInspectionPeriodSegmentsSave.mockRejectedValue(new CaseFieldMutationRecoveryError("canonical readback unavailable"));
+  fireEvent.click(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" }));
+  fireEvent.change(screen.getByLabelText("Từ ngày lần 1"), { target: { value: "2026-09-30" } });
+  fireEvent.click(screen.getByRole("button", { name: "Thêm lần kiểm tra" }));
+  fireEvent.change(screen.getByLabelText("Từ ngày lần 2"), { target: { value: "2026-10-05" } });
+  fireEvent.change(screen.getByLabelText("Đến ngày lần 2"), { target: { value: "2026-10-06" } });
+  fireEvent.click(screen.getByRole("button", { name: "Lưu các đợt kiểm tra" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("giữ nguyên để đối chiếu");
+  expect(view.handlers.onInspectionPeriodSegmentsSave).toHaveBeenCalledOnce();
+  expect(view.handlers.onInspectionPeriodSegmentsSave).toHaveBeenCalledWith({ expected_version: 2, segments: [
+    { ordinal: 1, started_on: "2026-09-30", ended_on: "2026-10-02" },
+    { ordinal: 2, started_on: "2026-10-05", ended_on: "2026-10-06" },
+  ] });
+  for (const label of ["Từ ngày lần 1", "Đến ngày lần 1", "Từ ngày lần 2", "Đến ngày lần 2"]) {
+    expect(screen.getByLabelText(label)).toHaveAttribute("readonly");
+  }
+  for (const name of ["Thêm lần kiểm tra", "Lên", "Xuống", "Xóa", "Hủy", "Lưu các đợt kiểm tra"]) {
+    screen.getAllByRole("button", { name }).forEach(button => expect(button).toBeDisabled());
+  }
+  fireEvent.change(screen.getByLabelText("Từ ngày lần 1"), { target: { value: "2026-12-31" } });
+  expect(screen.getByLabelText("Từ ngày lần 1")).toHaveValue("2026-09-30");
+  view.refresh(workspace(3));
+  expect(screen.getByLabelText("Từ ngày lần 2")).toHaveValue("2026-10-05");
+  expect(screen.getByRole("button", { name: "Lưu các đợt kiểm tra" })).toBeDisabled();
+  expect(view.handlers.onInspectionPeriodSegmentsSave).toHaveBeenCalledOnce();
+});

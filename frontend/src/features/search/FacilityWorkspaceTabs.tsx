@@ -228,6 +228,23 @@ export function FacilityWorkspaceTabs({
     tabRefs.current[next]?.focus();
   }
 
+  // Return to the *same* canonical Case that issued the selected Certificate.
+  // This is navigation only: completion eligibility and any transition remain backend-owned.
+  const certificateCaseReturnAvailable =
+    selectedFacilityTab === "Giấy chứng nhận GxP"
+    && selectedHistory?.source_type === "case"
+    && !caseWorkspaceLoading && !caseWorkspaceError
+    && caseWorkspace?.case_summary.id === selectedHistory.id
+    && caseWorkspace.case_summary.site_id === summary.site_id
+    && !gxpCertificatesLoading && !gxpCertificatesError
+    && !gxpCertificateDetailLoading && !gxpCertificateDetailError
+    && !!selectedGxpCertificateId
+    && gxpCertificates.some(item => item.certificate_id === selectedGxpCertificateId
+      && item.case_id === selectedHistory.id && item.site_id === summary.site_id)
+    && gxpCertificateDetail?.certificate_id === selectedGxpCertificateId
+    && gxpCertificateDetail.case_id === selectedHistory.id
+    && gxpCertificateDetail.site_id === summary.site_id;
+
   const selectedTabContent = (
     <>
     {selectedFacilityTab === "Thông tin chung" ? (
@@ -275,6 +292,16 @@ export function FacilityWorkspaceTabs({
           selectedRemediationCycleId={selectedRemediationCycleId}
           selectedHistory={selectedHistory}
         />
+      </div>
+    ) : null}
+
+    {certificateCaseReturnAvailable ? (
+      <div className="case-transition-navigation">
+        <span>Chứng nhận đang chọn thuộc hồ sơ kiểm tra hiện tại.</span>
+        <button type="button" className="secondary" onClick={() => {
+          onEventTabChange("Kiểm tra");
+          onFacilityTabChange("Các đợt kiểm tra & thay đổi");
+        }}>Quay lại Case để kiểm tra hoàn tất</button>
       </div>
     ) : null}
 

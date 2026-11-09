@@ -129,3 +129,46 @@ describe("FacilityWorkspaceTabs keyboard and ARIA", () => {
     expect(values.onFacilityTabChange).not.toHaveBeenCalled();
   });
 });
+
+
+it("returns from a verified selected Certificate to its own Case without performing any mutation", () => {
+  const base = props("Giấy chứng nhận GxP");
+  const onFacilityTabChange = vi.fn();
+  const onEventTabChange = vi.fn();
+  const selected = {
+    ...base,
+    selectedHistory: { id: "case-A", source_type: "case" },
+    caseWorkspace: { case_summary: { id: "case-A", site_id: "site-1" } },
+    caseWorkspaceLoading: false, caseWorkspaceError: null,
+    gxpCertificatesLoading: false, gxpCertificatesError: null,
+    gxpCertificateDetailLoading: false, gxpCertificateDetailError: null,
+    selectedGxpCertificateId: "cert-A",
+    gxpCertificates: [{ certificate_id: "cert-A", case_id: "case-A", site_id: "site-1" }],
+    gxpCertificateDetail: { certificate_id: "cert-A", case_id: "case-A", site_id: "site-1" },
+    onFacilityTabChange, onEventTabChange,
+  } as unknown as Props;
+  const view = render(<FacilityWorkspaceTabs {...selected} />);
+  fireEvent.click(screen.getByRole("button", { name: "Quay lại Case để kiểm tra hoàn tất" }));
+  expect(onEventTabChange).toHaveBeenCalledOnce();
+  expect(onEventTabChange).toHaveBeenCalledWith("Kiểm tra");
+  expect(onFacilityTabChange).toHaveBeenCalledOnce();
+  expect(onFacilityTabChange).toHaveBeenCalledWith("Các đợt kiểm tra & thay đổi");
+  const mismatches = [
+    { selectedHistory: { id: "case-B", source_type: "case" } },
+    { selectedHistory: { id: "case-A", source_type: "change_request" } },
+    { caseWorkspace: { case_summary: { id: "case-B", site_id: "site-1" } } },
+    { caseWorkspace: { case_summary: { id: "case-A", site_id: "other-site" } } },
+    { gxpCertificateDetail: { certificate_id: "cert-A", case_id: "case-B", site_id: "site-1" } },
+    { gxpCertificateDetail: { certificate_id: "cert-B", case_id: "case-A", site_id: "site-1" } },
+    { gxpCertificateDetail: { certificate_id: "cert-A", case_id: "case-A", site_id: "other-site" } },
+    { gxpCertificates: [] },
+    { gxpCertificates: [{ certificate_id: "cert-A", case_id: "case-B", site_id: "site-1" }] },
+    { gxpCertificates: [{ certificate_id: "cert-A", case_id: "case-A", site_id: "other-site" }] },
+    { gxpCertificateDetailLoading: true },
+    { caseWorkspaceError: "canonical unavailable" },
+  ];
+  for (const mismatch of mismatches) {
+    view.rerender(<FacilityWorkspaceTabs {...({ ...selected, ...mismatch } as unknown as Props)} />);
+    expect(screen.queryByRole("button", { name: "Quay lại Case để kiểm tra hoàn tất" })).not.toBeInTheDocument();
+  }
+});

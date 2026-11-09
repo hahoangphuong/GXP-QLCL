@@ -1795,7 +1795,13 @@ describe("App Slice A.4 search workspace", () => {
     });
     apiMocks.getFacilityWorkspace
       .mockResolvedValueOnce(reassessmentReadyWorkspace)
-      .mockResolvedValueOnce(reassessmentReadyWorkspace);
+      .mockResolvedValueOnce(buildWorkspace({
+        ...reassessmentReadyWorkspace,
+        history: [{
+          id: "case-pending", source_type: "case", reference_code: null, event_type: "Tái",
+          gxp_type: "GMP", standard: null, occurred_on: null, state: "draft",
+        }, ...reassessmentReadyWorkspace.history],
+      }));
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
     let releaseCreate: () => void = () => {};
     apiMocks.createInspectionCase.mockImplementation(
@@ -1869,7 +1875,7 @@ describe("App Slice A.4 search workspace", () => {
       }),
     );
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
-    apiMocks.createInspectionCase.mockRejectedValue(new Error("An open inspection case already exists for the selected facility/GxP/line context."));
+    apiMocks.createInspectionCase.mockRejectedValue(Object.assign(new Error("An open inspection case already exists for the selected facility/GxP/line context."), { status: 409 }));
 
     renderApp(["/search"]);
 

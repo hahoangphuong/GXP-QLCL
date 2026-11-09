@@ -138,7 +138,7 @@ it("returns from a verified selected Certificate to its own Case without perform
   const selected = {
     ...base,
     selectedHistory: { id: "case-A", source_type: "case" },
-    caseWorkspace: { case_summary: { id: "case-A" } },
+    caseWorkspace: { case_summary: { id: "case-A", site_id: "site-1" } },
     caseWorkspaceLoading: false, caseWorkspaceError: null,
     gxpCertificatesLoading: false, gxpCertificatesError: null,
     gxpCertificateDetailLoading: false, gxpCertificateDetailError: null,
@@ -156,7 +156,8 @@ it("returns from a verified selected Certificate to its own Case without perform
   const mismatches = [
     { selectedHistory: { id: "case-B", source_type: "case" } },
     { selectedHistory: { id: "case-A", source_type: "change_request" } },
-    { caseWorkspace: { case_summary: { id: "case-B" } } },
+    { caseWorkspace: { case_summary: { id: "case-B", site_id: "site-1" } } },
+    { caseWorkspace: { case_summary: { id: "case-A", site_id: "other-site" } } },
     { gxpCertificateDetail: { certificate_id: "cert-A", case_id: "case-B", site_id: "site-1" } },
     { gxpCertificateDetail: { certificate_id: "cert-B", case_id: "case-A", site_id: "site-1" } },
     { gxpCertificateDetail: { certificate_id: "cert-A", case_id: "case-A", site_id: "other-site" } },

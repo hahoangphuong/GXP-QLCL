@@ -143,7 +143,7 @@ it("returns from a verified selected Certificate to its own Case without perform
     gxpCertificatesLoading: false, gxpCertificatesError: null,
     gxpCertificateDetailLoading: false, gxpCertificateDetailError: null,
     selectedGxpCertificateId: "cert-A",
-    gxpCertificates: [{ certificate_id: "cert-A" }],
+    gxpCertificates: [{ certificate_id: "cert-A", case_id: "case-A", site_id: "site-1" }],
     gxpCertificateDetail: { certificate_id: "cert-A", case_id: "case-A", site_id: "site-1" },
     onFacilityTabChange, onEventTabChange,
   } as unknown as Props;
@@ -161,6 +161,8 @@ it("returns from a verified selected Certificate to its own Case without perform
     { gxpCertificateDetail: { certificate_id: "cert-B", case_id: "case-A", site_id: "site-1" } },
     { gxpCertificateDetail: { certificate_id: "cert-A", case_id: "case-A", site_id: "other-site" } },
     { gxpCertificates: [] },
+    { gxpCertificates: [{ certificate_id: "cert-A", case_id: "case-B", site_id: "site-1" }] },
+    { gxpCertificates: [{ certificate_id: "cert-A", case_id: "case-A", site_id: "other-site" }] },
     { gxpCertificateDetailLoading: true },
     { caseWorkspaceError: "canonical unavailable" },
   ];

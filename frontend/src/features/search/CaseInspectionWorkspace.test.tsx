@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
 import { CaseDraftSession } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
 
 function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWorkspace {
@@ -125,6 +126,63 @@ it("retains structured periods, team and final evaluation across tab remount wit
   await waitFor(() => expect(onPeriod).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 6 })));
   fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
   await waitFor(() => expect(onFinalize).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 6, final_evaluation: "Retained final" })));
+});
+
+describe("final evaluation reconciliation and operator draft", () => {
+  function editor(onFinalize: ReturnType<typeof vi.fn>, show = true, identity = "case-A", canFinalize = true) {
+    return <CaseDraftSession identity={identity}>{show ? <CaseInspectionWorkspace
+      caseWorkspace={workspace({ outcome_row_version: 6, final_evaluation: null,
+        final_evaluation_readiness: { action_key: "finalize_inspection_outcome", label: "Chốt đánh giá cuối cùng",
+          available: canFinalize, expected_version: 6, reason_code: canFinalize ? null : "blocked", required_permissions: [] } })}
+      onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()}
+      onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()}
+      onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()}
+      onTransitionCase={vi.fn()} onFinalizeInspectionOutcome={onFinalize}
+    /> : null}</CaseDraftSession>;
+  }
+
+  it("holds the exact final assessment as copyable read-only after an unverified mutation, even after tab remount and readiness withdrawal", async () => {
+    const onFinalize = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Không đọc lại được kết quả chốt."));
+    const view = render(editor(onFinalize));
+    fireEvent.change(screen.getByLabelText("Đánh giá cuối cùng"), { target: { value: "Chấp nhận CAPA sau lần 2; đề nghị cấp giấy." } });
+    fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không đọc lại được kết quả chốt.");
+    const input = screen.getByLabelText("Đánh giá cuối cùng");
+    expect(input).toHaveValue("Chấp nhận CAPA sau lần 2; đề nghị cấp giấy.");
+    expect(input).toHaveAttribute("readonly");
+    expect(screen.getByRole("status")).toHaveTextContent("Giữ nguyên đánh giá cuối cùng đã gửi");
+    expect(screen.getByRole("button", { name: "Hủy nhập đánh giá" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" })).toBeDisabled();
+    fireEvent.change(input, { target: { value: "Attempted overwrite" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hủy nhập đánh giá" }));
+    expect(input).toHaveValue("Chấp nhận CAPA sau lần 2; đề nghị cấp giấy.");
+    expect(onFinalize).toHaveBeenCalledExactlyOnceWith({
+      expected_version: 6, final_evaluation: "Chấp nhận CAPA sau lần 2; đề nghị cấp giấy.",
+    });
+    view.rerender(editor(onFinalize, false));
+    view.rerender(editor(onFinalize, true, "case-A", false));
+    const preserved = screen.getByLabelText("Đánh giá cuối cùng");
+    expect(preserved).toHaveValue("Chấp nhận CAPA sau lần 2; đề nghị cấp giấy.");
+    expect(preserved).toHaveAttribute("readonly");
+    expect(preserved).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Hủy nhập đánh giá" })).toBeDisabled();
+    expect(onFinalize).toHaveBeenCalledOnce();
+  });
+
+  it("allows correction or cancellation after a definitive 409 without retaining a recovery lock", async () => {
+    const onFinalize = vi.fn().mockRejectedValue(Object.assign(new Error("Stale assessment version"), { status: 409 }));
+    render(editor(onFinalize));
+    fireEvent.change(screen.getByLabelText("Đánh giá cuối cùng"), { target: { value: "Old assessment" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("hồ sơ đã bị thay đổi");
+    const input = screen.getByLabelText("Đánh giá cuối cùng");
+    expect(input).not.toHaveAttribute("readonly");
+    fireEvent.change(input, { target: { value: "Edited after rejection" } });
+    expect(input).toHaveValue("Edited after rejection");
+    fireEvent.click(screen.getByRole("button", { name: "Hủy nhập đánh giá" }));
+    expect(input).toHaveValue("");
+    expect(onFinalize).toHaveBeenCalledOnce();
+  });
 });
 
 it("keeps keyboard focus on the same team slot when its canonical identity changes", async () => {

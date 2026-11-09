@@ -2583,8 +2583,9 @@ export function SearchPage({
                 <input
                   aria-label="Tiêu chuẩn áp dụng"
                   disabled={createInspectionCasePending}
+                  readOnly={reassessmentPhase === "review"}
                   name="applicable_standard"
-                  onChange={(event) => setApplicableStandardInput(event.target.value)}
+                  onChange={(event) => { if (reassessmentPhase !== "review") setApplicableStandardInput(event.target.value); }}
                   value={applicableStandardInput}
                 />
               </label>
@@ -2593,11 +2594,12 @@ export function SearchPage({
                   {createInspectionCaseError}
                 </p>
               ) : null}
+              {reassessmentPhase === "review" ? <p className="workspace-note" role="status">Chưa xác minh kết quả tạo hồ sơ tái đánh giá. Giữ nguyên tiêu chuẩn đã gửi để sao chép và đối chiếu Case canonical; không hủy hoặc tạo lại.</p> : null}
               <div className="panel-actions reassessment-dialog-actions">
-                <button disabled={createInspectionCasePending} type="submit">
+                <button disabled={createInspectionCasePending || reassessmentPhase !== "idle" || createReassessmentAction?.readiness_status !== "available"} type="submit">
                   {createInspectionCasePending ? "Đang tạo..." : "Tạo hồ sơ tái đánh giá"}
                 </button>
-                <button disabled={createInspectionCasePending} onClick={closeReassessmentDialog} type="button">
+                <button disabled={createInspectionCasePending || reassessmentPhase !== "idle"} onClick={closeReassessmentDialog} type="button">
                   Hủy
                 </button>
               </div>
@@ -2641,11 +2643,19 @@ export function SearchPage({
               if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
                 return;
               }
-              if (actionKey === "create_reassessment_case") setReassessmentIntent(selectedActionKey === actionKey ? null : {
-                context: selectedContext, historyId: selectedHistory?.id ?? null,
-                sourceCaseId: selectedHistory?.source_type === "case" ? selectedHistory.id : null,
-                sourceReference: selectedHistory?.reference_code ?? null,
-              });
+              if (actionKey === "create_reassessment_case") {
+                if (reassessmentDialogOpen && reassessmentPhase !== "idle") return;
+                const sourceCaseId = selectedHistory?.source_type === "case" ? selectedHistory.id : null;
+                const key = JSON.stringify(["reassessment.create", accessGeneration, selectedResult?.site_id, selectedContext, sourceCaseId]);
+                if (facilityCommandRegistry.state(key) === "review") {
+                  setApplicableStandardInput(reassessmentSubmittedDrafts.current.get(key) ?? "");
+                }
+                setReassessmentIntent(selectedActionKey === actionKey ? null : {
+                  context: selectedContext, historyId: selectedHistory?.id ?? null,
+                  sourceCaseId,
+                  sourceReference: selectedHistory?.reference_code ?? null,
+                });
+              }
               setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
               setCreateInspectionCaseError(null);
               setCreateChangeRequestError(null);

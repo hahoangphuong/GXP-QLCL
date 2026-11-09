@@ -149,8 +149,10 @@ it("returns from a verified selected Certificate to its own Case without perform
   } as unknown as Props;
   const view = render(<FacilityWorkspaceTabs {...selected} />);
   fireEvent.click(screen.getByRole("button", { name: "Quay lại Case để kiểm tra hoàn tất" }));
-  expect(onEventTabChange).toHaveBeenCalledExactlyOnceWith("Kiểm tra");
-  expect(onFacilityTabChange).toHaveBeenCalledExactlyOnceWith("Các đợt kiểm tra & thay đổi");
+  expect(onEventTabChange).toHaveBeenCalledOnce();
+  expect(onEventTabChange).toHaveBeenCalledWith("Kiểm tra");
+  expect(onFacilityTabChange).toHaveBeenCalledOnce();
+  expect(onFacilityTabChange).toHaveBeenCalledWith("Các đợt kiểm tra & thay đổi");
   const mismatches = [
     { selectedHistory: { id: "case-B", source_type: "case" } },
     { selectedHistory: { id: "case-A", source_type: "change_request" } },

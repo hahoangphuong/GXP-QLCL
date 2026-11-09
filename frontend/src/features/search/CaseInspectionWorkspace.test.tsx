@@ -174,7 +174,7 @@ describe("final evaluation reconciliation and operator draft", () => {
     render(editor(onFinalize));
     fireEvent.change(screen.getByLabelText("Đánh giá cuối cùng"), { target: { value: "Old assessment" } });
     fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Stale assessment version");
+    expect(await screen.findByRole("alert")).toHaveTextContent("hồ sơ đã bị thay đổi");
     const input = screen.getByLabelText("Đánh giá cuối cùng");
     expect(input).not.toHaveAttribute("readonly");
     fireEvent.change(input, { target: { value: "Edited after rejection" } });

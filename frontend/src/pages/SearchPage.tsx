@@ -2442,36 +2442,56 @@ export function SearchPage({
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const operationOwner = caseOperationOwner.current;
-    if (!reassessmentDialogOpen || !reassessmentIntent || !selectedResult || !workspace || createReassessmentAction?.readiness_status !== "available" || createInspectionCaseInFlight.current === operationOwner) {
-      return;
-    }
-    createInspectionCaseInFlight.current = operationOwner;
+    const key = reassessmentOperationKey;
+    if (!reassessmentDialogOpen || !reassessmentIntent || !selectedResult || !workspace
+      || createReassessmentAction?.readiness_status !== "available" || !key
+      || facilityCommandRegistry.state(key) !== "idle") return;
+    const command = facilityCommandRegistry.acquire(key);
+    if (!command) return;
+    const submittedStandard = applicableStandardInput.trim();
+    reassessmentSubmittedDrafts.current.set(key, submittedStandard);
     setCreateInspectionCasePending(true);
     setCreateInspectionCaseError(null);
+    let keepReview = false;
+    let createdCaseId: string | null = null;
     try {
-      const created = await createInspectionCase(
-        selectedResult.site_id,
-        {
-          gxp_type: selectedResult.gxp_type ?? "",
-          line_code: selectedResult.line_code ?? null,
-          production_line_id: selectedResult.production_line_id,
-          applicable_standard: applicableStandardInput.trim() || null,
-          source_case_id: reassessmentIntent.sourceCaseId,
+      await runCaseFieldMutation(
+        async () => {
+          const created = await createInspectionCase(
+            selectedResult.site_id,
+            {
+              gxp_type: selectedResult.gxp_type ?? "",
+              line_code: selectedResult.line_code ?? null,
+              production_line_id: selectedResult.production_line_id,
+              applicable_standard: submittedStandard || null,
+              source_case_id: reassessmentIntent.sourceCaseId,
+            },
+            auth,
+            useStubAuth,
+            bearerToken,
+          );
+          if (!created.case_id) throw new Error("Phản hồi tạo hồ sơ không có Case UUID để đối chiếu.");
+          createdCaseId = created.case_id;
         },
-        auth,
-        useStubAuth,
-        bearerToken,
+        async () => {
+          if (!createdCaseId) return null;
+          return refreshWorkspaceAfterCreate(createdCaseId, operationOwner);
+        },
       );
-      if (!isCurrentCaseOperation(operationOwner)) return;
-      await refreshWorkspaceAfterCreate(created.case_id, operationOwner);
-      if (isCurrentContext()) resetCreateInspectionCaseState();
+      if (isCurrentCaseOperation(operationOwner)) resetCreateInspectionCaseState();
     } catch (error) {
-      if (!isCurrentCaseOperation(operationOwner)) return;
-      const message = error instanceof Error ? error.message : "Không mở được hồ sơ tái đánh giá.";
-      setCreateInspectionCaseError(message);
-      setCreateInspectionCasePending(false);
+      keepReview = error instanceof CaseFieldMutationRecoveryError;
+      if (keepReview) facilityCommandRegistry.requireReview(key, command);
+      if (isCurrentCaseOperation(operationOwner)) {
+        setCreateInspectionCaseError(error instanceof Error ? error.message : "Không tạo được hồ sơ tái đánh giá.");
+        setCreateInspectionCasePending(false);
+      }
     } finally {
-      if (createInspectionCaseInFlight.current === operationOwner) createInspectionCaseInFlight.current = null;
+      if (!keepReview) {
+        facilityCommandRegistry.release(key, command);
+        reassessmentSubmittedDrafts.current.delete(key);
+      }
+      if (isCurrentCaseOperation(operationOwner)) setCreateInspectionCasePending(false);
     }
   }
 

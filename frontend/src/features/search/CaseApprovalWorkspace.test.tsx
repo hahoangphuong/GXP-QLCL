@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CaseWorkspace } from "../../types";
 import { CaseDraftSession } from "./CaseDraftSession";
 import { CaseApprovalWorkspace } from "./CaseApprovalWorkspace";
+import { ApprovalMutationContext } from "./approvalMutationRecovery";
 
 function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWorkspace {
   return {
@@ -24,6 +25,90 @@ const available = (action_key: string, expected_version: number | null = 4) => (
   reason_code: null,
   required_permissions: ["inspection.edit"],
   expected_version,
+});
+
+describe("approval canonical recovery draft integrity", () => {
+  const pct = (id: string, round: number, completed_on: string | null) => ({
+    approval_submission_id: id, case_id: "case-1", row_version: 3, stage: "PCT" as const, round_no: round,
+    reference: id, submitted_on: null, submitted_time: null, completed_on, completed_time: null, pct_submission_id: null,
+  });
+
+  it("keeps CT creation fields and exact PCT parent immutable while outcome is unverified, including tab remount", () => {
+    const onCreate = vi.fn();
+    const state = workspace({
+      approval_actions: [available("create_approval_ct")],
+      approval_submissions: [pct("pct-first", 1, "2026-11-01"), pct("pct-second", 2, "2026-11-06")],
+    });
+    const editor = (show: boolean, needsReview: boolean) => <CaseDraftSession identity="case-1">
+      <ApprovalMutationContext.Provider value={{ pending: false, requiresReview: needsReview }}>
+        {show ? <CaseApprovalWorkspace caseWorkspace={state} onCreate={onCreate} onComplete={vi.fn()} /> : null}
+      </ApprovalMutationContext.Provider>
+    </CaseDraftSession>;
+    const view = render(editor(true, false));
+    fireEvent.change(screen.getByLabelText("Tham chiếu trình"), { target: { value: "CT-ĐÃ-GỬI" } });
+    fireEvent.change(screen.getByLabelText("Ngày trình"), { target: { value: "2026-11-08" } });
+    fireEvent.change(screen.getByLabelText("Giờ trình"), { target: { value: "10:30" } });
+    fireEvent.change(screen.getByLabelText("Lý do tạo trình"), { target: { value: "Đề nghị phê duyệt" } });
+    fireEvent.change(screen.getByLabelText("PCT hoàn tất cho CT"), { target: { value: "pct-second" } });
+    view.rerender(editor(true, true));
+    for (const [name, value] of [["Tham chiếu trình", "CT-ĐÃ-GỬI"], ["Ngày trình", "2026-11-08"], ["Giờ trình", "10:30"], ["Lý do tạo trình", "Đề nghị phê duyệt"]]) {
+      expect(screen.getByLabelText(name)).toHaveValue(value);
+      expect(screen.getByLabelText(name)).toHaveAttribute("readonly");
+    }
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toBeDisabled();
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("pct-second");
+    expect(screen.getByRole("button", { name: "Dùng PCT lần 1 để tạo trình CT" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Tham chiếu trình"), { target: { value: "OVERWRITTEN" } });
+    fireEvent.click(screen.getByRole("button", { name: "Dùng PCT lần 1 để tạo trình CT" }));
+    view.rerender(editor(false, true));
+    view.rerender(editor(true, true));
+    expect(screen.getByLabelText("Tham chiếu trình")).toHaveValue("CT-ĐÃ-GỬI");
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toHaveValue("pct-second");
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("keeps completion date, time, reason and reviewed version immutable while outcome is unverified", () => {
+    const onComplete = vi.fn();
+    const state = workspace({
+      approval_actions: [available("complete_approval:pct-1", 12)],
+      approval_submissions: [pct("pct-1", 1, null)],
+    });
+    const editor = (show: boolean, needsReview: boolean) => <CaseDraftSession identity="case-1">
+      <ApprovalMutationContext.Provider value={{ pending: false, requiresReview: needsReview }}>
+        {show ? <CaseApprovalWorkspace caseWorkspace={state} onCreate={vi.fn()} onComplete={onComplete} /> : null}
+      </ApprovalMutationContext.Provider>
+    </CaseDraftSession>;
+    const view = render(editor(true, false));
+    fireEvent.change(screen.getByLabelText("Ngày hoàn tất trình"), { target: { value: "2026-11-09" } });
+    fireEvent.change(screen.getByLabelText("Giờ hoàn tất trình"), { target: { value: "09:45" } });
+    fireEvent.change(screen.getByLabelText("Lý do hoàn tất trình"), { target: { value: "Đã xét duyệt" } });
+    view.rerender(editor(true, true));
+    for (const [name, value] of [["Ngày hoàn tất trình", "2026-11-09"], ["Giờ hoàn tất trình", "09:45"], ["Lý do hoàn tất trình", "Đã xét duyệt"]]) {
+      expect(screen.getByLabelText(name)).toHaveValue(value);
+      expect(screen.getByLabelText(name)).toHaveAttribute("readonly");
+    }
+    expect(screen.getByRole("button", { name: "Hủy nhập hoàn tất PCT lần 1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Hoàn tất PCT" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Lý do hoàn tất trình"), { target: { value: "OVERWRITTEN" } });
+    view.rerender(editor(false, true));
+    view.rerender(editor(true, true));
+    expect(screen.getByLabelText("Lý do hoàn tất trình")).toHaveValue("Đã xét duyệt");
+    expect(screen.getByText(/Thông tin hoàn tất đã nhập được giữ nguyên/)).toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("allows edits and parent selection after a definitively rejected request without recovery lock", () => {
+    const state = workspace({ approval_actions: [available("create_approval_ct")], approval_submissions: [pct("pct-first", 1, "2026-11-06")] });
+    render(<ApprovalMutationContext.Provider value={{ pending: false, requiresReview: false }}>
+      <CaseApprovalWorkspace caseWorkspace={state} onCreate={vi.fn()} onComplete={vi.fn()} />
+    </ApprovalMutationContext.Provider>);
+    fireEvent.change(screen.getByLabelText("Tham chiếu trình"), { target: { value: "Có thể sửa" } });
+    fireEvent.change(screen.getByLabelText("PCT hoàn tất cho CT"), { target: { value: "pct-first" } });
+    expect(screen.getByLabelText("Tham chiếu trình")).not.toHaveAttribute("readonly");
+    expect(screen.getByLabelText("PCT hoàn tất cho CT")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeEnabled();
+  });
 });
 
 describe("CaseApprovalWorkspace", () => {

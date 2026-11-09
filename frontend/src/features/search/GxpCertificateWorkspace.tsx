@@ -139,8 +139,8 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
           <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} readOnly={requiresReview} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
           <div aria-label={`Thứ tự phạm vi ${index + 1}`} className="certificate-scope-order">{scope.sort_order}</div>
           <div className="certificate-scope-actions">
-            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || requiresReview || index === 0} onClick={() => moveScope(index, -1) type="button">Lên</button>
-            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || requiresReview || index === scopes.length - 1} onClick={() => moveScope(index, 1) type="button">Xuống</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || requiresReview || index === 0} onClick={() => moveScope(index, -1)} type="button">Lên</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || requiresReview || index === scopes.length - 1} onClick={() => moveScope(index, 1)} type="button">Xuống</button>
             <button aria-label={`Xóa phạm vi ${index + 1}`} disabled={pending || requiresReview} onClick={() => { if (!requiresReview) setScopes((current) => current.filter((_, scopeIndex) => scopeIndex !== index)); }} type="button">Xóa</button>
           </div>
         </div>) }

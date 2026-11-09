@@ -235,6 +235,7 @@ export function FacilityWorkspaceTabs({
     && selectedHistory?.source_type === "case"
     && !caseWorkspaceLoading && !caseWorkspaceError
     && caseWorkspace?.case_summary.id === selectedHistory.id
+    && caseWorkspace.case_summary.site_id === summary.site_id
     && !gxpCertificatesLoading && !gxpCertificatesError
     && !gxpCertificateDetailLoading && !gxpCertificateDetailError
     && !!selectedGxpCertificateId

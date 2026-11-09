@@ -344,7 +344,9 @@ export function SearchPage({
   const [selectedActionKey, setSelectedActionKey] = useState<string | null>(null);
   const [applicableStandardInput, setApplicableStandardInput] = useState("");
   const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
-  const createInspectionCaseInFlight = useRef<object | null>(null);
+  // Keep the submitted standard only while an unverified create is fenced;
+  // identity is access + Site/GxP/line + optional source Case, never history UI order.
+  const reassessmentSubmittedDrafts = useRef(new Map<string, string>());
   const [createInspectionCaseError, setCreateInspectionCaseError] = useState<string | null>(null);
   const [reassessmentIntent, setReassessmentIntent] = useState<{
     context: string | null; historyId: string | null; sourceCaseId: string | null; sourceReference: string | null;
@@ -672,6 +674,10 @@ export function SearchPage({
   const reassessmentDialogOpen = selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction
     && reassessmentIntent !== null && reassessmentIntent.context === selectedContext
     && reassessmentIntent.historyId === (selectedHistory?.id ?? null);
+  const reassessmentOperationKey = selectedResult && reassessmentIntent ? JSON.stringify([
+    "reassessment.create", accessGeneration, selectedResult.site_id, selectedContext, reassessmentIntent.sourceCaseId,
+  ]) : null;
+  const reassessmentPhase = reassessmentOperationKey ? facilityCommandRegistry.state(reassessmentOperationKey) : "idle";
   const createChangeRequestAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_change_request") ?? null;
   const changeRequestDialogOpen =
@@ -791,7 +797,7 @@ export function SearchPage({
   }
 
   function closeReassessmentDialog() {
-    if (createInspectionCasePending) {
+    if (createInspectionCasePending || reassessmentPhase !== "idle") {
       return;
     }
     resetCreateInspectionCaseState();
@@ -1507,14 +1513,14 @@ export function SearchPage({
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !createInspectionCasePending) {
+      if (event.key === "Escape" && !createInspectionCasePending && reassessmentPhase === "idle") {
         event.preventDefault();
         closeReassessmentDialog();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [createInspectionCasePending, reassessmentDialogOpen]);
+  }, [createInspectionCasePending, reassessmentDialogOpen, reassessmentPhase]);
 
   function resetDependentContext() {
     setSearchPageRequest({ context: "", offset: 0 });
@@ -1617,13 +1623,14 @@ export function SearchPage({
   }
 
   async function refreshWorkspaceAfterCreate(createdCaseId: string, operationOwner: typeof caseOperationOwner.current) {
-    if (!isCurrentCaseOperation(operationOwner)) return;
+    if (!isCurrentCaseOperation(operationOwner)) return null;
     if (committedContextRef.current === selectedContext) resetCertificateWorkspaceState();
     const payload = await refreshSelectedFacilityWorkspace(createdCaseId, operationOwner);
-    if (payload) {
-      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
-      setActiveTab(DEFAULT_EVENT_TAB);
-    }
+    // A returned list is not evidence of creation unless it contains the exact new Case.
+    if (!payload?.history.some(row => row.id === createdCaseId && row.source_type === "case")) return null;
+    setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
+    setActiveTab(DEFAULT_EVENT_TAB);
+    return payload;
   }
 
   async function refreshSelectedChangeRequestWorkspace(changeRequestId: string, operationOwner: typeof caseOperationOwner.current) {

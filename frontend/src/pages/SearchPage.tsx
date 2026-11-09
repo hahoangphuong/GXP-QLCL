@@ -2583,9 +2583,9 @@ export function SearchPage({
                 <input
                   aria-label="Tiêu chuẩn áp dụng"
                   disabled={createInspectionCasePending}
-                  readOnly={reassessmentPhase === "review"}
+                  readOnly={reassessmentPhase !== "idle"}
                   name="applicable_standard"
-                  onChange={(event) => { if (reassessmentPhase !== "review") setApplicableStandardInput(event.target.value); }}
+                  onChange={(event) => { if (reassessmentPhase === "idle") setApplicableStandardInput(event.target.value); }}
                   value={applicableStandardInput}
                 />
               </label>
@@ -2647,7 +2647,7 @@ export function SearchPage({
                 if (reassessmentDialogOpen && reassessmentPhase !== "idle") return;
                 const sourceCaseId = selectedHistory?.source_type === "case" ? selectedHistory.id : null;
                 const key = JSON.stringify(["reassessment.create", accessGeneration, selectedResult?.site_id, selectedContext, sourceCaseId]);
-                if (facilityCommandRegistry.state(key) === "review") {
+                if (facilityCommandRegistry.state(key) !== "idle") {
                   setApplicableStandardInput(reassessmentSubmittedDrafts.current.get(key) ?? "");
                 }
                 setReassessmentIntent(selectedActionKey === actionKey ? null : {

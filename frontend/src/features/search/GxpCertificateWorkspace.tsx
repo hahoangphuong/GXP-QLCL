@@ -56,10 +56,12 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }, [onClose, pending, requiresReview]);
 
   function updateScope(index: number, field: keyof ScopeDraft, value: string | number | null) {
+    if (requiresReview) return;
     setScopes((current) => current.map((scope, scopeIndex) => scopeIndex === index ? { ...scope, [field]: value } : scope));
   }
 
   function addScope() {
+    if (requiresReview) return;
     setScopes((current) => [...current, {
       scope_key: null,
       scope_text: "",
@@ -69,6 +71,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }
 
   function moveScope(index: number, direction: -1 | 1) {
+    if (requiresReview) return;
     setScopes((current) => {
       const destination = index + direction;
       if (destination < 0 || destination >= current.length) return current;
@@ -123,28 +126,28 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
         <div><h2 id="gxp-certificate-edit-title">Sửa giấy chứng nhận GxP</h2><p>Thay đổi phiên bản hiện tại theo quyền và trạng thái do backend xác nhận.</p></div>
       </header>
       <div className="certificate-edit-fields">
-        <label>Số GCN<input aria-label="Số GCN" disabled={pending} onChange={(event) => setCertificateNumber(event.target.value)} value={certificateNumber} /></label>
-        <label>Ngày cấp<input aria-label="Ngày cấp" disabled={pending} onChange={(event) => setIssueDate(event.target.value)} type="date" value={issueDate} /></label>
-        <label>Ngày hết hạn<input aria-label="Ngày hết hạn" disabled={pending} onChange={(event) => setExpiryDate(event.target.value)} type="date" value={expiryDate} /></label>
-        <label className="certificate-edit-reason">Lý do cập nhật<textarea aria-label="Lý do cập nhật" disabled={pending} onChange={(event) => setReason(event.target.value)} value={reason} /></label>
+        <label>Số GCN<input aria-label="Số GCN" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setCertificateNumber(event.target.value); }} value={certificateNumber} /></label>
+        <label>Ngày cấp<input aria-label="Ngày cấp" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setIssueDate(event.target.value); }} type="date" value={issueDate} /></label>
+        <label>Ngày hết hạn<input aria-label="Ngày hết hạn" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setExpiryDate(event.target.value); }} type="date" value={expiryDate} /></label>
+        <label className="certificate-edit-reason">Lý do cập nhật<textarea aria-label="Lý do cập nhật" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setReason(event.target.value); }} value={reason} /></label>
       </div>
       <section aria-label="Phạm vi chứng nhận có cấu trúc" className="certificate-scope-editor">
-        <div className="certificate-scope-editor-header"><h3>Phạm vi chứng nhận</h3><button disabled={pending} onClick={addScope} type="button">Thêm phạm vi</button></div>
+        <div className="certificate-scope-editor-header"><h3>Phạm vi chứng nhận</h3><button disabled={pending || requiresReview} onClick={addScope} type="button">Thêm phạm vi</button></div>
         {scopes.map((scope, index) => <div className="certificate-scope-row" key={`${scope.sort_order}-${index}`}>
-          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} onChange={(event) => updateScope(index, "scope_key", event.target.value)} value={scope.scope_key ?? ""} /></label>
-          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} onChange={(event) => updateScope(index, "scope_text", event.target.value)} value={scope.scope_text} /></label>
-          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
+          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} readOnly={requiresReview} onChange={(event) => updateScope(index, "scope_key", event.target.value)} value={scope.scope_key ?? ""} /></label>
+          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} readOnly={requiresReview} onChange={(event) => updateScope(index, "scope_text", event.target.value)} value={scope.scope_text} /></label>
+          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} readOnly={requiresReview} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
           <div aria-label={`Thứ tự phạm vi ${index + 1}`} className="certificate-scope-order">{scope.sort_order}</div>
           <div className="certificate-scope-actions">
-            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || index === 0} onClick={() => moveScope(index, -1)} type="button">Lên</button>
-            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || index === scopes.length - 1} onClick={() => moveScope(index, 1)} type="button">Xuống</button>
-            <button aria-label={`Xóa phạm vi ${index + 1}`} disabled={pending} onClick={() => setScopes((current) => current.filter((_, scopeIndex) => scopeIndex !== index))} type="button">Xóa</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || requiresReview || index === 0} onClick={() => moveScope(index, -1) type="button">Lên</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || requiresReview || index === scopes.length - 1} onClick={() => moveScope(index, 1) type="button">Xuống</button>
+            <button aria-label={`Xóa phạm vi ${index + 1}`} disabled={pending || requiresReview} onClick={() => { if (!requiresReview) setScopes((current) => current.filter((_, scopeIndex) => scopeIndex !== index)); }} type="button">Xóa</button>
           </div>
         </div>) }
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {conflicted ? <p className="workspace-note">Bản nháp được giữ để đối chiếu. Sao chép nội dung cần giữ, đóng và mở lại form sau khi kiểm tra dữ liệu mới.</p> : null}
-      {requiresReview ? <p className="workspace-note" role="status">Kết quả cập nhật phiên bản chứng nhận chưa được xác minh. Không lưu lại hoặc hủy biểu mẫu; sao chép dữ liệu và kiểm tra bản ghi canonical.</p> : null}
+      {requiresReview ? <p className="workspace-note" role="status">Kết quả cập nhật phiên bản chứng nhận chưa được xác minh. Bản nháp được giữ ở chế độ chỉ đọc để sao chép và đối chiếu canonical; không sửa, lưu lại hoặc hủy biểu mẫu.</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
         <button disabled={pending || conflicted || !saveAvailable || editLock.pending || requiresReview} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : "Lưu thay đổi"}</button>
         <button disabled={pending || requiresReview} onClick={onClose} type="button">Hủy</button>

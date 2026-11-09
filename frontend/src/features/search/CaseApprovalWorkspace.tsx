@@ -25,10 +25,12 @@ function ApprovalCompletionEditor({ item, readiness, pending, requiresReview, on
   const [version, setVersion] = useCaseDraftState<number | null | undefined>(`approval.complete.${item.approval_submission_id}.version`, undefined);
   const [error, setError] = useCaseDraftState<string | null>(`approval.complete.${item.approval_submission_id}.error`, null);
   function change(field: keyof typeof draft, value: string) {
+    if (requiresReview) return;
     setVersion((current) => current === undefined ? readiness?.expected_version ?? null : current);
     setDraft((current) => ({ ...current, [field]: value }));
   }
   function reset() {
+    if (requiresReview) return;
     setDraft({ date: "", time: "", reason: "" });
     setVersion(undefined);
     setError(null);
@@ -47,12 +49,13 @@ function ApprovalCompletionEditor({ item, readiness, pending, requiresReview, on
   if (!readiness?.available && version === undefined) return null;
   return <div aria-label={`Hoàn tất ${item.stage} lần ${item.round_no}`} role="group">
     <div className="panel-actions">
-      <input aria-label="Ngày hoàn tất trình" disabled={pending || !readiness?.available} type="date" value={draft.date} onChange={(event) => change("date", event.target.value)} />
-      <input aria-label="Giờ hoàn tất trình" disabled={pending || !readiness?.available} type="time" value={draft.time} onChange={(event) => change("time", event.target.value)} />
-      <input aria-label="Lý do hoàn tất trình" disabled={pending || !readiness?.available} value={draft.reason} onChange={(event) => change("reason", event.target.value)} />
+      <input aria-label="Ngày hoàn tất trình" disabled={pending || !readiness?.available} readOnly={requiresReview} type="date" value={draft.date} onChange={(event) => change("date", event.target.value)} />
+      <input aria-label="Giờ hoàn tất trình" disabled={pending || !readiness?.available} readOnly={requiresReview} type="time" value={draft.time} onChange={(event) => change("time", event.target.value)} />
+      <input aria-label="Lý do hoàn tất trình" disabled={pending || !readiness?.available} readOnly={requiresReview} value={draft.reason} onChange={(event) => change("reason", event.target.value)} />
       <button disabled={pending || requiresReview || !readiness?.available || version == null || !draft.date} onClick={() => void complete()} type="button">Hoàn tất {item.stage}</button>
       {version !== undefined ? <button aria-label={`Hủy nhập hoàn tất ${item.stage} lần ${item.round_no}`} disabled={pending || requiresReview} onClick={reset} type="button">Hủy nhập hoàn tất</button> : null}
     </div>
+    {requiresReview && version !== undefined ? <p className="workspace-note" role="status">Thông tin hoàn tất đã nhập được giữ nguyên để đối chiếu kết quả canonical; không sửa hoặc hủy khi kết quả ghi chưa xác minh.</p> : null}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
   </div>;
 }
@@ -130,12 +133,12 @@ function CaseApprovalEditor({
   return <section className="workspace-section case-approval-workspace">
     <h4>Trình phê duyệt PCT / CT</h4>
     <div className="panel-actions">
-      <input aria-label="Tham chiếu trình" disabled={pending !== null || ownerPending} value={reference} onChange={(event) => setReference(event.target.value)} />
-      <input aria-label="Ngày trình" disabled={pending !== null || ownerPending} type="date" value={submittedOn} onChange={(event) => setSubmittedOn(event.target.value)} />
-      <input aria-label="Giờ trình" disabled={pending !== null || ownerPending} type="time" value={submittedTime} onChange={(event) => setSubmittedTime(event.target.value)} />
-      <input aria-label="Lý do tạo trình" disabled={pending !== null || ownerPending} value={createReason} onChange={(event) => setCreateReason(event.target.value)} />
+      <input aria-label="Tham chiếu trình" disabled={pending !== null || ownerPending} readOnly={requiresReview} value={reference} onChange={(event) => { if (!requiresReview) setReference(event.target.value); }} />
+      <input aria-label="Ngày trình" disabled={pending !== null || ownerPending} readOnly={requiresReview} type="date" value={submittedOn} onChange={(event) => { if (!requiresReview) setSubmittedOn(event.target.value); }} />
+      <input aria-label="Giờ trình" disabled={pending !== null || ownerPending} readOnly={requiresReview} type="time" value={submittedTime} onChange={(event) => { if (!requiresReview) setSubmittedTime(event.target.value); }} />
+      <input aria-label="Lý do tạo trình" disabled={pending !== null || ownerPending} readOnly={requiresReview} value={createReason} onChange={(event) => { if (!requiresReview) setCreateReason(event.target.value); }} />
       <button disabled={!action("create_approval_pct")?.available || submittedTimeRequiresDate || pending !== null || ownerPending || requiresReview} onClick={() => void create("PCT")} type="button">Tạo trình PCT</button>
-      <select ref={parentSelect} aria-label="PCT hoàn tất cho CT" disabled={pending !== null || ownerPending} value={parentId} onChange={(event) => setParentId(event.target.value)}>
+      <select ref={parentSelect} aria-label="PCT hoàn tất cho CT" disabled={pending !== null || ownerPending || requiresReview} value={parentId} onChange={(event) => { if (!requiresReview) setParentId(event.target.value); }}>
         <option value="">Chọn PCT đã hoàn tất</option>
         {completedPct.map((item) => <option key={item.approval_submission_id} value={item.approval_submission_id}>PCT lần {item.round_no}{item.reference ? ` — ${item.reference}` : ""} — {formatCompactDate(item.completed_on)}</option>)}
       </select>
@@ -159,17 +162,17 @@ function CaseApprovalEditor({
         <span>Giờ hoàn tất: {item.completed_time ?? "Chưa có"}</span>
         {item.stage === "CT" ? <span>PCT: {parent ? `lần ${parent.round_no}${parent.reference ? ` — ${parent.reference}` : ""}` : item.pct_submission_id ?? "Chưa có"}</span> : null}
         {item.stage === "PCT" && item.completed_on !== null && action("create_approval_ct")?.available ? (
-          <button disabled={pending !== null || ownerPending || requiresReview} onClick={() => { setParentId(item.approval_submission_id); parentSelect.current?.focus(); }} type="button">
+          <button disabled={pending !== null || ownerPending || requiresReview} onClick={() => { if (requiresReview) return; setParentId(item.approval_submission_id); parentSelect.current?.focus(); }} type="button">
             Dùng PCT lần {item.round_no} để tạo trình CT
           </button>
         ) : null}
-        {parent ? <button disabled={pending !== null || ownerPending} onClick={() => { setParentId(parent.approval_submission_id); parentSelect.current?.focus(); }} type="button">Chọn PCT lần {parent.round_no} cho trình CT</button> : null}
+        {parent ? <button disabled={pending !== null || ownerPending || requiresReview} onClick={() => { if (requiresReview) return; setParentId(parent.approval_submission_id); parentSelect.current?.focus(); }} type="button">Chọn PCT lần {parent.round_no} cho trình CT</button> : null}
         <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null || ownerPending} requiresReview={requiresReview} onComplete={complete} />
         {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{caseReadinessReason(readiness.reason_code)}</span> : null}
       </div>;
     })}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
-    {requiresReview ? <p className="workspace-note" role="status">Chưa xác minh kết quả ghi. Giữ bản sao bản nháp và tải lại hồ sơ trước khi thao tác tiếp.</p> : null}
+    {requiresReview ? <p className="workspace-note" role="status">Chưa xác minh kết quả ghi. Thông tin trình và PCT cha đã chọn được giữ nguyên để đối chiếu canonical; không sửa, hủy hoặc gửi lại trước khi xác minh.</p> : null}
   </section>;
 }
 

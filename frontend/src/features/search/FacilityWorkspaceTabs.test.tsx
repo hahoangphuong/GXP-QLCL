@@ -167,7 +167,7 @@ it("returns from a verified selected Certificate to its own Case without perform
     { caseWorkspaceError: "canonical unavailable" },
   ];
   for (const mismatch of mismatches) {
-    view.rerender(<FacilityWorkspaceTabs {...selected} {...mismatch} />);
+    view.rerender(<FacilityWorkspaceTabs {...({ ...selected, ...mismatch } as unknown as Props)} />);
     expect(screen.queryByRole("button", { name: "Quay lại Case để kiểm tra hoàn tất" })).not.toBeInTheDocument();
   }
 });

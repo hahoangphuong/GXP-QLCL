@@ -4,7 +4,7 @@ import { raiseBusinessEligibilityWriteFailure } from "../features/search/busines
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
-import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
@@ -344,7 +344,9 @@ export function SearchPage({
   const [selectedActionKey, setSelectedActionKey] = useState<string | null>(null);
   const [applicableStandardInput, setApplicableStandardInput] = useState("");
   const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
-  const createInspectionCaseInFlight = useRef<object | null>(null);
+  // Keep the submitted standard only while an unverified create is fenced;
+  // identity is access + Site/GxP/line + optional source Case, never history UI order.
+  const reassessmentSubmittedDrafts = useRef(new Map<string, string>());
   const [createInspectionCaseError, setCreateInspectionCaseError] = useState<string | null>(null);
   const [reassessmentIntent, setReassessmentIntent] = useState<{
     context: string | null; historyId: string | null; sourceCaseId: string | null; sourceReference: string | null;
@@ -672,6 +674,18 @@ export function SearchPage({
   const reassessmentDialogOpen = selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction
     && reassessmentIntent !== null && reassessmentIntent.context === selectedContext
     && reassessmentIntent.historyId === (selectedHistory?.id ?? null);
+  const reassessmentOperationKey = selectedResult && reassessmentIntent ? JSON.stringify([
+    "reassessment.create", accessGeneration, selectedResult.site_id, selectedContext, reassessmentIntent.sourceCaseId,
+  ]) : null;
+  const subscribeReassessment = useCallback((notify: () => void) => facilityCommandRegistry.subscribe(notify), [facilityCommandRegistry]);
+  const reassessmentSnapshot = useCallback(
+    () => reassessmentOperationKey ? facilityCommandRegistry.state(reassessmentOperationKey) : "idle",
+    [facilityCommandRegistry, reassessmentOperationKey],
+  );
+  // An old POST may settle after A→B→A without the old owner's setState.
+  // Subscribe to the scoped command registry so this visible draft still
+  // switches from pending to review/released on the correct Case.
+  const reassessmentPhase = useSyncExternalStore(subscribeReassessment, reassessmentSnapshot, reassessmentSnapshot);
   const createChangeRequestAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_change_request") ?? null;
   const changeRequestDialogOpen =
@@ -791,7 +805,7 @@ export function SearchPage({
   }
 
   function closeReassessmentDialog() {
-    if (createInspectionCasePending) {
+    if (createInspectionCasePending || reassessmentPhase !== "idle") {
       return;
     }
     resetCreateInspectionCaseState();
@@ -1507,14 +1521,14 @@ export function SearchPage({
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !createInspectionCasePending) {
+      if (event.key === "Escape" && !createInspectionCasePending && reassessmentPhase === "idle") {
         event.preventDefault();
         closeReassessmentDialog();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [createInspectionCasePending, reassessmentDialogOpen]);
+  }, [createInspectionCasePending, reassessmentDialogOpen, reassessmentPhase]);
 
   function resetDependentContext() {
     setSearchPageRequest({ context: "", offset: 0 });
@@ -1617,13 +1631,14 @@ export function SearchPage({
   }
 
   async function refreshWorkspaceAfterCreate(createdCaseId: string, operationOwner: typeof caseOperationOwner.current) {
-    if (!isCurrentCaseOperation(operationOwner)) return;
+    if (!isCurrentCaseOperation(operationOwner)) return null;
     if (committedContextRef.current === selectedContext) resetCertificateWorkspaceState();
     const payload = await refreshSelectedFacilityWorkspace(createdCaseId, operationOwner);
-    if (payload) {
-      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
-      setActiveTab(DEFAULT_EVENT_TAB);
-    }
+    // A returned list is not evidence of creation unless it contains the exact new Case.
+    if (!payload?.history.some(row => row.id === createdCaseId && row.source_type === "case")) return null;
+    setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
+    setActiveTab(DEFAULT_EVENT_TAB);
+    return payload;
   }
 
   async function refreshSelectedChangeRequestWorkspace(changeRequestId: string, operationOwner: typeof caseOperationOwner.current) {
@@ -2435,36 +2450,56 @@ export function SearchPage({
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const operationOwner = caseOperationOwner.current;
-    if (!reassessmentDialogOpen || !reassessmentIntent || !selectedResult || !workspace || createReassessmentAction?.readiness_status !== "available" || createInspectionCaseInFlight.current === operationOwner) {
-      return;
-    }
-    createInspectionCaseInFlight.current = operationOwner;
+    const key = reassessmentOperationKey;
+    if (!reassessmentDialogOpen || !reassessmentIntent || !selectedResult || !workspace
+      || createReassessmentAction?.readiness_status !== "available" || !key
+      || facilityCommandRegistry.state(key) !== "idle") return;
+    const command = facilityCommandRegistry.acquire(key);
+    if (!command) return;
+    const submittedStandard = applicableStandardInput.trim();
+    reassessmentSubmittedDrafts.current.set(key, submittedStandard);
     setCreateInspectionCasePending(true);
     setCreateInspectionCaseError(null);
+    let keepReview = false;
+    let createdCaseId: string | null = null;
     try {
-      const created = await createInspectionCase(
-        selectedResult.site_id,
-        {
-          gxp_type: selectedResult.gxp_type ?? "",
-          line_code: selectedResult.line_code ?? null,
-          production_line_id: selectedResult.production_line_id,
-          applicable_standard: applicableStandardInput.trim() || null,
-          source_case_id: reassessmentIntent.sourceCaseId,
+      await runCaseFieldMutation(
+        async () => {
+          const created = await createInspectionCase(
+            selectedResult.site_id,
+            {
+              gxp_type: selectedResult.gxp_type ?? "",
+              line_code: selectedResult.line_code ?? null,
+              production_line_id: selectedResult.production_line_id,
+              applicable_standard: submittedStandard || null,
+              source_case_id: reassessmentIntent.sourceCaseId,
+            },
+            auth,
+            useStubAuth,
+            bearerToken,
+          );
+          if (!created.case_id) throw new Error("Phản hồi tạo hồ sơ không có Case UUID để đối chiếu.");
+          createdCaseId = created.case_id;
         },
-        auth,
-        useStubAuth,
-        bearerToken,
+        async () => {
+          if (!createdCaseId) return null;
+          return refreshWorkspaceAfterCreate(createdCaseId, operationOwner);
+        },
       );
-      if (!isCurrentCaseOperation(operationOwner)) return;
-      await refreshWorkspaceAfterCreate(created.case_id, operationOwner);
-      if (isCurrentContext()) resetCreateInspectionCaseState();
+      if (isCurrentCaseOperation(operationOwner)) resetCreateInspectionCaseState();
     } catch (error) {
-      if (!isCurrentCaseOperation(operationOwner)) return;
-      const message = error instanceof Error ? error.message : "Không mở được hồ sơ tái đánh giá.";
-      setCreateInspectionCaseError(message);
-      setCreateInspectionCasePending(false);
+      keepReview = error instanceof CaseFieldMutationRecoveryError;
+      if (keepReview) facilityCommandRegistry.requireReview(key, command);
+      if (isCurrentCaseOperation(operationOwner)) {
+        setCreateInspectionCaseError(error instanceof Error ? error.message : "Không tạo được hồ sơ tái đánh giá.");
+        setCreateInspectionCasePending(false);
+      }
     } finally {
-      if (createInspectionCaseInFlight.current === operationOwner) createInspectionCaseInFlight.current = null;
+      if (!keepReview) {
+        facilityCommandRegistry.release(key, command);
+        reassessmentSubmittedDrafts.current.delete(key);
+      }
+      if (isCurrentCaseOperation(operationOwner)) setCreateInspectionCasePending(false);
     }
   }
 
@@ -2556,8 +2591,9 @@ export function SearchPage({
                 <input
                   aria-label="Tiêu chuẩn áp dụng"
                   disabled={createInspectionCasePending}
+                  readOnly={reassessmentPhase !== "idle"}
                   name="applicable_standard"
-                  onChange={(event) => setApplicableStandardInput(event.target.value)}
+                  onChange={(event) => { if (reassessmentPhase === "idle") setApplicableStandardInput(event.target.value); }}
                   value={applicableStandardInput}
                 />
               </label>
@@ -2566,11 +2602,12 @@ export function SearchPage({
                   {createInspectionCaseError}
                 </p>
               ) : null}
+              {reassessmentPhase === "review" ? <p className="workspace-note" role="status">Chưa xác minh kết quả tạo hồ sơ tái đánh giá. Giữ nguyên tiêu chuẩn đã gửi để sao chép và đối chiếu Case canonical; không hủy hoặc tạo lại.</p> : null}
               <div className="panel-actions reassessment-dialog-actions">
-                <button disabled={createInspectionCasePending} type="submit">
+                <button disabled={createInspectionCasePending || reassessmentPhase !== "idle" || createReassessmentAction?.readiness_status !== "available"} type="submit">
                   {createInspectionCasePending ? "Đang tạo..." : "Tạo hồ sơ tái đánh giá"}
                 </button>
-                <button disabled={createInspectionCasePending} onClick={closeReassessmentDialog} type="button">
+                <button disabled={createInspectionCasePending || reassessmentPhase !== "idle"} onClick={closeReassessmentDialog} type="button">
                   Hủy
                 </button>
               </div>
@@ -2614,11 +2651,19 @@ export function SearchPage({
               if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
                 return;
               }
-              if (actionKey === "create_reassessment_case") setReassessmentIntent(selectedActionKey === actionKey ? null : {
-                context: selectedContext, historyId: selectedHistory?.id ?? null,
-                sourceCaseId: selectedHistory?.source_type === "case" ? selectedHistory.id : null,
-                sourceReference: selectedHistory?.reference_code ?? null,
-              });
+              if (actionKey === "create_reassessment_case") {
+                if (reassessmentDialogOpen && reassessmentPhase !== "idle") return;
+                const sourceCaseId = selectedHistory?.source_type === "case" ? selectedHistory.id : null;
+                const key = JSON.stringify(["reassessment.create", accessGeneration, selectedResult?.site_id, selectedContext, sourceCaseId]);
+                if (facilityCommandRegistry.state(key) !== "idle") {
+                  setApplicableStandardInput(reassessmentSubmittedDrafts.current.get(key) ?? "");
+                }
+                setReassessmentIntent(selectedActionKey === actionKey ? null : {
+                  context: selectedContext, historyId: selectedHistory?.id ?? null,
+                  sourceCaseId,
+                  sourceReference: selectedHistory?.reference_code ?? null,
+                });
+              }
               setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
               setCreateInspectionCaseError(null);
               setCreateChangeRequestError(null);

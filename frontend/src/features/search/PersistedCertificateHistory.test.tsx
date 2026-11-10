@@ -54,6 +54,57 @@ describe("persisted certificate snapshots", () => {
     expect(screen.getByText("Chưa có trạng thái được xác nhận trong bản ghi")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+  it("compares selected and latest persisted GxP snapshots without claiming aggregate current status", () => {
+    const history: GxpCertificateVersionHistory = { ...data, versions: [
+      { ...data.versions[0], certificate_number: "GCN-MỚI", issue_date: "2026-11-09", scope_summary: "Phạm vi bổ sung",
+        scopes: [{ id: "scope-new", scope_key: "B", scope_text: "Đóng gói mới", language_code: "vi", sort_order: 0 }] },
+      { ...data.versions[1], certificate_number: "GCN-CŨ", issue_date: "2024-09-10", scope_summary: "Phạm vi trước",
+        scopes: [{ id: "scope-old", scope_key: "A", scope_text: "Sản xuất trước", language_code: "vi", sort_order: 0 }] },
+    ] };
+    render(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data: history }} />);
+    fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
+    expect(screen.queryByRole("button", { name: "So sánh với phiên bản mới nhất đã lưu" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Phiên bản đã lưu"), { target: { value: "version-old" } });
+    expect(screen.queryByRole("region", { name: "Đối chiếu phiên bản GxP đã lưu" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "So sánh với phiên bản mới nhất đã lưu" }));
+    const comparison = screen.getByRole("region", { name: "Đối chiếu phiên bản GxP đã lưu" });
+    expect(comparison).toHaveTextContent("Mới nhất đã lưu");
+    expect(comparison).toHaveTextContent("không có nghĩa là Certificate aggregate hiện hành");
+    expect(comparison).toHaveTextContent("version-old");
+    expect(comparison).toHaveTextContent("version-new");
+    expect(screen.getByRole("table", { name: /Trường có giá trị lưu khác nhau/ })).toHaveTextContent("GCN-CŨ");
+    expect(screen.getByRole("table", { name: /Trường có giá trị lưu khác nhau/ })).toHaveTextContent("GCN-MỚI");
+    expect(screen.getByRole("region", { name: "Phạm vi phiên bản đang xem" })).toHaveTextContent("scope-old");
+    expect(screen.getByRole("region", { name: "Phạm vi phiên bản mới nhất đã lưu" })).toHaveTextContent("scope-new");
+    fireEvent.click(screen.getByRole("button", { name: "Đóng đối chiếu phiên bản" }));
+    expect(screen.queryByRole("region", { name: "Đối chiếu phiên bản GxP đã lưu" })).not.toBeInTheDocument();
+  });
+
+  it("hides comparison across version selection or a replacement Certificate aggregate", () => {
+    const { rerender } = render(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data }} />);
+    fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
+    fireEvent.change(screen.getByLabelText("Phiên bản đã lưu"), { target: { value: "version-old" } });
+    fireEvent.click(screen.getByRole("button", { name: "So sánh với phiên bản mới nhất đã lưu" }));
+    expect(screen.getByRole("region", { name: "Đối chiếu phiên bản GxP đã lưu" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Phiên bản đã lưu"), { target: { value: "version-new" } });
+    expect(screen.queryByRole("region", { name: "Đối chiếu phiên bản GxP đã lưu" })).not.toBeInTheDocument();
+    rerender(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data: {
+      ...data, certificate_id: "aggregate-b", latest_version_id: "version-b",
+      versions: [{ ...data.versions[0], certificate_version_id: "version-b" }, { ...data.versions[1], certificate_version_id: "version-a" }],
+    } }} />);
+    expect(screen.queryByRole("region", { name: "Đối chiếu phiên bản GxP đã lưu" })).not.toBeInTheDocument();
+  });
+
+  it("never compares against a missing latest version UUID or a single snapshot", () => {
+    const missingLatest = { ...data, latest_version_id: "missing-latest" };
+    const { rerender } = render(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data: missingLatest }} />);
+    fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
+    fireEvent.change(screen.getByLabelText("Phiên bản đã lưu"), { target: { value: "version-old" } });
+    expect(screen.queryByRole("button", { name: /So sánh với phiên bản mới nhất/ })).not.toBeInTheDocument();
+    rerender(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data: { ...data, versions: data.versions.slice(0, 1) } }} />);
+    expect(screen.queryByRole("button", { name: /So sánh với phiên bản mới nhất/ })).not.toBeInTheDocument();
+  });
+
   it.each([0, 1])("reports %i stored versions without fabricating history", count => {
     render(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data: { ...data, versions: data.versions.slice(0, count) } }} />);
     fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));

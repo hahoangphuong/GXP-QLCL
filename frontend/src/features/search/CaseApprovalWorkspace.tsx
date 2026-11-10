@@ -76,7 +76,8 @@ function CaseApprovalEditor({
   const [parentId, setParentId] = useCaseDraftState("approval.create.parentId", "");
   const parentSelect = useRef<HTMLSelectElement>(null);
   const approvalRows = useRef(new Map<string, HTMLDivElement>());
-  const [stageFilter, setStageFilter] = useState<"all" | "PCT" | "CT">("all");
+  const [stageFilter, setStageFilter] = useCaseDraftState<"all" | "PCT" | "CT">("approval.history.stageFilter", "all");
+  const [unfinishedOnly, setUnfinishedOnly] = useCaseDraftState("approval.history.unfinishedOnly", false);
   const navigateToId = useRef<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -102,17 +103,22 @@ function CaseApprovalEditor({
     }
     return result;
   }, [submissions, pctById, caseId]);
-  const visibleSubmissions = stageFilter === "all" ? submissions : submissions.filter(item => item.stage === stageFilter);
+  const stageSubmissions = stageFilter === "all" ? submissions : submissions.filter(item => item.stage === stageFilter);
+  const visibleSubmissions = unfinishedOnly ? stageSubmissions.filter(item => item.completed_on === null) : stageSubmissions;
+  const unfinishedCount = submissions.filter(item => item.completed_on === null).length;
   useEffect(() => {
-    if (stageFilter !== "all" || !navigateToId.current) return;
+    if ((stageFilter !== "all" || unfinishedOnly) || !navigateToId.current) return;
     approvalRows.current.get(navigateToId.current)?.focus();
     navigateToId.current = null;
-  }, [stageFilter]);
+  }, [stageFilter, unfinishedOnly]);
   function navigateToApproval(id: string) {
-    if (stageFilter === "all") approvalRows.current.get(id)?.focus();
+    // Related records may be hidden by either filter. Restore the full
+    // canonical history before focusing by UUID; never infer row position.
+    if (stageFilter === "all" && !unfinishedOnly) approvalRows.current.get(id)?.focus();
     else {
-      setStageFilter("all");
       navigateToId.current = id;
+      setStageFilter("all");
+      setUnfinishedOnly(false);
     }
   }
   const hasSelectedParent = completedPct.some((item) => item.approval_submission_id === parentId);
@@ -184,6 +190,11 @@ function CaseApprovalEditor({
         {stage === "all" ? `Tất cả (${submissions.length})` : `${stage} (${submissions.filter(item => item.stage === stage).length})`}
       </button>)}
     </div>
+    <div className="panel-actions" role="group" aria-label="Lọc tiến độ trình phê duyệt">
+      <button type="button" className={!unfinishedOnly ? "" : "secondary"} aria-pressed={!unfinishedOnly} onClick={() => setUnfinishedOnly(false)}>Mọi trạng thái ({stageSubmissions.length})</button>
+      <button type="button" className={unfinishedOnly ? "" : "secondary"} aria-pressed={unfinishedOnly} onClick={() => setUnfinishedOnly(true)}>Chưa hoàn tất ({stageSubmissions.filter(item => item.completed_on === null).length})</button>
+    </div>
+    {visibleSubmissions.length === 0 ? <p className="workspace-note">Không có trình phê duyệt phù hợp bộ lọc. Tổng số chưa hoàn tất trong Case: {unfinishedCount}.</p> : null}
     {visibleSubmissions.map((item) => {
       const readiness = action(`complete_approval:${item.approval_submission_id}`);
       const parent = item.stage === "CT" ? pctById.get(item.pct_submission_id ?? "") : undefined;

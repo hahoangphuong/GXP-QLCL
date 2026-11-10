@@ -30,26 +30,27 @@ function createSession() {
 
 function createCommandRegistry() {
   const commands = new Map<string, object | "review">();
-  const reviewPayloads = new Map<string, unknown>();
+  const commandPayloads = new Map<string, unknown>();
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach(listener => listener());
   return {
     state: (key: string) => commands.get(key) === "review" ? "review" : commands.has(key) ? "pending" : "idle",
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    acquire: (key: string) => {
+    acquire: (key: string, payload?: unknown) => {
       if (commands.has(key)) return null;
       const token = {};
+      if (payload !== undefined) commandPayloads.set(key, payload);
       commands.set(key, token); notify(); return token;
     },
     requireReview: (key: string, token: object, payload?: unknown) => {
       if (commands.get(key) !== token) return;
-      if (payload !== undefined) reviewPayloads.set(key, payload);
+      if (payload !== undefined) commandPayloads.set(key, payload);
       commands.set(key, "review"); notify();
     },
-    reviewPayload: (key: string) => commands.get(key) === "review" ? reviewPayloads.get(key) : undefined,
+    commandPayload: (key: string) => commands.has(key) ? commandPayloads.get(key) : undefined,
     release: (key: string, token: object) => {
       if (commands.get(key) !== token) return;
-      commands.delete(key); reviewPayloads.delete(key); notify();
+      commands.delete(key); commandPayloads.delete(key); notify();
     },
   };
 }
@@ -133,11 +134,11 @@ export function useCaseCommandLock(scope: string) {
   const subscribe = useCallback((notify: () => void) => registry.subscribe(notify), [registry]);
   const snapshot = useCallback(() => registry.state(key), [registry, key]);
   const state = useSyncExternalStore(subscribe, snapshot, snapshot);
-  const acquire = useCallback(() => registry.acquire(key), [registry, key]);
+  const acquire = useCallback((payload?: unknown) => registry.acquire(key, payload), [registry, key]);
   const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
   const requireReview = useCallback((token: object, payload?: unknown) => registry.requireReview(key, token, payload), [registry, key]);
-  const reviewPayload = useCallback(<T,>(): T | undefined => registry.reviewPayload(key) as T | undefined, [registry, key]);
-  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview, reviewPayload };
+  const commandPayload = useCallback(<T,>(): T | undefined => registry.commandPayload(key) as T | undefined, [registry, key]);
+  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview, commandPayload };
 }
 
 // Facility commands are bound to access and Site, independently of selected history.

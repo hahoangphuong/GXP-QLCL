@@ -84,10 +84,7 @@ export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: 
             <div><dt>Tiêu chuẩn</dt><dd>{item.applicable_standard ?? "Chưa có"}</dd></div>
             <div><dt>Giới hạn</dt><dd>{item.limitation_text ?? "Chưa có"}</dd></div>
             <div><dt>Nguồn thông tin</dt><dd>{item.source_description ?? "Chưa có"}</dd></div>
-            <div><dt>Case UUID</dt><dd>{item.case_id ? <><span>{item.case_id}</span>{" · "}<Link className="text-link"
-              to={`/cases/${encodeURIComponent(item.case_id)}?${new URLSearchParams({ source_certificate_id: item.certificate_id, source_site_id: item.site_id })}`}>
-                Mở Case phát hành đã liên kết
-              </Link></> : "Chưa có"}</dd></div>
+            <div><dt>Case UUID</dt><dd>{item.case_id ?? "Chưa có"}</dd></div>
           </dl>
           <h3>Phạm vi chứng nhận</h3>
           {Array.isArray(item.scopes) && item.scopes.length > 0 ? <ul>{item.scopes.map(scope => <li className="persisted-version-text" key={scope.id}>{scope.scope_text}</li>)}</ul> : <p>Chưa có phạm vi chứng nhận.</p>}

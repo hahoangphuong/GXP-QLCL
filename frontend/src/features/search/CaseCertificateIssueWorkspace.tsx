@@ -20,8 +20,16 @@ function emptyIssueDraft(): IssueDraft {
 
 type IssueIntent = { caseId: string; readiness: CertificateIssueActionReadiness };
 type SubmittedIssue = { intent: IssueIntent; draft: IssueDraft };
-function snapshotIssueDraft(draft: IssueDraft): IssueDraft {
-  return { ...draft, scopes: draft.scopes.map(scope => ({ ...scope })) };
+function submittedIssueDraft(payload: CertificateIssueRequest): IssueDraft {
+  // Capture exactly the normalized request fields sent over HTTP, not an
+  // editable pre-submit version of the Case-local dialog.
+  return {
+    certificateNumber: payload.certificate_number ?? "",
+    issueDate: payload.issue_date ?? "",
+    expiryDate: payload.expiry_date ?? "",
+    reason: payload.reason ?? "",
+    scopes: payload.scopes.map(scope => ({ ...scope })),
+  };
 }
 
 function CertificateIssueDialog({ caseId, readiness, saveAvailable, closeAvailable, draft, setDraft, onClose, onIssue }: {
@@ -165,7 +173,7 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
   }, [caseId, setIntent]);
   async function issueOwned(payload: CertificateIssueRequest) {
     if (!visibleIntent) throw new CaseFieldMutationRecoveryError("Thiếu ngữ cảnh cấp chứng nhận đã xác minh.");
-    const command = commandLock.acquire({ intent: visibleIntent, draft: snapshotIssueDraft(draft) } satisfies SubmittedIssue);
+    const command = commandLock.acquire({ intent: visibleIntent, draft: submittedIssueDraft(payload) } satisfies SubmittedIssue);
     if (!command) throw new CaseFieldMutationRecoveryError("Chưa xác minh kết quả cấp chứng nhận trước; không gửi lại.");
     try {
       await onIssue(payload);

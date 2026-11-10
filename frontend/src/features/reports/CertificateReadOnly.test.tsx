@@ -3,11 +3,11 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
-import { getGxpCertificateDetail } from "../../lib/api";
+import { getGxpCertificateDetail, getGxpCertificateVersionHistory } from "../../lib/api";
 import type { GxpCertificateDetail } from "../../types";
 import { ReportRecordDetail } from "./ReportRecordDetail";
 
-vi.mock("../../lib/api", () => ({ getGxpCertificateDetail: vi.fn(), getChangeRequestWorkspace: vi.fn() }));
+vi.mock("../../lib/api", () => ({ getGxpCertificateDetail: vi.fn(), getGxpCertificateVersionHistory: vi.fn(), getChangeRequestWorkspace: vi.fn() }));
 const access: ApiAccess = { auth: { username: "reader", role: "reader" }, useStubAuth: true, bearerToken: null, canLoadSecureApi: true, accessGeneration: 1 };
 function certificate(id: string, type = "GSP"): GxpCertificateDetail {
   return { certificate_id: id, row_version: 1, site_id: "site-a", case_id: null, certificate_type: type,
@@ -22,7 +22,13 @@ function Controls() { const nav = useNavigate(); return <><button onClick={() =>
 function mount(override = access, path = "/reports/certificates/A?site_id=site-a") {
   return render(<MemoryRouter initialEntries={[path]}><Controls /><Routes><Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={override} kind="certificates" />} /><Route path="/search" element={<p>SEARCH-RAIL</p>} /></Routes></MemoryRouter>);
 }
-beforeEach(() => { vi.mocked(getGxpCertificateDetail).mockReset(); });
+beforeEach(() => {
+  vi.mocked(getGxpCertificateDetail).mockReset();
+  vi.mocked(getGxpCertificateVersionHistory).mockReset();
+  // These legacy identity/owner tests do not supply persisted history. A
+  // separate authorized history GET may return 404 without changing detail.
+  vi.mocked(getGxpCertificateVersionHistory).mockRejectedValue({ status: 404 });
+});
 describe("read-only certificate identity", () => {
   it.each(["GSP", "GDP", "OTHER"])("opens %s without a mutation rail and links exact metadata", async type => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue(certificate("A", type));

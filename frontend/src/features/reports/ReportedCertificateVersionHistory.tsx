@@ -18,7 +18,7 @@ export function ReportedCertificateVersionHistory({ detail, access }: {
     history.data.certificate_id !== detail.certificate_id
     || history.data.site_id !== detail.site_id
     || history.data.certificate_type !== detail.certificate_type
-    || (detail.case_id !== null && history.data.case_id !== detail.case_id)
+    || (detail.case_id !== undefined && history.data.case_id !== detail.case_id)
   )) {
     return <p role="alert">Lịch sử phiên bản không khớp Certificate, Site, GxP hoặc Case canonical đang xem.</p>;
   }

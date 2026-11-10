@@ -15,6 +15,7 @@ import type {
 } from "../../types";
 import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
+import { CapaCycleComparison } from "./CapaCycleComparison";
 
 type CycleDraft = {
   incoming_reference: string;
@@ -460,6 +461,8 @@ export function CaseRemediationWorkspace({
           />
         )}
       </section>
+
+      <CapaCycleComparison key={caseWorkspace.case_summary.id} cycles={cycles} />
 
       {commandLock.requiresReview || createLock.requiresReview ? <p className="form-error" role="alert">Chưa thể xác minh kết quả thao tác. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra.</p> : null}
 

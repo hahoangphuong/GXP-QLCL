@@ -138,7 +138,7 @@ describe("registration presentation preserves existing editor owners", () => {
     const refreshed = { ...workspace, processing: { ...workspace.processing, row_version: 8, assessment_result: "remote result" } };
     rerender(registration(refreshed, vi.fn(), save));
     fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
-    expect(screen.getByLabelText("Kết quả thẩm định")).toBeDisabled();
+    expect(screen.getByLabelText("Kết quả thẩm định")).toHaveAttribute("readonly");
     expect(screen.getByRole("button", { name: "Hủy sửa Kết quả thẩm định" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
     expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: 7, assessment_result: "unsaved result" });
@@ -161,7 +161,8 @@ it("keeps an uncertain assessment locked across Case switches", async () => {
   await screen.findByText(/Chưa xác minh kết quả lưu/);
   view.rerender(editor("B"));
   view.rerender(editor("A"));
-  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+  expect(screen.getByLabelText("Kết quả thẩm định")).toHaveAttribute("readonly");
+  expect(screen.getByRole("button", { name: "Hủy sửa Kết quả thẩm định" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" })).toBeDisabled();
   expect(save).toHaveBeenCalledOnce();
 });

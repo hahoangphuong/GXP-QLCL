@@ -4650,6 +4650,57 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
 
+  it("reconciles master state from canonical search after a verified Case close, without reload or duplicate transition", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [buildSearchResult({ current_state: "awaiting_certificate_decision" })], total_count: 1, offset: 0, limit: 100 })
+      .mockResolvedValue({ items: [buildSearchResult({ current_state: "closed" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const original = buildCaseWorkspace({
+      transition_actions: [{
+        action_key: "transition:closed", label: "Đã đóng hồ sơ", target_state: "closed",
+        available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"],
+      }],
+    });
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(original)
+      .mockResolvedValue({ ...original, case_summary: { ...original.case_summary, state: "closed", row_version: 9 }, transition_actions: [] });
+    const { container } = renderApp(["/search?gxp_type=GMP"]);
+    await screen.findByText("HS-001");
+    const table = container.querySelector(".facility-table")!;
+    const before = table.querySelector("tbody tr")?.textContent;
+    fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Đã đóng hồ sơ" }));
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(table.querySelector("tbody tr")?.textContent).not.toBe(before));
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    await flushSearchUrlSync();
+  });
+
+  it("does not reconcile master after a definitive rejected Case transition", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const original = buildCaseWorkspace({
+      transition_actions: [{
+        action_key: "transition:rejected", label: "Rejected transition", target_state: "closed",
+        available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"],
+      }],
+    });
+    apiMocks.getCaseWorkspace.mockResolvedValue(original);
+    apiMocks.transitionCase.mockRejectedValue(buildApiError("Not permitted.", 403));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Rejected transition" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not permitted.");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledOnce();
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    await flushSearchUrlSync();
+  });
+
   it("refreshes the selected case and facility exactly once after a transition 409 without retrying", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

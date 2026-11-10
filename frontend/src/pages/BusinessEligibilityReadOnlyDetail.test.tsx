@@ -102,6 +102,43 @@ describe("read-only business eligibility detail", () => {
     expect(screen.queryByRole("button", { name: /Cấp|Lưu|Sửa|Ban hành|Tải/ })).not.toBeInTheDocument();
   });
 
+  it("returns from a verified linked eligibility Certificate to the originating Change Request", async () => {
+    const changeId = "99999999-9999-4999-8999-999999999999";
+    render(<MemoryRouter initialEntries={[{
+      pathname: `/certificates/business-eligibility/${idA}`,
+      search: `?site_id=${site}`,
+      state: { relatedChangeRequest: { id: changeId, siteId: site } },
+    }]}><Routes>
+      <Route path="/certificates/business-eligibility/:eligibilityId"
+        element={<BusinessEligibilityReadOnlyDetail access={access} />} />
+    </Routes></MemoryRouter>);
+    expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Quay lại yêu cầu thay đổi" }))
+      .toHaveAttribute("href", `/reports/change-requests/${changeId}`);
+    expect(getBusinessEligibilityDetail).toHaveBeenCalledOnce();
+  });
+
+  it("does not trust a wrong-Site or malformed Change Request return hint", async () => {
+    for (const relatedChangeRequest of [
+      { id: "99999999-9999-4999-8999-999999999999", siteId: otherSite },
+      { id: "not-canonical", siteId: site },
+    ]) {
+      const view = render(<MemoryRouter initialEntries={[{
+        pathname: `/certificates/business-eligibility/${idA}`,
+        search: `?site_id=${site}`,
+        state: { relatedChangeRequest },
+      }]}><Routes>
+        <Route path="/certificates/business-eligibility/:eligibilityId"
+          element={<BusinessEligibilityReadOnlyDetail access={access} />} />
+      </Routes></MemoryRouter>);
+      expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Quay lại yêu cầu thay đổi" })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Quay lại danh sách Site" }))
+        .toHaveAttribute("href", `/documents?kind=business_eligibility&site_id=${site}`);
+      view.unmount();
+    }
+  });
+
   it("displays persisted version snapshots and stored FK links without treating them as verified source", async () => {
     mount();
     expect(await screen.findByText("Cơ sở Minh chứng")).toBeInTheDocument();

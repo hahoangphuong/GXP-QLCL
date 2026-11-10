@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory, getBusinessEligibilityGxpSourceEvidence } from "../lib/api";
 import type { BusinessEligibilityDetail, BusinessEligibilityVersionHistory, BusinessEligibilityGxpSourceEvidence } from "../types";
@@ -13,6 +13,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Result = { owner: object; detail: BusinessEligibilityDetail | null; error: string | null };
 type HistoryResult = { owner: object; state: HistoryState<BusinessEligibilityVersionHistory> };
 type SourceResult = { owner: object; state: EligibilitySourceState };
+
+// A source-return hint is navigation metadata, never evidence of ownership.
+// Only an independently verified canonical Certificate Site can enable it.
+function relatedChangeRequestPath(state: unknown, certificateSiteId: string): string | null {
+  if (!state || typeof state !== "object" || !("relatedChangeRequest" in state)) return null;
+  const related = state.relatedChangeRequest;
+  if (!related || typeof related !== "object" || !("id" in related) || !("siteId" in related)) return null;
+  if (typeof related.id !== "string" || !UUID.test(related.id)
+    || typeof related.siteId !== "string" || related.siteId.toLowerCase() !== certificateSiteId.toLowerCase()) return null;
+  return `/reports/change-requests/${encodeURIComponent(related.id)}`;
+}
 
 function validateOriginalExcelEvidence(value: BusinessEligibilityGxpSourceEvidence, certificateId: string): void {
   if (!value || value.business_eligibility_certificate_id !== certificateId
@@ -76,6 +87,7 @@ function validateDetail(detail: BusinessEligibilityDetail, id: string, expectedS
 /** Authorized, metadata-only business record detail. Never renders mutation actions. */
 export function BusinessEligibilityReadOnlyDetail({ access }: { access: ApiAccess }) {
   const { eligibilityId } = useParams();
+  const location = useLocation();
   const [params] = useSearchParams();
   const siteHint = params.get("site_id");
   const invalidId = !eligibilityId || !UUID.test(eligibilityId);
@@ -89,6 +101,7 @@ export function BusinessEligibilityReadOnlyDetail({ access }: { access: ApiAcces
     ? historyResult.state
     : { status: "loading" as const };
   const detail = current?.detail;
+  const relatedReturn = detail ? relatedChangeRequestPath(location.state, detail.site_id) : null;
   const [sourceResult, setSourceResult] = useState<SourceResult | null>(null);
   const sourceEvidence: EligibilitySourceState = sourceResult?.owner === owner
     ? sourceResult.state : { status: "loading" };
@@ -148,7 +161,7 @@ export function BusinessEligibilityReadOnlyDetail({ access }: { access: ApiAcces
   return <section className="page-section">
     <header className="section-title"><div><p className="eyebrow">Chứng nhận / Chỉ đọc</p>
       <h2>Giấy chứng nhận đủ điều kiện kinh doanh dược</h2></div>
-      <Link className="text-link" to={backLink}>Quay lại danh sách Site</Link>
+      <Link className="text-link" to={relatedReturn ?? backLink}>{relatedReturn ? "Quay lại yêu cầu thay đổi" : "Quay lại danh sách Site"}</Link>
     </header>
     {invalidId || invalidSite ? <p role="alert">UUID chứng nhận hoặc Site trong đường dẫn không hợp lệ.</p>
       : !current ? <p role="status">Đang xác minh chi tiết giấy đủ điều kiện...</p>

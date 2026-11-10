@@ -32,7 +32,8 @@ function ArtifactTable({ title, items, siteId, changeRequestId }: { title: strin
             <><Link className="text-link" to={`/reports/certificates/${encodeURIComponent(item.artifact_id)}?${new URLSearchParams({ site_id: siteId })}`} state={{ relatedChangeRequest: { id: changeRequestId, siteId } }}>{item.artifact_id}</Link>
               {" · "}<Link className="text-link" to={"/documents/certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>
             : item.artifact_kind === "business_eligibility_certificate" && item.artifact_id ?
-              <><span>{item.artifact_id}</span>{" · "}
+              <><Link className="text-link" to={`/certificates/business-eligibility/${encodeURIComponent(item.artifact_id)}?${new URLSearchParams({ site_id: siteId })}`}
+                state={{ relatedChangeRequest: { id: changeRequestId, siteId } }}>{item.artifact_id}</Link>{" · "}
                 <Link className="text-link" to={"/documents/business-eligibility-certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>
               : <span>Không hỗ trợ mở trực tiếp</span>}</td>
           <td>{item.source_affected_artifact_id ?? "Chưa có"}</td>

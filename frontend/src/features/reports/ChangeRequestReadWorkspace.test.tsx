@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace } from "../../lib/api";
@@ -74,8 +74,8 @@ describe("full canonical Change Request read workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Xử lý và chứng nhận" }));
     expect(screen.getByText("123/QĐ")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid?site_id=site-uuid");
-    expect(screen.getByText("ddk-uuid")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "ddk-uuid" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "ddk-uuid" }))
+      .toHaveAttribute("href", "/certificates/business-eligibility/ddk-uuid?site_id=site-uuid");
     expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid?site_id=site-uuid");
     expect(screen.getAllByRole("link", { name: "Tài liệu" }).map(link => link.getAttribute("href")))
       .toEqual(["/documents/certificates/gcn-uuid", "/documents/business-eligibility-certificates/ddk-uuid"]);
@@ -83,6 +83,23 @@ describe("full canonical Change Request read workspace", () => {
     expect(screen.getByText("quyet-dinh.pdf")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Xem checklist và phiên bản" }))
       .toHaveAttribute("href", "/documents/change-requests/cr-uuid");
+  });
+
+  it("passes only the verified Change Request and Site as an eligibility return hint", async () => {
+    function Destination() {
+      const location = useLocation();
+      return <pre data-testid="navigation-state">{JSON.stringify(location.state)}</pre>;
+    }
+    render(<MemoryRouter initialEntries={["/reports/change-requests/cr-uuid"]}><Routes>
+      <Route path="/reports/change-requests/:changeRequestId" element={<ChangeRequestReadWorkspace access={access} />} />
+      <Route path="/certificates/business-eligibility/:eligibilityId" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    await screen.findByText("site-uuid");
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý và chứng nhận" }));
+    fireEvent.click(screen.getByRole("link", { name: "ddk-uuid" }));
+    expect(screen.getByTestId("navigation-state"))
+      .toHaveTextContent('"relatedChangeRequest":{"id":"cr-uuid","siteId":"site-uuid"}');
+    expect(getChangeRequestWorkspace).toHaveBeenCalledOnce();
   });
 
   it("does not invent an eligibility metadata link for an unknown artifact kind", async () => {

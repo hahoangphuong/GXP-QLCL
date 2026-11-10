@@ -1,6 +1,6 @@
 import { useCaseDraftState } from "./CaseDraftSession";
 import { caseReadinessReason } from "./caseReadinessReason";
-import { useContext, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { formatCompactDate } from "../../lib/presentation";
 import { ApprovalMutationContext } from "./approvalMutationRecovery";
@@ -75,6 +75,9 @@ function CaseApprovalEditor({
   const [createReason, setCreateReason] = useCaseDraftState("approval.create.createReason", "");
   const [parentId, setParentId] = useCaseDraftState("approval.create.parentId", "");
   const parentSelect = useRef<HTMLSelectElement>(null);
+  const approvalRows = useRef(new Map<string, HTMLDivElement>());
+  const [stageFilter, setStageFilter] = useState<"all" | "PCT" | "CT">("all");
+  const [navigateToId, setNavigateToId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
   const { pending: ownerPending, requiresReview } = useContext(ApprovalMutationContext);
@@ -87,6 +90,30 @@ function CaseApprovalEditor({
     [caseWorkspace.inspection.approval_submissions],
   );
   const completedPct = submissions.filter((item) => item.stage === "PCT" && item.completed_on !== null);
+  const pctById = useMemo(() => new Map(submissions.filter(item => item.stage === "PCT").map(item => [item.approval_submission_id, item])), [submissions]);
+  const ctByParent = useMemo(() => {
+    const result = new Map<string, Submission[]>();
+    for (const ct of submissions) {
+      if (ct.stage !== "CT" || !ct.pct_submission_id || !pctById.has(ct.pct_submission_id)) continue;
+      const children = result.get(ct.pct_submission_id) ?? [];
+      children.push(ct);
+      result.set(ct.pct_submission_id, children);
+    }
+    return result;
+  }, [submissions, pctById]);
+  const visibleSubmissions = stageFilter === "all" ? submissions : submissions.filter(item => item.stage === stageFilter);
+  useEffect(() => {
+    if (!navigateToId) return;
+    approvalRows.current.get(navigateToId)?.focus();
+    setNavigateToId(null);
+  }, [navigateToId, stageFilter]);
+  function navigateToApproval(id: string) {
+    if (stageFilter === "all") approvalRows.current.get(id)?.focus();
+    else {
+      setStageFilter("all");
+      setNavigateToId(id);
+    }
+  }
   const hasSelectedParent = completedPct.some((item) => item.approval_submission_id === parentId);
   const submittedTimeRequiresDate = Boolean(submittedTime && !submittedOn);
   const action = (key: string) => (caseWorkspace.inspection.approval_actions ?? []).find((item) => item.action_key === key);
@@ -150,10 +177,19 @@ function CaseApprovalEditor({
       return readiness && !readiness.available && readiness.reason_code ? <p className="workspace-note" key={stage}>Tạo trình {stage.toUpperCase()}: {caseReadinessReason(readiness.reason_code)}</p> : null;
     })}
     {action("create_approval_ct")?.available && completedPct.length > 0 && !hasSelectedParent ? <p className="workspace-note">Chọn một trình PCT đã hoàn tất để tạo trình CT.</p> : null}
-    {submissions.map((item) => {
+    <div className="panel-actions" role="group" aria-label="Lọc lịch sử trình phê duyệt">
+      {(["all", "PCT", "CT"] as const).map(stage => <button key={stage} type="button" className={stageFilter === stage ? "" : "secondary"}
+        aria-pressed={stageFilter === stage} onClick={() => setStageFilter(stage)}>
+        {stage === "all" ? `Tất cả (${submissions.length})` : `${stage} (${submissions.filter(item => item.stage === stage).length})`}
+      </button>)}
+    </div>
+    {visibleSubmissions.map((item) => {
       const readiness = action(`complete_approval:${item.approval_submission_id}`);
-      const parent = item.stage === "CT" ? completedPct.find((pct) => pct.approval_submission_id === item.pct_submission_id) : undefined;
-      return <div className="inspection-team-member" key={item.approval_submission_id}>
+      const parent = item.stage === "CT" ? pctById.get(item.pct_submission_id ?? "") : undefined;
+      const relatedCt = item.stage === "PCT" ? (ctByParent.get(item.approval_submission_id) ?? []) : [];
+      return <div className="inspection-team-member" key={item.approval_submission_id} tabIndex={-1}
+        ref={node => { if (node) approvalRows.current.set(item.approval_submission_id, node); else approvalRows.current.delete(item.approval_submission_id); }}
+        aria-label={`${item.stage} lần ${item.round_no} — ${item.approval_submission_id}`}>
         <strong>{item.stage} lần {item.round_no}</strong>
         <span>{item.reference ?? "Chưa có tham chiếu"}</span>
         <span>Ngày trình: {formatCompactDate(item.submitted_on)}</span>
@@ -161,6 +197,14 @@ function CaseApprovalEditor({
         <span>Ngày hoàn tất: {formatCompactDate(item.completed_on)}</span>
         <span>Giờ hoàn tất: {item.completed_time ?? "Chưa có"}</span>
         {item.stage === "CT" ? <span>PCT: {parent ? `lần ${parent.round_no}${parent.reference ? ` — ${parent.reference}` : ""}` : item.pct_submission_id ?? "Chưa có"}</span> : null}
+        {parent ? <button type="button" className="secondary" onClick={() => navigateToApproval(parent.approval_submission_id)}>
+          Xem PCT lần {parent.round_no} của CT lần {item.round_no}
+        </button> : null}
+        {item.stage === "PCT" ? <div aria-label={`Các CT của PCT lần ${item.round_no}`}>
+          <span>CT liên kết: {relatedCt.length}</span>
+          {relatedCt.map(ct => <button className="secondary" key={ct.approval_submission_id} type="button"
+            onClick={() => navigateToApproval(ct.approval_submission_id)}>Xem CT lần {ct.round_no} của PCT lần {item.round_no}</button>)}
+        </div> : null}
         {item.stage === "PCT" && item.completed_on !== null && action("create_approval_ct")?.available ? (
           <button disabled={pending !== null || ownerPending || requiresReview} onClick={() => { if (requiresReview) return; setParentId(item.approval_submission_id); parentSelect.current?.focus(); }} type="button">
             Dùng PCT lần {item.round_no} để tạo trình CT

@@ -120,10 +120,14 @@ function DocumentChecklistSection({
   );
 }
 
-function LinkedGxpCertificates({
+export function LinkedGxpCertificates({
   items,
+  openableCertificateIds = [],
+  onOpenCertificate,
 }: {
   items: GxpCertificateDetail[];
+  openableCertificateIds?: string[];
+  onOpenCertificate?: (certificateId: string) => void;
 }) {
   const [selectedCertificateId, setSelectedCertificateId] = useState<string | null>(items[0]?.certificate_id ?? null);
 
@@ -188,7 +192,16 @@ function LinkedGxpCertificates({
       </section>
 
       <section className="panel panel-tight certificate-detail-panel">
-        {selectedCertificate ? <GxpCertificateDetailFields detail={selectedCertificate} presentation="case" /> : null}
+        {selectedCertificate ? <>
+          <GxpCertificateDetailFields detail={selectedCertificate} presentation="case" />
+          {onOpenCertificate && openableCertificateIds.includes(selectedCertificate.certificate_id) ? (
+            <div className="panel-actions">
+              <button type="button" className="secondary" onClick={() => onOpenCertificate(selectedCertificate.certificate_id)}>
+                Xem chứng nhận trong sổ GxP
+              </button>
+            </div>
+          ) : null}
+        </> : null}
       </section>
     </div>
   );
@@ -303,6 +316,8 @@ function renderCaseStepContent(
   inspectionPlanReadiness: CaseInspectionPlanReadinessState | null,
   onRetryInspectionPlanReadiness: () => void,
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>,
+  openableCertificateIds: string[],
+  onOpenLinkedCertificate?: (certificateId: string) => void,
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>,
 ) {
   const documentItems = caseWorkspace.contextual_document_actions.filter((item) => {
@@ -428,7 +443,11 @@ function renderCaseStepContent(
     return (
       <div className="case-gxp-workflow-layout">
         <div className="case-gxp-certificate-pane">
-          <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
+          <LinkedGxpCertificates
+            items={caseWorkspace.linked_gxp_certificates}
+            openableCertificateIds={openableCertificateIds}
+            onOpenCertificate={onOpenLinkedCertificate}
+          />
           <CaseCertificateIssueWorkspace
             caseId={caseWorkspace.case_summary.id}
             onIssue={onIssueCertificate}
@@ -509,6 +528,8 @@ export function EventWorkspace({
   inspectionPlanReadiness,
   onRetryInspectionPlanReadiness,
   onIssueCertificate,
+  openableCertificateIds = [],
+  onOpenLinkedCertificate,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
   onCreateCapaCycle,
@@ -551,6 +572,8 @@ export function EventWorkspace({
   inspectionPlanReadiness: CaseInspectionPlanReadinessState | null;
   onRetryInspectionPlanReadiness: () => void;
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
+  openableCertificateIds?: string[];
+  onOpenLinkedCertificate?: (certificateId: string) => void;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>;
@@ -669,6 +692,8 @@ export function EventWorkspace({
             inspectionPlanReadiness,
             onRetryInspectionPlanReadiness,
             onIssueCertificate,
+            openableCertificateIds,
+            onOpenLinkedCertificate,
             onFinalizeInspectionOutcome,
           )
         ) : (

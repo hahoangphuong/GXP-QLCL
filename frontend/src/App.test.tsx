@@ -1795,7 +1795,13 @@ describe("App Slice A.4 search workspace", () => {
     });
     apiMocks.getFacilityWorkspace
       .mockResolvedValueOnce(reassessmentReadyWorkspace)
-      .mockResolvedValueOnce(reassessmentReadyWorkspace);
+      .mockResolvedValueOnce(buildWorkspace({
+        ...reassessmentReadyWorkspace,
+        history: [{
+          id: "case-pending", source_type: "case", reference_code: null, event_type: "Tái",
+          gxp_type: "GMP", standard: null, occurred_on: null, state: "draft",
+        }, ...reassessmentReadyWorkspace.history],
+      }));
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
     let releaseCreate: () => void = () => {};
     apiMocks.createInspectionCase.mockImplementation(
@@ -1869,7 +1875,7 @@ describe("App Slice A.4 search workspace", () => {
       }),
     );
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
-    apiMocks.createInspectionCase.mockRejectedValue(new Error("An open inspection case already exists for the selected facility/GxP/line context."));
+    apiMocks.createInspectionCase.mockRejectedValue(Object.assign(new Error("An open inspection case already exists for the selected facility/GxP/line context."), { status: 409 }));
 
     renderApp(["/search"]);
 
@@ -1888,6 +1894,54 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getAllByText("1.1A").length).toBeGreaterThan(0);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["accepted_without_canonical", "unknown_transport"] as const)(
+    "never retries reassessment Case creation after %s and preserves the submitted standard",
+    async (failureMode) => {
+      apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+      apiMocks.searchFacilities.mockResolvedValue({
+        items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100,
+      });
+      const ready = buildWorkspace({
+        action_readiness: buildWorkspace().action_readiness.map(item => item.action_key === "create_reassessment_case"
+          ? { ...item, readiness_status: "available", required_permissions: ["case.edit"] } : item),
+      });
+      // The second GET may succeed but must contain the exact newly-created Case UUID.
+      apiMocks.getFacilityWorkspace.mockResolvedValue(ready);
+      apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+      if (failureMode === "accepted_without_canonical") {
+        apiMocks.createInspectionCase.mockResolvedValue({
+          case_id: "case-not-yet-visible", site_id: "site-1", gxp_type: "GMP", line_code: "A",
+          inspection_type: "Tái", applicable_standard: "WHO-GMP", state: "draft",
+          row_version: 1, legacy_inspection_id: null, legacy_inspection_code: null, audit_event_id: "audit-accepted",
+        });
+      } else {
+        apiMocks.createInspectionCase.mockRejectedValue(new TypeError("transport ended before response"));
+      }
+      renderApp(["/search"]);
+      expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled());
+      fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+      const dialog = await screen.findByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
+      const standard = within(dialog).getByRole("textbox", { name: "Tiêu chuẩn áp dụng" });
+      fireEvent.change(standard, { target: { value: "WHO-GMP" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent("Không gửi lại");
+      expect(within(dialog).getByRole("status")).toHaveTextContent("Giữ nguyên tiêu chuẩn đã gửi");
+      expect(standard).toHaveAttribute("readonly");
+      expect(standard).toHaveValue("WHO-GMP");
+      expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(dialog).toBeInTheDocument();
+      fireEvent.change(standard, { target: { value: "Mismatched repeated request" } });
+      fireEvent.submit(dialog.querySelector("form")!);
+      expect(standard).toHaveValue("WHO-GMP");
+      expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+      expect(dialog).toBeInTheDocument();
+    },
+  );
 
   it("uses the canonical GMPbb value in the vertical result rail", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
@@ -4090,7 +4144,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("tab", { name: "Thông tin chung" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it.each(["success", "failure"])("isolates reassessment %s from a new dialog after source A → B → A", async result => {
+  it.each(["success", "failure"])("fences an in-flight reassessment through source A → B → A and reconciles %s safely", async result => {
     const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "closed" }));
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -4102,17 +4156,34 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
     await screen.findByText("HS-001");
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "Original A standard" } });
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
     fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-B"));
     fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-A"));
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "New A draft" } });
-    await act(async () => { if (result === "success") resolve({ case_id: "created-from-old-A" }); else reject(buildApiError("Old create failure", 409)); });
-    expect(within(screen.getByRole("dialog")).getByLabelText("Tiêu chuẩn áp dụng")).toHaveValue("New A draft");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
+    const standard = within(dialog).getByLabelText("Tiêu chuẩn áp dụng");
+    expect(standard).toHaveValue("Original A standard");
+    expect(standard).toHaveAttribute("readonly");
+    expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+    fireEvent.change(standard, { target: { value: "New A draft" } });
+    expect(standard).toHaveValue("Original A standard");
+    await act(async () => {
+      if (result === "success") resolve({ case_id: "created-from-old-A" });
+      else reject(buildApiError("Old create rejected", 409));
+    });
+    if (result === "success") {
+      expect(await within(dialog).findByRole("status")).toHaveTextContent("Chưa xác minh kết quả tạo hồ sơ tái đánh giá");
+      expect(standard).toHaveAttribute("readonly");
+      expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeDisabled();
+    } else {
+      await waitFor(() => expect(standard).not.toHaveAttribute("readonly"));
+      fireEvent.change(standard, { target: { value: "New A draft" } });
+      expect(standard).toHaveValue("New A draft");
+    }
     expect(apiMocks.createInspectionCase).toHaveBeenCalledOnce();
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
   });
@@ -4577,6 +4648,83 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("31-08-2026")).toBeInTheDocument();
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("reconciles master state from canonical search after a verified Case close, without reload or duplicate transition", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [buildSearchResult({ current_state: "awaiting_certificate_decision" })], total_count: 1, offset: 0, limit: 100 })
+      .mockResolvedValue({ items: [buildSearchResult({ current_state: "closed" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const original = buildCaseWorkspace({
+      transition_actions: [{
+        action_key: "transition:closed", label: "Đã đóng hồ sơ", target_state: "closed",
+        available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"],
+      }],
+    });
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(original)
+      .mockResolvedValue({ ...original, case_summary: { ...original.case_summary, state: "closed", row_version: 9 }, transition_actions: [] });
+    const { container } = renderApp(["/search?gxp_type=GMP"]);
+    await screen.findByText("HS-001");
+    const table = container.querySelector(".facility-table")!;
+    const before = table.querySelector("tbody tr")?.textContent;
+    fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Đã đóng hồ sơ" }));
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(table.querySelector("tbody tr")?.textContent).not.toBe(before));
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    await flushSearchUrlSync();
+  });
+
+  it("reports canonical master refresh failure without inferring closed state or replaying Case transition", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [buildSearchResult({ current_state: "awaiting_certificate_decision" })], total_count: 1, offset: 0, limit: 100 })
+      .mockRejectedValueOnce(new Error("Canonical master unavailable"));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const original = buildCaseWorkspace({
+      transition_actions: [{
+        action_key: "transition:closed", label: "Đã đóng hồ sơ", target_state: "closed",
+        available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"],
+      }],
+    });
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(original).mockResolvedValue({
+      ...original, case_summary: { ...original.case_summary, state: "closed", row_version: 9 }, transition_actions: [],
+    });
+    const { container } = renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Đã đóng hồ sơ" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Canonical master unavailable");
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".facility-table tbody tr")?.textContent ?? "").not.toContain("Đã đóng");
+    await flushSearchUrlSync();
+  });
+
+  it("does not reconcile master after a definitive rejected Case transition", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const original = buildCaseWorkspace({
+      transition_actions: [{
+        action_key: "transition:rejected", label: "Rejected transition", target_state: "closed",
+        available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"],
+      }],
+    });
+    apiMocks.getCaseWorkspace.mockResolvedValue(original);
+    apiMocks.transitionCase.mockRejectedValue(buildApiError("Not permitted.", 403));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Rejected transition" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not permitted.");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledOnce();
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    await flushSearchUrlSync();
   });
 
   it("refreshes the selected case and facility exactly once after a transition 409 without retrying", async () => {
@@ -5247,6 +5395,46 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.promoteGxpCertificateCurrent).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled();
+    await flushSearchUrlSync();
+  });
+
+  it("refreshes the canonical master after verified GxP promotion without losing selection or replaying the write", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [buildSearchResult({ certificate_scope_summary: "Phạm vi chứng nhận cũ" })], total_count: 1, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: [buildSearchResult({ certificate_scope_summary: "Phạm vi chứng nhận mới" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const candidate = {
+      certificate_id: "cert-promote", site_id: "site-1", case_id: "case-1",
+      certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1",
+      context_match_kind: "exact_line", latest_flag: false,
+      certificate_number: "GCN-NEW", issue_date: "2026-10-01",
+      expiry_date: "2029-10-01", applicable_standard: "WHO-GMP",
+      issuing_authority: "Cục Quản lý Dược Việt Nam", status: "superseded",
+    };
+    apiMocks.listSiteGxpCertificates
+      .mockResolvedValueOnce({ items: [candidate] })
+      .mockResolvedValueOnce({ items: [{ ...candidate, latest_flag: true, status: "active" }] });
+    apiMocks.getGxpCertificateDetail
+      .mockResolvedValueOnce({
+        ...candidate, row_version: 3, facility_name: "Nhà máy A", scopes: [],
+        action_readiness: [{ action_key: "promote_current", label: "Đặt làm chứng nhận hiện hành",
+          available: true, expected_version: 3, required_permissions: ["certificate.approve"] }],
+      })
+      .mockResolvedValueOnce({ ...candidate, row_version: 4, latest_flag: true, status: "active", scopes: [], action_readiness: [] });
+    apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
+
+    const { container } = renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
+    await screen.findByRole("button", { name: "Đặt làm chứng nhận hiện hành" });
+    const master = container.querySelector(".facility-table")!;
+    expect(master.querySelector("tbody tr")?.textContent).toContain("Phạm vi chứng nhận cũ");
+    fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(master.querySelector("tbody tr")?.textContent).toContain("Phạm vi chứng nhận mới"));
+    expect(master.querySelector("tbody tr.selected")).not.toBeNull();
+    expect(apiMocks.promoteGxpCertificateCurrent).toHaveBeenCalledOnce();
+    expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2);
     await flushSearchUrlSync();
   });
 

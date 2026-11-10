@@ -1,9 +1,10 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
 import { raiseGxpCertificateVersionWriteFailure, raiseGxpCertificatePromotionFailure } from "../features/search/gxpCertificateVersionWriteRecovery";
+import { raiseBusinessEligibilityWriteFailure } from "../features/search/businessEligibilityWriteRecovery";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
-import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
@@ -301,6 +302,8 @@ export function SearchPage({
   const [changeRequestStates, setChangeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
   const [searchPageRequest, setSearchPageRequest] = useState<SearchPageRequest>({ context: "", offset: 0 });
   const [searchEpoch, setSearchEpoch] = useState(0);
+  const [masterRefreshGeneration, setMasterRefreshGeneration] = useState(0);
+  const appliedMasterRefreshGeneration = useRef(0);
   const [selectedResultKey, setSelectedResultKey] = useState<string | null>(searchParams.get("result_key"));
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
   const [pendingDeepLink, setPendingDeepLink] = useState<PendingDeepLink>(() => readPendingDeepLink(searchParams));
@@ -343,7 +346,9 @@ export function SearchPage({
   const [selectedActionKey, setSelectedActionKey] = useState<string | null>(null);
   const [applicableStandardInput, setApplicableStandardInput] = useState("");
   const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
-  const createInspectionCaseInFlight = useRef<object | null>(null);
+  // Keep the submitted standard only while an unverified create is fenced;
+  // identity is access + Site/GxP/line + optional source Case, never history UI order.
+  const reassessmentSubmittedDrafts = useRef(new Map<string, string>());
   const [createInspectionCaseError, setCreateInspectionCaseError] = useState<string | null>(null);
   const [reassessmentIntent, setReassessmentIntent] = useState<{
     context: string | null; historyId: string | null; sourceCaseId: string | null; sourceReference: string | null;
@@ -671,6 +676,18 @@ export function SearchPage({
   const reassessmentDialogOpen = selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction
     && reassessmentIntent !== null && reassessmentIntent.context === selectedContext
     && reassessmentIntent.historyId === (selectedHistory?.id ?? null);
+  const reassessmentOperationKey = selectedResult && reassessmentIntent ? JSON.stringify([
+    "reassessment.create", accessGeneration, selectedResult.site_id, selectedContext, reassessmentIntent.sourceCaseId,
+  ]) : null;
+  const subscribeReassessment = useCallback((notify: () => void) => facilityCommandRegistry.subscribe(notify), [facilityCommandRegistry]);
+  const reassessmentSnapshot = useCallback(
+    () => reassessmentOperationKey ? facilityCommandRegistry.state(reassessmentOperationKey) : "idle",
+    [facilityCommandRegistry, reassessmentOperationKey],
+  );
+  // An old POST may settle after A→B→A without the old owner's setState.
+  // Subscribe to the scoped command registry so this visible draft still
+  // switches from pending to review/released on the correct Case.
+  const reassessmentPhase = useSyncExternalStore(subscribeReassessment, reassessmentSnapshot, reassessmentSnapshot);
   const createChangeRequestAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_change_request") ?? null;
   const changeRequestDialogOpen =
@@ -790,7 +807,7 @@ export function SearchPage({
   }
 
   function closeReassessmentDialog() {
-    if (createInspectionCasePending) {
+    if (createInspectionCasePending || reassessmentPhase !== "idle") {
       return;
     }
     resetCreateInspectionCaseState();
@@ -947,8 +964,14 @@ export function SearchPage({
     const isFirstPage = resultsOffset === 0;
     const requestId = ++searchRequestSequence.current;
     const previousRequest = searchResultsRequestRef.current;
-    const baseResults = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.items : [];
-    const baseTotalCount = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.totalCount : 0;
+    // A verified Case transition invalidates the master *search*, not the
+    // selected Case/Facility workspace. Preserve filters, loaded page depth,
+    // selection and unsaved editors while replacing the rows from the API.
+    const canonicalRefresh = appliedMasterRefreshGeneration.current !== masterRefreshGeneration;
+    appliedMasterRefreshGeneration.current = masterRefreshGeneration;
+    const keepOwnedRows = previousRequest?.context === searchContext && (canonicalRefresh || !isFirstPage);
+    const baseResults = keepOwnedRows ? previousRequest.items : [];
+    const baseTotalCount = keepOwnedRows ? previousRequest.totalCount : 0;
     let cancelled = false;
     setSearchResultsRequest({
       context: searchContext,
@@ -957,8 +980,7 @@ export function SearchPage({
       items: baseResults,
       totalCount: baseTotalCount,
     });
-    void searchFacilities(
-      {
+    const searchQuery = {
         q: deferredGeneralQuery.trim() || undefined,
         facility_name: deferredFacilityName.trim() || undefined,
         certificate_scope: deferredCertificateScope.trim() || undefined,
@@ -970,16 +992,38 @@ export function SearchPage({
         certificate_expiring_within_days: certificateExpiringWithinDays ? Number(certificateExpiringWithinDays) : null,
         offset: resultsOffset,
         limit: RESULT_PAGE_SIZE,
-      },
-      auth,
-      useStubAuth,
-      bearerToken,
-    )
+      };
+    const fetchResults = async () => {
+      if (!canonicalRefresh) return searchFacilities(searchQuery, auth, useStubAuth, bearerToken);
+      // Reconcile the full loaded master window, including infinite-scroll
+      // pages. A single page would leave stale rows further down the table.
+      const originalCount = previousRequest?.context === searchContext ? previousRequest.items.length : 0;
+      const first = await searchFacilities({ ...searchQuery, offset: 0 }, auth, useStubAuth, bearerToken);
+      let items = first.items;
+      while (!cancelled && searchRequestSequence.current === requestId
+        && items.length < originalCount && items.length < first.total_count) {
+        const next = await searchFacilities({ ...searchQuery, offset: items.length }, auth, useStubAuth, bearerToken);
+        if (!next.items.length) break;
+        const combined = appendUniqueResults(items, next.items);
+        if (combined.length === items.length) break;
+        items = combined;
+      }
+      return { ...first, items };
+    };
+    void fetchResults()
       .then((payload) => {
         if (cancelled || searchRequestSequence.current !== requestId) {
           return;
         }
-        const nextResults = isFirstPage ? payload.items : appendUniqueResults(baseResults, payload.items);
+        const nextResults = canonicalRefresh || isFirstPage ? payload.items : appendUniqueResults(baseResults, payload.items);
+        if (canonicalRefresh) {
+          // Explicit deep-link targets must not shadow fresher canonical rows.
+          setResolvedDeepLinkResult(current => {
+            if (!current || current.accessGeneration !== accessGeneration) return current;
+            const matched = nextResults.find(item => item.result_key === current.result.result_key);
+            return matched ? { accessGeneration, result: matched } : current;
+          });
+        }
         setSearchResultsRequest({
           context: searchContext,
           requestId,
@@ -1059,6 +1103,7 @@ export function SearchPage({
     canLoadSecureApi,
     resultsOffset,
     searchContext,
+    masterRefreshGeneration,
     useStubAuth,
   ]);
 
@@ -1506,14 +1551,14 @@ export function SearchPage({
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !createInspectionCasePending) {
+      if (event.key === "Escape" && !createInspectionCasePending && reassessmentPhase === "idle") {
         event.preventDefault();
         closeReassessmentDialog();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [createInspectionCasePending, reassessmentDialogOpen]);
+  }, [createInspectionCasePending, reassessmentDialogOpen, reassessmentPhase]);
 
   function resetDependentContext() {
     setSearchPageRequest({ context: "", offset: 0 });
@@ -1616,13 +1661,14 @@ export function SearchPage({
   }
 
   async function refreshWorkspaceAfterCreate(createdCaseId: string, operationOwner: typeof caseOperationOwner.current) {
-    if (!isCurrentCaseOperation(operationOwner)) return;
+    if (!isCurrentCaseOperation(operationOwner)) return null;
     if (committedContextRef.current === selectedContext) resetCertificateWorkspaceState();
     const payload = await refreshSelectedFacilityWorkspace(createdCaseId, operationOwner);
-    if (payload) {
-      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
-      setActiveTab(DEFAULT_EVENT_TAB);
-    }
+    // A returned list is not evidence of creation unless it contains the exact new Case.
+    if (!payload?.history.some(row => row.id === createdCaseId && row.source_type === "case")) return null;
+    setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
+    setActiveTab(DEFAULT_EVENT_TAB);
+    return payload;
   }
 
   async function refreshSelectedChangeRequestWorkspace(changeRequestId: string, operationOwner: typeof caseOperationOwner.current) {
@@ -1936,6 +1982,10 @@ export function SearchPage({
       () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
     );
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
+    // Only the verified post-transition owner may invalidate the master view.
+    // Search is re-fetched from the authoritative API; never optimistically
+    // patch the row to the requested target state or replay the transition.
+    if (isCurrentCaseOperation(operationOwner)) setMasterRefreshGeneration(current => current + 1);
   }
 
   async function handleFinalizeInspectionOutcome(payload: InspectionFinalEvaluationRequest) {
@@ -2113,7 +2163,11 @@ export function SearchPage({
         bearerToken,
       );
       mutationAccepted = true;
-      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      if (!canonical) throw new Error("Chưa đọc lại được GCN đủ điều kiện canonical sau cập nhật.");
+      // Certificate metadata affects master search filters and summary columns.
+      // Re-fetch only after the selected artifact has a verified canonical readback.
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted) {
@@ -2126,7 +2180,7 @@ export function SearchPage({
         staleError.status = 409;
         throw staleError;
       }
-      throw error;
+      raiseBusinessEligibilityWriteFailure(error, mutationAccepted, "version");
     }
   }
 
@@ -2153,7 +2207,9 @@ export function SearchPage({
         bearerToken,
       );
       mutationAccepted = true;
-      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      if (!canonical) throw new Error("Chưa đọc lại được trạng thái hiện hành canonical của GCN đủ điều kiện.");
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted && selectedEligibilityCertificateId) {
@@ -2163,7 +2219,16 @@ export function SearchPage({
           // Keep the original promotion conflict as the actionable error.
         }
       }
-      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) setEligibilityPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành." });
+      let resultError: unknown = error;
+      try {
+        raiseBusinessEligibilityWriteFailure(error, mutationAccepted, "promotion");
+      } catch (classified) {
+        resultError = classified;
+      }
+      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) {
+        setEligibilityPromotionFailure({ owner: detailOwner, message: resultError instanceof Error ? resultError.message : "Không thể cập nhật GCN đủ điều kiện hiện hành." });
+      }
+      if (resultError instanceof CaseFieldMutationRecoveryError) throw resultError;
     } finally {
       certificatePromotionsInFlight.current.delete(operation);
       if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner && certificateSelectionRef.current.eligibilityGeneration === generation) setEligibilityPromotionPending(false);
@@ -2204,6 +2269,9 @@ export function SearchPage({
       setGxpCertificateDetail(detailPayload);
       setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
+      // The canonical Certificate list/detail has been accepted by this owner.
+      // Invalidate the master query instead of synthesizing status/expiry locally.
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       let resultError: unknown = error;
       try {
@@ -2250,6 +2318,7 @@ export function SearchPage({
       setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
       setGxpCertificateDetailFailure(null);
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted) {
@@ -2423,36 +2492,56 @@ export function SearchPage({
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const operationOwner = caseOperationOwner.current;
-    if (!reassessmentDialogOpen || !reassessmentIntent || !selectedResult || !workspace || createReassessmentAction?.readiness_status !== "available" || createInspectionCaseInFlight.current === operationOwner) {
-      return;
-    }
-    createInspectionCaseInFlight.current = operationOwner;
+    const key = reassessmentOperationKey;
+    if (!reassessmentDialogOpen || !reassessmentIntent || !selectedResult || !workspace
+      || createReassessmentAction?.readiness_status !== "available" || !key
+      || facilityCommandRegistry.state(key) !== "idle") return;
+    const command = facilityCommandRegistry.acquire(key);
+    if (!command) return;
+    const submittedStandard = applicableStandardInput.trim();
+    reassessmentSubmittedDrafts.current.set(key, submittedStandard);
     setCreateInspectionCasePending(true);
     setCreateInspectionCaseError(null);
+    let keepReview = false;
+    let createdCaseId: string | null = null;
     try {
-      const created = await createInspectionCase(
-        selectedResult.site_id,
-        {
-          gxp_type: selectedResult.gxp_type ?? "",
-          line_code: selectedResult.line_code ?? null,
-          production_line_id: selectedResult.production_line_id,
-          applicable_standard: applicableStandardInput.trim() || null,
-          source_case_id: reassessmentIntent.sourceCaseId,
+      await runCaseFieldMutation(
+        async () => {
+          const created = await createInspectionCase(
+            selectedResult.site_id,
+            {
+              gxp_type: selectedResult.gxp_type ?? "",
+              line_code: selectedResult.line_code ?? null,
+              production_line_id: selectedResult.production_line_id,
+              applicable_standard: submittedStandard || null,
+              source_case_id: reassessmentIntent.sourceCaseId,
+            },
+            auth,
+            useStubAuth,
+            bearerToken,
+          );
+          if (!created.case_id) throw new Error("Phản hồi tạo hồ sơ không có Case UUID để đối chiếu.");
+          createdCaseId = created.case_id;
         },
-        auth,
-        useStubAuth,
-        bearerToken,
+        async () => {
+          if (!createdCaseId) return null;
+          return refreshWorkspaceAfterCreate(createdCaseId, operationOwner);
+        },
       );
-      if (!isCurrentCaseOperation(operationOwner)) return;
-      await refreshWorkspaceAfterCreate(created.case_id, operationOwner);
-      if (isCurrentContext()) resetCreateInspectionCaseState();
+      if (isCurrentCaseOperation(operationOwner)) resetCreateInspectionCaseState();
     } catch (error) {
-      if (!isCurrentCaseOperation(operationOwner)) return;
-      const message = error instanceof Error ? error.message : "Không mở được hồ sơ tái đánh giá.";
-      setCreateInspectionCaseError(message);
-      setCreateInspectionCasePending(false);
+      keepReview = error instanceof CaseFieldMutationRecoveryError;
+      if (keepReview) facilityCommandRegistry.requireReview(key, command);
+      if (isCurrentCaseOperation(operationOwner)) {
+        setCreateInspectionCaseError(error instanceof Error ? error.message : "Không tạo được hồ sơ tái đánh giá.");
+        setCreateInspectionCasePending(false);
+      }
     } finally {
-      if (createInspectionCaseInFlight.current === operationOwner) createInspectionCaseInFlight.current = null;
+      if (!keepReview) {
+        facilityCommandRegistry.release(key, command);
+        reassessmentSubmittedDrafts.current.delete(key);
+      }
+      if (isCurrentCaseOperation(operationOwner)) setCreateInspectionCasePending(false);
     }
   }
 
@@ -2544,8 +2633,9 @@ export function SearchPage({
                 <input
                   aria-label="Tiêu chuẩn áp dụng"
                   disabled={createInspectionCasePending}
+                  readOnly={reassessmentPhase !== "idle"}
                   name="applicable_standard"
-                  onChange={(event) => setApplicableStandardInput(event.target.value)}
+                  onChange={(event) => { if (reassessmentPhase === "idle") setApplicableStandardInput(event.target.value); }}
                   value={applicableStandardInput}
                 />
               </label>
@@ -2554,11 +2644,12 @@ export function SearchPage({
                   {createInspectionCaseError}
                 </p>
               ) : null}
+              {reassessmentPhase === "review" ? <p className="workspace-note" role="status">Chưa xác minh kết quả tạo hồ sơ tái đánh giá. Giữ nguyên tiêu chuẩn đã gửi để sao chép và đối chiếu Case canonical; không hủy hoặc tạo lại.</p> : null}
               <div className="panel-actions reassessment-dialog-actions">
-                <button disabled={createInspectionCasePending} type="submit">
+                <button disabled={createInspectionCasePending || reassessmentPhase !== "idle" || createReassessmentAction?.readiness_status !== "available"} type="submit">
                   {createInspectionCasePending ? "Đang tạo..." : "Tạo hồ sơ tái đánh giá"}
                 </button>
-                <button disabled={createInspectionCasePending} onClick={closeReassessmentDialog} type="button">
+                <button disabled={createInspectionCasePending || reassessmentPhase !== "idle"} onClick={closeReassessmentDialog} type="button">
                   Hủy
                 </button>
               </div>
@@ -2602,11 +2693,19 @@ export function SearchPage({
               if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
                 return;
               }
-              if (actionKey === "create_reassessment_case") setReassessmentIntent(selectedActionKey === actionKey ? null : {
-                context: selectedContext, historyId: selectedHistory?.id ?? null,
-                sourceCaseId: selectedHistory?.source_type === "case" ? selectedHistory.id : null,
-                sourceReference: selectedHistory?.reference_code ?? null,
-              });
+              if (actionKey === "create_reassessment_case") {
+                if (reassessmentDialogOpen && reassessmentPhase !== "idle") return;
+                const sourceCaseId = selectedHistory?.source_type === "case" ? selectedHistory.id : null;
+                const key = JSON.stringify(["reassessment.create", accessGeneration, selectedResult?.site_id, selectedContext, sourceCaseId]);
+                if (facilityCommandRegistry.state(key) !== "idle") {
+                  setApplicableStandardInput(reassessmentSubmittedDrafts.current.get(key) ?? "");
+                }
+                setReassessmentIntent(selectedActionKey === actionKey ? null : {
+                  context: selectedContext, historyId: selectedHistory?.id ?? null,
+                  sourceCaseId,
+                  sourceReference: selectedHistory?.reference_code ?? null,
+                });
+              }
               setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
               setCreateInspectionCaseError(null);
               setCreateChangeRequestError(null);

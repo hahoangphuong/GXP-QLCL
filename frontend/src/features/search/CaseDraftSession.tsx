@@ -151,8 +151,9 @@ export function useFacilityCommandLock(scope: string) {
   const subscribe = useCallback((notify: () => void) => registry.subscribe(notify), [registry]);
   const snapshot = useCallback(() => registry.state(key), [registry, key]);
   const state = useSyncExternalStore(subscribe, snapshot, snapshot);
-  const acquire = useCallback(() => registry.acquire(key), [registry, key]);
+  const acquire = useCallback((payload?: unknown) => registry.acquire(key, payload), [registry, key]);
   const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
-  const requireReview = useCallback((token: object) => registry.requireReview(key, token), [registry, key]);
-  return { owner: context?.identity ?? null, pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview };
+  const requireReview = useCallback((token: object, payload?: unknown) => registry.requireReview(key, token, payload), [registry, key]);
+  const commandPayload = useCallback(<T,>(): T | undefined => registry.commandPayload(key) as T | undefined, [registry, key]);
+  return { owner: context?.identity ?? null, pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview, commandPayload };
 }

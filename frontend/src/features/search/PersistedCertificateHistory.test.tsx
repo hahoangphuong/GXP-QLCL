@@ -147,4 +147,20 @@ it("keeps DDK prose and FK links in their exact version, separate from source to
   expect(screen.getByText("Không có bản ghi liên kết canonical được lưu cho phiên bản.")).toBeInTheDocument();
   expect(screen.getByText("issued 4 times; adjusted 3 times")).toBeInTheDocument();
   expect(screen.getByRole("combobox").children).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "So sánh với phiên bản mới nhất đã lưu" }));
+  const comparison = screen.getByRole("region", { name: "Đối chiếu phiên bản ĐĐK đã lưu" });
+  expect(comparison).toHaveTextContent("ddk-v1");
+  expect(comparison).toHaveTextContent("ddk-v2");
+  expect(comparison).toHaveTextContent("không xác nhận hiệu lực");
+  expect(screen.getByRole("table", { name: /Trường ĐĐK có giá trị lưu khác nhau/ }))
+    .toHaveTextContent("person-1");
+  expect(screen.getByRole("table", { name: /Trường ĐĐK có giá trị lưu khác nhau/ }))
+    .toHaveTextContent("person-2");
+  expect(screen.getByRole("region", { name: "Liên kết FK phiên bản đang xem" }))
+    .toHaveTextContent("Không có bản ghi liên kết FK");
+  expect(screen.getByRole("region", { name: "Liên kết FK phiên bản mới nhất đã lưu" }))
+    .toHaveTextContent("cert-new");
+  expect(comparison).not.toHaveTextContent("gxp_source_tokens");
+  fireEvent.change(screen.getByLabelText("Phiên bản đã lưu"), { target: { value: "ddk-v2" } });
+  expect(screen.queryByRole("region", { name: "Đối chiếu phiên bản ĐĐK đã lưu" })).not.toBeInTheDocument();
 });

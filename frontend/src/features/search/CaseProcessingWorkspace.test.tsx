@@ -31,7 +31,7 @@ describe("Case assessment uncertain canonical mutation", () => {
   it("keeps the exact submitted assessment and version, copyable but immutable, across Case A → B → A", async () => {
     const onSave = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("canonical GET unverified"));
     const view = render(makeEditor("case-A", onSave));
-    fireEvent.click(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
     const input = screen.getByRole("textbox", { name: "Kết quả thẩm định" });
     fireEvent.change(input, { target: { value: "Đã đánh giá đủ bằng chứng" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
@@ -63,7 +63,7 @@ describe("Case assessment uncertain canonical mutation", () => {
     let rejectWrite!: (error: Error) => void;
     const onSave = vi.fn(() => new Promise<void>((_, reject) => { rejectWrite = reject; }));
     const view = render(makeEditor("case-A", onSave));
-    fireEvent.click(screen.getByRole("button", { name: "Sửa Ghi chú thẩm định" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Ghi chú thẩm định" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Ghi chú thẩm định" }), { target: { value: "Bản gửi chưa xác minh" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Ghi chú thẩm định" }));
     view.rerender(makeEditor("case-B", onSave));
@@ -82,7 +82,7 @@ describe("Case assessment uncertain canonical mutation", () => {
   it.each([403, 409])("keeps editing possible after a definitive %s rejection", async status => {
     const onSave = vi.fn().mockRejectedValue(Object.assign(new Error("rejected"), { status }));
     render(makeEditor("case-A", onSave));
-    fireEvent.click(screen.getByRole("button", { name: "Sửa Người thẩm định" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Người thẩm định" }));
     const input = screen.getByRole("textbox", { name: "Người thẩm định" });
     fireEvent.change(input, { target: { value: "Người mới" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Người thẩm định" }));

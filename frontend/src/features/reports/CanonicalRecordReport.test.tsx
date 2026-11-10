@@ -73,7 +73,7 @@ describe("canonical record report workflow", () => {
 
   it("opens an issuing Case directly from the Certificate report using a link that CaseDirectOpen must independently verify", async () => {
     vi.mocked(getCertificateReport).mockResolvedValue({
-      items: [{ ...cert, gxp_type: "GSP", result_key: "site-uuid:GSP:facility_wide:", case_id: "case-uuid" }],
+      items: [{ ...cert, gxp_type: "GMP", case_id: "case-uuid" }],
       total_count: 1, limit: 100, offset: 0,
     });
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
@@ -83,6 +83,17 @@ describe("canonical record report workflow", () => {
     expect(url.searchParams.get("source_certificate_id")).toBe("cert-uuid");
     expect(url.searchParams.get("source_site_id")).toBe("site-uuid");
     expect(getChangeRequestReport).not.toHaveBeenCalled();
+  });
+
+  it.each(["GSP", "GDP"])("does not offer an unsupported %s Case deep link even if the report contains a Case ID", async gxp => {
+    vi.mocked(getCertificateReport).mockResolvedValue({
+      items: [{ ...cert, gxp_type: gxp, result_key: `site-uuid:${gxp}:facility_wide:`, case_id: "legacy-case" }],
+      total_count: 1, limit: 100, offset: 0,
+    });
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
+    await screen.findByRole("link", { name: "GCN-123" });
+    expect(screen.queryByRole("link", { name: "Mở Case" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "GCN-123" })).toHaveAttribute("href", "/reports/certificates/cert-uuid?site_id=site-uuid");
   });
 
   it("does not infer a Case for an unlinked legacy Certificate report projection", async () => {

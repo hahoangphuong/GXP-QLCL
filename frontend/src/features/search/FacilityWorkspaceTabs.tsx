@@ -67,6 +67,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificatesError,
   selectedGxpCertificateId,
   onGxpCertificateSelect,
+  onOpenGxpCertificateOwningCase,
   gxpCertificateDetail,
   gxpCertificateDetailLoading,
   gxpCertificateDetailError,
@@ -142,6 +143,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificatesError: string | null;
   selectedGxpCertificateId: string | null;
   onGxpCertificateSelect: (certificateId: string) => void;
+  onOpenGxpCertificateOwningCase?: (caseId: string, certificateId: string, siteId: string) => void;
   gxpCertificateDetail: GxpCertificateDetail | null;
   gxpCertificateDetailLoading: boolean;
   gxpCertificateDetailError: string | null;
@@ -346,6 +348,7 @@ export function FacilityWorkspaceTabs({
         listError={gxpCertificatesError}
         listLoading={gxpCertificatesLoading}
         onSelectCertificate={onGxpCertificateSelect}
+        onOpenOwningCase={onOpenGxpCertificateOwningCase}
       onPromoteCurrent={onGxpCertificatePromote}
       onEditLatestVersion={onGxpCertificateEditLatestVersion}
         promotionError={gxpCertificatePromotionError}

@@ -5439,6 +5439,51 @@ describe("App Slice A.4 search workspace", () => {
   });
 
   it.each([
+    { kind: "wrong Certificate UUID", readbackId: "cert-other", readbackCurrent: true },
+    { kind: "not yet current", readbackId: "cert-pending", readbackCurrent: false },
+  ])("does not reconcile master after a GxP promotion with $kind in canonical readback", async ({ readbackId, readbackCurrent }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({
+      items: [buildSearchResult({ certificate_scope_summary: "Master before promotion" })],
+      total_count: 1, offset: 0, limit: 100,
+    });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const candidate = {
+      certificate_id: "cert-pending", site_id: "site-1", case_id: "case-1",
+      certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1",
+      production_line_identity_state: "canonical", context_match_kind: "exact_line",
+      latest_flag: false, certificate_number: "GCN-NEW", issue_date: null, expiry_date: null,
+      applicable_standard: "WHO-GMP", issuing_authority: null, status: "superseded",
+    };
+    apiMocks.listSiteGxpCertificates
+      .mockResolvedValueOnce({ items: [candidate] })
+      .mockResolvedValueOnce({ items: [{ ...candidate, latest_flag: readbackCurrent }] });
+    apiMocks.getGxpCertificateDetail
+      .mockResolvedValueOnce({
+        ...candidate, row_version: 3, facility_name: "Nhà máy A", scopes: [],
+        action_readiness: [{
+          action_key: "promote_current", label: "Đặt làm chứng nhận hiện hành",
+          available: true, expected_version: 3, required_permissions: ["certificate.approve"],
+        }],
+      })
+      .mockResolvedValueOnce({
+        ...candidate, certificate_id: readbackId, row_version: 4,
+        latest_flag: readbackCurrent, scopes: [], action_readiness: [],
+      });
+    apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
+    const { container } = renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+    await waitFor(() => expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(2));
+    // Let the rejected canonical verification propagate through the mutation owner.
+    await flushSearchUrlSync();
+    expect(apiMocks.promoteGxpCertificateCurrent).toHaveBeenCalledOnce();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".facility-table tbody tr")?.textContent).toContain("Master before promotion");
+    await flushSearchUrlSync();
+  });
+
+  it.each([
     { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", table: "Danh mục GCN GxP" },
     { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", table: "Danh mục GCN đủ điều kiện" },
   ] as const)("$kind keeps focus separate from requests and rejects a late A detail after B selection", async ({ tab, list, load, id, table }) => {

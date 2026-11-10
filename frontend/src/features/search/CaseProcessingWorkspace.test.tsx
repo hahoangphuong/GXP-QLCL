@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CaseWorkspace } from "../../types";
+import type { CaseAssessmentUpsertRequest, CaseWorkspace } from "../../types";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import { CaseCommandRegistryRoot, CaseDraftSession } from "./CaseDraftSession";
 import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
@@ -19,7 +19,7 @@ function workspace(): CaseWorkspace {
   } as unknown as CaseWorkspace;
 }
 
-function makeEditor(identity: string, onSave: (payload: any) => Promise<void>) {
+function makeEditor(identity: string, onSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>) {
   return <CaseCommandRegistryRoot>
     <CaseDraftSession identity={identity}>
       <CaseProcessingWorkspace caseWorkspace={workspace()} onSave={onSave} view="assessment" />

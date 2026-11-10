@@ -35,6 +35,63 @@ describe("canonical Case UUID entry", () => {
     expect(await screen.findByTestId("return-hint")).toHaveTextContent("/workflow?queue=inspection&state=planned&offset=100");
     expect(screen.getByTestId("resolved-url")).toHaveTextContent("return_queue=inspection");
   });
+  it("opens a Case from a Certificate only after the Case GET independently confirms exact Certificate, Site and GxP", async () => {
+    const value = workspace("case-uuid");
+    value.linked_gxp_certificates = [{
+      certificate_id: "cert-uuid", site_id: "site-uuid", case_id: "case-uuid", certificate_type: "GMP",
+    } as typeof value.linked_gxp_certificates[number]];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/cases/case-uuid?source_certificate_id=cert-uuid&source_site_id=site-uuid");
+    const uri = new URL((await screen.findByTestId("resolved-url")).textContent!, "https://app.test");
+    expect(uri.searchParams.get("history_id")).toBe("case-uuid");
+    expect(uri.searchParams.get("site_id")).toBe("site-uuid");
+    expect(uri.searchParams.get("event_tab")).toBe("Chứng nhận GxP");
+    expect(uri.searchParams.has("source_certificate_id")).toBe(false);
+    expect(getCaseWorkspace).toHaveBeenCalledWith("case-uuid", expect.anything(), true, null);
+  });
+
+  it.each(["wrong-site", "wrong-certificate", "wrong-case", "wrong-gxp", "unlinked"])(
+    "fails closed on a %s Certificate → Case linkage and never opens a different Case", async defect => {
+      const value = workspace("case-uuid");
+      value.linked_gxp_certificates = defect === "unlinked" ? [] : [{
+        certificate_id: defect === "wrong-certificate" ? "another-cert" : "cert-uuid",
+        site_id: defect === "wrong-site" ? "foreign-site" : "site-uuid",
+        case_id: defect === "wrong-case" ? "another-case" : "case-uuid",
+        certificate_type: defect === "wrong-gxp" ? "GSP" : "GMP",
+      } as typeof value.linked_gxp_certificates[number]];
+      vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+      mount("/cases/case-uuid?source_certificate_id=cert-uuid&source_site_id=site-uuid");
+      expect(await screen.findByRole("alert")).toHaveTextContent("Case không khớp chứng nhận và Site canonical");
+      expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(["GSP", "GDP"])("rejects %s source-linked Case deep links until that GxP workspace is supported", async gxp => {
+    const value = workspace("case-uuid");
+    value.case_summary.gxp_type = gxp;
+    value.linked_gxp_certificates = [{
+      certificate_id: "cert-uuid", site_id: "site-uuid", case_id: "case-uuid", certificate_type: gxp,
+    } as typeof value.linked_gxp_certificates[number]];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/cases/case-uuid?source_certificate_id=cert-uuid&source_site_id=site-uuid");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Case không khớp chứng nhận và Site canonical");
+    expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
+  });
+
+  it("rejects missing, empty or duplicated source identity before calling the Case API", () => {
+    for (const search of [
+      "?source_certificate_id=cert-uuid",
+      "?source_site_id=site-uuid",
+      "?source_certificate_id=cert-uuid&source_site_id=",
+      "?source_certificate_id=cert-uuid&source_certificate_id=another&source_site_id=site-uuid",
+    ]) {
+      const view = mount("/cases/case-uuid" + search);
+      expect(screen.getByRole("alert")).toHaveTextContent("Tham số Certificate/Site liên kết không hợp lệ");
+      view.unmount();
+    }
+    expect(getCaseWorkspace).not.toHaveBeenCalled();
+  });
+
   it("rejects an external return hint", async () => {
     vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
     render(<MemoryRouter initialEntries={[{ pathname: "/cases/case-uuid", state: { caseReportReturn: "https://attacker.example/" } }]}><Routes><Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} /><Route path="/search" element={<Destination />} /></Routes></MemoryRouter>);

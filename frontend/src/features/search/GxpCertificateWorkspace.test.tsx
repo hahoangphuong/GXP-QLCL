@@ -602,7 +602,7 @@ describe("certificate version edit command ownership across selection switches",
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     await act(async () => reject(new CaseFieldMutationRecoveryError("unknown version result")));
-    expect(screen.getByRole("status")).toHaveTextContent("chưa được xác minh");
+    expect(within(screen.getByRole("dialog")).getByRole("status")).toHaveTextContent("chưa được xác minh");
     expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN-RECOVER");
     fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
     expect(save).toHaveBeenCalledOnce();

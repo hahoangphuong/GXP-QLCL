@@ -507,7 +507,7 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     expect(view.handlers.onSelectedCycleChange).toHaveBeenCalledWith("capa-3");
     view.rerender(<CaseRemediationWorkspace caseWorkspace={workspace(cycles)} selectedCycleId="capa-3" {...view.handlers} />);
     expect(screen.getByRole("heading", { name: "Chi tiết vòng khắc phục 3" })).toBeInTheDocument();
-    expect(screen.getByText("Third cycle")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Chi tiết vòng khắc phục 3" }).closest(".workspace-section")).toHaveTextContent("Third cycle");
     expect(view.handlers.onUpdateCycle).not.toHaveBeenCalled();
   });
 });

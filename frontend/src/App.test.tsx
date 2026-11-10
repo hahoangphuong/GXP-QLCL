@@ -4701,7 +4701,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Canonical master unavailable");
     expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
-    expect(container.querySelector(".facility-table tbody tr")?.textContent).not.toContain("Đã đóng");
+    expect(container.querySelector(".facility-table tbody tr")?.textContent ?? "").not.toContain("Đã đóng");
     await flushSearchUrlSync();
   });
 

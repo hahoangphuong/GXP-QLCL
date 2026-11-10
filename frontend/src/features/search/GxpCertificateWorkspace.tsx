@@ -63,7 +63,6 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   const visibleExpiryDate = frozen && submittedRequest ? submittedRequest.expiry_date ?? "" : expiryDate;
   const visibleReason = frozen && submittedRequest ? submittedRequest.reason ?? "" : reason;
   const visibleScopes = frozen && submittedRequest ? submittedRequest.scopes : scopes;
-  const requiresReview = editLock.requiresReview;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

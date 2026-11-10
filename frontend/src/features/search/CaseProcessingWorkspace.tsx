@@ -130,7 +130,7 @@ export function CaseProcessingWorkspace({
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const commandLock = useCaseCommandLock("assessment");
   const requiresReview = commandLock.requiresReview;
-  const review = commandLock.reviewPayload<AssessmentReview>();
+  const review = commandLock.commandPayload<AssessmentReview>();
   const [draft, setDraft] = useCaseDraftState<ProcessingDraft>("assessment.draft", review?.draft ?? currentDraft);
   const [editingField, setEditingField] = useCaseDraftState<keyof ProcessingDraft | null>("assessment.editingField", review?.editingField ?? null);
   const [draftVersion, setDraftVersion] = useCaseDraftState("assessment.draftVersion", review?.draftVersion ?? caseWorkspace.processing.row_version);
@@ -141,12 +141,12 @@ export function CaseProcessingWorkspace({
   // command remains unknown. Recover only the submitted copy from its exact
   // access/Case-scoped command registry, never a canonical result or a retry.
   useEffect(() => {
-    if (!requiresReview || !review) return;
+    if ((!requiresReview && !commandLock.pending) || !review) return;
     setDraft(review.draft);
     setEditingField(review.editingField);
     setDraftVersion(review.draftVersion);
     setErrorMessage(review.errorMessage);
-  }, [requiresReview, review, setDraft, setEditingField, setDraftVersion, setErrorMessage]);
+  }, [requiresReview, commandLock.pending, review, setDraft, setEditingField, setDraftVersion, setErrorMessage]);
 
   useEffect(() => {
     if (!editingField && !requiresReview && !commandLock.pending) {
@@ -159,7 +159,10 @@ export function CaseProcessingWorkspace({
     if (!editingField || pending || commandLock.pending || requiresReview) {
       return;
     }
-    const command = commandLock.acquire();
+    // Pin the exact intent before the asynchronous write can outlive this Case session.
+    const command = commandLock.acquire({
+      draft: { ...draft }, editingField, draftVersion, errorMessage: "",
+    } satisfies AssessmentReview);
     if (!command) return;
     setPending(true);
     setErrorMessage(null);

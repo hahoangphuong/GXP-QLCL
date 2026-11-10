@@ -64,7 +64,8 @@ it("navigates report Certificate → authoritative Case GET → exact Case/Certi
   expect(url.searchParams.get("site_id")).toBe("site-uuid");
   expect(url.searchParams.get("gxp_type")).toBe("GSP");
   expect(url.searchParams.get("event_tab")).toBe("Chứng nhận GxP");
-  expect(getCaseWorkspace).toHaveBeenCalledExactlyOnceWith("case-uuid", expect.anything(), true, null);
+  expect(getCaseWorkspace).toHaveBeenCalledOnce();
+  expect(getCaseWorkspace).toHaveBeenCalledWith("case-uuid", expect.anything(), true, null);
 });
 
 it("does not navigate if the Case's independent linked Certificate Site disagrees with the report hint", async () => {

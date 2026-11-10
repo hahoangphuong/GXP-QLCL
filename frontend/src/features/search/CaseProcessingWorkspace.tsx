@@ -133,7 +133,7 @@ export function CaseProcessingWorkspace({
   const review = commandLock.commandPayload<AssessmentReview>();
   const [draft, setDraft] = useCaseDraftState<ProcessingDraft>("assessment.draft", review?.draft ?? currentDraft);
   const [editingField, setEditingField] = useCaseDraftState<keyof ProcessingDraft | null>("assessment.editingField", review?.editingField ?? null);
-  const [draftVersion, setDraftVersion] = useCaseDraftState("assessment.draftVersion", review?.draftVersion ?? caseWorkspace.processing.row_version);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("assessment.draftVersion", review ? review.draftVersion : caseWorkspace.processing.row_version);
   const [pending, setPending] = useCaseDraftState("assessment.pending", false);
   const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("assessment.errorMessage", review?.errorMessage ?? null);
 

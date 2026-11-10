@@ -1,6 +1,7 @@
 import { CaseFieldMutationRecoveryError, runCaseFieldMutation } from "../features/search/caseFieldMutationRecovery";
 import { raiseGxpCertificateVersionWriteFailure, raiseGxpCertificatePromotionFailure } from "../features/search/gxpCertificateVersionWriteRecovery";
 import { raiseBusinessEligibilityWriteFailure } from "../features/search/businessEligibilityWriteRecovery";
+import { assertGxpCertificateMutationReadback, assertEligibilityCertificateMutationReadback } from "../features/search/certificateMutationReadback";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
@@ -2114,7 +2115,7 @@ export function SearchPage({
     );
   }
 
-  async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued: boolean, selectionGeneration: number, isOwnerCurrent: () => boolean = () => true) {
+  async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued: boolean, selectionGeneration: number, isOwnerCurrent: () => boolean = () => true, requireCurrent = false) {
     if (!selectedResult || !isCurrentContext() || !eligibilityListOwner || !isOwnerCurrent()) return null;
     const listOwner = eligibilityListOwner;
     const detailOwner = JSON.stringify(["eligibility-detail", listOwner, certificateId]);
@@ -2124,6 +2125,7 @@ export function SearchPage({
     ]);
     if (!isOwnerCurrent() || !isCurrentContext() || certificateOwnerRef.current.eligibilityList !== listOwner || certificateSelectionRef.current.eligibilityGeneration !== selectionGeneration) return null;
     if (!selectIssued && (certificateSelectionRef.current.eligibilityOwner !== listOwner || certificateSelectionRef.current.eligibility !== certificateId)) return null;
+    assertEligibilityCertificateMutationReadback(certificateId, selectedResult.site_id, detailPayload, listPayload.items, requireCurrent);
     setSelectedEligibilityCertificateOwner(listOwner);
     setSelectedEligibilityCertificateId(certificateId);
     setEligibilityCertificateDetailOwner(detailOwner);
@@ -2207,7 +2209,7 @@ export function SearchPage({
         bearerToken,
       );
       mutationAccepted = true;
-      const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
+      const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation, undefined, true);
       if (!canonical) throw new Error("Chưa đọc lại được trạng thái hiện hành canonical của GCN đủ điều kiện.");
       setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
@@ -2265,6 +2267,7 @@ export function SearchPage({
         ),
       ]);
       if (!isCurrentContext() || certificateSelectionRef.current.gxpGeneration !== generation || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+      assertGxpCertificateMutationReadback(selectedGxpCertificateId, selectedResult.site_id, selectedResult.gxp_type, detailPayload, listPayload.items, true);
       setGxpCertificateDetailOwner(detailOwner);
       setGxpCertificateDetail(detailPayload);
       setGxpCertificatesOwner(listOwner);
@@ -2313,6 +2316,7 @@ export function SearchPage({
         ),
       ]);
       if (!isCurrentContext() || certificateSelectionRef.current.gxpGeneration !== generation || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+      assertGxpCertificateMutationReadback(selectedGxpCertificateId, selectedResult.site_id, selectedResult.gxp_type, detailPayload, listPayload.items);
       setGxpCertificateDetailOwner(detailOwner);
       setGxpCertificateDetail(detailPayload);
       setGxpCertificatesOwner(listOwner);

@@ -228,6 +228,51 @@ export function FacilityWorkspaceTabs({
     tabRefs.current[next]?.focus();
   }
 
+  // Return to the *same* canonical Case that issued the selected Certificate.
+  // This is navigation only: completion eligibility and any transition remain backend-owned.
+  const certificateCaseReturnAvailable =
+    selectedFacilityTab === "Giấy chứng nhận GxP"
+    && selectedHistory?.source_type === "case"
+    && !caseWorkspaceLoading && !caseWorkspaceError
+    && caseWorkspace?.case_summary.id === selectedHistory.id
+    && caseWorkspace.case_summary.site_id === summary.site_id
+    && !gxpCertificatesLoading && !gxpCertificatesError
+    && !gxpCertificateDetailLoading && !gxpCertificateDetailError
+    && !!selectedGxpCertificateId
+    && gxpCertificates.some(item => item.certificate_id === selectedGxpCertificateId
+      && item.case_id === selectedHistory.id && item.site_id === summary.site_id)
+    && gxpCertificateDetail?.certificate_id === selectedGxpCertificateId
+    && gxpCertificateDetail.case_id === selectedHistory.id
+    && gxpCertificateDetail.site_id === summary.site_id;
+
+  // Only offer this path for a UUID listed in both the selected Case and the
+  // currently loaded site/GxP/line Certificate list. The destination loader
+  // still verifies the selected Certificate detail before presenting it.
+  const openableLinkedCertificateIds = selectedHistory?.source_type === "case"
+    && !caseWorkspaceLoading && !caseWorkspaceError
+    && caseWorkspace?.case_summary.id === selectedHistory.id
+    && caseWorkspace.case_summary.site_id === summary.site_id
+    && !gxpCertificatesLoading && !gxpCertificatesError
+    && Array.isArray(caseWorkspace.linked_gxp_certificates)
+    ? caseWorkspace.linked_gxp_certificates.filter(linked =>
+      linked.case_id === selectedHistory.id
+      && linked.site_id === summary.site_id
+      && gxpCertificates.some(listed =>
+        listed.certificate_id === linked.certificate_id
+        && listed.case_id === selectedHistory.id
+        && listed.site_id === summary.site_id
+        && listed.certificate_type === linked.certificate_type
+      )
+    ).map(linked => linked.certificate_id)
+    : [];
+
+  function openLinkedCertificate(certificateId: string) {
+    // Validate again on the click, not only when deciding whether to display.
+    if (!openableLinkedCertificateIds.includes(certificateId)) return;
+    onGxpCertificateSelect(certificateId);
+    onFacilityTabChange("Giấy chứng nhận GxP");
+  }
+
   const selectedTabContent = (
     <>
     {selectedFacilityTab === "Thông tin chung" ? (
@@ -265,6 +310,8 @@ export function FacilityWorkspaceTabs({
           inspectionPlanReadiness={inspectionPlanReadiness}
           onRetryInspectionPlanReadiness={onRetryInspectionPlanReadiness}
           onIssueCertificate={onIssueCertificate}
+          openableCertificateIds={openableLinkedCertificateIds}
+          onOpenLinkedCertificate={openLinkedCertificate}
           onCreateDocument={onCreateDocument}
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={onOpenDocument}
@@ -275,6 +322,16 @@ export function FacilityWorkspaceTabs({
           selectedRemediationCycleId={selectedRemediationCycleId}
           selectedHistory={selectedHistory}
         />
+      </div>
+    ) : null}
+
+    {certificateCaseReturnAvailable ? (
+      <div className="case-transition-navigation">
+        <span>Chứng nhận đang chọn thuộc hồ sơ kiểm tra hiện tại.</span>
+        <button type="button" className="secondary" onClick={() => {
+          onEventTabChange("Kiểm tra");
+          onFacilityTabChange("Các đợt kiểm tra & thay đổi");
+        }}>Quay lại Case để kiểm tra hoàn tất</button>
       </div>
     ) : null}
 

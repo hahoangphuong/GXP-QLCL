@@ -36,7 +36,8 @@ describe("Case assessment uncertain canonical mutation", () => {
     fireEvent.change(input, { target: { value: "Đã đánh giá đủ bằng chứng" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
     expect(await screen.findByText(/Chưa xác minh kết quả lưu/)).toBeInTheDocument();
-    expect(onSave).toHaveBeenCalledExactlyOnceWith({
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onSave).toHaveBeenCalledWith({
       expected_version: 17, assessment_result: "Đã đánh giá đủ bằng chứng",
     });
     expect(input).toHaveAttribute("readonly");
@@ -67,11 +68,12 @@ describe("Case assessment uncertain canonical mutation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Lưu Ghi chú thẩm định" }));
     view.rerender(makeEditor("case-B", onSave));
     view.rerender(makeEditor("case-A", onSave));
-    expect(screen.getByRole("button", { name: "Sửa Ghi chú thẩm định" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("button", { name: "Sửa Ghi chú thẩm định" })).not.toBeInTheDocument();
     await act(async () => { rejectWrite(new CaseFieldMutationRecoveryError("GET failed after POST")); });
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Ghi chú thẩm định" })).toHaveValue("Bản gửi chưa xác minh"));
     expect(screen.getByRole("textbox", { name: "Ghi chú thẩm định" })).toHaveAttribute("readonly");
-    expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 17, notes: "Bản gửi chưa xác minh" });
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onSave).toHaveBeenCalledWith({ expected_version: 17, notes: "Bản gửi chưa xác minh" });
   });
 
   it.each([403, 409])("keeps editing possible after a definitive %s rejection", async status => {
@@ -85,6 +87,7 @@ describe("Case assessment uncertain canonical mutation", () => {
     expect(input).not.toHaveAttribute("readonly");
     expect(screen.getByRole("button", { name: "Hủy sửa Người thẩm định" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Hủy sửa Người thẩm định" }));
-    expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 17, assessor_name: "Người mới" });
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onSave).toHaveBeenCalledWith({ expected_version: 17, assessor_name: "Người mới" });
   });
 });

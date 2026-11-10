@@ -302,6 +302,8 @@ export function SearchPage({
   const [changeRequestStates, setChangeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
   const [searchPageRequest, setSearchPageRequest] = useState<SearchPageRequest>({ context: "", offset: 0 });
   const [searchEpoch, setSearchEpoch] = useState(0);
+  const [masterRefreshGeneration, setMasterRefreshGeneration] = useState(0);
+  const appliedMasterRefreshGeneration = useRef(0);
   const [selectedResultKey, setSelectedResultKey] = useState<string | null>(searchParams.get("result_key"));
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
   const [pendingDeepLink, setPendingDeepLink] = useState<PendingDeepLink>(() => readPendingDeepLink(searchParams));
@@ -962,8 +964,14 @@ export function SearchPage({
     const isFirstPage = resultsOffset === 0;
     const requestId = ++searchRequestSequence.current;
     const previousRequest = searchResultsRequestRef.current;
-    const baseResults = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.items : [];
-    const baseTotalCount = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.totalCount : 0;
+    // A verified Case transition invalidates the master *search*, not the
+    // selected Case/Facility workspace. Preserve filters, loaded page depth,
+    // selection and unsaved editors while replacing the rows from the API.
+    const canonicalRefresh = appliedMasterRefreshGeneration.current !== masterRefreshGeneration;
+    appliedMasterRefreshGeneration.current = masterRefreshGeneration;
+    const keepOwnedRows = previousRequest?.context === searchContext && (canonicalRefresh || !isFirstPage);
+    const baseResults = keepOwnedRows ? previousRequest.items : [];
+    const baseTotalCount = keepOwnedRows ? previousRequest.totalCount : 0;
     let cancelled = false;
     setSearchResultsRequest({
       context: searchContext,
@@ -972,8 +980,7 @@ export function SearchPage({
       items: baseResults,
       totalCount: baseTotalCount,
     });
-    void searchFacilities(
-      {
+    const searchQuery = {
         q: deferredGeneralQuery.trim() || undefined,
         facility_name: deferredFacilityName.trim() || undefined,
         certificate_scope: deferredCertificateScope.trim() || undefined,
@@ -985,16 +992,38 @@ export function SearchPage({
         certificate_expiring_within_days: certificateExpiringWithinDays ? Number(certificateExpiringWithinDays) : null,
         offset: resultsOffset,
         limit: RESULT_PAGE_SIZE,
-      },
-      auth,
-      useStubAuth,
-      bearerToken,
-    )
+      };
+    const fetchResults = async () => {
+      if (!canonicalRefresh) return searchFacilities(searchQuery, auth, useStubAuth, bearerToken);
+      // Reconcile the full loaded master window, including infinite-scroll
+      // pages. A single page would leave stale rows further down the table.
+      const originalCount = previousRequest?.context === searchContext ? previousRequest.items.length : 0;
+      const first = await searchFacilities({ ...searchQuery, offset: 0 }, auth, useStubAuth, bearerToken);
+      let items = first.items;
+      while (!cancelled && searchRequestSequence.current === requestId
+        && items.length < originalCount && items.length < first.total_count) {
+        const next = await searchFacilities({ ...searchQuery, offset: items.length }, auth, useStubAuth, bearerToken);
+        if (!next.items.length) break;
+        const combined = appendUniqueResults(items, next.items);
+        if (combined.length === items.length) break;
+        items = combined;
+      }
+      return { ...first, items };
+    };
+    void fetchResults()
       .then((payload) => {
         if (cancelled || searchRequestSequence.current !== requestId) {
           return;
         }
-        const nextResults = isFirstPage ? payload.items : appendUniqueResults(baseResults, payload.items);
+        const nextResults = canonicalRefresh || isFirstPage ? payload.items : appendUniqueResults(baseResults, payload.items);
+        if (canonicalRefresh) {
+          // Explicit deep-link targets must not shadow fresher canonical rows.
+          setResolvedDeepLinkResult(current => {
+            if (!current || current.accessGeneration !== accessGeneration) return current;
+            const matched = nextResults.find(item => item.result_key === current.result.result_key);
+            return matched ? { accessGeneration, result: matched } : current;
+          });
+        }
         setSearchResultsRequest({
           context: searchContext,
           requestId,
@@ -1074,6 +1103,7 @@ export function SearchPage({
     canLoadSecureApi,
     resultsOffset,
     searchContext,
+    masterRefreshGeneration,
     useStubAuth,
   ]);
 
@@ -1952,6 +1982,10 @@ export function SearchPage({
       () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
     );
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
+    // Only the verified post-transition owner may invalidate the master view.
+    // Search is re-fetched from the authoritative API; never optimistically
+    // patch the row to the requested target state or replay the transition.
+    if (isCurrentCaseOperation(operationOwner)) setMasterRefreshGeneration(current => current + 1);
   }
 
   async function handleFinalizeInspectionOutcome(payload: InspectionFinalEvaluationRequest) {

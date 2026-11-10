@@ -744,3 +744,20 @@ describe("CAPA assessment decision vocabulary", () => {
     expect(handlers.onAssessCycle).toHaveBeenCalledOnce();
   });
 });
+
+
+it("compares CAPA history without changing selected cycle or invoking any lifecycle mutation", () => {
+  const cycles = [
+    cycle({ capa_cycle_id: "capa-old", round_no: 1, status: "rejected", result: "rejected", notes: "Thiếu CAPA" }),
+    cycle({ capa_cycle_id: "capa-latest", round_no: 2, status: "accepted", result: "accepted", notes: "CAPA đã được chấp nhận" }),
+  ];
+  const view = renderWorkspace(workspace(cycles), "capa-latest");
+  fireEvent.click(screen.getByText("So sánh hai vòng khắc phục"));
+  const table = screen.getByRole("table", { name: "Đối chiếu dữ liệu hai vòng CAPA" });
+  expect(table).toHaveTextContent("Thiếu CAPA");
+  expect(table).toHaveTextContent("CAPA đã được chấp nhận");
+  expect(view.handlers.onSelectedCycleChange).not.toHaveBeenCalled();
+  for (const callback of ["onCreateCycle", "onUpdateCycle", "onSubmitCycle", "onAssessCycle"] as const) {
+    expect(view.handlers[callback]).not.toHaveBeenCalled();
+  }
+});

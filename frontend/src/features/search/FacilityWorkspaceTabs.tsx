@@ -245,6 +245,33 @@ export function FacilityWorkspaceTabs({
     && gxpCertificateDetail.case_id === selectedHistory.id
     && gxpCertificateDetail.site_id === summary.site_id;
 
+  // Only offer this path for a UUID listed in both the selected Case and the
+  // currently loaded site/GxP/line Certificate list. The destination loader
+  // still verifies the selected Certificate detail before presenting it.
+  const openableLinkedCertificateIds = selectedHistory?.source_type === "case"
+    && !caseWorkspaceLoading && !caseWorkspaceError
+    && caseWorkspace?.case_summary.id === selectedHistory.id
+    && caseWorkspace.case_summary.site_id === summary.site_id
+    && !gxpCertificatesLoading && !gxpCertificatesError
+    ? caseWorkspace.linked_gxp_certificates.filter(linked =>
+      linked.case_id === selectedHistory.id
+      && linked.site_id === summary.site_id
+      && gxpCertificates.some(listed =>
+        listed.certificate_id === linked.certificate_id
+        && listed.case_id === selectedHistory.id
+        && listed.site_id === summary.site_id
+        && listed.certificate_type === linked.certificate_type
+      )
+    ).map(linked => linked.certificate_id)
+    : [];
+
+  function openLinkedCertificate(certificateId: string) {
+    // Validate again on the click, not only when deciding whether to display.
+    if (!openableLinkedCertificateIds.includes(certificateId)) return;
+    onGxpCertificateSelect(certificateId);
+    onFacilityTabChange("Giấy chứng nhận GxP");
+  }
+
   const selectedTabContent = (
     <>
     {selectedFacilityTab === "Thông tin chung" ? (
@@ -282,6 +309,8 @@ export function FacilityWorkspaceTabs({
           inspectionPlanReadiness={inspectionPlanReadiness}
           onRetryInspectionPlanReadiness={onRetryInspectionPlanReadiness}
           onIssueCertificate={onIssueCertificate}
+          openableCertificateIds={openableLinkedCertificateIds}
+          onOpenLinkedCertificate={openLinkedCertificate}
           onCreateDocument={onCreateDocument}
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={onOpenDocument}

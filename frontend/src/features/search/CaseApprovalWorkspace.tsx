@@ -164,7 +164,7 @@ function CaseApprovalEditor({
     }
   }
 
-  return <section className="workspace-section case-approval-workspace">
+  return <section className="workspace-section case-approval-workspace" data-case-approval-history tabIndex={-1} aria-label="Trình phê duyệt PCT / CT">
     <h4>Trình phê duyệt PCT / CT</h4>
     <div className="panel-actions">
       <input aria-label="Tham chiếu trình" disabled={pending !== null || ownerPending} readOnly={requiresReview} value={reference} onChange={(event) => { if (!requiresReview) setReference(event.target.value); }} />

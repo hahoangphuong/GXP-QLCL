@@ -17,7 +17,7 @@ type ProcessingDraft = {
 type AssessmentReview = {
   draft: ProcessingDraft;
   editingField: keyof ProcessingDraft;
-  draftVersion: number;
+  draftVersion: number | null;
   errorMessage: string;
 };
 

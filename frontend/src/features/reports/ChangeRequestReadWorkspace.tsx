@@ -19,7 +19,7 @@ function Field({ label, value }: { label: string; value: string | number | null 
   return <div><dt>{label}</dt><dd>{value === null || value === undefined || value === "" ? "Chưa có" : value}</dd></div>;
 }
 
-function ArtifactTable({ title, items }: { title: string; items: ChangeRequestArtifact[] }) {
+function ArtifactTable({ title, items, siteId, changeRequestId }: { title: string; items: ChangeRequestArtifact[]; siteId: string; changeRequestId: string }) {
   return <section className="workspace-section">
     <h4>{title} ({items.length})</h4>
     {!items.length ? <p>Chưa có chứng nhận liên kết.</p> :
@@ -29,7 +29,7 @@ function ArtifactTable({ title, items }: { title: string; items: ChangeRequestAr
           <td>{item.artifact_kind === "certificate" ? "GCN GxP" :
             item.artifact_kind === "business_eligibility_certificate" ? "GCN đủ điều kiện" : "Loại chưa hỗ trợ"}</td>
           <td>{item.artifact_kind === "certificate" && item.artifact_id ?
-            <><Link className="text-link" to={"/reports/certificates/" + encodeURIComponent(item.artifact_id)}>{item.artifact_id}</Link>
+            <><Link className="text-link" to={`/reports/certificates/${encodeURIComponent(item.artifact_id)}?${new URLSearchParams({ site_id: siteId })}`} state={{ relatedChangeRequest: { id: changeRequestId, siteId } }}>{item.artifact_id}</Link>
               {" · "}<Link className="text-link" to={"/documents/certificates/" + encodeURIComponent(item.artifact_id)}>Tài liệu</Link></>
             : item.artifact_kind === "business_eligibility_certificate" && item.artifact_id ?
               <><span>{item.artifact_id}</span>{" · "}
@@ -134,8 +134,8 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
             </dl>
           </section>
           <section className="panel"><h3>Chứng nhận liên quan</h3>
-            <ArtifactTable title="Chứng nhận chịu ảnh hưởng" items={item.affected_artifacts} />
-            <ArtifactTable title="Chứng nhận được cấp sau thay đổi" items={item.issued_artifacts} />
+            <ArtifactTable title="Chứng nhận chịu ảnh hưởng" items={item.affected_artifacts} siteId={item.site_id} changeRequestId={item.id} />
+            <ArtifactTable title="Chứng nhận được cấp sau thay đổi" items={item.issued_artifacts} siteId={item.site_id} changeRequestId={item.id} />
           </section>
         </>}
         {section === "documents" && <section className="panel">

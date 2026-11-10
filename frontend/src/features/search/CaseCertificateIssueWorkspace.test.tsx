@@ -153,6 +153,63 @@ it("does not allow another issuance after an unknown result", async () => {
   expect(issue).toHaveBeenCalledOnce();
 });
 
+it("retains the submitted GCN and ordered scopes through A → B → A while the HTTP command is pending", async () => {
+  let fail!: (error: Error) => void;
+  const issue = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+  const editor = (id: string) => <CaseDraftSession identity={id}>
+    <CaseCertificateIssueWorkspace caseId={id} readiness={readiness()} onIssue={issue} />
+  </CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "GCN-CANONICAL-INTENT" } });
+  fireEvent.change(screen.getByLabelText("Ngày cấp"), { target: { value: "2026-11-10" } });
+  fireEvent.click(screen.getByRole("button", { name: "Thêm phạm vi" }));
+  fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Dây chuyền vô trùng" } });
+  fireEvent.click(screen.getByRole("button", { name: "Thêm phạm vi" }));
+  fireEvent.change(screen.getByLabelText("Nội dung phạm vi 2"), { target: { value: "Đóng gói" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(issue).toHaveBeenCalledOnce();
+  view.rerender(editor("case-B"));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  view.rerender(editor("case-A"));
+  expect(screen.getByRole("dialog", { name: "Cấp giấy chứng nhận GxP" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN-CANONICAL-INTENT");
+  expect(screen.getByLabelText("Ngày cấp")).toHaveValue("2026-11-10");
+  expect(screen.getByLabelText("Nội dung phạm vi 1")).toHaveValue("Dây chuyền vô trùng");
+  expect(screen.getByLabelText("Nội dung phạm vi 2")).toHaveValue("Đóng gói");
+  expect(screen.getByLabelText("Số GCN")).toHaveAttribute("readonly");
+  expect(screen.getByRole("button", { name: "Hủy" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Thêm phạm vi" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "Do not overwrite" } });
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN-CANONICAL-INTENT");
+  await act(async () => fail(new CaseFieldMutationRecoveryError("Không thể xác minh GCN đã cấp")));
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN-CANONICAL-INTENT");
+  expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  expect(issue).toHaveBeenCalledOnce();
+});
+
+it("does not disclose a submitted Case A issuance to Case B or allow A to create twice after late unknown outcome", async () => {
+  let fail!: (error: Error) => void;
+  const issue = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+  const editor = (id: string, action = readiness()) => <CaseDraftSession identity={id}>
+    <CaseCertificateIssueWorkspace caseId={id} readiness={action} onIssue={issue} />
+  </CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "Secret submitted A" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
+  view.rerender(editor("case-B", readiness(false)));
+  expect(screen.queryByText("Secret submitted A")).not.toBeInTheDocument();
+  await act(async () => fail(new CaseFieldMutationRecoveryError("Result unknown")));
+  view.rerender(editor("case-A", readiness(false)));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByLabelText("Số GCN")).toHaveValue("Secret submitted A");
+  expect(screen.getByRole("button", { name: "Cấp giấy chứng nhận" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Hủy" })).toBeDisabled();
+  expect(issue).toHaveBeenCalledOnce();
+});
+
 it("retains the pending issuance lock through Case A to B to A", async () => {
   let finish!: () => void;
   const issue = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));

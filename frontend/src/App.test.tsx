@@ -5398,6 +5398,46 @@ describe("App Slice A.4 search workspace", () => {
     await flushSearchUrlSync();
   });
 
+  it("refreshes the canonical master after verified GxP promotion without losing selection or replaying the write", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [buildSearchResult({ current_certificate_number: "GCN-OLD" })], total_count: 1, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: [buildSearchResult({ current_certificate_number: "GCN-NEW" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const candidate = {
+      certificate_id: "cert-promote", site_id: "site-1", case_id: "case-1",
+      certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1",
+      context_match_kind: "exact_line", latest_flag: false,
+      certificate_number: "GCN-NEW", issue_date: "2026-10-01",
+      expiry_date: "2029-10-01", applicable_standard: "WHO-GMP",
+      issuing_authority: "Cục Quản lý Dược Việt Nam", status: "superseded",
+    };
+    apiMocks.listSiteGxpCertificates
+      .mockResolvedValueOnce({ items: [candidate] })
+      .mockResolvedValueOnce({ items: [{ ...candidate, latest_flag: true, status: "active" }] });
+    apiMocks.getGxpCertificateDetail
+      .mockResolvedValueOnce({
+        ...candidate, row_version: 3, facility_name: "Nhà máy A", scopes: [],
+        action_readiness: [{ action_key: "promote_current", label: "Đặt làm chứng nhận hiện hành",
+          available: true, expected_version: 3, required_permissions: ["certificate.approve"] }],
+      })
+      .mockResolvedValueOnce({ ...candidate, row_version: 4, latest_flag: true, status: "active", scopes: [], action_readiness: [] });
+    apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
+
+    const { container } = renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
+    await screen.findByRole("button", { name: "Đặt làm chứng nhận hiện hành" });
+    const master = container.querySelector(".facility-table")!;
+    expect(master.querySelector("tbody tr")?.textContent).toContain("GCN-OLD");
+    fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(master.querySelector("tbody tr")?.textContent).toContain("GCN-NEW"));
+    expect(master.querySelector("tbody tr.selected")).not.toBeNull();
+    expect(apiMocks.promoteGxpCertificateCurrent).toHaveBeenCalledOnce();
+    expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2);
+    await flushSearchUrlSync();
+  });
+
   it.each([
     { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", table: "Danh mục GCN GxP" },
     { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", table: "Danh mục GCN đủ điều kiện" },

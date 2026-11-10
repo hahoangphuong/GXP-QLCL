@@ -30,6 +30,7 @@ function createSession() {
 
 function createCommandRegistry() {
   const commands = new Map<string, object | "review">();
+  const reviewPayloads = new Map<string, unknown>();
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach(listener => listener());
   return {
@@ -40,13 +41,15 @@ function createCommandRegistry() {
       const token = {};
       commands.set(key, token); notify(); return token;
     },
-    requireReview: (key: string, token: object) => {
+    requireReview: (key: string, token: object, payload?: unknown) => {
       if (commands.get(key) !== token) return;
+      if (payload !== undefined) reviewPayloads.set(key, payload);
       commands.set(key, "review"); notify();
     },
+    reviewPayload: (key: string) => commands.get(key) === "review" ? reviewPayloads.get(key) : undefined,
     release: (key: string, token: object) => {
       if (commands.get(key) !== token) return;
-      commands.delete(key); notify();
+      commands.delete(key); reviewPayloads.delete(key); notify();
     },
   };
 }
@@ -132,8 +135,9 @@ export function useCaseCommandLock(scope: string) {
   const state = useSyncExternalStore(subscribe, snapshot, snapshot);
   const acquire = useCallback(() => registry.acquire(key), [registry, key]);
   const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
-  const requireReview = useCallback((token: object) => registry.requireReview(key, token), [registry, key]);
-  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview };
+  const requireReview = useCallback((token: object, payload?: unknown) => registry.requireReview(key, token, payload), [registry, key]);
+  const reviewPayload = useCallback(<T,>(): T | undefined => registry.reviewPayload(key) as T | undefined, [registry, key]);
+  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview, reviewPayload };
 }
 
 // Facility commands are bound to access and Site, independently of selected history.

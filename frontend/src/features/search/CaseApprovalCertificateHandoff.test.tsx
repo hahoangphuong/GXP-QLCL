@@ -35,7 +35,7 @@ describe("Case CT to Certificate operator handoff", () => {
     [{ completed: null }, "CT is unfinished"],
     [{ ctCase: "case-other" }, "CT belongs to another Case"],
     [{ hasCt: false }, "no CT exists"],
-  ] as const)("does not suggest issuance when %s (%s)", (options) => {
+  ] as const)("does not suggest issuance when %s (%s)", (options, _reason) => {
     const navigate = vi.fn();
     render(<CaseApprovalCertificateHandoff workspace={workspace(options)} activeTab="Kiểm tra" onNavigate={navigate} />);
     expect(screen.queryByRole("button", { name: "Đến cấp giấy chứng nhận GxP" })).not.toBeInTheDocument();

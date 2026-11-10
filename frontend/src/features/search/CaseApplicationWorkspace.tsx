@@ -27,6 +27,13 @@ type FormDraft = {
   applicant_name: string;
 };
 
+type ApplicationSubmission = {
+  draft: FormDraft;
+  editingField: keyof FormDraft;
+  draftVersion: CaseWorkspace["application"]["row_version"];
+  errorMessage: string | null;
+};
+
 type FolderLookupOwner = {
   identity: string;
   generation: number;
@@ -85,13 +92,18 @@ export function CaseApplicationWorkspace({
   assessment?: ReactNode;
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
-  const [draft, setDraft] = useCaseDraftState<FormDraft>("application.draft", currentDraft);
-  const [draftVersion, setDraftVersion] = useCaseDraftState("application.draftVersion", caseWorkspace.application.row_version);
-  const [editingField, setEditingField] = useCaseDraftState<"submitted_on" | "dossier_code" | "applicant_name" | null>("application.editingField", null);
-  const [pending, setPending] = useCaseDraftState("application.pending", false);
   const commandLock = useCaseCommandLock("application");
   const requiresReview = commandLock.requiresReview;
-  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("application.errorMessage", null);
+  // A pending or uncertain POST outlives a Case-local editor session. The
+  // existing Case/access command owner retains the exact submitted intent.
+  const submitted = commandLock.commandPayload<ApplicationSubmission>();
+  const activeSubmission = commandLock.pending || requiresReview ? submitted : undefined;
+  const [draft, setDraft] = useCaseDraftState<FormDraft>("application.draft", activeSubmission?.draft ?? currentDraft);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("application.draftVersion", activeSubmission ? activeSubmission.draftVersion : caseWorkspace.application.row_version);
+  const [editingField, setEditingField] = useCaseDraftState<keyof FormDraft | null>("application.editingField", activeSubmission?.editingField ?? null);
+  const [pending, setPending] = useCaseDraftState("application.pending", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("application.errorMessage", activeSubmission?.errorMessage ?? null);
+  const mutationLocked = pending || commandLock.pending || requiresReview;
   const folderLookupIdentity = JSON.stringify([
     accessGeneration,
     caseWorkspace.case_summary.id,
@@ -135,11 +147,16 @@ export function CaseApplicationWorkspace({
   const folderLookupPending = ownedFolderLookupState?.pending ?? false;
 
   useEffect(() => {
-    if (!editingField) {
+    if (activeSubmission) {
+      setDraft(activeSubmission.draft);
+      setDraftVersion(activeSubmission.draftVersion);
+      setEditingField(activeSubmission.editingField);
+      setErrorMessage(activeSubmission.errorMessage);
+    } else if (!editingField && !mutationLocked) {
       setDraft(currentDraft);
       setErrorMessage(null);
     }
-  }, [currentDraft, editingField]);
+  }, [activeSubmission, currentDraft, editingField, mutationLocked, setDraft, setDraftVersion, setEditingField, setErrorMessage]);
 
   async function saveField() {
     if (!editingField || pending || commandLock.pending || requiresReview) {
@@ -149,19 +166,23 @@ export function CaseApplicationWorkspace({
       setErrorMessage("Thông tin hồ sơ đã được tạo sau khi bắt đầu sửa. Bản nháp được giữ lại; Hủy sửa rồi mở lại trường để kiểm tra dữ liệu mới.");
       return;
     }
-    const command = commandLock.acquire();
+    const value = editingField === "submitted_on"
+      ? toSubmittedOnPayload(draft.submitted_on)
+      : normalizeText(draft[editingField]);
+    const command = commandLock.acquire({
+      draft: { ...draft }, editingField, draftVersion, errorMessage: null,
+    } satisfies ApplicationSubmission);
     if (!command) return;
     setPending(true);
     setErrorMessage(null);
     try {
-      const value = editingField === "submitted_on"
-        ? toSubmittedOnPayload(draft.submitted_on)
-        : normalizeText(draft[editingField]);
       await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
-      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       const nextError = error instanceof Error ? error : new Error("Không lưu được thông tin hồ sơ.");
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command, {
+        draft: { ...draft }, editingField, draftVersion, errorMessage: getErrorMessage(nextError),
+      } satisfies ApplicationSubmission);
       setErrorMessage(getErrorMessage(nextError));
     } finally {
       commandLock.release(command);
@@ -170,6 +191,7 @@ export function CaseApplicationWorkspace({
   }
 
   function cancelEdit() {
+    if (mutationLocked) return;
     setDraft(currentDraft);
     setErrorMessage(null);
     setEditingField(null);
@@ -226,20 +248,20 @@ export function CaseApplicationWorkspace({
             isEditing={editingField === "submitted_on"}
             label="Ngày nộp"
             onCancel={cancelEdit}
-            onEdit={() => {
+            onEdit={mutationLocked ? null : () => {
               setDraftVersion(caseWorkspace.application.row_version);
               setEditingField("submitted_on");
               setErrorMessage(null);
             }}
             onSave={() => void saveField()}
-            pending={pending}
-            saveDisabled={requiresReview || commandLock.pending}
+            pending={mutationLocked}
+            saveDisabled={mutationLocked}
             value={formatCompactDate(caseWorkspace.application.submitted_on)}
           >
             <input
               aria-label="Ngày nộp"
-              disabled={pending}
-              onChange={(event) => setDraft((current) => ({ ...current, submitted_on: event.target.value }))}
+              readOnly={mutationLocked}
+              onChange={(event) => { if (mutationLocked) return; setDraft((current) => ({ ...current, submitted_on: event.target.value })); }}
               type="date"
               value={draft.submitted_on}
             />
@@ -251,20 +273,20 @@ export function CaseApplicationWorkspace({
             isEditing={editingField === "dossier_code"}
             label="Mã hồ sơ"
             onCancel={cancelEdit}
-            onEdit={() => {
+            onEdit={mutationLocked ? null : () => {
               setDraftVersion(caseWorkspace.application.row_version);
               setEditingField("dossier_code");
               setErrorMessage(null);
             }}
             onSave={() => void saveField()}
-            pending={pending}
-            saveDisabled={requiresReview || commandLock.pending}
+            pending={mutationLocked}
+            saveDisabled={mutationLocked}
             value={caseWorkspace.application.dossier_code}
           >
             <input
               aria-label="Mã hồ sơ"
-              disabled={pending}
-              onChange={(event) => setDraft((current) => ({ ...current, dossier_code: event.target.value }))}
+              readOnly={mutationLocked}
+              onChange={(event) => { if (mutationLocked) return; setDraft((current) => ({ ...current, dossier_code: event.target.value })); }}
               value={draft.dossier_code}
             />
           </EditableDetailValue>
@@ -275,20 +297,20 @@ export function CaseApplicationWorkspace({
             isEditing={editingField === "applicant_name"}
             label="Người nộp hồ sơ"
             onCancel={cancelEdit}
-            onEdit={() => {
+            onEdit={mutationLocked ? null : () => {
               setDraftVersion(caseWorkspace.application.row_version);
               setEditingField("applicant_name");
               setErrorMessage(null);
             }}
             onSave={() => void saveField()}
-            pending={pending}
-            saveDisabled={requiresReview || commandLock.pending}
+            pending={mutationLocked}
+            saveDisabled={mutationLocked}
             value={caseWorkspace.application.applicant_name}
           >
             <input
               aria-label="Người nộp hồ sơ"
-              disabled={pending}
-              onChange={(event) => setDraft((current) => ({ ...current, applicant_name: event.target.value }))}
+              readOnly={mutationLocked}
+              onChange={(event) => { if (mutationLocked) return; setDraft((current) => ({ ...current, applicant_name: event.target.value })); }}
               value={draft.applicant_name}
             />
           </EditableDetailValue>

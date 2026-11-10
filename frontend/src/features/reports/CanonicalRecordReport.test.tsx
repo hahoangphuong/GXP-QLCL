@@ -71,6 +71,38 @@ describe("canonical record report workflow", () => {
     expect(screen.getByRole("button", { name: "Xuất CSV (Excel)" })).toBeEnabled();
   });
 
+  it("opens an issuing Case directly from the Certificate report using a link that CaseDirectOpen must independently verify", async () => {
+    vi.mocked(getCertificateReport).mockResolvedValue({
+      items: [{ ...cert, gxp_type: "GMP", case_id: "case-uuid" }],
+      total_count: 1, limit: 100, offset: 0,
+    });
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
+    const link = await screen.findByRole("link", { name: "Mở Case" });
+    const url = new URL(link.getAttribute("href")!, "https://app.test");
+    expect(url.pathname).toBe("/cases/case-uuid");
+    expect(url.searchParams.get("source_certificate_id")).toBe("cert-uuid");
+    expect(url.searchParams.get("source_site_id")).toBe("site-uuid");
+    expect(getChangeRequestReport).not.toHaveBeenCalled();
+  });
+
+  it.each(["GSP", "GDP"])("does not offer an unsupported %s Case deep link even if the report contains a Case ID", async gxp => {
+    vi.mocked(getCertificateReport).mockResolvedValue({
+      items: [{ ...cert, gxp_type: gxp, result_key: `site-uuid:${gxp}:facility_wide:`, case_id: "legacy-case" }],
+      total_count: 1, limit: 100, offset: 0,
+    });
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
+    await screen.findByRole("link", { name: "GCN-123" });
+    expect(screen.queryByRole("link", { name: "Mở Case" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "GCN-123" })).toHaveAttribute("href", "/reports/certificates/cert-uuid?site_id=site-uuid");
+  });
+
+  it("does not infer a Case for an unlinked legacy Certificate report projection", async () => {
+    render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
+    await screen.findByRole("link", { name: "GCN-123" });
+    expect(screen.queryByRole("link", { name: "Mở Case" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Case phát hành" })).toBeInTheDocument();
+  });
+
   it("shows each Change Request identity without inventing a GxP classification", async () => {
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="change_requests" /></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "123" })).toHaveAttribute("href", "/reports/change-requests/change-uuid");

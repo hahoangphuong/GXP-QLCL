@@ -195,6 +195,7 @@ export function GxpCertificateWorkspace({
   promotionPending,
   onEditLatestVersion,
   onOpenOwningCase,
+  ownerSiteId,
 }: {
   versionHistory?: HistoryState<GxpCertificateVersionHistory>;
   documentMetadata?: CertificateDocumentMetadataState;
@@ -211,6 +212,7 @@ export function GxpCertificateWorkspace({
   promotionPending: boolean;
   onEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
   onOpenOwningCase?: (caseId: string, certificateId: string, siteId: string) => void;
+  ownerSiteId?: string | null;
 }) {
   const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
   const selectedEditLock = useFacilityCommandLock(`gxp-certificate-write:${selectedCertificateId ?? "none"}`);
@@ -245,6 +247,7 @@ export function GxpCertificateWorkspace({
     && detail.case_id?.trim() && detail.case_id === detail.case_id.trim()
     && detail.site_id?.trim() && detail.site_id === detail.site_id.trim()
     && detail.site_id === selectedListItem.site_id
+    && ownerSiteId === detail.site_id
     && detail.case_id === selectedListItem.case_id
     && detail.certificate_type === selectedListItem.certificate_type
     && ["GMP", "GLP", "GMPbb"].includes(detail.certificate_type));

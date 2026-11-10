@@ -380,3 +380,52 @@ it("keeps completion input and reviewed submission version across tab unmount an
   await waitFor(() => expect(onComplete).toHaveBeenCalledWith("pct-draft", expect.objectContaining({ expected_version: 4, completed_on: "2026-11-01" })));
   await waitFor(() => expect(screen.getByLabelText("Ngày hoàn tất trình")).toHaveValue(""));
 });
+
+
+describe("actionable approval history", () => {
+  const submission = (id: string, stage: "PCT" | "CT", completed_on: string | null, pct_submission_id: string | null = null) => ({
+    approval_submission_id: id, case_id: "case-1", row_version: 2, stage, round_no: stage === "PCT" ? 1 : 2,
+    reference: id, submitted_on: null, submitted_time: null, completed_on, completed_time: null, pct_submission_id,
+  });
+
+  it("filters incomplete PCT/CT canonically and preserves the operator view across tab remount", () => {
+    const data = workspace({ approval_submissions: [
+      submission("pct-done", "PCT", "2026-11-01"),
+      submission("pct-open", "PCT", null),
+      submission("ct-open", "CT", null, "pct-done"),
+    ] });
+    const onCreate = vi.fn(), onComplete = vi.fn();
+    const editor = (show: boolean) => <CaseDraftSession identity="case-filter">{show
+      ? <CaseApprovalWorkspace caseWorkspace={data} onCreate={onCreate} onComplete={onComplete} /> : null
+    }</CaseDraftSession>;
+    const view = render(editor(true));
+    fireEvent.click(screen.getByRole("button", { name: "PCT (2)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chưa hoàn tất (1)" }));
+    expect(screen.getByLabelText("PCT lần 1 — pct-open")).toBeInTheDocument();
+    expect(screen.queryByLabelText("PCT lần 1 — pct-done")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("CT lần 2 — ct-open")).not.toBeInTheDocument();
+    view.rerender(editor(false));
+    view.rerender(editor(true));
+    expect(screen.getByRole("button", { name: "PCT (2)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Chưa hoàn tất (1)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("PCT lần 1 — pct-open")).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("reveals the exact completed parent hidden by the incomplete filter without mutation", () => {
+    const onCreate = vi.fn(), onComplete = vi.fn();
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({ approval_submissions: [
+      submission("pct-done", "PCT", "2026-11-01"),
+      submission("ct-open", "CT", null, "pct-done"),
+    ] })} onCreate={onCreate} onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole("button", { name: "CT (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chưa hoàn tất (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem PCT lần 1 của CT lần 2" }));
+    expect(screen.getByRole("button", { name: "Tất cả (2)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Mọi trạng thái (2)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("PCT lần 1 — pct-done")).toHaveFocus();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+});

@@ -374,14 +374,16 @@ describe("Case-scoped application draft lifetime", () => {
     fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Old A" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu Mã hồ sơ" }));
     view.rerender(editor("A", false));view.rerender(editor("A"));
-    expect(screen.getByLabelText("Mã hồ sơ")).toBeDisabled();
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveAttribute("readonly");
     view.rerender(editor(next));view.rerender(editor("A"));
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
-    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Canonical");
-    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "New A" } });
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Old A");
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Hủy sửa Mã hồ sơ" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "Not allowed" } });
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Old A");
     await act(async () => pending.resolve());
-    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("New A");
-    expect(screen.getByLabelText("Mã hồ sơ")).toBeEnabled();
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Old A");
+    expect(screen.getByLabelText("Mã hồ sơ")).not.toHaveAttribute("readonly");
     expect(onSave).toHaveBeenCalledOnce();
   });
 });
@@ -414,12 +416,46 @@ it("retains an unresolved application command lock after Case A → B → A", as
   await screen.findByText(/Chưa xác minh kết quả lưu/);
   view.rerender(editor("B"));
   view.rerender(editor("A"));
-  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+  expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("Original");
+  expect(screen.getByLabelText("Mã hồ sơ")).toHaveAttribute("readonly");
+  expect(screen.getByRole("button", { name: "Hủy sửa Mã hồ sơ" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Lưu Mã hồ sơ" })).toBeDisabled();
   expect(screen.getByText(/Chưa xác minh kết quả lưu/)).toBeInTheDocument();
   expect(onSave).toHaveBeenCalledOnce();
 });
 
+
+it.each([
+  ["dossier_code", "Mã hồ sơ", "  HS-CHUAN  ", "HS-CHUAN"],
+  ["applicant_name", "Người nộp hồ sơ", "  Nguyễn Văn B  ", "Nguyễn Văn B"],
+  ["submitted_on", "Ngày nộp", "2026-11-10", "2026-11-10T00:00:00Z"],
+] as const)("retains exact %s intent and original version after late unknown outcome A → B → A", async (field, label, typed, payload) => {
+  const pending = deferred<void>();
+  const onSave = vi.fn().mockReturnValue(pending.promise);
+  const canon = { ...workspace, application: { ...workspace.application, row_version: 17 } };
+  const editor = (identity: string) => <CaseDraftSession identity={identity}>
+    <CaseApplicationWorkspace caseWorkspace={canon} onSave={onSave} onResolveInspectionFolder={vi.fn()} />
+  </CaseDraftSession>;
+  const view = render(editor("case-A"));
+  fireEvent.doubleClick(screen.getByRole("button", { name: `Sửa ${label}` }));
+  fireEvent.change(screen.getByLabelText(label), { target: { value: typed } });
+  fireEvent.click(screen.getByRole("button", { name: `Lưu ${label}` }));
+  expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 17, [field]: payload });
+  view.rerender(editor("case-B"));
+  expect(screen.queryByDisplayValue(typed)).not.toBeInTheDocument();
+  view.rerender(editor("case-A"));
+  expect(screen.getByLabelText(label)).toHaveValue(typed);
+  expect(screen.getByLabelText(label)).toHaveAttribute("readonly");
+  expect(screen.getByRole("button", { name: `Hủy sửa ${label}` })).toBeDisabled();
+  fireEvent.keyDown(screen.getByLabelText(label), { key: "Escape" });
+  fireEvent.change(screen.getByLabelText(label), { target: { value: "tampered" } });
+  expect(screen.getByLabelText(label)).toHaveValue(typed);
+  await act(async () => pending.reject(new CaseFieldMutationRecoveryError("readback failed after POST")));
+  expect(screen.getByLabelText(label)).toHaveValue(typed);
+  expect(screen.getByLabelText(label)).toHaveAttribute("readonly");
+  expect(screen.getByRole("button", { name: `Lưu ${label}` })).toBeDisabled();
+  expect(onSave).toHaveBeenCalledOnce();
+});
 
 it("synchronously serializes an application save and isolates other Cases", async () => {
   const request = deferred<void>();
@@ -434,7 +470,6 @@ it("synchronously serializes an application save and isolates other Cases", asyn
   fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
   expect(screen.getByRole("button", { name: "Lưu Mã hồ sơ" })).toBeEnabled();
   view.rerender(editor("A"));
-  fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
   expect(screen.getByRole("button", { name: "Lưu Mã hồ sơ" })).toBeDisabled();
   await act(async () => request.resolve());
 });

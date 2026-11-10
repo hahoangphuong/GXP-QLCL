@@ -76,6 +76,10 @@ describe("authorized canonical detail navigation", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Phiên bản đã lưu" }), { target: { value: "version-gsp-1" } });
     expect(screen.getByText("Bảo quản GSP lần 1")).toBeInTheDocument();
     expect(screen.queryByText("Bảo quản GSP lần 2")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "So sánh với phiên bản mới nhất đã lưu" }));
+    expect(screen.getByRole("region", { name: "Đối chiếu phiên bản GxP đã lưu" })).toHaveTextContent("version-gsp-1");
+    expect(screen.getByRole("region", { name: "Phạm vi phiên bản đang xem" })).toHaveTextContent("Bảo quản GSP lần 1");
+    expect(screen.getByRole("region", { name: "Phạm vi phiên bản mới nhất đã lưu" })).toHaveTextContent("Bảo quản GSP lần 2");
     expect(getGxpCertificateVersionHistory).toHaveBeenCalledWith("cert-uuid", expect.anything(), true, null, expect.any(AbortSignal));
     expect(screen.queryByRole("button", { name: /Lưu thay đổi|Cấp giấy|Đặt làm chứng nhận hiện hành/ })).not.toBeInTheDocument();
   });

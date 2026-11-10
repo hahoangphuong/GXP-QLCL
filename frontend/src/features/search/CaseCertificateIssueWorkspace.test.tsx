@@ -161,7 +161,7 @@ it("retains the submitted GCN and ordered scopes through A → B → A while the
   </CaseDraftSession>;
   const view = render(editor("case-A"));
   fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GxP" }));
-  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "GCN-CANONICAL-INTENT" } });
+  fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "  GCN-CANONICAL-INTENT  " } });
   fireEvent.change(screen.getByLabelText("Ngày cấp"), { target: { value: "2026-11-10" } });
   fireEvent.click(screen.getByRole("button", { name: "Thêm phạm vi" }));
   fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Dây chuyền vô trùng" } });
@@ -169,6 +169,7 @@ it("retains the submitted GCN and ordered scopes through A → B → A while the
   fireEvent.change(screen.getByLabelText("Nội dung phạm vi 2"), { target: { value: "Đóng gói" } });
   fireEvent.click(screen.getByRole("button", { name: "Cấp giấy chứng nhận" }));
   expect(issue).toHaveBeenCalledOnce();
+  expect(issue).toHaveBeenCalledWith(expect.objectContaining({ certificate_number: "GCN-CANONICAL-INTENT" }));
   view.rerender(editor("case-B"));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   view.rerender(editor("case-A"));

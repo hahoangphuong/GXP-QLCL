@@ -636,6 +636,7 @@ describe("Facility GxP Certificate to canonical owning Case handoff", () => {
     listed?: Partial<GxpCertificateListItem>;
     loading?: boolean;
     listError?: string | null;
+    ownerSiteId?: string;
   } = {}) {
     const onOpenOwningCase = vi.fn();
     const onEdit = vi.fn(), onPromote = vi.fn();
@@ -647,6 +648,7 @@ describe("Facility GxP Certificate to canonical owning Case handoff", () => {
       selectedCertificateId: "cert-1", onSelectCertificate: vi.fn(),
       onEditLatestVersion: onEdit, onPromoteCurrent: onPromote,
       promotionError: null, promotionPending: false, onOpenOwningCase,
+      ownerSiteId: overrides.ownerSiteId ?? "site-1",
     };
     return { ...render(<GxpCertificateWorkspace {...props} />), props, onOpenOwningCase, onEdit, onPromote };
   }
@@ -663,6 +665,7 @@ describe("Facility GxP Certificate to canonical owning Case handoff", () => {
     { certificate: { case_id: null } },
     { certificate: { case_id: "another-case" } },
     { certificate: { site_id: "another-site" } },
+    { ownerSiteId: "foreign-facility" },
     { certificate: { certificate_type: "GSP" } },
     { certificate: { certificate_type: "GDP" } },
     { certificate: { case_id: "  " } },

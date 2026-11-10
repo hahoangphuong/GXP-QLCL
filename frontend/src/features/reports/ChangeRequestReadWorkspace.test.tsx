@@ -73,10 +73,10 @@ describe("full canonical Change Request read workspace", () => {
     expect(screen.getByText("Các mục thay đổi (2)")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Xử lý và chứng nhận" }));
     expect(screen.getByText("123/QĐ")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid");
+    expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid?site_id=site-uuid");
     expect(screen.getByText("ddk-uuid")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "ddk-uuid" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid");
+    expect(screen.getByRole("link", { name: "gcn-uuid" })).toHaveAttribute("href", "/reports/certificates/gcn-uuid?site_id=site-uuid");
     expect(screen.getAllByRole("link", { name: "Tài liệu" }).map(link => link.getAttribute("href")))
       .toEqual(["/documents/certificates/gcn-uuid", "/documents/business-eligibility-certificates/ddk-uuid"]);
     fireEvent.click(screen.getByRole("button", { name: "Tài liệu" }));

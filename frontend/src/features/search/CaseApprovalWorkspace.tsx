@@ -77,7 +77,7 @@ function CaseApprovalEditor({
   const parentSelect = useRef<HTMLSelectElement>(null);
   const approvalRows = useRef(new Map<string, HTMLDivElement>());
   const [stageFilter, setStageFilter] = useState<"all" | "PCT" | "CT">("all");
-  const [navigateToId, setNavigateToId] = useState<string | null>(null);
+  const navigateToId = useRef<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
   const { pending: ownerPending, requiresReview } = useContext(ApprovalMutationContext);
@@ -103,15 +103,15 @@ function CaseApprovalEditor({
   }, [submissions, pctById]);
   const visibleSubmissions = stageFilter === "all" ? submissions : submissions.filter(item => item.stage === stageFilter);
   useEffect(() => {
-    if (!navigateToId) return;
-    approvalRows.current.get(navigateToId)?.focus();
-    setNavigateToId(null);
-  }, [navigateToId, stageFilter]);
+    if (stageFilter !== "all" || !navigateToId.current) return;
+    approvalRows.current.get(navigateToId.current)?.focus();
+    navigateToId.current = null;
+  }, [stageFilter]);
   function navigateToApproval(id: string) {
     if (stageFilter === "all") approvalRows.current.get(id)?.focus();
     else {
       setStageFilter("all");
-      setNavigateToId(id);
+      navigateToId.current = id;
     }
   }
   const hasSelectedParent = completedPct.some((item) => item.approval_submission_id === parentId);

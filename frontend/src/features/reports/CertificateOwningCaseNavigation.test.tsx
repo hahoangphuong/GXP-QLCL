@@ -17,21 +17,21 @@ const access: ApiAccess = {
 };
 const reportRow = {
   certificate_id: "cert-uuid", certificate_version_id: "version-uuid",
-  result_key: "site-uuid:GSP:facility_wide:", site_id: "site-uuid", case_id: "case-uuid",
+  result_key: "site-uuid:GMP:facility_wide:", site_id: "site-uuid", case_id: "case-uuid",
   production_line_id: null, line_code: null, facility_name: "Cơ sở",
-  company_name: "Công ty", gxp_type: "GSP", certificate_number: "GSP-TEST",
+  company_name: "Công ty", gxp_type: "GMP", certificate_number: "GMP-TEST",
   issue_date: null, expiry_date: null, lifecycle_state: "GRANTED", status: "active",
 };
 function caseWorkspace(certificateSiteId = "site-uuid") {
   return {
     case_summary: {
-      id: "case-uuid", site_id: "site-uuid", gxp_type: "GSP",
+      id: "case-uuid", site_id: "site-uuid", gxp_type: "GMP",
       production_line_id: null, production_line_code: null,
       production_line_identity_state: "facility_wide", state: "closed",
     },
     linked_gxp_certificates: [{
       certificate_id: "cert-uuid", site_id: certificateSiteId, case_id: "case-uuid",
-      certificate_type: "GSP",
+      certificate_type: "GMP",
     }],
   } as Awaited<ReturnType<typeof getCaseWorkspace>>;
 }
@@ -62,7 +62,7 @@ it("navigates report Certificate → authoritative Case GET → exact Case/Certi
   expect(url.pathname).toBe("/search");
   expect(url.searchParams.get("history_id")).toBe("case-uuid");
   expect(url.searchParams.get("site_id")).toBe("site-uuid");
-  expect(url.searchParams.get("gxp_type")).toBe("GSP");
+  expect(url.searchParams.get("gxp_type")).toBe("GMP");
   expect(url.searchParams.get("event_tab")).toBe("Chứng nhận GxP");
   expect(getCaseWorkspace).toHaveBeenCalledOnce();
   expect(getCaseWorkspace).toHaveBeenCalledWith("case-uuid", expect.anything(), true, null);

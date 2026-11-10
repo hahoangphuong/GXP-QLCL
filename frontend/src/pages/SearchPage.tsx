@@ -2165,6 +2165,9 @@ export function SearchPage({
       mutationAccepted = true;
       const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
       if (!canonical) throw new Error("Chưa đọc lại được GCN đủ điều kiện canonical sau cập nhật.");
+      // Certificate metadata affects master search filters and summary columns.
+      // Re-fetch only after the selected artifact has a verified canonical readback.
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted) {
@@ -2206,6 +2209,7 @@ export function SearchPage({
       mutationAccepted = true;
       const canonical = await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId, false, generation);
       if (!canonical) throw new Error("Chưa đọc lại được trạng thái hiện hành canonical của GCN đủ điều kiện.");
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted && selectedEligibilityCertificateId) {
@@ -2265,6 +2269,9 @@ export function SearchPage({
       setGxpCertificateDetail(detailPayload);
       setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
+      // The canonical Certificate list/detail has been accepted by this owner.
+      // Invalidate the master query instead of synthesizing status/expiry locally.
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       let resultError: unknown = error;
       try {
@@ -2311,6 +2318,7 @@ export function SearchPage({
       setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
       setGxpCertificateDetailFailure(null);
+      setMasterRefreshGeneration(current => current + 1);
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409 && !mutationAccepted) {

@@ -6,6 +6,16 @@ import { formatStatusLabel } from "../../lib/presentation";
 import type { ChangeRequestWorkspace, GxpCertificateDetail } from "../../types";
 import { reportReturnLocation } from "./reportReturnLocation";
 
+// Navigation hints cannot override canonical Certificate ownership.
+function relatedChangeRequestLocation(state: unknown, certificateSiteId: string): string | null {
+  if (!state || typeof state !== "object" || !("relatedChangeRequest" in state)) return null;
+  const related = state.relatedChangeRequest;
+  if (!related || typeof related !== "object" || !("id" in related) || !("siteId" in related)) return null;
+  if (typeof related.id !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(related.id)
+    || typeof related.siteId !== "string" || related.siteId !== certificateSiteId) return null;
+  return `/reports/change-requests/${encodeURIComponent(related.id)}`;
+}
+
 export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: "certificates" | "change_requests" }) {
   const params = useParams();
   const location = useLocation();
@@ -52,9 +62,10 @@ export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: 
   const item = current?.certificate;
   const change = current?.change;
   if (item) {
+    const relatedReturn = relatedChangeRequestLocation(location.state, item.site_id);
     if (!["GMP", "GLP", "GMPbb"].includes(item.certificate_type)) {
       return <section className="page-section">
-        <header className="section-title"><div><p className="eyebrow">Báo cáo / Chứng nhận</p><h2>Chi tiết GCN {item.certificate_type}</h2></div><Link className="text-link" to={reportReturn ?? "/reports?report=certificates"}>Quay lại Báo cáo</Link></header>
+        <header className="section-title"><div><p className="eyebrow">Báo cáo / Chứng nhận</p><h2>Chi tiết GCN {item.certificate_type}</h2></div><Link className="text-link" to={relatedReturn ?? reportReturn ?? "/reports?report=certificates"}>{relatedReturn ? "Quay lại yêu cầu thay đổi" : "Quay lại Báo cáo"}</Link></header>
         <section className="panel">
           <p>Chỉ xem thông tin canonical; chưa hỗ trợ chỉnh sửa hoặc cấp GCN loại {item.certificate_type} tại đây.</p>
           <dl className="persisted-version-fields">

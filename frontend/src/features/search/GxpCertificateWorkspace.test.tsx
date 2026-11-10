@@ -554,3 +554,77 @@ describe("GxpCertificateWorkspace edit form", () => {
     expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
   });
 });
+
+
+describe("certificate version edit command ownership across selection switches", () => {
+  function props(id: string, save: ReturnType<typeof vi.fn>) {
+    return {
+      detail: { ...detail(), certificate_id: id },
+      detailError: null, detailLoading: false,
+      items: [items[0], { ...items[0], certificate_id: "cert-2" }],
+      listError: null, listLoading: false, selectedCertificateId: id,
+      onSelectCertificate: vi.fn(), onEditLatestVersion: save,
+      onPromoteCurrent: vi.fn(), promotionError: null, promotionPending: false,
+    };
+  }
+
+  it("recovers the exact normalized submitted fields and ordered scopes on A → B → A after unknown outcome", async () => {
+    let reject!: (error: Error) => void;
+    const save = vi.fn(() => new Promise<void>((_, fail) => { reject = fail; }));
+    const editor = (id: string) => <CaseDraftSession identity="site-1" facilityIdentity="access-site-1">
+      <GxpCertificateWorkspace {...props(id, save)} />
+    </CaseDraftSession>;
+    const view = render(editor("cert-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "  GCN-RECOVER  " } });
+    fireEvent.change(screen.getByLabelText("Ngày cấp"), { target: { value: "2026-11-10" } });
+    fireEvent.change(screen.getByLabelText("Ngày hết hạn"), { target: { value: "2029-11-10" } });
+    fireEvent.change(screen.getByLabelText("Lý do cập nhật"), { target: { value: "  Điều chỉnh  " } });
+    fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Phạm vi đã gửi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Đưa phạm vi 2 lên" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      expected_version: 7, certificate_number: "GCN-RECOVER", issue_date: "2026-11-10",
+      expiry_date: "2029-11-10", reason: "Điều chỉnh",
+      scopes: [expect.objectContaining({ scope_text: "Scope Beta" }), expect.objectContaining({ scope_text: "Phạm vi đã gửi" })],
+    }));
+    view.rerender(editor("cert-2"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.rerender(editor("cert-1"));
+    expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN-RECOVER");
+    expect(screen.getByLabelText("Ngày cấp")).toHaveValue("2026-11-10");
+    expect(screen.getByLabelText("Ngày hết hạn")).toHaveValue("2029-11-10");
+    expect(screen.getByLabelText("Lý do cập nhật")).toHaveValue("Điều chỉnh");
+    expect(screen.getByLabelText("Nội dung phạm vi 2")).toHaveValue("Phạm vi đã gửi");
+    expect(screen.getByLabelText("Nội dung phạm vi 1")).toHaveValue("Scope Beta");
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Hủy" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await act(async () => reject(new CaseFieldMutationRecoveryError("unknown version result")));
+    expect(screen.getByRole("status")).toHaveTextContent("chưa được xác minh");
+    expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN-RECOVER");
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    expect(save).toHaveBeenCalledOnce();
+    view.rerender(editor("cert-2"));
+    view.rerender(editor("cert-1"));
+    expect(screen.getByLabelText("Nội dung phạm vi 2")).toHaveValue("Phạm vi đã gửi");
+    expect(screen.getByRole("button", { name: "Hủy" })).toBeDisabled();
+  });
+
+  it("does not resurrect a definitively rejected edit or mislabel a promotion recovery as an edit", async () => {
+    const save = vi.fn().mockRejectedValue(Object.assign(new Error("forbidden"), { status: 403 }));
+    const editor = (id: string) => <CaseDraftSession identity="site-1" facilityIdentity="access-site-1">
+      <GxpCertificateWorkspace {...props(id, save)} />
+    </CaseDraftSession>;
+    const view = render(editor("cert-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    await screen.findByText("forbidden");
+    view.rerender(editor("cert-2"));
+    view.rerender(editor("cert-1"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeEnabled();
+    expect(save).toHaveBeenCalledOnce();
+  });
+});

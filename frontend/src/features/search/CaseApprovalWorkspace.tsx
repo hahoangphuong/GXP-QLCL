@@ -89,8 +89,8 @@ function CaseApprovalEditor({
     ),
     [caseWorkspace.inspection.approval_submissions],
   );
-  const completedPct = submissions.filter((item) => item.stage === "PCT" && item.completed_on !== null);
   const caseId = caseWorkspace.case_summary.id;
+  const completedPct = submissions.filter((item) => item.stage === "PCT" && item.case_id === caseId && item.completed_on !== null);
   const pctById = useMemo(() => new Map(submissions.filter(item => item.stage === "PCT" && item.case_id === caseId).map(item => [item.approval_submission_id, item])), [submissions, caseId]);
   const ctByParent = useMemo(() => {
     const result = new Map<string, Submission[]>();

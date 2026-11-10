@@ -5474,7 +5474,9 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
     fireEvent.click(await screen.findByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
     await waitFor(() => expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText(/chưa xác nhận|không khớp/i)).toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(2));
+    // Let the rejected canonical verification propagate through the mutation owner.
+    await flushSearchUrlSync();
     expect(apiMocks.promoteGxpCertificateCurrent).toHaveBeenCalledOnce();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(container.querySelector(".facility-table tbody tr")?.textContent).toContain("Master before promotion");

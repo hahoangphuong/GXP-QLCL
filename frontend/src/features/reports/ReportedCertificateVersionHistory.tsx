@@ -18,7 +18,7 @@ export function ReportedCertificateVersionHistory({ detail, access }: {
     access.accessGeneration, detail.site_id, detail.certificate_type, detail.case_id,
   ]);
   const history = usePersistedCertificateHistory("gxp", context, detail.certificate_id,
-    detail.row_version, access.canLoadSecureApi, access.auth, access.useStubAuth, access.bearerToken);
+    detail.row_version, access.canLoadSecureApi && !invalidVersionHint, access.auth, access.useStubAuth, access.bearerToken);
   if (history.status === "ready" && (
     history.data.certificate_id !== detail.certificate_id
     || history.data.site_id !== detail.site_id

@@ -6,7 +6,7 @@ import { usePersistedCertificateHistory } from "../features/search/usePersistedC
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
 import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
 import { startTransition, useCallback, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
@@ -285,6 +285,7 @@ export function SearchPage({
 }) {
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const returnQueue = caseWorkflowQueue(searchParams.get("return_queue"));
   const location = useLocation();
   const returnHint = caseReportReturn(location.state);
@@ -2824,6 +2825,14 @@ export function SearchPage({
                 if (!gxpListOwner) return;
                 setSelectedGxpCertificateOwner(gxpListOwner);
                 setSelectedGxpCertificateId(certificateId);
+              }}
+              onOpenGxpCertificateOwningCase={(caseId, certificateId, siteId) => {
+                // This URL carries only navigation hints. CaseDirectOpen must
+                // independently verify Certificate ↔ Site ↔ Case before opening.
+                if (!caseId || !certificateId || !siteId) return;
+                navigate(`/cases/${encodeURIComponent(caseId)}?${new URLSearchParams({
+                  source_certificate_id: certificateId, source_site_id: siteId,
+                })}`);
               }}
               onGxpCertificatePromote={handleGxpCertificatePromote}
               onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}

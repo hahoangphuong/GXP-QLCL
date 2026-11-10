@@ -14,6 +14,13 @@ type ProcessingDraft = {
   notes: string;
 };
 
+type AssessmentReview = {
+  draft: ProcessingDraft;
+  editingField: keyof ProcessingDraft;
+  draftVersion: number;
+  errorMessage: string;
+};
+
 function normalizeDateInputValue(value: string | null): string {
   const normalized = String(value ?? "").trim();
   const match = normalized.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -121,20 +128,32 @@ export function CaseProcessingWorkspace({
   view?: "assessment" | "timeline";
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
-  const [draft, setDraft] = useCaseDraftState<ProcessingDraft>("assessment.draft", currentDraft);
-  const [editingField, setEditingField] = useCaseDraftState<keyof ProcessingDraft | null>("assessment.editingField", null);
-  const [draftVersion, setDraftVersion] = useCaseDraftState("assessment.draftVersion", caseWorkspace.processing.row_version);
-  const [pending, setPending] = useCaseDraftState("assessment.pending", false);
   const commandLock = useCaseCommandLock("assessment");
   const requiresReview = commandLock.requiresReview;
-  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("assessment.errorMessage", null);
+  const review = commandLock.reviewPayload<AssessmentReview>();
+  const [draft, setDraft] = useCaseDraftState<ProcessingDraft>("assessment.draft", review?.draft ?? currentDraft);
+  const [editingField, setEditingField] = useCaseDraftState<keyof ProcessingDraft | null>("assessment.editingField", review?.editingField ?? null);
+  const [draftVersion, setDraftVersion] = useCaseDraftState("assessment.draftVersion", review?.draftVersion ?? caseWorkspace.processing.row_version);
+  const [pending, setPending] = useCaseDraftState("assessment.pending", false);
+  const [errorMessage, setErrorMessage] = useCaseDraftState<string | null>("assessment.errorMessage", review?.errorMessage ?? null);
+
+  // The Case-local editor session can be replaced by A → B → A while an HTTP
+  // command remains unknown. Recover only the submitted copy from its exact
+  // access/Case-scoped command registry, never a canonical result or a retry.
+  useEffect(() => {
+    if (!requiresReview || !review) return;
+    setDraft(review.draft);
+    setEditingField(review.editingField);
+    setDraftVersion(review.draftVersion);
+    setErrorMessage(review.errorMessage);
+  }, [requiresReview, review, setDraft, setEditingField, setDraftVersion, setErrorMessage]);
 
   useEffect(() => {
-    if (!editingField) {
+    if (!editingField && !requiresReview && !commandLock.pending) {
       setDraft(currentDraft);
       setErrorMessage(null);
     }
-  }, [currentDraft, editingField]);
+  }, [currentDraft, editingField, requiresReview, commandLock.pending, setDraft, setErrorMessage]);
 
   async function saveField() {
     if (!editingField || pending || commandLock.pending || requiresReview) {
@@ -153,8 +172,13 @@ export function CaseProcessingWorkspace({
       await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
-      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
       const nextError = error instanceof Error ? error : new Error("Không lưu được bước xử lý.");
+      if (error instanceof CaseFieldMutationRecoveryError) {
+        commandLock.requireReview(command, {
+          draft: { ...draft }, editingField, draftVersion,
+          errorMessage: getErrorMessage(nextError),
+        } satisfies AssessmentReview);
+      }
       setErrorMessage(getErrorMessage(nextError));
     } finally {
       commandLock.release(command);
@@ -163,6 +187,7 @@ export function CaseProcessingWorkspace({
   }
 
   function cancelEdit() {
+    if (pending || commandLock.pending || requiresReview) return;
     setDraft(currentDraft);
     setErrorMessage(null);
     setEditingField(null);
@@ -181,20 +206,20 @@ export function CaseProcessingWorkspace({
             isEditing={editingField === "assessed_on"}
             label="Ngày thẩm định"
             onCancel={cancelEdit}
-            onEdit={() => {
+            onEdit={requiresReview || commandLock.pending ? null : () => {
               setDraftVersion(caseWorkspace.processing.row_version);
               setEditingField("assessed_on");
               setErrorMessage(null);
             }}
             onSave={() => void saveField()}
-            pending={pending}
+            pending={pending || commandLock.pending || requiresReview}
             saveDisabled={requiresReview || commandLock.pending}
             value={formatCompactDate(caseWorkspace.processing.assessed_on)}
           >
             <input
               aria-label="Ngày thẩm định"
-              disabled={pending}
-              onChange={(event) => setDraft((current) => ({ ...current, assessed_on: event.target.value }))}
+              readOnly={pending || commandLock.pending || requiresReview}
+              onChange={(event) => { if (pending || commandLock.pending || requiresReview) return; setDraft((current) => ({ ...current, assessed_on: event.target.value })); }}
               type="date"
               value={draft.assessed_on}
             />
@@ -206,20 +231,20 @@ export function CaseProcessingWorkspace({
             isEditing={editingField === "assessor_name"}
             label="Người thẩm định"
             onCancel={cancelEdit}
-            onEdit={() => {
+            onEdit={requiresReview || commandLock.pending ? null : () => {
               setDraftVersion(caseWorkspace.processing.row_version);
               setEditingField("assessor_name");
               setErrorMessage(null);
             }}
             onSave={() => void saveField()}
-            pending={pending}
+            pending={pending || commandLock.pending || requiresReview}
             saveDisabled={requiresReview || commandLock.pending}
             value={caseWorkspace.processing.assessor_name}
           >
             <input
               aria-label="Người thẩm định"
-              disabled={pending}
-              onChange={(event) => setDraft((current) => ({ ...current, assessor_name: event.target.value }))}
+              readOnly={pending || commandLock.pending || requiresReview}
+              onChange={(event) => { if (pending || commandLock.pending || requiresReview) return; setDraft((current) => ({ ...current, assessor_name: event.target.value })); }}
               value={draft.assessor_name}
             />
           </EditableDetailValue>
@@ -233,21 +258,21 @@ export function CaseProcessingWorkspace({
             label="Kết quả thẩm định"
             multiline
             onCancel={cancelEdit}
-            onEdit={() => {
+            onEdit={requiresReview || commandLock.pending ? null : () => {
               setDraftVersion(caseWorkspace.processing.row_version);
               setEditingField("assessment_result");
               setErrorMessage(null);
             }}
             onSave={() => void saveField()}
-            pending={pending}
+            pending={pending || commandLock.pending || requiresReview}
             saveDisabled={requiresReview || commandLock.pending}
             value={caseWorkspace.processing.assessment_result}
           >
             <textarea
               aria-label="Kết quả thẩm định"
               className="inspection-textarea"
-              disabled={pending}
-              onChange={(event) => setDraft((current) => ({ ...current, assessment_result: event.target.value }))}
+              readOnly={pending || commandLock.pending || requiresReview}
+              onChange={(event) => { if (pending || commandLock.pending || requiresReview) return; setDraft((current) => ({ ...current, assessment_result: event.target.value })); }}
               rows={4}
               value={draft.assessment_result}
             />
@@ -259,21 +284,21 @@ export function CaseProcessingWorkspace({
             label="Ghi chú thẩm định"
             multiline
             onCancel={cancelEdit}
-            onEdit={() => {
+            onEdit={requiresReview || commandLock.pending ? null : () => {
               setDraftVersion(caseWorkspace.processing.row_version);
               setEditingField("notes");
               setErrorMessage(null);
             }}
             onSave={() => void saveField()}
-            pending={pending}
+            pending={pending || commandLock.pending || requiresReview}
             saveDisabled={requiresReview || commandLock.pending}
             value={caseWorkspace.processing.notes}
           >
             <textarea
               aria-label="Ghi chú thẩm định"
               className="inspection-textarea"
-              disabled={pending}
-              onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+              readOnly={pending || commandLock.pending || requiresReview}
+              onChange={(event) => { if (pending || commandLock.pending || requiresReview) return; setDraft((current) => ({ ...current, notes: event.target.value })); }}
               rows={3}
               value={draft.notes}
             />

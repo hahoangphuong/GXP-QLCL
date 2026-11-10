@@ -628,3 +628,64 @@ describe("certificate version edit command ownership across selection switches",
     expect(save).toHaveBeenCalledOnce();
   });
 });
+
+
+describe("Facility GxP Certificate to canonical owning Case handoff", () => {
+  function renderHandoff(overrides: {
+    certificate?: Partial<GxpCertificateDetail>;
+    listed?: Partial<GxpCertificateListItem>;
+    loading?: boolean;
+    listError?: string | null;
+  } = {}) {
+    const onOpenOwningCase = vi.fn();
+    const onEdit = vi.fn(), onPromote = vi.fn();
+    const props = {
+      detail: { ...detail(), ...overrides.certificate },
+      detailError: null, detailLoading: overrides.loading ?? false,
+      items: [{ ...items[0], ...overrides.listed }],
+      listError: overrides.listError ?? null, listLoading: false,
+      selectedCertificateId: "cert-1", onSelectCertificate: vi.fn(),
+      onEditLatestVersion: onEdit, onPromoteCurrent: onPromote,
+      promotionError: null, promotionPending: false, onOpenOwningCase,
+    };
+    return { ...render(<GxpCertificateWorkspace {...props} />), props, onOpenOwningCase, onEdit, onPromote };
+  }
+
+  it("opens only the selected, matching Certificate UUID/Site/Case via the verified Case owner", () => {
+    const { onOpenOwningCase, onEdit, onPromote } = renderHandoff();
+    fireEvent.click(screen.getByRole("button", { name: "Mở Case cấp GCN này" }));
+    expect(onOpenOwningCase).toHaveBeenCalledExactlyOnceWith("case-1", "cert-1", "site-1");
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(onPromote).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { certificate: { case_id: null } },
+    { certificate: { case_id: "another-case" } },
+    { certificate: { site_id: "another-site" } },
+    { certificate: { certificate_type: "GSP" } },
+    { certificate: { certificate_type: "GDP" } },
+    { certificate: { case_id: "  " } },
+    { listed: { case_id: null } },
+    { loading: true },
+    { listError: "unverified list" },
+  ])("hides owning Case navigation for absent, unsupported, stale or unverified identity (%j)", options => {
+    const { onOpenOwningCase } = renderHandoff(options);
+    expect(screen.queryByRole("button", { name: "Mở Case cấp GCN này" })).not.toBeInTheDocument();
+    expect(onOpenOwningCase).not.toHaveBeenCalled();
+  });
+
+  it("does not expose the previous Certificate's owning Case during selection change", () => {
+    const { rerender, props, onOpenOwningCase } = renderHandoff();
+    rerender(<GxpCertificateWorkspace {...props} selectedCertificateId="cert-2" />);
+    expect(screen.queryByRole("button", { name: "Mở Case cấp GCN này" })).not.toBeInTheDocument();
+    expect(onOpenOwningCase).not.toHaveBeenCalled();
+  });
+
+  it("supports an explicit non-current candidate's canonical owning Case without promoting it", () => {
+    const { onOpenOwningCase, onPromote } = renderHandoff({ certificate: { latest_flag: false }, listed: { latest_flag: false } });
+    fireEvent.click(screen.getByRole("button", { name: "Mở Case cấp GCN này" }));
+    expect(onOpenOwningCase).toHaveBeenCalledExactlyOnceWith("case-1", "cert-1", "site-1");
+    expect(onPromote).not.toHaveBeenCalled();
+  });
+});

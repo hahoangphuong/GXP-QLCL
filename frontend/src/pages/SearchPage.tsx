@@ -969,8 +969,9 @@ export function SearchPage({
     // selection and unsaved editors while replacing the rows from the API.
     const canonicalRefresh = appliedMasterRefreshGeneration.current !== masterRefreshGeneration;
     appliedMasterRefreshGeneration.current = masterRefreshGeneration;
-    const baseResults = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.items : [];
-    const baseTotalCount = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.totalCount : 0;
+    const keepOwnedRows = previousRequest?.context === searchContext && (canonicalRefresh || !isFirstPage);
+    const baseResults = keepOwnedRows ? previousRequest.items : [];
+    const baseTotalCount = keepOwnedRows ? previousRequest.totalCount : 0;
     let cancelled = false;
     setSearchResultsRequest({
       context: searchContext,

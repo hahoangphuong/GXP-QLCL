@@ -66,6 +66,18 @@ describe("canonical Case UUID entry", () => {
     },
   );
 
+  it.each(["GSP", "GDP"])("rejects %s source-linked Case deep links until that GxP workspace is supported", async gxp => {
+    const value = workspace("case-uuid");
+    value.case_summary.gxp_type = gxp;
+    value.linked_gxp_certificates = [{
+      certificate_id: "cert-uuid", site_id: "site-uuid", case_id: "case-uuid", certificate_type: gxp,
+    } as typeof value.linked_gxp_certificates[number]];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/cases/case-uuid?source_certificate_id=cert-uuid&source_site_id=site-uuid");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Case không khớp chứng nhận và Site canonical");
+    expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
+  });
+
   it("rejects missing, empty or duplicated source identity before calling the Case API", () => {
     for (const search of [
       "?source_certificate_id=cert-uuid",

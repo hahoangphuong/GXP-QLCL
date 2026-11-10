@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import type { BusinessEligibilityHistoricalVersion, BusinessEligibilityVersionHistory, GxpCertificateHistoricalVersion, GxpCertificateVersionHistory } from "../../types";
 import type { HistoryState } from "./usePersistedCertificateHistory";
 import { GxpVersionComparison } from "./GxpVersionComparison";
+import { DdkVersionComparison } from "./DdkVersionComparison";
 
 type Props = { kind: "gxp"; state: HistoryState<GxpCertificateVersionHistory> } | { kind: "ddk"; state: HistoryState<BusinessEligibilityVersionHistory> };
 function Field({ label, value }: { label: string; value: string | number | boolean | null }) {
@@ -56,10 +57,14 @@ export function PersistedCertificateHistory({ kind, state }: Props) {
   const latestGxp = kind === "gxp" && data && "certificate_id" in data && data.latest_version_id
     ? data.versions.find(version => version.certificate_version_id === data.latest_version_id) : undefined;
   const selectedGxp = kind === "gxp" && selected && "certificate_version_id" in selected ? selected : undefined;
-  const canCompare = Boolean(data && selectedGxp && latestGxp && selectedGxp.certificate_version_id !== latestGxp.certificate_version_id);
+  const latestDdk = kind === "ddk" && data && "business_eligibility_certificate_id" in data && data.latest_version_id
+    ? data.versions.find(version => version.business_eligibility_version_id === data.latest_version_id) : undefined;
+  const selectedDdk = kind === "ddk" && selected && "business_eligibility_version_id" in selected ? selected : undefined;
+  const comparedId = selectedGxp?.certificate_version_id ?? selectedDdk?.business_eligibility_version_id;
+  const latestId = latestGxp?.certificate_version_id ?? latestDdk?.business_eligibility_version_id;
+  const canCompare = Boolean(data && comparedId && latestId && comparedId !== latestId);
   const comparing = Boolean(canCompare && comparison?.data === data
-    && comparison.selectedId === selectedGxp?.certificate_version_id
-    && comparison.latestId === latestGxp?.certificate_version_id);
+    && comparison.selectedId === comparedId && comparison.latestId === latestId);
   const error = state.status === "error" ? state.httpStatus : null;
   const errorMessage = state.status !== "error" ? null : error === 401 ? "Cần đăng nhập để xem phiên bản." : error === 403 ? "Không có quyền xem phiên bản." : error === 404 ? "Không tìm thấy giấy chứng nhận theo UUID." : error === 409 ? "Xung đột toàn vẹn dữ liệu phiên bản; cần kiểm tra dữ liệu." : "Không thể tải phiên bản đã lưu.";
   const stateAnnouncement = state.status === "idle" || state.status === "loading" ? "Đang tải phiên bản đã lưu…"
@@ -89,11 +94,12 @@ export function PersistedCertificateHistory({ kind, state }: Props) {
           </p>
           <dl className="persisted-version-fields"><Field label="Số thứ tự phiên bản (version_no)" value={selected.version_no} /><Field label="Concurrency token (row_version)" value={selected.row_version} /><Field label="Số GCN" value={selected.certificate_number} /></dl>
           {"certificate_version_id" in selected ? <GxpSnapshot version={selected} /> : <DdkSnapshot version={selected} />}
-          {canCompare && selectedGxp && latestGxp ? <>
+          {canCompare && comparedId && latestId ? <>
             <button type="button" aria-expanded={comparing} onClick={() => setComparison(comparing ? null : {
-              data: data!, selectedId: selectedGxp.certificate_version_id, latestId: latestGxp.certificate_version_id,
+              data: data!, selectedId: comparedId, latestId,
             })}>{comparing ? "Đóng đối chiếu phiên bản" : "So sánh với phiên bản mới nhất đã lưu"}</button>
-            {comparing ? <GxpVersionComparison selected={selectedGxp} latest={latestGxp} /> : null}
+            {comparing && selectedGxp && latestGxp ? <GxpVersionComparison selected={selectedGxp} latest={latestGxp} /> : null}
+            {comparing && selectedDdk && latestDdk ? <DdkVersionComparison selected={selectedDdk} latest={latestDdk} /> : null}
           </> : null}
         </>}
       </> : null}

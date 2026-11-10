@@ -45,6 +45,7 @@ describe("canonical Case UUID entry", () => {
     const uri = new URL((await screen.findByTestId("resolved-url")).textContent!, "https://app.test");
     expect(uri.searchParams.get("history_id")).toBe("case-uuid");
     expect(uri.searchParams.get("site_id")).toBe("site-uuid");
+    expect(uri.searchParams.get("event_tab")).toBe("Chứng nhận GxP");
     expect(uri.searchParams.has("source_certificate_id")).toBe(false);
     expect(getCaseWorkspace).toHaveBeenCalledWith("case-uuid", expect.anything(), true, null);
   });

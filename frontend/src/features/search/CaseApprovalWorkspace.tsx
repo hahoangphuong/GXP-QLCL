@@ -90,17 +90,18 @@ function CaseApprovalEditor({
     [caseWorkspace.inspection.approval_submissions],
   );
   const completedPct = submissions.filter((item) => item.stage === "PCT" && item.completed_on !== null);
-  const pctById = useMemo(() => new Map(submissions.filter(item => item.stage === "PCT").map(item => [item.approval_submission_id, item])), [submissions]);
+  const caseId = caseWorkspace.case_summary.id;
+  const pctById = useMemo(() => new Map(submissions.filter(item => item.stage === "PCT" && item.case_id === caseId).map(item => [item.approval_submission_id, item])), [submissions, caseId]);
   const ctByParent = useMemo(() => {
     const result = new Map<string, Submission[]>();
     for (const ct of submissions) {
-      if (ct.stage !== "CT" || !ct.pct_submission_id || !pctById.has(ct.pct_submission_id)) continue;
+      if (ct.stage !== "CT" || ct.case_id !== caseId || !ct.pct_submission_id || !pctById.has(ct.pct_submission_id)) continue;
       const children = result.get(ct.pct_submission_id) ?? [];
       children.push(ct);
       result.set(ct.pct_submission_id, children);
     }
     return result;
-  }, [submissions, pctById]);
+  }, [submissions, pctById, caseId]);
   const visibleSubmissions = stageFilter === "all" ? submissions : submissions.filter(item => item.stage === stageFilter);
   useEffect(() => {
     if (stageFilter !== "all" || !navigateToId.current) return;

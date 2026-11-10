@@ -51,7 +51,10 @@ function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: Cas
     params.set("document_parent_id", documentTarget.parent_id);
   }
   if (queue) params.set("return_queue", queue);
-  if (queue && !documentKey) {
+  // A verified Certificate-origin navigation opens its Case at the relevant
+  // Certificate tab, without treating that hint as a mutation/readiness grant.
+  if (sourceCertificate && !documentKey) params.set("event_tab", "Chứng nhận GxP");
+  if (queue && !documentKey && !sourceCertificate) {
     // The Case state comes from the authorized workspace, never the queue projection.
     if (["planned", "decision_issued", "inspection_in_progress"].includes(summary.state)) {
       params.set("event_tab", "Kiểm tra");

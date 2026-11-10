@@ -69,6 +69,9 @@ describe("Case assessment uncertain canonical mutation", () => {
     view.rerender(makeEditor("case-B", onSave));
     view.rerender(makeEditor("case-A", onSave));
     expect(screen.queryByRole("button", { name: "Sửa Ghi chú thẩm định" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ghi chú thẩm định" })).toHaveValue("Bản gửi chưa xác minh");
+    expect(screen.getByRole("textbox", { name: "Ghi chú thẩm định" })).toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Hủy sửa Ghi chú thẩm định" })).toBeDisabled();
     await act(async () => { rejectWrite(new CaseFieldMutationRecoveryError("GET failed after POST")); });
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Ghi chú thẩm định" })).toHaveValue("Bản gửi chưa xác minh"));
     expect(screen.getByRole("textbox", { name: "Ghi chú thẩm định" })).toHaveAttribute("readonly");

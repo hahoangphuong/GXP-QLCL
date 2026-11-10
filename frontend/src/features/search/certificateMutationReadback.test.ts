@@ -13,7 +13,12 @@ const gxpRow = {
   certificate_type: "GMP", production_line_id: "line-A",
   production_line_identity_state: "canonical", latest_flag: true,
 } as GxpCertificateListItem;
-const gxpDetail = { ...gxpRow } as GxpCertificateDetail;
+const gxpDetail: GxpCertificateDetail = {
+  ...gxpRow, row_version: 2, issuance_basis: "inspection_case",
+  facility_name: "Nhà máy A", address: null, company_name: "Công ty A",
+  company_legal_address: null, scope_summary: null, scopes: [],
+  limitation_text: null, source_description: null, action_readiness: [],
+};
 const ddkRow = {
   business_eligibility_certificate_id: "ddk-A", site_id: "site-A",
   company_id: "company-A", latest_flag: true,

@@ -256,6 +256,27 @@ describe("CaseApprovalWorkspace", () => {
     expect(onCreate).not.toHaveBeenCalled();
   });
 
+  it("does not make a foreign Case PCT selectable or navigable, even with a matching parent UUID", () => {
+    const onCreate = vi.fn();
+    const row = {
+      approval_submission_id: "pct-foreign", case_id: "other-case", row_version: 2, stage: "PCT" as const,
+      round_no: 1, reference: "Foreign", submitted_on: null, submitted_time: null,
+      completed_on: "2026-11-02", completed_time: null, pct_submission_id: null,
+    };
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({
+      approval_actions: [available("create_approval_ct")],
+      approval_submissions: [
+        row,
+        { ...row, approval_submission_id: "ct-local", case_id: "case-1", stage: "CT", pct_submission_id: "pct-foreign" },
+      ],
+    })} onCreate={onCreate} onComplete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    expect(screen.queryByRole("option", { name: /PCT lần 1.*Foreign/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xem PCT lần 1 của CT lần 1" })).not.toBeInTheDocument();
+    expect(screen.getByText("PCT: pct-foreign")).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
   it("preserves the selected PCT across tab remount without carrying it to another Case", () => {
     const pct = { approval_submission_id: "pct-2", case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: 2, reference: "PCT-B", submitted_on: null, submitted_time: null, completed_on: "2026-10-01", completed_time: null, pct_submission_id: null };
     const onCreate = vi.fn();

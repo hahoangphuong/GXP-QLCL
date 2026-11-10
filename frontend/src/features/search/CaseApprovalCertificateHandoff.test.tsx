@@ -30,12 +30,12 @@ describe("Case CT to Certificate operator handoff", () => {
   });
 
   it.each([
-    [{ issueAvailable: false }, "backend declines issuance"],
-    [{ issueType: "GLP" }, "backend issue type does not match Case"],
-    [{ completed: null }, "CT is unfinished"],
-    [{ ctCase: "case-other" }, "CT belongs to another Case"],
-    [{ hasCt: false }, "no CT exists"],
-  ] as const)("does not suggest issuance when %s (%s)", (options, _reason) => {
+    { issueAvailable: false },
+    { issueType: "GLP" },
+    { completed: null },
+    { ctCase: "case-other" },
+    { hasCt: false },
+  ] as const)("does not suggest issuance with invalid canonical conditions %j", (options) => {
     const navigate = vi.fn();
     render(<CaseApprovalCertificateHandoff workspace={workspace(options)} activeTab="Kiểm tra" onNavigate={navigate} />);
     expect(screen.queryByRole("button", { name: "Đến cấp giấy chứng nhận GxP" })).not.toBeInTheDocument();

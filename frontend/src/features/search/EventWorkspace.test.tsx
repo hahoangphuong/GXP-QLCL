@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ContextualDocumentAction } from "../../types";
-import { ContextualDocumentSection } from "./EventWorkspace";
+import { ContextualDocumentSection, LinkedGxpCertificates } from "./EventWorkspace";
 
 function item(createAvailable = true): ContextualDocumentAction {
   return {
@@ -73,5 +73,28 @@ describe("ContextualDocumentSection typed create", () => {
 
     expect(screen.queryByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).not.toBeInTheDocument();
     expect(screen.getByText("blocked")).toBeInTheDocument();
+  });
+});
+
+
+describe("LinkedGxpCertificates canonical handoff", () => {
+  const certificate = (id: string) => ({
+    certificate_id: id, certificate_type: "GMP", case_id: "case-A",
+    site_id: "site-1", line_code: null, certificate_number: id, issue_date: null, latest_flag: true,
+  });
+  it("opens only the explicitly permitted selected UUID", () => {
+    const open = vi.fn();
+    const { rerender } = render(
+      <LinkedGxpCertificates items={[certificate("cert-A"), certificate("cert-B")] as never}
+        openableCertificateIds={["cert-B"]} onOpenCertificate={open} />,
+    );
+    expect(screen.queryByRole("button", { name: "Xem chứng nhận trong sổ GxP" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("row", { name: /cert-B/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem chứng nhận trong sổ GxP" }));
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith("cert-B");
+    rerender(<LinkedGxpCertificates items={[certificate("cert-A"), certificate("cert-B")] as never}
+      openableCertificateIds={[]} onOpenCertificate={open} />);
+    expect(screen.queryByRole("button", { name: "Xem chứng nhận trong sổ GxP" })).not.toBeInTheDocument();
   });
 });

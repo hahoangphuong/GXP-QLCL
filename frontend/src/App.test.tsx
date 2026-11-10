@@ -4679,6 +4679,32 @@ describe("App Slice A.4 search workspace", () => {
     await flushSearchUrlSync();
   });
 
+  it("reports canonical master refresh failure without inferring closed state or replaying Case transition", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [buildSearchResult({ current_state: "awaiting_certificate_decision" })], total_count: 1, offset: 0, limit: 100 })
+      .mockRejectedValueOnce(new Error("Canonical master unavailable"));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const original = buildCaseWorkspace({
+      transition_actions: [{
+        action_key: "transition:closed", label: "Đã đóng hồ sơ", target_state: "closed",
+        available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"],
+      }],
+    });
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(original).mockResolvedValue({
+      ...original, case_summary: { ...original.case_summary, state: "closed", row_version: 9 }, transition_actions: [],
+    });
+    const { container } = renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Đã đóng hồ sơ" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Canonical master unavailable");
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".facility-table tbody tr")?.textContent).not.toContain("Đã đóng");
+    await flushSearchUrlSync();
+  });
+
   it("does not reconcile master after a definitive rejected Case transition", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

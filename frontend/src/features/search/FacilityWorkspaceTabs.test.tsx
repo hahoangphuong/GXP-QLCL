@@ -8,7 +8,7 @@ import { FACILITY_TABS as labels, FACILITY_TAB_LABELS, resolveFacilityTab, type 
 // Isolate the tab owner. Each stub marks a mounted business workspace; hidden
 // ARIA shells must never mount these children.
 vi.mock("./FacilitySummary", () => ({ FacilitySummary: () => <form aria-label="General form"><input aria-label="Nested input" /><button type="button">Nested button</button></form> }));
-vi.mock("./EventWorkspace", () => ({ EventWorkspace: () => <div data-testid="event-child">Event workspace</div> }));
+vi.mock("./EventWorkspace", () => ({ EventWorkspace: ({ openableCertificateIds, onOpenLinkedCertificate }: { openableCertificateIds?: string[]; onOpenLinkedCertificate?: (id: string) => void }) => <div data-testid="event-child">Event workspace{openableCertificateIds?.map(id => <button key={id} type="button" onClick={() => onOpenLinkedCertificate?.(id)}>Mở {id}</button>)}</div> }));
 vi.mock("./GxpCertificateWorkspace", () => ({ GxpCertificateWorkspace: () => <div data-testid="gxp-child">GxP workspace</div> }));
 vi.mock("./BusinessEligibilityWorkspace", () => ({ BusinessEligibilityWorkspace: () => <div data-testid="eligibility-child">Eligibility workspace</div> }));
 
@@ -170,5 +170,43 @@ it("returns from a verified selected Certificate to its own Case without perform
   for (const mismatch of mismatches) {
     view.rerender(<FacilityWorkspaceTabs {...({ ...selected, ...mismatch } as unknown as Props)} />);
     expect(screen.queryByRole("button", { name: "Quay lại Case để kiểm tra hoàn tất" })).not.toBeInTheDocument();
+  }
+});
+
+
+it("opens only a matching linked Certificate UUID from the selected Case", () => {
+  const base = props("Các đợt kiểm tra & thay đổi");
+  const onGxpCertificateSelect = vi.fn();
+  const onFacilityTabChange = vi.fn();
+  const valid = {
+    ...base,
+    selectedHistory: { id: "case-A", source_type: "case" },
+    caseWorkspace: { case_summary: { id: "case-A", site_id: "site-1" },
+      linked_gxp_certificates: [
+        { certificate_id: "cert-A", case_id: "case-A", site_id: "site-1", certificate_type: "GMP" },
+        { certificate_id: "cert-B", case_id: "case-A", site_id: "site-1", certificate_type: "GMP" },
+      ] },
+    caseWorkspaceLoading: false, caseWorkspaceError: null,
+    gxpCertificatesLoading: false, gxpCertificatesError: null,
+    gxpCertificates: [{ certificate_id: "cert-B", case_id: "case-A", site_id: "site-1", certificate_type: "GMP" }],
+    onGxpCertificateSelect, onFacilityTabChange,
+  } as unknown as Props;
+  const view = render(<FacilityWorkspaceTabs {...valid} />);
+  expect(screen.queryByRole("button", { name: "Mở cert-A" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Mở cert-B" }));
+  expect(onGxpCertificateSelect).toHaveBeenCalledOnce();
+  expect(onGxpCertificateSelect).toHaveBeenCalledWith("cert-B");
+  expect(onFacilityTabChange).toHaveBeenCalledOnce();
+  expect(onFacilityTabChange).toHaveBeenCalledWith("Giấy chứng nhận GxP");
+  for (const invalid of [
+    { selectedHistory: { id: "case-A", source_type: "change_request" } },
+    { caseWorkspace: { ...valid.caseWorkspace, case_summary: { id: "case-A", site_id: "other-site" } } },
+    { gxpCertificatesLoading: true },
+    { gxpCertificatesError: "unverified" },
+    { gxpCertificates: [{ certificate_id: "cert-B", case_id: "case-other", site_id: "site-1", certificate_type: "GMP" }] },
+    { gxpCertificates: [{ certificate_id: "cert-B", case_id: "case-A", site_id: "site-1", certificate_type: "GLP" }] },
+  ]) {
+    view.rerender(<FacilityWorkspaceTabs {...({ ...valid, ...invalid } as unknown as Props)} />);
+    expect(screen.queryByRole("button", { name: "Mở cert-B" })).not.toBeInTheDocument();
   }
 });

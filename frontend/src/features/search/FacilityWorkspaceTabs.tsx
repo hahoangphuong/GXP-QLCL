@@ -339,6 +339,7 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
       <GxpCertificateWorkspace
+        ownerSiteId={summary.site_id}
         documentMetadata={gxpDocumentMetadata}
         versionHistory={gxpVersionHistory}
         detail={gxpCertificateDetail}

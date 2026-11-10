@@ -969,6 +969,8 @@ export function SearchPage({
     // selection and unsaved editors while replacing the rows from the API.
     const canonicalRefresh = appliedMasterRefreshGeneration.current !== masterRefreshGeneration;
     appliedMasterRefreshGeneration.current = masterRefreshGeneration;
+    const refreshOwner = caseOperationOwner.current;
+    const refreshOwnerIsCurrent = () => !canonicalRefresh || isCurrentCaseOperation(refreshOwner);
     const keepOwnedRows = previousRequest?.context === searchContext && (canonicalRefresh || !isFirstPage);
     const baseResults = keepOwnedRows ? previousRequest.items : [];
     const baseTotalCount = keepOwnedRows ? previousRequest.totalCount : 0;
@@ -1000,7 +1002,7 @@ export function SearchPage({
       const originalCount = previousRequest?.context === searchContext ? previousRequest.items.length : 0;
       const first = await searchFacilities({ ...searchQuery, offset: 0 }, auth, useStubAuth, bearerToken);
       let items = first.items;
-      while (!cancelled && searchRequestSequence.current === requestId
+      while (!cancelled && searchRequestSequence.current === requestId && refreshOwnerIsCurrent()
         && items.length < originalCount && items.length < first.total_count) {
         const next = await searchFacilities({ ...searchQuery, offset: items.length }, auth, useStubAuth, bearerToken);
         if (!next.items.length) break;
@@ -1013,6 +1015,10 @@ export function SearchPage({
     void fetchResults()
       .then((payload) => {
         if (cancelled || searchRequestSequence.current !== requestId) {
+          return;
+        }
+        if (!refreshOwnerIsCurrent()) {
+          setSearchResultsRequest({ context: searchContext, requestId, status: "error", error: "Danh sách cơ sở chưa được đồng bộ vì ngữ cảnh hồ sơ đã thay đổi.", items: baseResults, totalCount: baseTotalCount });
           return;
         }
         const nextResults = canonicalRefresh || isFirstPage ? payload.items : appendUniqueResults(baseResults, payload.items);
@@ -1087,8 +1093,8 @@ export function SearchPage({
             context: searchContext,
             requestId,
             status: "error",
-            error: error.message,
-            items: isFirstPage ? [] : baseResults,
+            error: canonicalRefresh ? `Danh sách cơ sở chưa được đồng bộ. ${error.message}` : error.message,
+            items: canonicalRefresh ? baseResults : isFirstPage ? [] : baseResults,
             totalCount: baseTotalCount,
           });
         }

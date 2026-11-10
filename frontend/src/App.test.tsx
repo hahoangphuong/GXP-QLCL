@@ -937,6 +937,87 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("keeps the verified Case and marks master stale if canonical refresh fails", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValueOnce({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 }).mockRejectedValueOnce(new Error("search unavailable"));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const initial = buildCaseWorkspace({ transition_actions: [{ action_key: "transition:closed", label: "closed", target_state: "closed", available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"] }] });
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(initial).mockResolvedValue({ ...initial, case_summary: { ...initial.case_summary, state: "closed" }, transition_actions: [] });
+    const { container } = renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Đã đóng hồ sơ/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Danh sách cơ sở chưa được đồng bộ");
+    expect(container.querySelector(".facility-table tbody tr.selected")).toHaveTextContent("Chờ cấp chứng nhận");
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+  });
+  it("removes a transitioned row that no longer matches the canonical search", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValueOnce({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 }).mockResolvedValueOnce({ items: [], total_count: 0, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const initial = buildCaseWorkspace({ transition_actions: [{ action_key: "transition:closed", label: "closed", target_state: "closed", available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"] }] });
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(initial).mockResolvedValue({ ...initial, case_summary: { ...initial.case_summary, state: "closed" }, transition_actions: [] });
+    const { container } = renderApp(["/search?case_state=awaiting_certificate_decision"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Đã đóng hồ sơ/ }));
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(container.querySelector(".facility-table tbody tr.selected")).toBeNull());
+    expect(apiMocks.searchFacilities.mock.calls[1][0].case_state).toEqual(["awaiting_certificate_decision"]);
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+  });
+  it.each([false, true])("does not commit a late master refresh after selecting another Case (return to A: %s)", async (returnToA) => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "planned" }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    const pending = deferredSearchPage();
+    apiMocks.searchFacilities.mockResolvedValueOnce({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 }).mockReturnValueOnce(pending.promise);
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({
+      case_summary: { ...buildCaseWorkspace().case_summary, id },
+      transition_actions: [{ action_key: "transition-test", label: "Transition test", target_state: "planned", available: true, expected_version: 8, reason_code: null, required_permissions: [] }],
+    }));
+    const { container } = renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Transition test" }));
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-B"));
+    if (returnToA) {
+      fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
+      await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-A"));
+    }
+    await act(async () => pending.resolve({ items: [buildSearchResult({ current_state: "closed" })], total_count: 1, offset: 0, limit: 100 }));
+    expect(screen.getByRole("row", { name: returnToA ? /Case A/ : /Case B/ })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelector(".facility-table tbody tr.selected")).toHaveTextContent("Chờ cấp chứng nhận");
+    expect(await screen.findByRole("alert")).toHaveTextContent("chưa được đồng bộ");
+    expect(apiMocks.transitionCase).toHaveBeenCalledOnce();
+  });
+  it("refreshes every loaded search page after a verified transition", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    const firstPage = Array.from({ length: 100 }, (_, i) => buildSearchResult(i === 0 ? {} : { result_key: `other-${i}`, site_id: `site-${i}` }));
+    const lastPage = [buildSearchResult({ result_key: "other-100", site_id: "site-100" })];
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: firstPage, total_count: 101, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: lastPage, total_count: 101, offset: 100, limit: 100 })
+      .mockResolvedValueOnce({ items: [buildSearchResult({ current_state: "closed" }), ...firstPage.slice(1)], total_count: 101, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: lastPage, total_count: 101, offset: 100, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const initial = buildCaseWorkspace({ transition_actions: [{ action_key: "transition:closed", label: "closed", target_state: "closed", available: true, expected_version: 8, reason_code: null, required_permissions: ["case.edit"] }] });
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(initial).mockResolvedValue({ ...initial, case_summary: { ...initial.case_summary, state: "closed" }, transition_actions: [] });
+    const { container } = renderApp(["/search"]);
+    const scroll = await screen.findByTestId("facility-table-scroll");
+    await waitFor(() => expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull());
+    Object.defineProperties(scroll, { scrollHeight: { configurable: true, value: 400 }, clientHeight: { configurable: true, value: 200 }, scrollTop: { configurable: true, value: 200 } });
+    fireEvent.scroll(scroll);
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(container.querySelectorAll(".facility-table tbody tr")).toHaveLength(101));
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Đã đóng hồ sơ/ }));
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(container.querySelector(".facility-table tbody tr.selected")).toHaveTextContent("Đã đóng hồ sơ"));
+    expect(container.querySelectorAll(".facility-table tbody tr")).toHaveLength(101);
+    expect(apiMocks.searchFacilities.mock.calls[3][0].offset).toBe(100);
+  });
   it("returns from CAPA to the backend-ready final evaluation without a write or extra read", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

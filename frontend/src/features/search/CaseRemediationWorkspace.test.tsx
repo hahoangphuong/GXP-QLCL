@@ -499,7 +499,7 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
   it("retains every round beyond legacy's two columns and activates only the canonical keyboard target", () => {
     const cycles = [cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2 }), cycle({ capa_cycle_id: "capa-3", round_no: 3, notes: "Third cycle" })];
     const view = renderWorkspace(workspace(cycles));
-    const rows = view.container.querySelectorAll("tbody tr");
+    const rows = view.container.querySelectorAll(".capa-cycle-table tbody tr");
     expect(rows).toHaveLength(3);
     fireEvent.focus(rows[2]);
     expect(view.handlers.onSelectedCycleChange).not.toHaveBeenCalled();

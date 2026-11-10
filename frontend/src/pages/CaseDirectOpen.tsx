@@ -19,7 +19,8 @@ function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: Cas
     // The URL is only a navigation hint. A Case must independently confirm
     // the exact linked Certificate and Site before becoming a workspace target.
     const linked = workspace.linked_gxp_certificates;
-    if (summary.site_id !== sourceCertificate.siteId || !Array.isArray(linked)
+    if (!["GMP", "GLP", "GMPbb"].includes(summary.gxp_type)
+      || summary.site_id !== sourceCertificate.siteId || !Array.isArray(linked)
       || !linked.some(item => item.certificate_id === sourceCertificate.id
         && item.site_id === sourceCertificate.siteId
         && item.case_id === caseId && item.certificate_type === summary.gxp_type)) {

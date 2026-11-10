@@ -52,7 +52,7 @@ describe("authorized canonical detail navigation", () => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({
       certificate_id: "cert-uuid", site_id: "site-uuid", certificate_type: "GSP",
       production_line_id: null, line_code: null, scopes: [],
-    } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    } as unknown as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
     render(<MemoryRouter initialEntries={[{
       pathname: "/reports/certificates/cert-uuid",
       search: "?site_id=site-uuid",
@@ -66,7 +66,7 @@ describe("authorized canonical detail navigation", () => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({
       certificate_id: "cert-uuid", site_id: "site-uuid", certificate_type: "GSP",
       production_line_id: null, line_code: null, scopes: [],
-    } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    } as unknown as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
     render(<MemoryRouter initialEntries={[{
       pathname: "/reports/certificates/cert-uuid",
       search: "?site_id=site-uuid",

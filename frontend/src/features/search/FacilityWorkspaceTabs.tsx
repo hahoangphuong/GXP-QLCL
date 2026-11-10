@@ -253,6 +253,7 @@ export function FacilityWorkspaceTabs({
     && caseWorkspace?.case_summary.id === selectedHistory.id
     && caseWorkspace.case_summary.site_id === summary.site_id
     && !gxpCertificatesLoading && !gxpCertificatesError
+    && Array.isArray(caseWorkspace.linked_gxp_certificates)
     ? caseWorkspace.linked_gxp_certificates.filter(linked =>
       linked.case_id === selectedHistory.id
       && linked.site_id === summary.site_id

@@ -9,11 +9,22 @@ import { caseReportReturn } from "../features/reports/caseReportUrl";
 
 type Resolved = { owner: object; location: string | null; error: string | null };
 
-function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: CaseWorkflowQueue | null, documentKey: string | null): string {
+function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: CaseWorkflowQueue | null, documentKey: string | null, sourceCertificate: { id: string; siteId: string } | null): string {
   const summary = workspace.case_summary;
   const present = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value === value.trim();
   if (!summary || summary.id !== caseId || !present(summary.site_id) || !present(summary.gxp_type)) {
     throw new Error("Hồ sơ trả về không khớp định danh hoặc thiếu ngữ cảnh.");
+  }
+  if (sourceCertificate) {
+    // The URL is only a navigation hint. A Case must independently confirm
+    // the exact linked Certificate and Site before becoming a workspace target.
+    const linked = workspace.linked_gxp_certificates;
+    if (summary.site_id !== sourceCertificate.siteId || !Array.isArray(linked)
+      || !linked.some(item => item.certificate_id === sourceCertificate.id
+        && item.site_id === sourceCertificate.siteId
+        && item.case_id === caseId && item.certificate_type === summary.gxp_type)) {
+      throw new Error("Case không khớp chứng nhận và Site canonical được liên kết.");
+    }
   }
   const line = summary.production_line_id;
   const code = summary.production_line_code;
@@ -71,29 +82,39 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   const returnHint = caseReportReturn(location.state);
   const reportReturn = returnHint?.startsWith("/workflow?") && new URLSearchParams(returnHint.slice("/workflow?".length)).get("queue") !== queue ? null : returnHint;
   const documentKey = params.get("document_key");
+  const sourceCertificateId = params.get("source_certificate_id");
+  const sourceSiteId = params.get("source_site_id");
+  const hasSourceHint = params.has("source_certificate_id") || params.has("source_site_id");
+  const validSourceHint = !hasSourceHint || (params.getAll("source_certificate_id").length === 1
+    && params.getAll("source_site_id").length === 1 && Boolean(sourceCertificateId?.trim())
+    && Boolean(sourceSiteId?.trim()) && sourceCertificateId === sourceCertificateId?.trim()
+    && sourceSiteId === sourceSiteId?.trim());
+  const sourceCertificate = validSourceHint && sourceCertificateId && sourceSiteId
+    ? { id: sourceCertificateId, siteId: sourceSiteId } : null;
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
-  const owner = useMemo(() => ({}), [caseId, queue, documentKey, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
+  const owner = useMemo(() => ({}), [caseId, queue, documentKey, sourceCertificateId, sourceSiteId, validSourceHint, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
   const [result, setResult] = useState<Resolved | null>(null);
   const current = result?.owner === owner ? result : null;
 
   useEffect(() => {
-    if (!canLoadSecureApi || !caseId) return;
+    if (!canLoadSecureApi || !caseId || !validSourceHint) return;
     let live = true;
     void (async () => {
       try {
         const workspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
         if (!live) return;
-        const location = caseSearchLocation(caseId, workspace, queue, documentKey);
+        const location = caseSearchLocation(caseId, workspace, queue, documentKey, sourceCertificate);
         setResult({ owner, location, error: null });
       } catch (error) {
         if (live) setResult({ owner, location: null, error: error instanceof Error ? error.message : "Không mở được hồ sơ." });
       }
     })();
     return () => { live = false; };
-  }, [owner, caseId, queue, documentKey, auth, bearerToken, useStubAuth, canLoadSecureApi]);
+  }, [owner, caseId, queue, documentKey, sourceCertificateId, sourceSiteId, validSourceHint, auth, bearerToken, useStubAuth, canLoadSecureApi]);
 
   if (!canLoadSecureApi) return <section className="page-section"><h2>Cần đăng nhập</h2><p>Đăng nhập để mở hồ sơ được phân quyền.</p></section>;
   if (!caseId) return <p>Thiếu Case UUID.</p>;
+  if (!validSourceHint) return <p role="alert">Tham số Certificate/Site liên kết không hợp lệ.</p>;
   if (current?.location) return <Navigate to={current.location} replace state={reportReturn ? { caseReportReturn: reportReturn, caseReportCaseId: caseId } : undefined} />;
   return <section className="page-section">
     <h2>Định vị hồ sơ</h2>

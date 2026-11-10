@@ -490,6 +490,56 @@ describe("GxpCertificateWorkspace edit form", () => {
     expect(onEdit).toHaveBeenCalledOnce();
   });
 
+  it("freezes the exact latest-version update fields and scope order when canonical outcome is unverified", async () => {
+    const onEdit = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("canonical version unknown"));
+    renderWorkspace(onEdit);
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "GCN-FINAL-123" } });
+    fireEvent.change(screen.getByLabelText("Ngày cấp"), { target: { value: "2026-11-09" } });
+    fireEvent.change(screen.getByLabelText("Ngày hết hạn"), { target: { value: "2029-11-09" } });
+    fireEvent.change(screen.getByLabelText("Lý do cập nhật"), { target: { value: "Hiệu chỉnh theo quyết định" } });
+    fireEvent.change(screen.getByLabelText("Nội dung phạm vi 1"), { target: { value: "Phạm vi mới" } });
+    fireEvent.click(screen.getByRole("button", { name: "Đưa phạm vi 2 lên" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    expect(await screen.findByText("canonical version unknown")).toBeInTheDocument();
+    const fields = [
+      ["Số GCN", "GCN-FINAL-123"], ["Ngày cấp", "2026-11-09"],
+      ["Ngày hết hạn", "2029-11-09"], ["Lý do cập nhật", "Hiệu chỉnh theo quyết định"],
+    ];
+    for (const [label, value] of fields) {
+      expect(screen.getByLabelText(label)).toHaveValue(value);
+      expect(screen.getByLabelText(label)).toHaveAttribute("readonly");
+    }
+    expect(screen.getByLabelText("Nội dung phạm vi 2")).toHaveValue("Phạm vi mới");
+    for (const name of ["Thêm phạm vi", "Xóa phạm vi 1", "Đưa phạm vi 2 lên", "Đưa phạm vi 1 xuống", "Lưu thay đổi", "Hủy"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "Not original" } });
+    fireEvent.change(screen.getByLabelText("Nội dung phạm vi 2"), { target: { value: "Overwritten" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xóa phạm vi 1" }));
+    expect(screen.getByLabelText("Số GCN")).toHaveValue("GCN-FINAL-123");
+    expect(screen.getByLabelText("Nội dung phạm vi 2")).toHaveValue("Phạm vi mới");
+    expect(onEdit).toHaveBeenCalledOnce();
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({
+      expected_version: 7, certificate_number: "GCN-FINAL-123",
+      issue_date: "2026-11-09", expiry_date: "2029-11-09",
+      reason: "Hiệu chỉnh theo quyết định",
+      scopes: [expect.objectContaining({ scope_text: "Scope Beta" }), expect.objectContaining({ scope_text: "Phạm vi mới" })],
+    }));
+  });
+
+  it("leaves certificate edit fields mutable after a definitive HTTP 403", async () => {
+    const edit = renderWorkspace(vi.fn().mockRejectedValue(Object.assign(new Error("forbidden"), { status: 403 })));
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    expect(await screen.findByText("forbidden")).toBeInTheDocument();
+    expect(screen.getByLabelText("Số GCN")).not.toHaveAttribute("readonly");
+    fireEvent.change(screen.getByLabelText("Số GCN"), { target: { value: "Can still edit" } });
+    expect(screen.getByLabelText("Số GCN")).toHaveValue("Can still edit");
+    expect(screen.getByRole("button", { name: "Hủy" })).toBeEnabled();
+    expect(edit).toHaveBeenCalledOnce();
+  });
+
   it("preserves a stale draft, displays 409 and prevents a blind retry", async () => {
     const error = Object.assign(new Error("Dữ liệu chứng nhận đã thay đổi."), { status: 409 });
     const onEditLatestVersion = renderWorkspace(vi.fn().mockRejectedValue(error));

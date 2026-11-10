@@ -52,7 +52,8 @@ describe("persisted certificate snapshots", () => {
     expect(screen.getByText("scope 1 second line")).toBeInTheDocument();
     expect(screen.queryByText("scope 2 second line")).not.toBeInTheDocument();
     expect(screen.getByText("Chưa có trạng thái được xác nhận trong bản ghi")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "So sánh với phiên bản mới nhất đã lưu" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Lưu|Cấp|Đặt làm chứng nhận hiện hành/ })).not.toBeInTheDocument();
   });
   it("compares selected and latest persisted GxP snapshots without claiming aggregate current status", () => {
     const history: GxpCertificateVersionHistory = { ...data, versions: [

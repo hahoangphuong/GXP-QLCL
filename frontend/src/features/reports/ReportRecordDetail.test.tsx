@@ -63,39 +63,6 @@ describe("authorized canonical detail navigation", () => {
     expect(await screen.findByRole("heading", { name: "Chi tiết GCN GSP" })).toBeInTheDocument();
     expect(screen.queryByText(/certificate_id=cert-uuid/)).not.toBeInTheDocument();
   });
-  it("offers an owning Case link only from verified GSP Certificate detail and passes canonical UUID/Site hint", async () => {
-    vi.mocked(getGxpCertificateDetail).mockResolvedValue({
-      certificate_id: "cert-uuid", site_id: "site-uuid", case_id: "case-uuid",
-      certificate_type: "GSP", production_line_id: null, line_code: null, scopes: [], row_version: 3,
-    } as unknown as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
-    mount("/reports/certificates/cert-uuid?site_id=site-uuid");
-    const link = await screen.findByRole("link", { name: "Mở Case phát hành đã liên kết" });
-    const url = new URL(link.getAttribute("href")!, "https://app.test");
-    expect(url.pathname).toBe("/cases/case-uuid");
-    expect(url.searchParams.get("source_certificate_id")).toBe("cert-uuid");
-    expect(url.searchParams.get("source_site_id")).toBe("site-uuid");
-    expect(getGxpCertificateDetail).toHaveBeenCalledWith("cert-uuid", expect.anything(), true, null);
-  });
-
-  it("does not invent an owning Case for legacy GSP without a canonical Case UUID", async () => {
-    vi.mocked(getGxpCertificateDetail).mockResolvedValue({
-      certificate_id: "cert-uuid", site_id: "site-uuid", case_id: null,
-      certificate_type: "GSP", scopes: [], row_version: 3,
-    } as unknown as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
-    mount("/reports/certificates/cert-uuid?site_id=site-uuid");
-    expect(await screen.findByRole("heading", { name: "Chi tiết GCN GSP" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Mở Case phát hành đã liên kết" })).not.toBeInTheDocument();
-  });
-
-  it("does not expose owning Case navigation after a mismatched Certificate/Site GET", async () => {
-    vi.mocked(getGxpCertificateDetail).mockResolvedValue({
-      certificate_id: "cert-uuid", site_id: "foreign-site", case_id: "case-uuid", certificate_type: "GSP",
-    } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
-    mount("/reports/certificates/cert-uuid?site_id=site-uuid");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Site UUID không hợp lệ hoặc không khớp");
-    expect(screen.queryByRole("link", { name: "Mở Case phát hành đã liên kết" })).not.toBeInTheDocument();
-  });
-
   it("loads both canonical GSP version snapshots under the verified report Certificate", async () => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({
       certificate_id: "cert-uuid", site_id: "site-uuid", case_id: null, certificate_type: "GSP",

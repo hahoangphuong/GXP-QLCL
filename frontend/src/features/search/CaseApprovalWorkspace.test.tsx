@@ -199,6 +199,84 @@ describe("CaseApprovalWorkspace", () => {
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByRole("option", { name: /PCT lần 2.*PCT-B/ })).toHaveValue("pct-2");
   });
+  it("shows canonical one-to-many PCT/CT lineage and navigates bidirectionally across stage filters without mutation", () => {
+    const onCreate = vi.fn();
+    const onComplete = vi.fn();
+    const pct = (id: string, round: number) => ({
+      approval_submission_id: id, case_id: "case-1", row_version: 2,
+      stage: "PCT" as const, round_no: round, reference: id,
+      submitted_on: null, submitted_time: null, completed_on: "2026-11-02", completed_time: null, pct_submission_id: null,
+    });
+    const state = workspace({ approval_submissions: [
+      pct("pct-one", 1), pct("pct-two", 2),
+      { ...pct("ct-a", 1), stage: "CT", pct_submission_id: "pct-two" },
+      { ...pct("ct-b", 2), stage: "CT", pct_submission_id: "pct-two" },
+      { ...pct("ct-c", 3), stage: "CT", pct_submission_id: "pct-one" },
+    ] });
+    render(<CaseApprovalWorkspace caseWorkspace={state} onCreate={onCreate} onComplete={onComplete} />);
+    const linked = screen.getByLabelText("Các CT của PCT lần 2");
+    expect(linked).toHaveTextContent("CT liên kết: 2");
+    expect(screen.getByLabelText("Các CT của PCT lần 1")).toHaveTextContent("CT liên kết: 1");
+
+    fireEvent.click(screen.getByRole("button", { name: "PCT (2)" }));
+    expect(screen.queryByRole("button", { name: "Xem PCT lần 2 của CT lần 1" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xem CT lần 1 của PCT lần 2" }));
+    expect(screen.getByRole("button", { name: "Tất cả (5)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("CT lần 1 — ct-a")).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "CT (3)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem PCT lần 2 của CT lần 2" }));
+    expect(screen.getByLabelText("PCT lần 2 — pct-two")).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Tất cả (5)" })).toHaveAttribute("aria-pressed", "true");
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("shows missing or incomplete parent without inventing a completed PCT, and blocks CT creation", () => {
+    const onCreate = vi.fn();
+    const pct = {
+      approval_submission_id: "pct-open", case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: 1,
+      reference: null, submitted_on: null, submitted_time: null, completed_on: null, completed_time: null, pct_submission_id: null,
+    };
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({
+      approval_submissions: [
+        pct,
+        { ...pct, approval_submission_id: "ct-linked", stage: "CT", round_no: 1, pct_submission_id: "pct-open" },
+        { ...pct, approval_submission_id: "ct-orphan", stage: "CT", round_no: 2, pct_submission_id: "pct-missing" },
+      ],
+      approval_actions: [{ ...available("create_approval_ct"), available: false, reason_code: "completed_pct_required" }],
+    })} onCreate={onCreate} onComplete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Xem PCT lần 1 của CT lần 1" })).toBeEnabled();
+    expect(screen.getByText("PCT: pct-missing")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xem PCT lần 1 của CT lần 2" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    expect(screen.getByLabelText("Các CT của PCT lần 1")).toHaveTextContent("CT liên kết: 1");
+    fireEvent.click(screen.getByRole("button", { name: "Xem PCT lần 1 của CT lần 1" }));
+    expect(screen.getByLabelText("PCT lần 1 — pct-open")).toHaveFocus();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not make a foreign Case PCT selectable or navigable, even with a matching parent UUID", () => {
+    const onCreate = vi.fn();
+    const row = {
+      approval_submission_id: "pct-foreign", case_id: "other-case", row_version: 2, stage: "PCT" as const,
+      round_no: 1, reference: "Foreign", submitted_on: null, submitted_time: null,
+      completed_on: "2026-11-02", completed_time: null, pct_submission_id: null,
+    };
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({
+      approval_actions: [available("create_approval_ct")],
+      approval_submissions: [
+        row,
+        { ...row, approval_submission_id: "ct-local", case_id: "case-1", stage: "CT", pct_submission_id: "pct-foreign" },
+      ],
+    })} onCreate={onCreate} onComplete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    expect(screen.queryByRole("option", { name: /PCT lần 1.*Foreign/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xem PCT lần 1 của CT lần 1" })).not.toBeInTheDocument();
+    expect(screen.getByText("PCT: pct-foreign")).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
   it("preserves the selected PCT across tab remount without carrying it to another Case", () => {
     const pct = { approval_submission_id: "pct-2", case_id: "case-1", row_version: 2, stage: "PCT" as const, round_no: 2, reference: "PCT-B", submitted_on: null, submitted_time: null, completed_on: "2026-10-01", completed_time: null, pct_submission_id: null };
     const onCreate = vi.fn();

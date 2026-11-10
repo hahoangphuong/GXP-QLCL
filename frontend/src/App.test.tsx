@@ -5401,8 +5401,8 @@ describe("App Slice A.4 search workspace", () => {
   it("refreshes the canonical master after verified GxP promotion without losing selection or replaying the write", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities
-      .mockResolvedValueOnce({ items: [buildSearchResult({ current_certificate_number: "GCN-OLD" })], total_count: 1, offset: 0, limit: 100 })
-      .mockResolvedValueOnce({ items: [buildSearchResult({ current_certificate_number: "GCN-NEW" })], total_count: 1, offset: 0, limit: 100 });
+      .mockResolvedValueOnce({ items: [buildSearchResult({ certificate_scope_summary: "Phạm vi chứng nhận cũ" })], total_count: 1, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: [buildSearchResult({ certificate_scope_summary: "Phạm vi chứng nhận mới" })], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
     const candidate = {
       certificate_id: "cert-promote", site_id: "site-1", case_id: "case-1",
@@ -5427,11 +5427,11 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
     await screen.findByRole("button", { name: "Đặt làm chứng nhận hiện hành" });
     const master = container.querySelector(".facility-table")!;
-    expect(master.querySelector("tbody tr")?.textContent).toContain("GCN-OLD");
+    expect(master.querySelector("tbody tr")?.textContent).toContain("Phạm vi chứng nhận cũ");
     fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
 
     await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(master.querySelector("tbody tr")?.textContent).toContain("GCN-NEW"));
+    await waitFor(() => expect(master.querySelector("tbody tr")?.textContent).toContain("Phạm vi chứng nhận mới"));
     expect(master.querySelector("tbody tr.selected")).not.toBeNull();
     expect(apiMocks.promoteGxpCertificateCurrent).toHaveBeenCalledOnce();
     expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2);

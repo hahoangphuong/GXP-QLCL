@@ -48,6 +48,48 @@ describe("authorized canonical detail navigation", () => {
     expect(await screen.findByRole("heading", { name: "Chi tiết GCN GSP" })).toBeInTheDocument();
     expect(screen.queryByText(/certificate_id=cert-uuid/)).not.toBeInTheDocument();
   });
+  it("returns from a read-only linked GSP certificate to the exact Change Request when Site matches", async () => {
+    vi.mocked(getGxpCertificateDetail).mockResolvedValue({
+      certificate_id: "cert-uuid", site_id: "site-uuid", certificate_type: "GSP",
+      production_line_id: null, line_code: null, scopes: [],
+    } as unknown as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/reports/certificates/cert-uuid",
+      search: "?site_id=site-uuid",
+      state: { relatedChangeRequest: { id: "change-uuid", siteId: "site-uuid" } },
+    }]}><Routes><Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={access} kind="certificates" />} /></Routes></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "Quay lại yêu cầu thay đổi" }))
+      .toHaveAttribute("href", "/reports/change-requests/change-uuid");
+  });
+
+  it("does not trust a related Change Request navigation hint from the wrong Site", async () => {
+    vi.mocked(getGxpCertificateDetail).mockResolvedValue({
+      certificate_id: "cert-uuid", site_id: "site-uuid", certificate_type: "GSP",
+      production_line_id: null, line_code: null, scopes: [],
+    } as unknown as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/reports/certificates/cert-uuid",
+      search: "?site_id=site-uuid",
+      state: { relatedChangeRequest: { id: "other-change", siteId: "other-site" } },
+    }]}><Routes><Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={access} kind="certificates" />} /></Routes></MemoryRouter>);
+    expect(await screen.findByRole("heading", { name: "Chi tiết GCN GSP" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Quay lại yêu cầu thay đổi" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Quay lại Báo cáo" })).toHaveAttribute("href", "/reports?report=certificates");
+  });
+
+  it("rejects a related certificate whose canonical Site differs from the source Change Request", async () => {
+    vi.mocked(getGxpCertificateDetail).mockResolvedValue({
+      certificate_id: "cert-uuid", site_id: "other-site", certificate_type: "GSP",
+    } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/reports/certificates/cert-uuid",
+      search: "?site_id=site-uuid",
+      state: { relatedChangeRequest: { id: "change-uuid", siteId: "site-uuid" } },
+    }]}><Routes><Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={access} kind="certificates" />} /></Routes></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Site UUID không hợp lệ hoặc không khớp chứng nhận");
+    expect(screen.queryByRole("link", { name: "Quay lại yêu cầu thay đổi" })).not.toBeInTheDocument();
+  });
+
   it("fetches exact Certificate UUID and rejects mismatched canonical identity", async () => {
     vi.mocked(getGxpCertificateDetail).mockResolvedValue({
       certificate_id: "different-id", certificate_number: "GCN-ERROR",

@@ -244,6 +244,7 @@ export function GxpCertificateWorkspace({
   const selectedListItem = items.find(item => item.certificate_id === selectedCertificateId);
   const owningCaseAvailable = Boolean(onOpenOwningCase && detail && selectedListItem
     && !listLoading && !listError && !detailLoading && !detailError
+    && !editDraft && !selectedEditLock.pending && !selectedEditLock.requiresReview && !promotionPending
     && detail.case_id?.trim() && detail.case_id === detail.case_id.trim()
     && detail.site_id?.trim() && detail.site_id === detail.site_id.trim()
     && detail.site_id === selectedListItem.site_id

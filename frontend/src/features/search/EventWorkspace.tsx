@@ -48,6 +48,33 @@ export const CASE_EVENT_LABELS: Record<string, string> = {
 };
 const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
 
+/** Read-only CT-to-issuance navigation; backend readiness remains authoritative. */
+export function CaseApprovalCertificateHandoff({ workspace, activeTab, onNavigate }: {
+  workspace: CaseWorkspace;
+  activeTab: string;
+  onNavigate: (tab: "Kiểm tra" | "Chứng nhận GxP") => void;
+}) {
+  const caseId = workspace.case_summary.id;
+  const approvals = (workspace.inspection?.approval_submissions ?? []).filter(item => item.case_id === caseId);
+  const completedCt = approvals.filter(item => item.stage === "CT" && item.completed_on !== null);
+  const readiness = workspace.certificate_issue_readiness;
+  const mayIssue = readiness?.action_key === "issue_certificate" && readiness.available === true
+    && readiness.certificate_type === workspace.case_summary.gxp_type;
+  if (activeTab === "Kiểm tra" && completedCt.length > 0 && mayIssue) {
+    return <div className="case-approval-certificate-handoff">
+      <p className="workspace-note">{completedCt.length} trình CT đã hoàn tất. Backend cho phép thao tác cấp GCN; cần kiểm tra nội dung trước khi cấp.</p>
+      <button className="secondary" type="button" onClick={() => onNavigate("Chứng nhận GxP")}>Đến cấp giấy chứng nhận GxP</button>
+    </div>;
+  }
+  if (activeTab === "Chứng nhận GxP" && approvals.some(item => item.stage === "CT")) {
+    return <div className="case-approval-certificate-handoff">
+      <button className="secondary" type="button" onClick={() => onNavigate("Kiểm tra")}>Xem lại lịch sử trình PCT / CT</button>
+    </div>;
+  }
+  return null;
+}
+
+
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
   available: "Đã có tài liệu",
   missing: "Chưa có tài liệu",
@@ -584,7 +611,7 @@ export function EventWorkspace({
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
 }) {
   const rootRef = useRef<HTMLElement>(null);
-  const pendingLifecycleFocus = useRef<{ caseId: string; target: "lifecycle" | "final" } | null>(null);
+  const pendingLifecycleFocus = useRef<{ caseId: string; target: "lifecycle" | "final" | "approval" | "certificate" } | null>(null);
   useLayoutEffect(() => {
     const request = pendingLifecycleFocus.current;
     if (!request) return;
@@ -593,8 +620,12 @@ export function EventWorkspace({
       pendingLifecycleFocus.current = null;
       return;
     }
-    if (activeTab === "Kiểm tra" && !caseWorkspaceLoading && !caseWorkspaceError && caseWorkspace?.case_summary.id === caseId) {
-      const target = rootRef.current?.querySelector<HTMLElement>(targetName === "final" ? "[data-case-final-evaluation]" : "[data-case-lifecycle]");
+    const targetTab = targetName === "certificate" ? "Chứng nhận GxP" : "Kiểm tra";
+    if (activeTab === targetTab && !caseWorkspaceLoading && !caseWorkspaceError && caseWorkspace?.case_summary.id === caseId) {
+      const selector = targetName === "final" ? "[data-case-final-evaluation]"
+        : targetName === "lifecycle" ? "[data-case-lifecycle]"
+        : targetName === "approval" ? "[data-case-approval-history]" : "[data-case-certificate-issue]";
+      const target = rootRef.current?.querySelector<HTMLElement>(selector);
       if (target) { pendingLifecycleFocus.current = null; target.focus(); }
     }
   }, [activeTab, caseWorkspace, caseWorkspaceError, caseWorkspaceLoading, selectedHistory]);
@@ -642,6 +673,12 @@ export function EventWorkspace({
             {(caseWorkspace.transition_actions ?? []).length > 0 ? <button type="button" className="secondary" onClick={() => { pendingLifecycleFocus.current = { caseId: selectedHistory.id, target: "lifecycle" }; onTabChange("Kiểm tra"); }}>Xem chuyển trạng thái hồ sơ</button> : null}
             {effectiveActiveTab === "Khắc phục" && caseWorkspace.inspection.final_evaluation_readiness?.available ? <button type="button" className="secondary" onClick={() => { pendingLifecycleFocus.current = { caseId: selectedHistory.id, target: "final" }; onTabChange("Kiểm tra"); }}>Đến đánh giá cuối cùng</button> : null}
           </div>
+        ) : null}
+        {selectedHistory.source_type === "case" && caseWorkspace && !caseWorkspaceLoading && !caseWorkspaceError ? (
+          <CaseApprovalCertificateHandoff workspace={caseWorkspace} activeTab={effectiveActiveTab} onNavigate={(tab) => {
+            pendingLifecycleFocus.current = { caseId: selectedHistory.id, target: tab === "Chứng nhận GxP" ? "certificate" : "approval" };
+            onTabChange(tab);
+          }} />
         ) : null}
         {selectedHistory.source_type === "change_request" ? (
           changeRequestWorkspaceLoading ? (

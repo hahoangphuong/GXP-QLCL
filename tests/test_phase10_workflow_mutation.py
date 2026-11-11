@@ -4476,7 +4476,7 @@ def test_inspection_team_replace_reads_committed_members_not_cached_before_audit
         replaced = service.upsert_inspection_team(
             cached, case_id=case_id, expected_version=version,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
-                      "role_code": "SECRETARY", "role_label": "replacement", "sort_order": 1}],
+                      "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
             reason="Replace after committed correction.", user=build_authenticated_user("team-writer", "manager"),
         )
         cached.commit()
@@ -4527,7 +4527,7 @@ def test_inspection_team_cached_valid_member_cannot_bypass_newly_ambiguous_ident
             service.upsert_inspection_team(
                 cached, case_id=case_id, expected_version=version,
                 members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
-                          "role_code": "SECRETARY", "role_label": "replacement", "sort_order": 1}],
+                          "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
                 reason="Must reject ambiguous persisted member.", user=build_authenticated_user("team-writer", "manager"),
             )
         cached.rollback()

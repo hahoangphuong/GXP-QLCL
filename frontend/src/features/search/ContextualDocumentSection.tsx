@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import type { CaseInspectionPlanReadinessState, ContextualDocumentAction, DocumentDetail } from "../../types";
 import { formatCompactDate } from "../../lib/presentation";
@@ -8,6 +8,17 @@ type Request = Selection & { generation: number; sequence: number; pending: bool
 
 function sameSelection(left: Selection | null | undefined, right: Selection) {
   return left?.context === right.context && left.key === right.key && left.id === right.id;
+}
+
+function searchText(value: string): string {
+  return value.toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+}
+
+function documentMatches(item: ContextualDocumentAction, query: string, status: "all" | "available" | "missing"): boolean {
+  return (status === "all" || item.status === status)
+    && (!query || [item.label, item.family_code, item.document_id ?? "",
+      item.original_filename ?? "", item.title ?? "", item.workflow_step,
+      item.document_type_code ?? ""].some(value => searchText(value).includes(query)));
 }
 
 function message(error: unknown): string {
@@ -50,6 +61,8 @@ export function ContextualDocumentSection({ items, contextKey, initialSelectionK
   const [request, setRequest] = useState<Request | null>(null);
   const [operation, setOperation] = useState<Request | null>(null);
   const [selectionContext, setSelectionContext] = useState(context);
+  const [documentQuery, setDocumentQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "available" | "missing">("all");
   // Reset before commit, including returning to a previously visited context.
   if (selectionContext !== context) {
     setSelectionContext(context);
@@ -57,7 +70,11 @@ export function ContextualDocumentSection({ items, contextKey, initialSelectionK
     setRequest(null);
     setOperation(null);
     setFocusKey(null);
+    setDocumentQuery("");
+    setStatusFilter("all");
   }
+  const query = searchText(documentQuery.trim());
+  const visibleItems = useMemo(() => items.filter(item => documentMatches(item, query, statusFilter)), [items, query, statusFilter]);
   const sequence = useRef(0);
   const selectionGeneration = useRef(0);
   const operationSequence = useRef(0);
@@ -76,13 +93,13 @@ export function ContextualDocumentSection({ items, contextKey, initialSelectionK
     }
     committed.current = { context, items };
     const selectedTarget = selectedIdentity.current;
-    if (selectedTarget && !items.some(item => item.checklist_key === selectedTarget.key && item.document_id === selectedTarget.id)) {
+    if (selectedTarget && !visibleItems.some(item => item.checklist_key === selectedTarget.key && item.document_id === selectedTarget.id)) {
       selectionGeneration.current++;
       sequence.current++;
       selectedIdentity.current = null;
       setSelection(null);
     }
-  }, [context, items]);
+  }, [context, items, visibleItems]);
   useLayoutEffect(() => () => { committed.current = null; selectionGeneration.current++; sequence.current++; operationSequence.current++; }, []);
   useLayoutEffect(() => {
     if (operation?.pending) return;
@@ -98,7 +115,26 @@ export function ContextualDocumentSection({ items, contextKey, initialSelectionK
   const ownedOperation = operation?.context === context && items.some(item => item.checklist_key === operation.key && item.document_id === operation.id) ? operation : null;
   const visibleOperation = selected?.checklist_key === ownedOperation?.key && selected?.document_id === ownedOperation?.id
     && (ownedOperation?.pending || ownedOperation?.generation === selectionGeneration.current) ? ownedOperation : null;
-  const effectiveFocus = items.some(item => item.checklist_key === focusKey) ? focusKey : items[0]?.checklist_key;
+  const effectiveFocus = visibleItems.some(item => item.checklist_key === focusKey) ? focusKey : visibleItems[0]?.checklist_key;
+  function applyFilter(nextQuery: string, nextStatus: "all" | "available" | "missing") {
+    const nextNeedle = searchText(nextQuery.trim());
+    const nextItems = items.filter(item => documentMatches(item, nextNeedle, nextStatus));
+    const target = selectedIdentity.current;
+    if (target && !nextItems.some(item => item.checklist_key === target.key && item.document_id === target.id)) {
+      // Invalidate selection synchronously, before a late history/open response
+      // can commit data for an item no longer visible in this operator view.
+      selectionGeneration.current++;
+      sequence.current++;
+      operationSequence.current++;
+      selectedIdentity.current = null;
+      setSelection(null);
+      setRequest(null);
+      setOperation(null);
+    }
+    setDocumentQuery(nextQuery);
+    setStatusFilter(nextStatus);
+    setFocusKey(current => nextItems.some(item => item.checklist_key === current) ? current : nextItems[0]?.checklist_key ?? null);
+  }
 
   function current(target: Selection) {
     return committed.current?.context === target.context && committed.current.items.some(item => item.checklist_key === target.key && item.document_id === target.id);
@@ -119,6 +155,10 @@ export function ContextualDocumentSection({ items, contextKey, initialSelectionK
     const token = JSON.stringify([context, initialSelectionKey, item?.document_id]);
     if (!item || appliedNavigation.current === token) return;
     appliedNavigation.current = token;
+    // A canonical deep-link target must remain visible even if an older
+    // operator filter hid it; selection itself never fetches or mutates.
+    setDocumentQuery("");
+    setStatusFilter("all");
     select({ context, key: item.checklist_key, id: item.document_id });
     setFocusKey(item.checklist_key);
     // Selection only: do not fetch history, open binary or invoke create.
@@ -171,10 +211,10 @@ export function ContextualDocumentSection({ items, contextKey, initialSelectionK
     } finally { inFlight.current.delete(key); }
   }
   function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const next = event.key === "ArrowDown" ? Math.min(index + 1, items.length - 1)
+    const next = event.key === "ArrowDown" ? Math.min(index + 1, visibleItems.length - 1)
       : event.key === "ArrowUp" ? Math.max(index - 1, 0)
-        : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : null;
-    if (next !== null) { event.preventDefault(); buttons.current.get(items[next].checklist_key)?.focus(); }
+        : event.key === "Home" ? 0 : event.key === "End" ? visibleItems.length - 1 : null;
+    if (next !== null) { event.preventDefault(); buttons.current.get(visibleItems[next].checklist_key)?.focus(); }
   }
   function returnToList() { buttons.current.get(selected?.checklist_key ?? effectiveFocus ?? "")?.focus(); }
 
@@ -195,11 +235,30 @@ export function ContextualDocumentSection({ items, contextKey, initialSelectionK
       <h4 id={headingId}>Tài liệu liên quan</h4>
       <p className="workspace-note">↑/↓, Home/End di chuyển; Enter chọn tài liệu; nháy đúp để mở khi khả dụng; F6 chuyển giữa danh sách và chi tiết.</p>
       {items.length === 0 ? <p role="status">Chưa có tài liệu trong ngữ cảnh này.</p> : null}
+      {items.length > 0 ? <div className="panel-actions" role="group" aria-label="Tra cứu tài liệu liên quan">
+        <label>Tìm tài liệu
+          <input aria-label="Tìm tài liệu liên quan" placeholder="Tên, mã, số, tệp…"
+            value={documentQuery} onChange={event => applyFilter(event.target.value, statusFilter)} />
+        </label>
+        <label>Trạng thái
+          <select aria-label="Lọc trạng thái tài liệu" value={statusFilter}
+            onChange={event => applyFilter(documentQuery, event.target.value as "all" | "available" | "missing")}>
+            <option value="all">Tất cả</option>
+            <option value="available">Đã có tài liệu</option>
+            <option value="missing">Chưa có tài liệu</option>
+          </select>
+        </label>
+        {documentQuery || statusFilter !== "all"
+          ? <button className="secondary" type="button" onClick={() => applyFilter("", "all")}>Xóa lọc tài liệu</button>
+          : null}
+        <span className="workspace-note" role="status">Hiển thị {visibleItems.length}/{items.length} tài liệu.</span>
+      </div> : null}
+      {items.length > 0 && visibleItems.length === 0 ? <p className="workspace-note">Không có tài liệu khớp bộ lọc.</p> : null}
       <div className="document-workspace-panes">
         <div className="table-scroll document-list-pane">
           <table className="dense-table event-document-table" aria-label="Danh sách tài liệu liên quan">
             <thead><tr><th scope="col">Tài liệu</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr></thead>
-            <tbody>{items.map((item, index) => <tr key={item.checklist_key}>
+            <tbody>{visibleItems.map((item, index) => <tr key={item.checklist_key}>
               <td><button type="button" className="document-select" aria-label={`Chọn ${item.label}`} aria-pressed={selected?.checklist_key === item.checklist_key}
                 tabIndex={effectiveFocus === item.checklist_key ? 0 : -1}
                 ref={element => { if (element) buttons.current.set(item.checklist_key, element); else buttons.current.delete(item.checklist_key); }}

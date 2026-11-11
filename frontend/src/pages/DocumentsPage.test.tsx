@@ -119,6 +119,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("document report return navigation", () => {
+  it("returns to the exact report filter rather than resetting the Case search", async () => {
+    const source = "/reports?report=cases&q=GMP&offset=100";
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: source } }]}>
+      <Routes><Route path="/documents/cases/:caseId" element={<DocumentRegister kind="cases" access={access} />} /></Routes>
+    </MemoryRouter>);
+    const link = screen.getByRole("link", { name: "Quay lại báo cáo hồ sơ" });
+    expect(link).toHaveAttribute("href", source);
+    await screen.findByText("2 mục trong checklist · 1 đã có · 1 chưa có");
+  });
+  it("carries the validated report return through the canonical Case workspace handoff", async () => {
+    const source = "/reports?report=cases&q=GMP";
+    function CaseDestination() {
+      const location = useLocation();
+      return <output data-testid="case-workspace-return">{String((location.state as { caseReportReturn?: string } | null)?.caseReportReturn ?? "missing")}</output>;
+    }
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: source } }]}>
+      <Routes>
+        <Route path="/documents/cases/:caseId" element={<DocumentRegister kind="cases" access={access} />} />
+        <Route path="/cases/:caseId" element={<CaseDestination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Mở Case trong workspace" }));
+    expect(screen.getByTestId("case-workspace-return")).toHaveTextContent(source);
+  });
+  it.each(["https://hostile.example/", "/reports?report=cases&report=inspection", "/reports?report=cases&offset=1", "/reports?report=cases&site_id=foreign"])("rejects an untrusted report return hint (%s)", hint => {
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: hint } }]}>
+      <Routes><Route path="/documents/cases/:caseId" element={<DocumentRegister kind="cases" access={access} />} /></Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại danh sách hồ sơ" })).toHaveAttribute("href", "/documents");
+    expect(screen.queryByRole("link", { name: "Quay lại báo cáo hồ sơ" })).not.toBeInTheDocument();
+  });
+});
+
 describe("document binary action and readiness", () => {
   it("selects the exact checklist slot when two slots share one document ID", async () => {
     const second = { ...caseDocument, checklist_key: "case:case-1:SECOND", label: "Bản khác" };

@@ -1,12 +1,15 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
 import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
+import { CaseDraftSession } from "./CaseDraftSession";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 
 function workspace(overrides: Partial<CaseWorkspace["evaluation_scope"]> = {}): CaseWorkspace {
   return {
+    case_summary: { id: "case-1" },
     evaluation_scope: {
       id: "scope-1", row_version: 3, source_classification: "STRUCTURED_VALID", rendered_prose: "Legacy scope",
       summary_text: "Phạm vi canonical hiện hành", summary_source: "canonical_projection", limitation_text: null,
@@ -88,5 +91,137 @@ describe("EvaluationScopeWorkspace", () => {
     expect(screen.getByText("Văn bản lưu trữ")).toBeVisible();
     expect(screen.queryByRole("tree")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sửa phạm vi" })).not.toBeInTheDocument();
+  });
+});
+
+describe("evaluation aggregate canonical command ownership", () => {
+  function editor(id: string, save: (payload: import("../../types").EvaluationScopeUpsertRequest) => Promise<void>, current = workspace()) {
+    return <CaseDraftSession identity={id}>
+      <EvaluationScopeWorkspace caseWorkspace={{ ...current, case_summary: { id } } as CaseWorkspace} onSave={save} />
+    </CaseDraftSession>;
+  }
+
+  it("preserves exact submitted aggregate, taxonomy UUIDs, limit and version across Case A → B → A, pending and unknown", async () => {
+    let reject!: (reason: Error) => void;
+    const save = vi.fn(() => new Promise<void>((_, no) => { reject = no; }));
+    const view = render(editor("case-A", save));
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Mô tả tùy chỉnh 1.1" }), { target: { value: "Mô tả được gửi" } });
+    fireEvent.change(screen.getByLabelText("Giới hạn"), { target: { value: "Giới hạn gửi đi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    expect(save).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      expected_version: 3, limitation_text: "Giới hạn gửi đi",
+      blocks: [expect.objectContaining({ name: "Khối một", selections: [
+        { taxonomy_node_id: "child", custom_description: "Mô tả được gửi" },
+      ] })],
+    }));
+    expect(screen.getByRole("region", { name: "Phạm vi đánh giá đã gửi" })).toHaveTextContent("Mô tả được gửi");
+    expect(screen.getByRole("button", { name: "Sửa phạm vi" })).toBeDisabled();
+    view.rerender(editor("case-B", save));
+    expect(screen.queryByRole("dialog", { name: "Sửa phạm vi đánh giá" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Phạm vi đánh giá đã gửi" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sửa phạm vi" })).toBeEnabled();
+    view.rerender(editor("case-A", save, workspace({ row_version: 5, editable: false })));
+    const evidence = screen.getByRole("region", { name: "Phạm vi đánh giá đã gửi" });
+    expect(evidence).toHaveTextContent("Phiên bản đã gửi: 3");
+    expect(evidence).toHaveTextContent("Mô tả được gửi");
+    expect(evidence).toHaveTextContent("Giới hạn gửi đi");
+    expect(evidence).toHaveTextContent("Taxonomy UUID: child");
+    await act(async () => reject(new CaseFieldMutationRecoveryError("Không tải được readback canonical")));
+    expect(screen.getByRole("status")).toHaveTextContent("Kết quả lưu chưa được xác minh");
+    view.rerender(editor("case-B", save));
+    view.rerender(editor("case-A", save, workspace({ row_version: 5, editable: false })));
+    expect(screen.getByRole("region", { name: "Phạm vi đánh giá đã gửi" })).toHaveTextContent("Mô tả được gửi");
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("retires submitted evidence after definite rejection and does not inherit lock in another Case", async () => {
+    const save = vi.fn().mockRejectedValue(Object.assign(new Error("Stale scope version"), { status: 409 }));
+    const view = render(editor("case-A", save));
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Mô tả tùy chỉnh 1.1" }), { target: { value: "Old" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Stale scope version");
+    view.rerender(editor("case-B", save));
+    view.rerender(editor("case-A", save));
+    expect(screen.queryByRole("region", { name: "Phạm vi đánh giá đã gửi" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sửa phạm vi" })).toBeEnabled();
+    expect(save).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe("evaluation scope late-result editor ownership", () => {
+  it("does not close another Case's newer editor when the previous Case's POST resolves late", async () => {
+    let resolve!: () => void;
+    const save = vi.fn(() => new Promise<void>(yes => { resolve = yes; }));
+    const renderCase = (id: string) => <CaseDraftSession identity={id}>
+      <EvaluationScopeWorkspace caseWorkspace={{ ...workspace(), case_summary: { id } } as CaseWorkspace} onSave={save} />
+    </CaseDraftSession>;
+    const view = render(renderCase("case-A"));
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    expect(save).toHaveBeenCalledOnce();
+    view.rerender(renderCase("case-B"));
+    expect(screen.queryByRole("dialog", { name: "Sửa phạm vi đánh giá" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    expect(screen.getByRole("dialog", { name: "Sửa phạm vi đánh giá" })).toBeVisible();
+    await act(async () => resolve());
+    expect(screen.getByRole("dialog", { name: "Sửa phạm vi đánh giá" })).toBeVisible();
+    expect(save).toHaveBeenCalledOnce();
+  });
+});
+
+describe("evaluation taxonomy operator search", () => {
+  it("finds keys, descriptions and accent-insensitive hints without changing selection or posting", () => {
+    const save = vi.fn();
+    render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={save} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    const search = screen.getByRole("textbox", { name: "Tìm mục phạm vi" });
+    fireEvent.change(search, { target: { value: "goi y" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Tìm thấy 1/2");
+    expect(screen.getByRole("treeitem", { name: /Root/ })).toBeInTheDocument();
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toBeDisabled();
+    fireEvent.change(search, { target: { value: "1.1" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Tìm thấy 1/2");
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.getByText("Child")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toBeEnabled();
+    fireEvent.change(search, { target: { value: "khong-co-muc" } });
+    expect(screen.getByText("Không có mục phạm vi phù hợp.")).toBeInTheDocument();
+    expect(screen.queryByText("Root")).not.toBeInTheDocument();
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa tìm kiếm phạm vi" }));
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toHaveAttribute("aria-checked", "true");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("reveals a matching leaf even with its ancestor collapsed, preserving collapse on reset and excluding hidden subtree toggles", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={save} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thu gọn 1" }));
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm mục phạm vi" }), { target: { value: "CHILD" } });
+    expect(screen.getByText("Child")).toBeInTheDocument();
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Đường dẫn cha 1" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Chọn 1.1" }));
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toHaveAttribute("aria-checked", "false");
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa tìm kiếm phạm vi" }));
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mở rộng 1" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Mở rộng 1" }));
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      expected_version: 3, blocks: [expect.objectContaining({ selections: [] })],
+    }));
   });
 });

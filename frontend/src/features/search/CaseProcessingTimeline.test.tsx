@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CaseWorkspace } from "../../types";
 import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
+import { CaseDraftSession } from "./CaseDraftSession";
 
 const workspace = {
   case_summary: { id: "case-uuid", site_id: "site-uuid", production_line_id: "line-uuid" },
@@ -38,7 +39,9 @@ describe("Processing timeline presentation and ownership", () => {
     expect(screen.queryByText("Dossier result")).not.toBeInTheDocument();
     expect(screen.queryByText("Đánh giá cuối")).not.toBeInTheDocument();
     expect(screen.queryByText("Hạn kiểm tra tuân thủ")).not.toBeInTheDocument();
-    expect(container.querySelectorAll("input, textarea, .editable-detail-value")).toHaveLength(0);
+    expect(container.querySelectorAll("textarea, .editable-detail-value")).toHaveLength(0);
+    expect(screen.getByRole("textbox", { name: "Tìm mốc xử lý" })).toBeInTheDocument();
+    expect(container.querySelectorAll("input")).toHaveLength(1);
     for (const key of ["F2", "Enter", "Escape"]) fireEvent.keyDown(rows[1], { key });
     expect(save).not.toHaveBeenCalled();
   });
@@ -100,6 +103,73 @@ describe("Processing timeline presentation and ownership", () => {
     expect(screen.getByText("Chưa có mốc xử lý")).toBeInTheDocument();
     expect(screen.queryByText("Canonical submission")).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe("canonical timeline operator filters", () => {
+  const canonical = { ...workspace, processing: { ...workspace.processing, events: [
+    { event_type: "plan_created", occurred_at: "2026-08-20", payload: JSON.stringify({ stage: "inspection_plan", planning_sheet_name: "KHKT-ABC", reason: "Lập kế hoạch" }) },
+    { event_type: "outcome_recorded", occurred_at: "2026-08-25", payload: JSON.stringify({ stage: "inspection_outcome", outcome_result: "Cần CAPA" }) },
+    { event_type: "plan_created", occurred_at: "2026-08-28", payload: "Dữ liệu legacy gốc" },
+    { event_type: "unknown_custom", occurred_at: null, payload: "RAW-MARKER-123" },
+  ] } } as CaseWorkspace;
+
+  it("filters by actual canonical event type and raw evidence while preserving API order and no mutation", () => {
+    const save = vi.fn();
+    render(<CaseProcessingWorkspace caseWorkspace={canonical} onSave={save} view="timeline" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 4/4");
+    fireEvent.change(screen.getByRole("combobox", { name: "Loại mốc xử lý" }), { target: { value: "plan_created" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 2/4");
+    const rows = within(screen.getByRole("table", { name: "Các mốc xử lý hành chính" })).getAllByRole("row");
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toHaveTextContent("KHKT-ABC");
+    expect(rows[2]).toHaveTextContent("Dữ liệu legacy gốc");
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm mốc xử lý" }), { target: { value: "legacy GỐC" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 1/4");
+    expect(screen.getByText("Dữ liệu legacy gốc")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa bộ lọc mốc" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 4/4");
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm mốc xử lý" }), { target: { value: "RAW-MARKER-123" } });
+    expect(screen.getByText("RAW-MARKER-123")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 1/4");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("retains in-session filters across timeline remount but not another Case and never shows old Case events", () => {
+    const save = vi.fn();
+    const editor = (id: string, show = true) => <CaseDraftSession identity={id}>
+      {show ? <CaseProcessingWorkspace caseWorkspace={{ ...canonical, case_summary: { ...canonical.case_summary, id } }} onSave={save} view="timeline" /> : null}
+    </CaseDraftSession>;
+    const view = render(editor("case-A"));
+    fireEvent.change(screen.getByRole("combobox", { name: "Loại mốc xử lý" }), { target: { value: "unknown_custom" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm mốc xử lý" }), { target: { value: "RAW-MARKER" } });
+    view.rerender(editor("case-A", false));
+    view.rerender(editor("case-A"));
+    expect(screen.getByRole("combobox", { name: "Loại mốc xử lý" })).toHaveValue("unknown_custom");
+    expect(screen.getByRole("textbox", { name: "Tìm mốc xử lý" })).toHaveValue("RAW-MARKER");
+    view.rerender(<CaseDraftSession identity="case-B"><CaseProcessingWorkspace
+      caseWorkspace={{ ...canonical, case_summary: { ...canonical.case_summary, id: "case-B" }, processing: { ...canonical.processing, events: [
+        { event_type: "other-B", occurred_at: null, payload: "B only" },
+      ] } }} onSave={save} view="timeline" /></CaseDraftSession>);
+    expect(screen.getByRole("combobox", { name: "Loại mốc xử lý" })).toHaveValue("all");
+    expect(screen.getByRole("textbox", { name: "Tìm mốc xử lý" })).toHaveValue("");
+    expect(screen.getByText("B only")).toBeInTheDocument();
+    expect(screen.queryByText("RAW-MARKER-123")).not.toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("keeps a stale type filter fail-closed after canonical refresh and offers explicit reset", () => {
+    const save = vi.fn();
+    const view = render(<CaseProcessingWorkspace caseWorkspace={canonical} onSave={save} view="timeline" />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Loại mốc xử lý" }), { target: { value: "plan_created" } });
+    view.rerender(<CaseProcessingWorkspace caseWorkspace={{ ...canonical, processing: { ...canonical.processing, events: [
+      { event_type: "new_event", occurred_at: "2026-11-11", payload: "New canonical event" },
+    ] } }} onSave={save} view="timeline" />);
+    expect(screen.queryByRole("table", { name: "Các mốc xử lý hành chính" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Không có mốc xử lý phù hợp/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa bộ lọc mốc" }));
+    expect(screen.getByText("New canonical event")).toBeInTheDocument();
     expect(save).not.toHaveBeenCalled();
   });
 });

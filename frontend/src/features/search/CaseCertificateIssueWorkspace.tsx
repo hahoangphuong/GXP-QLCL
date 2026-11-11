@@ -185,7 +185,7 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
     }
   }
   if ((!readiness || readiness.action_key !== "issue_certificate") && !submittedForCase) return <p className="workspace-note">Chưa có thông tin về điều kiện cấp chứng nhận.</p>;
-  return <section className="workspace-section certificate-issue-section">
+  return <section className="workspace-section certificate-issue-section" data-case-certificate-issue tabIndex={-1} aria-label="Khu vực cấp chứng nhận GxP">
     <div className="certificate-action-bar">
       {readiness && readiness.action_key === "issue_certificate" ? <>
         <button disabled={!readiness.available || commandLock.pending || commandLock.requiresReview} onClick={() => { setDraft(emptyIssueDraft()); setIntent({ caseId, readiness }); }} title={readiness.reason_code ?? undefined} type="button">{readiness.label}</button>

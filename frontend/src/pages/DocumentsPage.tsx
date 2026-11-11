@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { CaseReport } from "../features/reports/CaseReport";
+import { caseReportReturn } from "../features/reports/caseReportUrl";
 import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { CaseWorkspace, ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
@@ -137,6 +138,8 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
 }
 
 export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Scope }) {
+  const location = useLocation();
+  const reportReturn = kind === "cases" ? caseReportReturn(location.state) : null;
   const { caseId, changeRequestId } = useParams();
   const id = kind === "cases" ? caseId : changeRequestId;
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
@@ -270,14 +273,14 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / {kind === "cases" ? "Case" : "Change Request"}</p>
       <h2>Danh mục tài liệu</h2>
-    </div><Link className="text-link" to="/documents">Quay lại danh sách hồ sơ</Link></header>
+    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? "Quay lại báo cáo hồ sơ" : "Quay lại danh sách hồ sơ"}</Link></header>
     {!context ? <p role="status">Đang tải checklist tài liệu...</p>
       : context.error ? <ErrorState message={context.error} />
       : <><section className="panel">
           <h3>{context.name}</h3>
           <p className="muted-copy">{context.subtitle}</p>
           <p>{context.items.length} mục trong checklist · {available} đã có · {missing} chưa có</p>
-          {kind === "cases" && <Link className="text-link" to={`/cases/${encodeURIComponent(id)}`}>Mở Case trong workspace</Link>}
+          {kind === "cases" && <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={`/cases/${encodeURIComponent(id)}`}>Mở Case trong workspace</Link>}
           {kind === "change-requests" && <Link className="text-link" to={`/reports/change-requests/${encodeURIComponent(id)}`}>Xem yêu cầu thay đổi</Link>}
           <div className="report-filter-grid">
             <label>Trạng thái tài liệu
@@ -307,11 +310,11 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
                 <td>{kind === "cases" && context.workspace ? (() => {
                   const target = resolveDocumentWorkspace(context.workspace!, id, item.checklist_key);
                   const location = target ? `/cases/${encodeURIComponent(id)}?${new URLSearchParams({ document_key: target.checklist_key })}` : `/cases/${encodeURIComponent(id)}`;
-                  if (item.status === "available") return target ? <Link className="text-link" to={location}>Đến workspace tài liệu</Link> : "—";
+                  if (item.status === "available") return target ? <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={location}>Đến workspace tài liệu</Link> : "—";
                   const readiness = resolveDocumentCreation(context.actions, item);
                   if (!readiness) return "Chưa có thao tác tạo được xác nhận";
                   return readiness.available && readiness.create_input_readiness !== "CANONICAL_INPUT_BLOCKED"
-                    ? <Link className="text-link" to={location}>Đến workspace để tạo</Link>
+                    ? <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={location}>Đến workspace để tạo</Link>
                     : <span title={readiness.disabled_reason ?? undefined}>Chưa sẵn sàng{readiness.disabled_reason ? `: ${readiness.disabled_reason}` : ""}</span>;
                 })() : "—"}</td>
               </tr>)}</tbody>

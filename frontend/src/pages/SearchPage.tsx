@@ -4,7 +4,7 @@ import { raiseBusinessEligibilityWriteFailure } from "../features/search/busines
 import { assertGxpCertificateMutationReadback, assertEligibilityCertificateMutationReadback } from "../features/search/certificateMutationReadback";
 import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { CaseDraftSession, useCaseCommandRegistry, useFacilityCommandRegistry } from "../features/search/CaseDraftSession";
-import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation } from "../features/search/approvalMutationRecovery";
+import { ApprovalMutationContext, ApprovalMutationRecoveryError, runApprovalMutation, type ApprovalSubmittedCommand } from "../features/search/approvalMutationRecovery";
 import { startTransition, useCallback, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
@@ -639,7 +639,7 @@ export function SearchPage({
   const createChangeRequestOwnerKey = selectedResult && selectedContext
     ? JSON.stringify([accessGeneration, useStubAuth, selectedResult.site_id]) : null;
   const createChangeRequestPhase = createChangeRequestOwnerKey ? createChangeRequestPhases[createChangeRequestOwnerKey] : undefined;
-  const approvalWrites = useRef(new Map<string, object>());
+  const approvalWrites = useRef(new Map<string, ApprovalSubmittedCommand>());
   const [approvalPhases, setApprovalPhases] = useState<Record<string, "pending" | "review">>({});
   const approvalKey = selectedContext && selectedHistory?.source_type === "case" ? JSON.stringify([accessGeneration, useStubAuth, selectedHistory.id]) : null;
   const approvalPhase = approvalKey ? approvalPhases[approvalKey] : undefined;
@@ -1935,11 +1935,13 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
-  async function runSelectedApprovalMutation<T>(caseId: string, operationOwner: typeof caseOperationOwner.current, write: () => Promise<T>): Promise<T> {
+  async function runSelectedApprovalMutation<T>(caseId: string, operationOwner: typeof caseOperationOwner.current, submitted: ApprovalSubmittedCommand, write: () => Promise<T>): Promise<T> {
     const key = JSON.stringify([accessGeneration, useStubAuth, caseId]);
     if (approvalWrites.current.has(key)) throw new ApprovalMutationRecoveryError("Thao tác trình đang chờ xử lý hoặc cần tải lại hồ sơ để xác minh.");
-    const operation = {};
-    approvalWrites.current.set(key, operation);
+    // Capture exactly what is sent before the write. Retain it while pending
+    // or unknown; do not infer a committed PCT/CT from this in-memory record.
+    if (submitted.caseId !== caseId) throw new Error("Chủ sở hữu lệnh trình phê duyệt không nhất quán.");
+    approvalWrites.current.set(key, submitted);
     setApprovalPhases(current => ({ ...current, [key]: "pending" }));
     try {
       const response = await runApprovalMutation(write, () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner));
@@ -1960,14 +1962,18 @@ export function SearchPage({
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để tạo trình phê duyệt.");
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    return runSelectedApprovalMutation(caseId, operationOwner, () => createInspectionApprovalSubmission(caseId, stage, payload, auth, useStubAuth, bearerToken));
+    return runSelectedApprovalMutation(caseId, operationOwner, {
+      kind: "create", caseId, stage, request: { ...payload },
+    }, () => createInspectionApprovalSubmission(caseId, stage, payload, auth, useStubAuth, bearerToken));
   }
 
   async function handleCompleteApprovalSubmission(submissionId: string, payload: import("../types").InspectionApprovalSubmissionCompleteRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để hoàn tất trình phê duyệt.");
     const operationOwner = caseOperationOwner.current;
     const caseId = selectedHistory.id;
-    return runSelectedApprovalMutation(caseId, operationOwner, () => completeInspectionApprovalSubmission(submissionId, payload, auth, useStubAuth, bearerToken));
+    return runSelectedApprovalMutation(caseId, operationOwner, {
+      kind: "complete", caseId, submissionId, request: { ...payload },
+    }, () => completeInspectionApprovalSubmission(submissionId, payload, auth, useStubAuth, bearerToken));
   }
 
   async function handleCaseTransition(payload: import("../types").CaseTransitionRequest) {
@@ -2037,8 +2043,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await upsertEvaluationScope(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      () => upsertEvaluationScope(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
   }
 
   async function handleCaseAssessmentSave(payload: CaseAssessmentUpsertRequest) {
@@ -2746,7 +2754,10 @@ export function SearchPage({
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
             <CaseDraftSession identity={selectedContext && selectedHistory ? JSON.stringify([selectedContext, selectedHistory.source_type, selectedHistory.id]) : null} facilityIdentity={selectedContext && selectedResult ? JSON.stringify([accessGeneration, useStubAuth, selectedResult.site_id]) : null} facilityRegistry={facilityCommandRegistry} commandRegistry={caseCommandRegistry}>
-            <ApprovalMutationContext.Provider value={{ pending: approvalPhase === "pending", requiresReview: approvalPhase === "review" }}>
+            <ApprovalMutationContext.Provider value={{
+              pending: approvalPhase === "pending", requiresReview: approvalPhase === "review",
+              submitted: approvalKey && approvalPhase ? approvalWrites.current.get(approvalKey) : undefined,
+            }}>
             <FacilityWorkspaceTabs
               documentNavigationKey={verifiedDocumentIntent && selectedCaseWorkspace
                 && verifiedDocumentIntent.context === selectedContext && verifiedDocumentIntent.caseId === selectedHistoryId

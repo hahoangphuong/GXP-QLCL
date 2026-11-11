@@ -17,6 +17,15 @@ import type { CertificateDocumentMetadataState } from "./useCertificateDocumentM
 
 type ScopeDraft = Omit<CertificateScope, "id">;
 
+// Submitted values are a copy of the exact normalized HTTP request, not
+// evidence that the latest CertificateVersion was committed.
+type SubmittedVersionEdit = {
+  kind: "edit_latest_version";
+  certificateId: string;
+  detail: GxpCertificateDetail;
+  request: CertificateLatestVersionUpsertRequest;
+};
+
 function buildScopeDrafts(scopes: CertificateScope[]): ScopeDraft[] {
   return scopes.map((scope) => ({
     scope_key: scope.scope_key,
@@ -26,42 +35,50 @@ function buildScopeDrafts(scopes: CertificateScope[]): ScopeDraft[] {
   }));
 }
 
-export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onSave, onStaleConflict, saveAvailable = true }: {
+export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onSave, onStaleConflict, saveAvailable = true, recovered }: {
   detail: GxpCertificateDetail;
   expectedVersion: number;
   onClose: () => void;
   onSave: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
   onStaleConflict: (message: string) => void;
   saveAvailable?: boolean;
+  recovered?: SubmittedVersionEdit | null;
 }) {
-  const [certificateNumber, setCertificateNumber] = useState(detail.certificate_number ?? "");
-  const [issueDate, setIssueDate] = useState(detail.issue_date ?? "");
-  const [expiryDate, setExpiryDate] = useState(detail.expiry_date ?? "");
-  const [reason, setReason] = useState("");
-  const [scopes, setScopes] = useState<ScopeDraft[]>(() => buildScopeDrafts(detail.scopes));
+  const [certificateNumber, setCertificateNumber] = useState(recovered ? recovered.request.certificate_number ?? "" : detail.certificate_number ?? "");
+  const [issueDate, setIssueDate] = useState(recovered ? recovered.request.issue_date ?? "" : detail.issue_date ?? "");
+  const [expiryDate, setExpiryDate] = useState(recovered ? recovered.request.expiry_date ?? "" : detail.expiry_date ?? "");
+  const [reason, setReason] = useState(recovered ? recovered.request.reason ?? "" : "");
+  const [scopes, setScopes] = useState<ScopeDraft[]>(() => recovered ? recovered.request.scopes.map(scope => ({ ...scope })) : buildScopeDrafts(detail.scopes));
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [conflicted, setConflicted] = useState(false);
   const dialogRef = useCertificateDialogFocus();
   const editLock = useFacilityCommandLock(`gxp-certificate-write:${detail.certificate_id}`);
-  const requiresReview = editLock.requiresReview;
+  const frozen = editLock.pending || editLock.requiresReview;
+  const submitted = frozen ? editLock.commandPayload<SubmittedVersionEdit>() : undefined;
+  const submittedRequest = submitted?.kind === "edit_latest_version" && submitted.certificateId === detail.certificate_id ? submitted.request : recovered?.request;
+  const visibleNumber = frozen && submittedRequest ? submittedRequest.certificate_number ?? "" : certificateNumber;
+  const visibleIssueDate = frozen && submittedRequest ? submittedRequest.issue_date ?? "" : issueDate;
+  const visibleExpiryDate = frozen && submittedRequest ? submittedRequest.expiry_date ?? "" : expiryDate;
+  const visibleReason = frozen && submittedRequest ? submittedRequest.reason ?? "" : reason;
+  const visibleScopes = frozen && submittedRequest ? submittedRequest.scopes : scopes;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending && !requiresReview) onClose();
+      if (event.key === "Escape" && !pending && !frozen) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, pending, requiresReview]);
+  }, [onClose, pending, frozen]);
 
   function updateScope(index: number, field: keyof ScopeDraft, value: string | number | null) {
-    if (requiresReview) return;
+    if (frozen) return;
     setScopes((current) => current.map((scope, scopeIndex) => scopeIndex === index ? { ...scope, [field]: value } : scope));
   }
 
   function addScope() {
-    if (requiresReview) return;
+    if (frozen) return;
     setScopes((current) => [...current, {
       scope_key: null,
       scope_text: "",
@@ -71,7 +88,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }
 
   function moveScope(index: number, direction: -1 | 1) {
-    if (requiresReview) return;
+    if (frozen) return;
     setScopes((current) => {
       const destination = index + direction;
       if (destination < 0 || destination >= current.length) return current;
@@ -82,14 +99,8 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }
 
   async function submit() {
-    if (inFlight.current || conflicted || !saveAvailable || editLock.pending || requiresReview) return;
-    const command = editLock.acquire();
-    if (!command) return;
-    inFlight.current = true;
-    setPending(true);
-    setError(null);
-    try {
-      await onSave({
+    if (inFlight.current || conflicted || !saveAvailable || frozen) return;
+    const request: CertificateLatestVersionUpsertRequest = {
         expected_version: expectedVersion,
         certificate_number: certificateNumber.trim() || null,
         issue_date: issueDate || null,
@@ -101,7 +112,19 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
           sort_order: scope.sort_order,
         })),
         reason: reason.trim() || null,
-      });
+    };
+    const command = editLock.acquire({
+      kind: "edit_latest_version",
+      certificateId: detail.certificate_id,
+      detail: { ...detail, scopes: detail.scopes.map(scope => ({ ...scope })) },
+      request: { ...request, scopes: request.scopes.map(scope => ({ ...scope })) },
+    } satisfies SubmittedVersionEdit);
+    if (!command) return;
+    inFlight.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      await onSave(request);
       onClose();
     } catch (nextError) {
       if (nextError instanceof CaseFieldMutationRecoveryError) editLock.requireReview(command);
@@ -126,31 +149,31 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
         <div><h2 id="gxp-certificate-edit-title">Sửa giấy chứng nhận GxP</h2><p>Thay đổi phiên bản hiện tại theo quyền và trạng thái do backend xác nhận.</p></div>
       </header>
       <div className="certificate-edit-fields">
-        <label>Số GCN<input aria-label="Số GCN" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setCertificateNumber(event.target.value); }} value={certificateNumber} /></label>
-        <label>Ngày cấp<input aria-label="Ngày cấp" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setIssueDate(event.target.value); }} type="date" value={issueDate} /></label>
-        <label>Ngày hết hạn<input aria-label="Ngày hết hạn" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setExpiryDate(event.target.value); }} type="date" value={expiryDate} /></label>
-        <label className="certificate-edit-reason">Lý do cập nhật<textarea aria-label="Lý do cập nhật" disabled={pending} readOnly={requiresReview} onChange={(event) => { if (!requiresReview) setReason(event.target.value); }} value={reason} /></label>
+        <label>Số GCN<input aria-label="Số GCN" disabled={pending} readOnly={frozen} onChange={(event) => { if (!frozen) setCertificateNumber(event.target.value); }} value={visibleNumber} /></label>
+        <label>Ngày cấp<input aria-label="Ngày cấp" disabled={pending} readOnly={frozen} onChange={(event) => { if (!frozen) setIssueDate(event.target.value); }} type="date" value={visibleIssueDate} /></label>
+        <label>Ngày hết hạn<input aria-label="Ngày hết hạn" disabled={pending} readOnly={frozen} onChange={(event) => { if (!frozen) setExpiryDate(event.target.value); }} type="date" value={visibleExpiryDate} /></label>
+        <label className="certificate-edit-reason">Lý do cập nhật<textarea aria-label="Lý do cập nhật" disabled={pending} readOnly={frozen} onChange={(event) => { if (!frozen) setReason(event.target.value); }} value={visibleReason} /></label>
       </div>
       <section aria-label="Phạm vi chứng nhận có cấu trúc" className="certificate-scope-editor">
-        <div className="certificate-scope-editor-header"><h3>Phạm vi chứng nhận</h3><button disabled={pending || requiresReview} onClick={addScope} type="button">Thêm phạm vi</button></div>
-        {scopes.map((scope, index) => <div className="certificate-scope-row" key={`${scope.sort_order}-${index}`}>
-          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} readOnly={requiresReview} onChange={(event) => updateScope(index, "scope_key", event.target.value)} value={scope.scope_key ?? ""} /></label>
-          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} readOnly={requiresReview} onChange={(event) => updateScope(index, "scope_text", event.target.value)} value={scope.scope_text} /></label>
-          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} readOnly={requiresReview} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
+        <div className="certificate-scope-editor-header"><h3>Phạm vi chứng nhận</h3><button disabled={pending || frozen} onClick={addScope} type="button">Thêm phạm vi</button></div>
+        {visibleScopes.map((scope, index) => <div className="certificate-scope-row" key={`${scope.sort_order}-${index}`}>
+          <label>Mã phạm vi<input aria-label={`Mã phạm vi ${index + 1}`} disabled={pending} readOnly={frozen} onChange={(event) => updateScope(index, "scope_key", event.target.value)} value={scope.scope_key ?? ""} /></label>
+          <label>Nội dung phạm vi<textarea aria-label={`Nội dung phạm vi ${index + 1}`} disabled={pending} readOnly={frozen} onChange={(event) => updateScope(index, "scope_text", event.target.value)} value={scope.scope_text} /></label>
+          <label>Ngôn ngữ<input aria-label={`Ngôn ngữ phạm vi ${index + 1}`} disabled={pending} readOnly={frozen} onChange={(event) => updateScope(index, "language_code", event.target.value)} value={scope.language_code} /></label>
           <div aria-label={`Thứ tự phạm vi ${index + 1}`} className="certificate-scope-order">{scope.sort_order}</div>
           <div className="certificate-scope-actions">
-            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || requiresReview || index === 0} onClick={() => moveScope(index, -1)} type="button">Lên</button>
-            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || requiresReview || index === scopes.length - 1} onClick={() => moveScope(index, 1)} type="button">Xuống</button>
-            <button aria-label={`Xóa phạm vi ${index + 1}`} disabled={pending || requiresReview} onClick={() => { if (!requiresReview) setScopes((current) => current.filter((_, scopeIndex) => scopeIndex !== index)); }} type="button">Xóa</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} lên`} disabled={pending || frozen || index === 0} onClick={() => moveScope(index, -1)} type="button">Lên</button>
+            <button aria-label={`Đưa phạm vi ${index + 1} xuống`} disabled={pending || frozen || index === visibleScopes.length - 1} onClick={() => moveScope(index, 1)} type="button">Xuống</button>
+            <button aria-label={`Xóa phạm vi ${index + 1}`} disabled={pending || frozen} onClick={() => { if (!frozen) setScopes((current) => current.filter((_, scopeIndex) => scopeIndex !== index)); }} type="button">Xóa</button>
           </div>
         </div>) }
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {conflicted ? <p className="workspace-note">Bản nháp được giữ để đối chiếu. Sao chép nội dung cần giữ, đóng và mở lại form sau khi kiểm tra dữ liệu mới.</p> : null}
-      {requiresReview ? <p className="workspace-note" role="status">Kết quả cập nhật phiên bản chứng nhận chưa được xác minh. Bản nháp được giữ ở chế độ chỉ đọc để sao chép và đối chiếu canonical; không sửa, lưu lại hoặc hủy biểu mẫu.</p> : null}
+      {frozen ? <p className="workspace-note" role="status">Kết quả cập nhật phiên bản chứng nhận chưa được xác minh. Bản nháp được giữ ở chế độ chỉ đọc để sao chép và đối chiếu canonical; không sửa, lưu lại hoặc hủy biểu mẫu.</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
-        <button disabled={pending || conflicted || !saveAvailable || editLock.pending || requiresReview} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : "Lưu thay đổi"}</button>
-        <button disabled={pending || requiresReview} onClick={onClose} type="button">Hủy</button>
+        <button disabled={pending || conflicted || !saveAvailable || frozen} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : "Lưu thay đổi"}</button>
+        <button disabled={pending || frozen} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
   </div>;
@@ -189,6 +212,10 @@ export function GxpCertificateWorkspace({
 }) {
   const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
   const selectedEditLock = useFacilityCommandLock(`gxp-certificate-write:${selectedCertificateId ?? "none"}`);
+  const submittedEdit = selectedEditLock.pending || selectedEditLock.requiresReview
+    ? selectedEditLock.commandPayload<SubmittedVersionEdit>() : undefined;
+  const recoveredEdit = submittedEdit?.kind === "edit_latest_version" && submittedEdit.certificateId === selectedCertificateId
+    ? submittedEdit : null;
   const promotionLock = useFacilityCommandLock(`gxp-certificate-write:${selectedCertificateId ?? "none"}`);
   async function promoteCurrent(expectedVersion: number) {
     const command = promotionLock.acquire();
@@ -210,7 +237,8 @@ export function GxpCertificateWorkspace({
   const rowProps = useCertificateRows(items.map((item) => item.certificate_id), selectedCertificateId, onSelectCertificate, listLoading || Boolean(listError));
   // The selected ID, never the certificate number or version, owns visibility.
   detail = detail?.certificate_id === selectedCertificateId ? detail : null;
-  const visibleDraft = editDraft?.detail.certificate_id === selectedCertificateId ? editDraft : null;
+  const visibleDraft = editDraft?.detail.certificate_id === selectedCertificateId ? editDraft
+    : recoveredEdit ? { detail: recoveredEdit.detail, expectedVersion: recoveredEdit.request.expected_version } : null;
   if (listError && items.length === 0) {
     return <ErrorState message={listError} />;
   }
@@ -308,7 +336,7 @@ export function GxpCertificateWorkspace({
         )}
         {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="gxp" state={versionHistory} /> : null}
       </section>
-      {visibleDraft ? <GxpCertificateEditDialog detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} saveAvailable={!detailLoading && !selectedEditLock.pending && !selectedEditLock.requiresReview && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(current => current === visibleDraft ? null : current)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
+      {visibleDraft ? <GxpCertificateEditDialog key={selectedCertificateId} detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} recovered={recoveredEdit} saveAvailable={!detailLoading && !selectedEditLock.pending && !selectedEditLock.requiresReview && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(current => current === visibleDraft ? null : current)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
     </div>
   );
 }

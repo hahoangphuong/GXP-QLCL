@@ -1,8 +1,19 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { useCaseCommandLock } from "./CaseDraftSession";
 
 import type { CaseWorkspace, CaseWorkspaceEvaluationScope, EvaluationScopeUpsertRequest } from "../../types";
 
 type DraftBlock = { name: string; note: string; selected: Record<string, string> };
+type SubmittedScope = { caseId: string; request: EvaluationScopeUpsertRequest };
+function foldTaxonomy(value: string): string {
+  return value.toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+}
+function snapshotScope(request: EvaluationScopeUpsertRequest): EvaluationScopeUpsertRequest {
+  return { ...request, blocks: request.blocks.map(block => ({
+    ...block, selections: block.selections.map(selection => ({ ...selection })),
+  })) };
+}
 
 const emptyEvaluationScope: CaseWorkspaceEvaluationScope = {
   id: null, row_version: null, source_classification: null, rendered_prose: null, summary_text: null,
@@ -28,20 +39,39 @@ function initialExpandedNodeIds(scope: CaseWorkspaceEvaluationScope): Set<string
   return expanded;
 }
 
-function EvaluationScopeEditorDialog({ scope, onClose, onSave }: {
+function EvaluationScopeEditorDialog({ scope, onClose, onSave, locked }: {
   scope: CaseWorkspaceEvaluationScope;
   onClose: () => void;
   onSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
+  locked: boolean;
 }) {
   const [expanded, setExpanded] = useState(() => initialExpandedNodeIds(scope));
   const [activeBlock, setActiveBlock] = useState(0);
   const [draft, setDraft] = useState(() => buildDraft(scope));
   const [limitation, setLimitation] = useState(scope.limitation_text ?? "");
+  const [taxonomySearch, setTaxonomySearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const nodesById = new Map(scope.taxonomy_nodes.map((node) => [node.id, node]));
   const nodesByParent = new Map<string | null, string[]>();
   for (const node of scope.taxonomy_nodes) nodesByParent.set(node.parent_id, [...(nodesByParent.get(node.parent_id) ?? []), node.id]);
+  const query = foldTaxonomy(taxonomySearch.trim());
+  const matched = new Set<string>();
+  const searchVisible = new Set<string>();
+  if (query) {
+    for (const node of scope.taxonomy_nodes) {
+      if (![node.key, node.description, node.hint ?? ""].some(value => foldTaxonomy(value).includes(query))) continue;
+      matched.add(node.id);
+      searchVisible.add(node.id);
+      const seen = new Set<string>([node.id]);
+      let parent = node.parent_id;
+      while (parent && !seen.has(parent)) {
+        seen.add(parent);
+        searchVisible.add(parent);
+        parent = nodesById.get(parent)?.parent_id ?? null;
+      }
+    }
+  }
   const block = draft[activeBlock];
   const selectedIds = new Set(Object.keys(block?.selected ?? {}));
   const descendantsOf = (nodeId: string): string[] => {
@@ -58,7 +88,7 @@ function EvaluationScopeEditorDialog({ scope, onClose, onSave }: {
   const treeState = (nodeId: string) => selectedIds.has(nodeId) ? "checked" : descendantsOf(nodeId).some((id) => selectedIds.has(id)) ? "mixed" : "unchecked";
   const updateBlock = (index: number, update: (current: DraftBlock) => DraftBlock) => setDraft((current) => current.map((item, itemIndex) => itemIndex === index ? update(item) : item));
   const toggle = (nodeId: string) => {
-    if (!block) return;
+    if (!block || locked || pending) return;
     updateBlock(activeBlock, (current) => {
       const selected = { ...current.selected };
       const selecting = selected[nodeId] === undefined;
@@ -68,14 +98,14 @@ function EvaluationScopeEditorDialog({ scope, onClose, onSave }: {
       return { ...current, selected };
     });
   };
-  const addBlock = () => { setDraft((current) => [...current, { name: "", note: "", selected: {} }]); setActiveBlock(draft.length); };
+  const addBlock = () => { if (locked || pending) return; setDraft((current) => [...current, { name: "", note: "", selected: {} }]); setActiveBlock(draft.length); };
   const removeActiveBlock = () => {
-    if (draft.length <= 1) return;
+    if (locked || pending || draft.length <= 1) return;
     setDraft((current) => current.filter((_, index) => index !== activeBlock));
     setActiveBlock((current) => Math.max(0, current - 1));
   };
   async function save() {
-    if (!scope.row_version || pending) return;
+    if (scope.row_version === null || pending || locked) return;
     setPending(true); setError(null);
     try {
       await onSave({ expected_version: scope.row_version, limitation_text: limitation || null, blocks: draft.map((item) => ({ name: item.name || null, note: item.note || null, selections: Object.entries(item.selected).map(([taxonomy_node_id, custom_description]) => ({ taxonomy_node_id, custom_description })) })) });
@@ -86,10 +116,10 @@ function EvaluationScopeEditorDialog({ scope, onClose, onSave }: {
   }
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !pending) onClose(); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !pending && !locked) onClose(); };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, pending]);
+  }, [onClose, pending, locked]);
 
   return <div className="dialog-backdrop" role="presentation">
     <section aria-labelledby="evaluation-scope-dialog-title" aria-modal="true" className="panel evaluation-scope-dialog" role="dialog">
@@ -99,22 +129,34 @@ function EvaluationScopeEditorDialog({ scope, onClose, onSave }: {
       <div aria-label="Các phạm vi đánh giá" className="evaluation-scope-block-tabs" role="tablist">
         {draft.map((item, index) => <button aria-selected={activeBlock === index} className={activeBlock === index ? "active" : ""} key={`scope-block-${index}`} onClick={() => setActiveBlock(index)} role="tab" type="button">{item.name || `Phạm vi ${index + 1}`}</button>)}
       </div>
-      {block ? <div className="evaluation-scope-editor">
+      {block ? <fieldset disabled={locked || pending} className="evaluation-scope-editor">
+        <div className="panel-actions" role="group" aria-label="Tra cứu cây phạm vi đánh giá">
+          <label>Tìm mục phạm vi
+            <input aria-label="Tìm mục phạm vi" value={taxonomySearch}
+              placeholder="Mã, nội dung, gợi ý…"
+              onChange={event => setTaxonomySearch(event.target.value)} />
+          </label>
+          {taxonomySearch ? <button className="secondary" type="button"
+            onClick={() => setTaxonomySearch("")}>Xóa tìm kiếm phạm vi</button> : null}
+          {query ? <span className="workspace-note" role="status">Tìm thấy {matched.size}/{scope.taxonomy_nodes.length} mục; hiển thị thêm các mục cha để đối chiếu. Khi tìm kiếm chỉ có thể chọn mục lá.</span> : null}
+        </div>
         <div className="evaluation-scope-block-header">
           <label>Tên phạm vi<input value={block.name} onChange={(event) => updateBlock(activeBlock, (current) => ({ ...current, name: event.target.value }))} /></label>
           <label>Ghi chú<textarea value={block.note} onChange={(event) => updateBlock(activeBlock, (current) => ({ ...current, note: event.target.value }))} /></label>
         </div>
         <div aria-label="Cây phạm vi đánh giá" className="evaluation-scope-tree" role="tree">
+          {query && matched.size === 0 ? <p className="workspace-note">Không có mục phạm vi phù hợp.</p> : null}
           {scope.taxonomy_nodes.map((node) => {
             const hasChildren = (nodesByParent.get(node.id) ?? []).length > 0;
-            if (!ancestorsExpanded(node.id)) return null;
+            if (query ? !searchVisible.has(node.id) : !ancestorsExpanded(node.id)) return null;
             const state = treeState(node.id);
             const isSelected = selectedIds.has(node.id);
             const customDescription = block.selected[node.id] ?? "";
+            const searchSelectionLocked = Boolean(query && (hasChildren || !matched.has(node.id)));
             const depth = node.key.split(".").length - 1;
-            return <div aria-expanded={hasChildren ? expanded.has(node.id) : undefined} className={`evaluation-scope-node depth-${Math.min(depth, 2)} ${isSelected ? "is-selected" : ""}`} key={node.id} role="treeitem" style={{ paddingInlineStart: `${depth * 1.1}rem` }} title={node.hint ?? undefined}>
-              {hasChildren ? <button aria-label={`${expanded.has(node.id) ? "Thu gọn" : "Mở rộng"} ${node.key}`} className={`tree-expand ${expanded.has(node.id) ? "is-expanded" : ""}`} onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(node.id)) next.delete(node.id); else next.add(node.id); return next; })} type="button"><span /></button> : <span className="tree-spacer" />}
-              <button aria-checked={state === "mixed" ? "mixed" : state === "checked"} aria-label={`Chọn ${node.key}`} className={`tree-check ${state}`} onClick={() => toggle(node.id)} role="checkbox" type="button"><span /></button>
+            return <div aria-expanded={hasChildren ? Boolean(query) || expanded.has(node.id) : undefined} className={`evaluation-scope-node depth-${Math.min(depth, 2)} ${isSelected ? "is-selected" : ""}`} key={node.id} role="treeitem" style={{ paddingInlineStart: `${depth * 1.1}rem` }} title={node.hint ?? undefined}>
+              {hasChildren ? <button disabled={Boolean(query)} aria-label={`${query ? "Đường dẫn cha" : expanded.has(node.id) ? "Thu gọn" : "Mở rộng"} ${node.key}`} className={`tree-expand ${expanded.has(node.id) ? "is-expanded" : ""}`} onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(node.id)) next.delete(node.id); else next.add(node.id); return next; })} type="button"><span /></button> : <span className="tree-spacer" />}
+              <button aria-checked={state === "mixed" ? "mixed" : state === "checked"} aria-label={`Chọn ${node.key}`} className={`tree-check ${state}`} disabled={searchSelectionLocked} onClick={() => { if (!searchSelectionLocked) toggle(node.id); }} role="checkbox" type="button"><span /></button>
               <span className="tree-key">{node.key}</span>
               <div className="tree-copy"><span className="tree-taxonomy-description">{node.description}</span>
                 {isSelected ? <textarea aria-label={`Mô tả tùy chỉnh ${node.key}`} className="tree-custom-input" onChange={(event) => updateBlock(activeBlock, (current) => ({ ...current, selected: { ...current.selected, [node.id]: event.target.value } }))} placeholder="Mô tả tùy chỉnh (để trống nếu không có)" value={customDescription} /> : null}
@@ -123,13 +165,13 @@ function EvaluationScopeEditorDialog({ scope, onClose, onSave }: {
           })}
         </div>
         <label className="evaluation-scope-limitation">Giới hạn<textarea value={limitation} onChange={(event) => setLimitation(event.target.value)} /></label>
-      </div> : null}
+      </fieldset> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="panel-actions evaluation-scope-dialog-actions">
-        <button disabled={pending} onClick={addBlock} type="button">Thêm phạm vi</button>
-        <button disabled={pending || draft.length <= 1} onClick={removeActiveBlock} type="button">Bỏ phạm vi</button>
-        <button disabled={pending} onClick={() => void save()} type="button">{pending ? "Đang lưu..." : "Lưu"}</button>
-        <button disabled={pending} onClick={onClose} type="button">Hủy</button>
+        <button disabled={pending || locked} onClick={addBlock} type="button">Thêm phạm vi</button>
+        <button disabled={pending || locked || draft.length <= 1} onClick={removeActiveBlock} type="button">Bỏ phạm vi</button>
+        <button disabled={pending || locked} onClick={() => void save()} type="button">{pending ? "Đang lưu..." : "Lưu"}</button>
+        <button disabled={pending || locked} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
   </div>;
@@ -140,6 +182,26 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
   onSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
 }) {
   const scope = caseWorkspace.evaluation_scope ?? emptyEvaluationScope;
+  const commandLock = useCaseCommandLock("evaluation.scope");
+  const frozen = commandLock.pending || commandLock.requiresReview;
+  const commandEvidence = frozen ? commandLock.commandPayload<SubmittedScope>() : undefined;
+  const submitted = commandEvidence?.caseId === caseWorkspace.case_summary.id ? commandEvidence.request : null;
+  async function saveOwned(request: EvaluationScopeUpsertRequest) {
+    if (frozen || !scope.editable || scope.row_version === null || request.expected_version !== scope.row_version) {
+      throw new Error("Phiên bản hoặc điều kiện sửa phạm vi không còn hợp lệ.");
+    }
+    const snapshot = snapshotScope(request);
+    const command = commandLock.acquire({ caseId: caseWorkspace.case_summary.id, request: snapshot } satisfies SubmittedScope);
+    if (!command) throw new Error("Lệnh cập nhật phạm vi đang xử lý hoặc cần xác minh.");
+    try {
+      await onSave(snapshot);
+    } catch (error) {
+      if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
+      throw error;
+    } finally {
+      commandLock.release(command);
+    }
+  }
   const linkedCertificates = caseWorkspace.linked_gxp_certificates ?? [];
   const currentCertificates = linkedCertificates.filter((item) => item.latest_flag);
   const certificate = currentCertificates.length === 1
@@ -147,12 +209,12 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
     : currentCertificates.length === 0 && linkedCertificates.length === 1
       ? linkedCertificates[0]
       : null;
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorOwner, setEditorOwner] = useState<string | null>(null);
   const [activeScope, setActiveScope] = useState(0);
   const [focusedScope, setFocusedScope] = useState(0);
   const scopeTabsId = useId();
   const scopeTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  useEffect(() => setEditorOpen(false), [scope.id, scope.row_version]);
+  useEffect(() => setEditorOwner(null), [caseWorkspace.case_summary.id, scope.id, scope.row_version]);
   const isHistorical = scope.summary_source === "historical_prose";
   return <section className="evaluation-scope-workspace">
     <div aria-label="Phạm vi hồ sơ" className="legacy-scope-tabs" role="tablist">
@@ -175,7 +237,7 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
       <section aria-labelledby={`${scopeTabsId}-tab-0`} className="workspace-section scope-information-pane" hidden={activeScope !== 0} id={`${scopeTabsId}-panel-0`} role="tabpanel" tabIndex={0}>
         <header className="workspace-section-header">
           <h4>{isHistorical ? "Phạm vi đánh giá lịch sử" : "Phạm vi đánh giá"}</h4>
-          {scope.id && scope.editable ? <button className="secondary" onClick={() => setEditorOpen(true)} type="button">Sửa phạm vi</button> : null}
+          {scope.id && scope.editable ? <button className="secondary" disabled={frozen} onClick={() => { if (!frozen) setEditorOwner(caseWorkspace.case_summary.id); }} type="button">Sửa phạm vi</button> : null}
         </header>
         {scope.read_only_reason ? <p className="workspace-note">{scope.read_only_reason}</p> : null}
         <pre className="evaluation-scope-summary">{scope.summary_text || "Chưa có nội dung phạm vi đánh giá để hiển thị."}</pre>
@@ -189,6 +251,18 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
         <pre className="evaluation-scope-summary">{certificate?.scope_summary || "Chưa có phạm vi chứng nhận GPs canonical liên kết trực tiếp với hồ sơ này."}</pre>
       </section>
     </div>
-    {editorOpen ? <EvaluationScopeEditorDialog scope={scope} onClose={() => setEditorOpen(false)} onSave={onSave} /> : null}
+    {submitted ? <section aria-label="Phạm vi đánh giá đã gửi" className="workspace-section" role="region">
+      <h4>Bản cập nhật phạm vi đã gửi — chỉ đọc</h4>
+      <p className="workspace-note" role="status">{commandLock.pending
+        ? "Lệnh đang xử lý; chưa có xác nhận từ hồ sơ canonical."
+        : "Kết quả lưu chưa được xác minh; không gửi lại trước khi đối chiếu hồ sơ canonical."}</p>
+      <p>Phiên bản đã gửi: {submitted.expected_version}. Giới hạn: {submitted.limitation_text ?? "Không nhập"}.</p>
+      {submitted.blocks.map((block, index) => <div className="workspace-note" key={index}>
+        <strong>Phạm vi {index + 1}: {block.name ?? "Không đặt tên"}</strong>
+        <p>Ghi chú: {block.note ?? "Không nhập"}</p>
+        {block.selections.map((selection, i) => <p key={i}>Taxonomy UUID: {selection.taxonomy_node_id}; Mô tả: {selection.custom_description || "Không nhập"}</p>)}
+      </div>)}
+    </section> : commandLock.requiresReview ? <p className="workspace-note" role="status">Lệnh cập nhật phạm vi chưa được xác minh. Không gửi lại trước khi kiểm tra hồ sơ canonical.</p> : null}
+    {editorOwner === caseWorkspace.case_summary.id ? <EvaluationScopeEditorDialog key={caseWorkspace.case_summary.id} scope={scope} locked={frozen} onClose={() => { if (!frozen) setEditorOwner(current => current === caseWorkspace.case_summary.id ? null : current); }} onSave={saveOwned} /> : null}
   </section>;
 }

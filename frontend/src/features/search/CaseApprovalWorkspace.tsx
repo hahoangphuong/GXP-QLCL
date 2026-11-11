@@ -76,11 +76,13 @@ function CaseApprovalEditor({
   const [parentId, setParentId] = useCaseDraftState("approval.create.parentId", "");
   const parentSelect = useRef<HTMLSelectElement>(null);
   const approvalRows = useRef(new Map<string, HTMLDivElement>());
-  const [stageFilter, setStageFilter] = useState<"all" | "PCT" | "CT">("all");
+  const [stageFilter, setStageFilter] = useCaseDraftState<"all" | "PCT" | "CT">("approval.history.stageFilter", "all");
+  const [unfinishedOnly, setUnfinishedOnly] = useCaseDraftState("approval.history.unfinishedOnly", false);
+  const [historyQuery, setHistoryQuery] = useCaseDraftState("approval.history.query", "");
   const navigateToId = useRef<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const { pending: ownerPending, requiresReview } = useContext(ApprovalMutationContext);
+  const { pending: ownerPending, requiresReview, submitted: ownerSubmission } = useContext(ApprovalMutationContext);
   const [error, setError] = useCaseDraftState<string | null>("approval.create.error", null);
 
   const submissions = useMemo(
@@ -90,6 +92,7 @@ function CaseApprovalEditor({
     [caseWorkspace.inspection.approval_submissions],
   );
   const caseId = caseWorkspace.case_summary.id;
+  const submitted = (ownerPending || requiresReview) && ownerSubmission?.caseId === caseId ? ownerSubmission : null;
   const completedPct = submissions.filter((item) => item.stage === "PCT" && item.case_id === caseId && item.completed_on !== null);
   const pctById = useMemo(() => new Map(submissions.filter(item => item.stage === "PCT" && item.case_id === caseId).map(item => [item.approval_submission_id, item])), [submissions, caseId]);
   const ctByParent = useMemo(() => {
@@ -102,17 +105,31 @@ function CaseApprovalEditor({
     }
     return result;
   }, [submissions, pctById, caseId]);
-  const visibleSubmissions = stageFilter === "all" ? submissions : submissions.filter(item => item.stage === stageFilter);
+  const stageSubmissions = stageFilter === "all" ? submissions : submissions.filter(item => item.stage === stageFilter);
+  const historyNeedle = historyQuery.trim().toLocaleLowerCase();
+  const visibleSubmissions = stageSubmissions.filter(item =>
+    (!unfinishedOnly || item.completed_on === null)
+    && (!historyNeedle || [
+      item.stage, item.approval_submission_id, item.reference, item.pct_submission_id,
+      item.submitted_on, item.completed_on, item.submitted_time, item.completed_time,
+      String(item.round_no),
+    ].some(value => (value ?? "").toLocaleLowerCase().includes(historyNeedle))),
+  );
+  const unfinishedCount = submissions.filter(item => item.completed_on === null).length;
   useEffect(() => {
-    if (stageFilter !== "all" || !navigateToId.current) return;
+    if ((stageFilter !== "all" || unfinishedOnly || historyNeedle) || !navigateToId.current) return;
     approvalRows.current.get(navigateToId.current)?.focus();
     navigateToId.current = null;
-  }, [stageFilter]);
+  }, [stageFilter, unfinishedOnly, historyNeedle]);
   function navigateToApproval(id: string) {
-    if (stageFilter === "all") approvalRows.current.get(id)?.focus();
+    // Related records may be hidden by either filter. Restore the full
+    // canonical history before focusing by UUID; never infer row position.
+    if (stageFilter === "all" && !unfinishedOnly && !historyNeedle) approvalRows.current.get(id)?.focus();
     else {
-      setStageFilter("all");
       navigateToId.current = id;
+      setStageFilter("all");
+      setUnfinishedOnly(false);
+      setHistoryQuery("");
     }
   }
   const hasSelectedParent = completedPct.some((item) => item.approval_submission_id === parentId);
@@ -158,7 +175,7 @@ function CaseApprovalEditor({
     }
   }
 
-  return <section className="workspace-section case-approval-workspace">
+  return <section className="workspace-section case-approval-workspace" data-case-approval-history tabIndex={-1} aria-label="Trình phê duyệt PCT / CT">
     <h4>Trình phê duyệt PCT / CT</h4>
     <div className="panel-actions">
       <input aria-label="Tham chiếu trình" disabled={pending !== null || ownerPending} readOnly={requiresReview} value={reference} onChange={(event) => { if (!requiresReview) setReference(event.target.value); }} />
@@ -184,6 +201,21 @@ function CaseApprovalEditor({
         {stage === "all" ? `Tất cả (${submissions.length})` : `${stage} (${submissions.filter(item => item.stage === stage).length})`}
       </button>)}
     </div>
+    <div className="panel-actions" role="group" aria-label="Lọc tiến độ trình phê duyệt">
+      <button type="button" className={!unfinishedOnly ? "" : "secondary"} aria-pressed={!unfinishedOnly} onClick={() => setUnfinishedOnly(false)}>Mọi trạng thái ({stageSubmissions.length})</button>
+      <button type="button" className={unfinishedOnly ? "" : "secondary"} aria-pressed={unfinishedOnly} onClick={() => setUnfinishedOnly(true)}>Chưa hoàn tất ({stageSubmissions.filter(item => item.completed_on === null).length})</button>
+    </div>
+    {submissions.length > 0 ? <div className="panel-actions" role="group" aria-label="Tra cứu lịch sử trình phê duyệt">
+      <label>Tìm trình phê duyệt
+        <input aria-label="Tìm trong lịch sử PCT/CT" value={historyQuery}
+          onChange={event => setHistoryQuery(event.target.value)}
+          placeholder="Số tham chiếu, UUID, ngày…" />
+      </label>
+      {historyQuery ? <button type="button" className="secondary"
+        onClick={() => setHistoryQuery("")}>Xóa tìm kiếm PCT/CT</button> : null}
+      <span className="workspace-note" role="status">Hiển thị {visibleSubmissions.length}/{submissions.length} lần trình theo dữ liệu canonical.</span>
+    </div> : null}
+    {visibleSubmissions.length === 0 ? <p className="workspace-note">Không có trình phê duyệt phù hợp bộ lọc. Tổng số chưa hoàn tất trong Case: {unfinishedCount}.</p> : null}
     {visibleSubmissions.map((item) => {
       const readiness = action(`complete_approval:${item.approval_submission_id}`);
       const parent = item.stage === "CT" ? pctById.get(item.pct_submission_id ?? "") : undefined;
@@ -217,7 +249,29 @@ function CaseApprovalEditor({
       </div>;
     })}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
-    {requiresReview ? <p className="workspace-note" role="status">Chưa xác minh kết quả ghi. Thông tin trình và PCT cha đã chọn được giữ nguyên để đối chiếu canonical; không sửa, hủy hoặc gửi lại trước khi xác minh.</p> : null}
+    {submitted ? <section className="workspace-section" aria-label="Lệnh trình phê duyệt đã gửi" role="region">
+      <h5>Đối chiếu lệnh trình đã gửi (chỉ đọc)</h5>
+      <p className="workspace-note" role="status">{ownerPending
+        ? "Lệnh đang xử lý; chưa có xác nhận canonical."
+        : "Kết quả ghi chưa xác minh; không sửa hoặc gửi lại trước khi kiểm tra canonical."}</p>
+      <dl>
+        <dt>Thao tác</dt><dd>{submitted.kind === "create" ? `Tạo trình ${submitted.stage}` : "Hoàn tất trình"}</dd>
+        {submitted.kind === "create" ? <>
+          <dt>Tham chiếu đã gửi</dt><dd>{submitted.request.reference ?? "Không nhập"}</dd>
+          <dt>Ngày trình</dt><dd>{submitted.request.submitted_on ?? "Không nhập"}</dd>
+          <dt>Giờ trình</dt><dd>{submitted.request.submitted_time ?? "Không nhập"}</dd>
+          <dt>PCT cha (UUID)</dt><dd>{submitted.request.pct_submission_id ?? "Không có"}</dd>
+          <dt>Lý do</dt><dd>{submitted.request.reason ?? "Không nhập"}</dd>
+        </> : <>
+          <dt>Submission UUID</dt><dd>{submitted.submissionId}</dd>
+          <dt>Phiên bản đã gửi</dt><dd>{submitted.request.expected_version}</dd>
+          <dt>Ngày hoàn tất</dt><dd>{submitted.request.completed_on}</dd>
+          <dt>Giờ hoàn tất</dt><dd>{submitted.request.completed_time ?? "Không nhập"}</dd>
+          <dt>Lý do</dt><dd>{submitted.request.reason ?? "Không nhập"}</dd>
+        </>}
+      </dl>
+    </section> : null}
+    {requiresReview && !submitted ? <p className="workspace-note" role="status">Chưa xác minh kết quả ghi. Không gửi lại trước khi đối chiếu hồ sơ canonical.</p> : null}
   </section>;
 }
 

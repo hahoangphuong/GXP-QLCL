@@ -624,3 +624,83 @@ describe("BusinessEligibilityWorkspace write workflow", () => {
     expect(screen.queryByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).not.toBeInTheDocument();
   });
 });
+
+describe("DDK exact submitted mutation recovery", () => {
+  it("recovers Site-scoped issuance values and canonical basis order after Site A → B → A, before and after unknown outcome", async () => {
+    let fail!: (reason: Error) => void;
+    const props = baseProps();
+    props.onIssue = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const editor = (siteId: string) => <CaseDraftSession identity={`history:${siteId}`} facilityIdentity={`access-A:${siteId}`}>
+      <BusinessEligibilityWorkspace {...props} siteId={siteId} />
+    </CaseDraftSession>;
+    const view = render(editor("site-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+    fireEvent.change(screen.getByLabelText("Số GCN ĐĐK"), { target: { value: "  DDKD-SUBMITTED  " } });
+    fireEvent.change(screen.getByLabelText("Ngày cấp ĐĐK"), { target: { value: "2026-11-11" } });
+    fireEvent.change(screen.getByLabelText("Ghi chú ĐĐK"), { target: { value: "  Ghi chú đã gửi  " } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Chọn căn cứ GMP A/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: /Vai trò căn cứ GMP A/ }), { target: { value: "replacement_certificate" } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" }));
+    expect(props.onIssue).toHaveBeenCalledWith(expect.objectContaining({
+      certificate_number: "DDKD-SUBMITTED", issued_on: "2026-11-11", notes: "Ghi chú đã gửi",
+      linked_certificates: [{ certificate_id: "cert-1", link_role: "replacement_certificate" }],
+    }));
+    view.rerender(editor("site-2"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.rerender(editor("site-1"));
+    const dialog = screen.getByRole("dialog", { name: "Cấp GCN đủ điều kiện" });
+    expect(within(dialog).getByLabelText("Số GCN ĐĐK")).toHaveValue("DDKD-SUBMITTED");
+    expect(within(dialog).getByLabelText("Ngày cấp ĐĐK")).toHaveValue("2026-11-11");
+    expect(within(dialog).getByLabelText("Ghi chú ĐĐK")).toHaveValue("Ghi chú đã gửi");
+    expect(within(dialog).getByRole("combobox", { name: /Vai trò căn cứ GMP A/ })).toHaveValue("replacement_certificate");
+    expect(within(dialog).getByRole("button", { name: "Cấp GCN" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    await act(async () => fail(new CaseFieldMutationRecoveryError("issue canonical readback unknown")));
+    expect(within(dialog).getByRole("status")).toHaveTextContent("chưa xác minh");
+    expect(within(dialog).getByLabelText("Số GCN ĐĐK")).toHaveAttribute("readonly");
+    view.rerender(editor("site-2"));
+    view.rerender(editor("site-1"));
+    expect(screen.getByLabelText("Số GCN ĐĐK")).toHaveValue("DDKD-SUBMITTED");
+    expect(props.onIssue).toHaveBeenCalledOnce();
+  });
+
+  it("recovers exact version update fields and basis roles after DDK A → B → A without replay or promotion", async () => {
+    let fail!: (reason: Error) => void;
+    const props = baseProps();
+    props.onEditLatestVersion = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const editor = (id: string) => <CaseDraftSession identity="history" facilityIdentity="access-A:site-1">
+      <BusinessEligibilityWorkspace {...props} selectedCertificateId={id}
+        detail={{ ...detail(), business_eligibility_certificate_id: id }}
+        items={[{ ...items[0], business_eligibility_certificate_id: id }]} />
+    </CaseDraftSession>;
+    const view = render(editor("dkkd-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+    fireEvent.change(screen.getByLabelText("Số GCN ĐĐK"), { target: { value: "  DDK-UPDATED  " } });
+    fireEvent.change(screen.getByLabelText("Người PTCM"), { target: { value: "  Người mới  " } });
+    fireEvent.change(screen.getByLabelText("Lý do ĐĐK"), { target: { value: "  Điều chỉnh  " } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Vai trò căn cứ GMP A/ }), { target: { value: "replacement_certificate" } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(props.onEditLatestVersion).toHaveBeenCalledWith(expect.objectContaining({
+      expected_version: 4, certificate_number: "DDK-UPDATED", professional_responsible_person_name: "Người mới",
+      reason: "Điều chỉnh", linked_certificates: [{ certificate_id: "cert-1", link_role: "replacement_certificate" }],
+    }));
+    view.rerender(editor("dkkd-2"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.rerender(editor("dkkd-1"));
+    const dialog = screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" });
+    expect(within(dialog).getByLabelText("Số GCN ĐĐK")).toHaveValue("DDK-UPDATED");
+    expect(within(dialog).getByLabelText("Người PTCM")).toHaveValue("Người mới");
+    expect(within(dialog).getByLabelText("Lý do ĐĐK")).toHaveValue("Điều chỉnh");
+    expect(within(dialog).getByRole("combobox", { name: /Vai trò căn cứ GMP A/ })).toHaveValue("replacement_certificate");
+    expect(within(dialog).getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeDisabled();
+    await act(async () => fail(new CaseFieldMutationRecoveryError("edit canonical readback unknown")));
+    view.rerender(editor("dkkd-2"));
+    view.rerender(editor("dkkd-1"));
+    expect(screen.getByLabelText("Số GCN ĐĐK")).toHaveValue("DDK-UPDATED");
+    expect(props.onEditLatestVersion).toHaveBeenCalledOnce();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
+});

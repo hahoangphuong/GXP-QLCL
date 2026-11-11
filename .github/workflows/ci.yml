@@ -504,6 +504,13 @@ jobs:
 
       - name: Install pinned disposable browser driver and Chromium
         run: |
+          # GitHub-hosted Ubuntu runners may use mirror+file:/etc/apt/apt-mirrors.txt
+          # pointing at azure.archive.ubuntu.com. DNS failures there have
+          # blocked the browser gate before any tests ran. Keep full Playwright
+          # system dependencies, but use Ubuntu's canonical public archive.
+          if [ -f /etc/apt/apt-mirrors.txt ] && grep -q 'azure.archive.ubuntu.com' /etc/apt/apt-mirrors.txt; then
+            sudo sed -i 's#azure.archive.ubuntu.com#archive.ubuntu.com#g' /etc/apt/apt-mirrors.txt
+          fi
           echo "GXP_CROSS_HEAD_PW_DIR=${RUNNER_TEMP}/gxp-browser-driver" >> "${GITHUB_ENV}"
           echo "GXP_CROSS_HEAD_SCREENSHOTS=${GITHUB_WORKSPACE}/cross-head-screenshots" >> "${GITHUB_ENV}"
           npm install --no-save --prefix "${RUNNER_TEMP}/gxp-browser-driver" playwright@1.56.1

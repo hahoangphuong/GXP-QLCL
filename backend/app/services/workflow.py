@@ -3636,6 +3636,11 @@ class CaseWorkflowService:
         }
         for item in existing:
             session.delete(item)
+        # A replace-all may reuse ordinal 1..N. SQLAlchemy can otherwise
+        # INSERT before DELETE during the next implicit flush and violate
+        # the unique (inspection_outcome_id, ordinal) constraint.
+        # Keep both stages in this same transaction; audit BEFORE is captured.
+        session.flush()
         for item in normalized:
             session.add(InspectionPeriodSegment(
                 inspection_outcome_id=outcome.id,

@@ -254,7 +254,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
             <td><Link className="text-link" state={urlState ? { reportReturn: `/reports?${reportParams(kind, active, offset)}` } : undefined} to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.scope_label ?? "—"}</td>
             <td>{item.submitted_on ?? "—"}</td><td>{item.state}</td>
-            {showDocumentsLink && <td><Link className="text-link" to={`/documents/change-requests/${encodeURIComponent(item.change_request_id)}`}>Xem tài liệu</Link></td>}
+            {showDocumentsLink && <td><Link className="text-link" state={urlState ? { reportReturn: `/reports?${reportParams(kind, active, offset)}` } : undefined} to={`/documents/change-requests/${encodeURIComponent(item.change_request_id)}`}>Xem tài liệu</Link></td>}
           </tr>)}
         </tbody></table></div>}
       {current?.page && total > 0 && <nav className="report-pagination" aria-label="Phân trang báo cáo">

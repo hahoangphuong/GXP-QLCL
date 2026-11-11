@@ -39,7 +39,9 @@ describe("Processing timeline presentation and ownership", () => {
     expect(screen.queryByText("Dossier result")).not.toBeInTheDocument();
     expect(screen.queryByText("Đánh giá cuối")).not.toBeInTheDocument();
     expect(screen.queryByText("Hạn kiểm tra tuân thủ")).not.toBeInTheDocument();
-    expect(container.querySelectorAll("input, textarea, .editable-detail-value")).toHaveLength(0);
+    expect(container.querySelectorAll("textarea, .editable-detail-value")).toHaveLength(0);
+    expect(screen.getByRole("textbox", { name: "Tìm mốc xử lý" })).toBeInTheDocument();
+    expect(container.querySelectorAll("input")).toHaveLength(1);
     for (const key of ["F2", "Enter", "Escape"]) fireEvent.keyDown(rows[1], { key });
     expect(save).not.toHaveBeenCalled();
   });

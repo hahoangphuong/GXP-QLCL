@@ -1217,7 +1217,9 @@ class DocumentWorkflowService:
         expected_parent_id: str,
         expected_case_id: str | None = None,
     ) -> DocumentBinaryLocator:
-        row = session.get(Document, document_id)
+        # A cached Document owner is not proof for current binary access.
+        # Re-read under a shared lock before resolving variants and versions.
+        row = session.get(Document, document_id, populate_existing=True, with_for_update={"read": True})
         if row is None:
             raise HTTPException(status_code=404, detail="Document not found.")
         parent_ids = {
@@ -1234,15 +1236,15 @@ class DocumentWorkflowService:
         if parent_ids != {expected_parent_scope: expected_parent_id}:
             raise HTTPException(status_code=404, detail="Document not found for requested business owner.")
         if expected_parent_scope == "case":
-            if session.get(Case, expected_parent_id) is None:
+            if session.get(Case, expected_parent_id, populate_existing=True) is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
         else:
-            cycle = session.get(CapaCycle, expected_parent_id)
+            cycle = session.get(CapaCycle, expected_parent_id, populate_existing=True, with_for_update={"read": True})
             if cycle is None:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found.")
             if expected_case_id is None or cycle.case_id != expected_case_id:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found for requested case.")
-            if session.get(Case, expected_case_id) is None:
+            if session.get(Case, expected_case_id, populate_existing=True) is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
         variants = list(
             session.scalars(

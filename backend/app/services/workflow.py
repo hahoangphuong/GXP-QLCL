@@ -2246,6 +2246,12 @@ class CaseWorkflowService:
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
             raise HTTPException(status_code=409, detail="Change request details are read-only in the current state.")
+        # The detail was looked up before acquiring the parent owner lock.
+        # Refresh the child after that lock: an existing Session identity can
+        # otherwise hold a pre-commit snapshot and record a false audit BEFORE.
+        session.refresh(detail)
+        if detail.change_request_id != row.id:
+            raise HTTPException(status_code=409, detail="Change request detail owner changed during update.")
         provided = self._provided_fields(fields_set, {"classification_id", "classification_label", "approval_status", "old_value", "new_value", "note"})
         before = {name: getattr(detail, name) for name in ("classification_id", "classification_label", "approval_status", "old_value", "new_value", "note")}
         self._assign_provided(detail, {
@@ -2302,7 +2308,14 @@ class CaseWorkflowService:
         self._assert_expected_version(row, expected_version, label="change_request")
         if row.state not in CHANGE_APPROVAL_EDITABLE_STATES:
             raise HTTPException(status_code=409, detail="Change approval is read-only in the current state.")
-        approval = session.scalar(select(ChangeApproval).where(ChangeApproval.change_request_id == row.id))
+        # A preloaded approval identity can be stale even though the parent
+        # token is current. Rehydrate its committed fields under the owner lock
+        # so partial writes and audit snapshots use the same canonical state.
+        approval = session.scalar(
+            select(ChangeApproval)
+            .where(ChangeApproval.change_request_id == row.id)
+            .execution_options(populate_existing=True)
+        )
         created = approval is None
         if approval is None:
             approval = ChangeApproval(change_request_id=row.id)

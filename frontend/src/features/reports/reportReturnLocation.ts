@@ -14,7 +14,7 @@ export function reportReturnLocation(state: unknown, kind: "certificates" | "cha
       && params.get("queue") === "change_requests"
       && ["", "received", "under_review"].includes(state)
       && q.length <= 200 && [...q].every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)
-      && /^(0|[1-9]\\d*)$/.test(raw) && Number.isSafeInteger(Number(raw))
+      && /^(0|[1-9]\d*)$/.test(raw) && Number.isSafeInteger(Number(raw))
       && Number(raw) % 100 === 0 ? value : null;
   }
   if (!value.startsWith("/reports?")) return null;

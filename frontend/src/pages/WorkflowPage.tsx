@@ -59,7 +59,7 @@ export function WorkflowPage({ access, statusError }: { access: ApiAccess; statu
       </div>
       <p className="muted-copy">{selected.hint}. <Link className="text-link" to={QUEUE_REPORT[queue]}>Mở Báo cáo đầy đủ</Link></p>
     </section>
-    {queue === "change_requests" ? <CanonicalRecordReport key={queue} access={access} kind="change_requests" showDocumentsLink /> :
+    {queue === "change_requests" ? <CanonicalRecordReport key={queue} access={access} kind="change_requests" showDocumentsLink urlState returnQueue="change_requests" /> :
       queue === "expiring" ? <CanonicalRecordReport key={queue} access={access} kind="certificates" /> :
         <CaseReport key={queue} access={access} inspectionQueue={queue === "inspection"} showDocumentsLink returnQueue={queue} urlState
           initialState={queue === "certificate_decision" ? "awaiting_certificate_decision" : ""} />}

@@ -85,7 +85,7 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
   return <section className="page-section">
     <header className="section-title">
       <div><p className="eyebrow">Nghiệp vụ / Thay đổi cơ sở</p><h2>Hồ sơ yêu cầu thay đổi</h2></div>
-      <Link className="text-link" to={returnLocation ?? "/reports"}>Quay lại Báo cáo</Link>
+      <Link className="text-link" to={returnLocation ?? "/reports"}>{returnLocation?.startsWith("/workflow?") ? "Quay lại Bàn công việc" : "Quay lại Báo cáo"}</Link>
     </header>
     {!current ? <p role="status">Đang tải yêu cầu thay đổi theo UUID...</p>
       : current.error ? <p role="alert">{current.error}</p>

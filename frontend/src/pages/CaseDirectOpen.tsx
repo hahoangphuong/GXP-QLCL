@@ -46,6 +46,11 @@ function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: Cas
   if (summary.production_line_id) params.set("production_line_id", summary.production_line_id);
   if (summary.production_line_code) params.set("line_code", summary.production_line_code);
   const documentTarget = documentKey ? resolveDocumentWorkspace(workspace, caseId, documentKey) : null;
+  if (documentKey && !documentTarget) {
+    // An exact document deep link must not silently open a different Case pane.
+    // The canonical checklist/action owner decides if the target still exists.
+    throw new Error("Mục tài liệu không còn khớp checklist và thao tác canonical của Case.");
+  }
   if (documentTarget) {
     params.set("document_key", documentTarget.checklist_key);
     params.set("document_id", documentTarget.document_id ?? "");
@@ -86,7 +91,9 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   const queue = caseWorkflowQueue(params.get("return_queue"));
   const returnHint = caseReportReturn(location.state);
   const reportReturn = returnHint?.startsWith("/workflow?") && new URLSearchParams(returnHint.slice("/workflow?".length)).get("queue") !== queue ? null : returnHint;
-  const documentKey = params.get("document_key");
+  const keys = params.getAll("document_key");
+  const documentKey = keys[0] ?? null;
+  const validDocumentHint = keys.length <= 1 && (documentKey === null || (documentKey.length > 0 && documentKey.length <= 1024 && documentKey === documentKey.trim()));
   const certificateReportReturn = reportReturnLocation(location.state, "certificates");
   const sourceCertificateId = params.get("source_certificate_id");
   const sourceSiteId = params.get("source_site_id");
@@ -97,13 +104,14 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
     && sourceSiteId === sourceSiteId?.trim());
   const sourceCertificate = validSourceHint && sourceCertificateId && sourceSiteId
     ? { id: sourceCertificateId, siteId: sourceSiteId } : null;
+  const validIntent = validDocumentHint && !(documentKey && hasSourceHint);
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
-  const owner = useMemo(() => ({}), [caseId, queue, documentKey, sourceCertificateId, sourceSiteId, validSourceHint, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
+  const owner = useMemo(() => ({}), [caseId, queue, documentKey, validIntent, sourceCertificateId, sourceSiteId, validSourceHint, auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration]);
   const [result, setResult] = useState<Resolved | null>(null);
   const current = result?.owner === owner ? result : null;
 
   useEffect(() => {
-    if (!canLoadSecureApi || !caseId || !validSourceHint) return;
+    if (!canLoadSecureApi || !caseId || !validSourceHint || !validIntent) return;
     let live = true;
     void (async () => {
       try {
@@ -116,15 +124,17 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
       }
     })();
     return () => { live = false; };
-  }, [owner, caseId, queue, documentKey, sourceCertificateId, sourceSiteId, validSourceHint, auth, bearerToken, useStubAuth, canLoadSecureApi]);
+  }, [owner, caseId, queue, documentKey, sourceCertificateId, sourceSiteId, validSourceHint, validIntent, auth, bearerToken, useStubAuth, canLoadSecureApi]);
 
   if (!canLoadSecureApi) return <section className="page-section"><h2>Cần đăng nhập</h2><p>Đăng nhập để mở hồ sơ được phân quyền.</p></section>;
   if (!caseId) return <p>Thiếu Case UUID.</p>;
   if (!validSourceHint) return <p role="alert">Tham số Certificate/Site liên kết không hợp lệ.</p>;
+  if (!validIntent) return <p role="alert">Tham số mục tài liệu không hợp lệ hoặc xung đột với Certificate nguồn.</p>;
   if (current?.location) return <Navigate to={current.location} replace state={reportReturn ? { caseReportReturn: reportReturn, caseReportCaseId: caseId } : sourceCertificate && certificateReportReturn && !documentKey ? { certificateReportReturn, certificateReportCaseId: caseId } : undefined} />;
   return <section className="page-section">
     <h2>Định vị hồ sơ</h2>
     {current?.error ? <p role="alert">{current.error}</p> : <p role="status">Đang xác minh Case UUID và ngữ cảnh cơ sở...</p>}
+    {documentKey && current?.error?.startsWith("Mục tài liệu không còn khớp") && <Link className="text-link" to={`/cases/${encodeURIComponent(caseId)}${queue ? `?return_queue=${encodeURIComponent(queue)}` : ""}`}>Mở Case không chọn mục tài liệu</Link>}
     <Link className="text-link" to={queue ? `/workflow?queue=${queue}` : "/workflow"}>Quay lại Bàn công việc</Link>
   </section>;
 }

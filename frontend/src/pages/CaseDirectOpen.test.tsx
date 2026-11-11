@@ -12,7 +12,7 @@ const access: ApiAccess = { auth: { username: "reader", role: "reader" },
 
 function Destination() {
   const location = useLocation();
-  return <><output data-testid="resolved-url">{location.pathname + location.search}</output><output data-testid="return-hint">{location.state?.caseReportReturn ?? ""}</output></>;
+  return <><output data-testid="resolved-url">{location.pathname + location.search}</output><output data-testid="return-hint">{location.state?.caseReportReturn ?? ""}</output><output data-testid="certificate-report-return">{location.state?.certificateReportReturn ?? ""}</output><output data-testid="certificate-report-case">{location.state?.certificateReportCaseId ?? ""}</output></>;
 }
 function mount(url: string, currentAccess = access) {
   return render(<MemoryRouter initialEntries={[url]}><Routes>
@@ -35,6 +35,56 @@ describe("canonical Case UUID entry", () => {
     expect(await screen.findByTestId("return-hint")).toHaveTextContent("/workflow?queue=inspection&state=planned&offset=100");
     expect(screen.getByTestId("resolved-url")).toHaveTextContent("return_queue=inspection");
   });
+  it("returns from a verified Certificate owning Case to the exact filtered Certificate report", async () => {
+    const value = workspace("case-uuid");
+    value.linked_gxp_certificates = [{
+      certificate_id: "cert-uuid", site_id: "site-uuid", case_id: "case-uuid", certificate_type: "GMP",
+    } as typeof value.linked_gxp_certificates[number]];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    const source = "/reports?report=certificates&gxp_type=GMP&expiry_days=30&q=site&offset=100";
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/cases/case-uuid",
+      search: "?source_certificate_id=cert-uuid&source_site_id=site-uuid",
+      state: { reportReturn: source },
+    }]}><Routes>
+      <Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} />
+      <Route path="/search" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    expect(await screen.findByTestId("certificate-report-return")).toHaveTextContent(source);
+    expect(screen.getByTestId("certificate-report-case")).toHaveTextContent("case-uuid");
+    expect(screen.getByTestId("resolved-url")).toHaveTextContent("event_tab=");
+    expect(getCaseWorkspace).toHaveBeenCalledOnce();
+  });
+
+  it("does not forward a Certificate report return when canonical Case ownership fails", async () => {
+    const value = workspace("case-uuid");
+    value.linked_gxp_certificates = [];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/cases/case-uuid",
+      search: "?source_certificate_id=cert-uuid&source_site_id=site-uuid",
+      state: { reportReturn: "/reports?report=certificates&gxp_type=GMP" },
+    }]}><Routes>
+      <Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} />
+      <Route path="/search" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Case không khớp chứng nhận");
+    expect(screen.queryByTestId("certificate-report-return")).not.toBeInTheDocument();
+  });
+
+  it("ignores Certificate report return hints from general Case links or foreign report kinds", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/cases/case-uuid",
+      state: { reportReturn: "/reports?report=certificates&gxp_type=GMP" },
+    }]}><Routes>
+      <Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} />
+      <Route path="/search" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    expect(await screen.findByTestId("resolved-url")).toBeInTheDocument();
+    expect(screen.getByTestId("certificate-report-return")).toBeEmptyDOMElement();
+  });
+
   it("opens a Case from a Certificate only after the Case GET independently confirms exact Certificate, Site and GxP", async () => {
     const value = workspace("case-uuid");
     value.linked_gxp_certificates = [{

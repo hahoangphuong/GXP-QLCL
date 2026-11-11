@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
 import { getCertificateReport, getChangeRequestReport } from "../../lib/api";
@@ -30,6 +30,43 @@ beforeEach(() => {
 });
 
 describe("canonical record report workflow", () => {
+  it("restores Change Request workflow queue filters and preserves queue return through document navigation", async () => {
+    function History() {
+      const location = useLocation(), navigate = useNavigate();
+      return <><output data-testid="queue-url">{location.pathname + location.search}</output>
+        <button onClick={() => navigate(-1)}>Back</button><button onClick={() => navigate(1)}>Forward</button></>;
+    }
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="queue-document-return">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={["/workflow?queue=change_requests&state=received&q=old"]}>
+      <History /><Routes>
+        <Route path="/workflow" element={<CanonicalRecordReport access={access} kind="change_requests" returnQueue="change_requests" showDocumentsLink urlState />} />
+        <Route path="/documents/change-requests/:changeRequestId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    await screen.findByRole("link", { name: "Xem tài liệu" });
+    expect(screen.getByLabelText("Tìm kiếm")).toHaveValue("old");
+    fireEvent.change(screen.getByLabelText("Tìm kiếm"), { target: { value: "new" } });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
+    expect(screen.getByTestId("queue-url")).toHaveTextContent("/workflow?queue=change_requests&state=received&q=new");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByLabelText("Tìm kiếm")).toHaveValue("old");
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+    expect(screen.getByLabelText("Tìm kiếm")).toHaveValue("new");
+    fireEvent.click(await screen.findByRole("link", { name: "Xem tài liệu" }));
+    expect(screen.getByTestId("queue-document-return")).toHaveTextContent("/workflow?queue=change_requests&state=received&q=new");
+  });
+
+  it.each(["queue=inspection", "queue=change_requests&queue=change_requests", "queue=change_requests&state=approved", "queue=change_requests&offset=1"])("rejects invalid Change Request workflow URL before protected report fetch (%s)", query => {
+    render(<MemoryRouter initialEntries={["/workflow?" + query]}>
+      <CanonicalRecordReport access={access} kind="change_requests" returnQueue="change_requests" showDocumentsLink urlState />
+    </MemoryRouter>);
+    expect(screen.getByRole("alert")).toHaveTextContent("không hợp lệ");
+    expect(getChangeRequestReport).not.toHaveBeenCalled();
+  });
+
   it("opens Change Request checklist with the exact applied report return context", async () => {
     function Destination() {
       const location = useLocation();

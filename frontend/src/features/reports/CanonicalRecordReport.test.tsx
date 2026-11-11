@@ -142,6 +142,26 @@ describe("canonical record report workflow", () => {
     expect(screen.getByRole("button", { name: "Xuất CSV (Excel)" })).toBeEnabled();
   });
 
+  it("carries exact applied Certificate filters and pagination into the owning Case navigation hint", async () => {
+    vi.mocked(getCertificateReport).mockResolvedValue({
+      items: [{ ...cert, case_id: "case-uuid" }], total_count: 101, limit: 100, offset: 100,
+    });
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="certificate-case-origin">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={["/reports?report=certificates&gxp_type=GMP&expiry_days=30&q=site&offset=100"]}>
+      <Routes>
+        <Route path="/reports" element={<CanonicalRecordReport access={access} kind="certificates" urlState />} />
+        <Route path="/cases/:caseId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Mở Case" }));
+    expect(screen.getByTestId("certificate-case-origin"))
+      .toHaveTextContent("/reports?report=certificates&gxp_type=GMP&expiry_days=30&q=site&offset=100");
+    expect(getCertificateReport).toHaveBeenCalledOnce();
+  });
+
   it("opens an issuing Case directly from the Certificate report using a link that CaseDirectOpen must independently verify", async () => {
     vi.mocked(getCertificateReport).mockResolvedValue({
       items: [{ ...cert, gxp_type: "GMP", case_id: "case-uuid" }],

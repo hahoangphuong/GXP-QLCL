@@ -144,7 +144,7 @@ try {
     const notCurrent=await api("/reports/certificates?gxp_type=GMP&number=CI-OPERATOR-GMP");
     assert.ok(notCurrent.items.every(cert=>cert.certificate_id!==certId));
 
-    await page.getByRole("tab",{name:"Giấy chứng nhận GxP"}).click();
+    await page.getByRole("tab",{name:"Giấy chứng nhận GPs",exact:true}).click();
     await page.getByRole("table",{name:"Danh mục GCN GxP"}).locator("tbody tr")
       .filter({hasText:"CI-OPERATOR-GMP"}).click();
     await page.getByRole("button",{name:"Đặt làm chứng nhận hiện hành",exact:true}).click();

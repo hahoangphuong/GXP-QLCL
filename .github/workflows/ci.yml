@@ -504,10 +504,16 @@ jobs:
 
       - name: Install pinned disposable browser driver and Chromium
         run: |
+          # Hosted Ubuntu already includes Chromium runtime libraries. The
+          # Playwright --with-deps apt step is blocked by runner-wide Ubuntu
+          # archive DNS failures, even after switching Azure to the canonical
+          # archive. Download the pinned browser without apt; the mandatory
+          # Chromium launch and three-viewport browser test below will fail if
+          # any necessary runtime library is actually absent.
           echo "GXP_CROSS_HEAD_PW_DIR=${RUNNER_TEMP}/gxp-browser-driver" >> "${GITHUB_ENV}"
           echo "GXP_CROSS_HEAD_SCREENSHOTS=${GITHUB_WORKSPACE}/cross-head-screenshots" >> "${GITHUB_ENV}"
           npm install --no-save --prefix "${RUNNER_TEMP}/gxp-browser-driver" playwright@1.56.1
-          "${RUNNER_TEMP}/gxp-browser-driver/node_modules/.bin/playwright" install --with-deps chromium
+          "${RUNNER_TEMP}/gxp-browser-driver/node_modules/.bin/playwright" install chromium
 
       - name: Start loopback-only Codex frontend staging preview
         working-directory: frontend

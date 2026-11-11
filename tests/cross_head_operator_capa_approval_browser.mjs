@@ -125,12 +125,57 @@ try {
       a.approval_submission_id===ct.approval_submission_id&&a.completed_on==="2026-11-11"));
     assert.equal(ws.case_summary.site_id,siteId);
     assert.equal(ws.certificate_issue_readiness.available,true);
+
+    // Issue a synthetic GxP Certificate through the Case-owned browser dialog.
+    // Issuance alone must not mark it Current.
+    await page.getByRole("button",{name:"Cấp chứng nhận GPs",exact:true}).click();
+    await page.getByRole("button",{name:"Cấp chứng nhận GxP",exact:true}).click();
+    const issueDialog=page.getByRole("dialog",{name:"Cấp giấy chứng nhận GxP"});
+    await issueDialog.getByRole("textbox",{name:"Số GCN"}).fill("CI-OPERATOR-GMP");
+    await issueDialog.getByLabel("Ngày cấp",{exact:true}).fill("2026-11-11");
+    await issueDialog.getByLabel("Ngày hết hạn",{exact:true}).fill("2027-11-11");
+    await issueDialog.getByRole("button",{name:"Cấp giấy chứng nhận",exact:true}).click();
+    ws=await until("Certificate issued",x=>x.linked_gxp_certificates.some(cert=>
+      cert.site_id===siteId&&cert.case_id===caseId));
+    const certId=ws.linked_gxp_certificates.find(cert=>cert.site_id===siteId&&cert.case_id===caseId).certificate_id;
+    let certificate=await api("/certificates/"+certId);
+    assert.equal(certificate.certificate_number,"CI-OPERATOR-GMP");
+    assert.equal(certificate.latest_flag,false);
+    const notCurrent=await api("/reports/certificates?gxp_type=GMP&number=CI-OPERATOR-GMP");
+    assert.ok(notCurrent.items.every(cert=>cert.certificate_id!==certId));
+
+    await page.getByRole("tab",{name:"Giấy chứng nhận GxP"}).click();
+    await page.getByRole("table",{name:"Danh mục GCN GxP"}).locator("tbody tr")
+      .filter({hasText:"CI-OPERATOR-GMP"}).click();
+    await page.getByRole("button",{name:"Đặt làm chứng nhận hiện hành",exact:true}).click();
+    for(let attempt=0;attempt<90;attempt++){
+      certificate=await api("/certificates/"+certId);
+      if(certificate.latest_flag)break;
+      await page.waitForTimeout(150);
+    }
+    assert.equal(certificate.latest_flag,true);
+    const currentReport=await api("/reports/certificates?gxp_type=GMP&number=CI-OPERATOR-GMP");
+    assert.ok(currentReport.items.some(cert=>cert.certificate_id===certId&&cert.site_id===siteId));
+
+    // Re-enter Case lifecycle; no client-inferred transition is allowed.
+    await page.getByRole("tab",{name:"Các đợt kiểm tra & thay đổi"}).click();
+    await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
+    const lifecycle=page.locator("[data-case-lifecycle]");
+    await lifecycle.getByRole("button",{name:"Chuyển: Đã cấp chứng nhận"}).click();
+    await until("Case certified",x=>x.case_summary.state==="certified");
+    await lifecycle.getByRole("button",{name:"Chuyển: Đã đóng hồ sơ"}).click();
+    await until("Case closed",x=>x.case_summary.state==="closed");
+
+    const afterClose=await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");
+    assert.ok(afterClose.items.every(x=>x.case_id!==caseId));
+    const retained=await api("/reports/certificates?gxp_type=GMP&number=CI-OPERATOR-GMP");
+    assert.ok(retained.items.some(cert=>cert.certificate_id===certId&&cert.site_id===siteId));
     const report=await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");
-    assert.ok(report.items.some(x=>x.case_id===caseId&&x.state==="awaiting_certificate_decision"));
+    assert.ok(report.items.every(x=>x.case_id!==caseId));
     // Browser emits only intended commands; no automatic duplicate submits.
-    assert.equal(requests.length,10,"Unexpected number of UI mutation requests: "+JSON.stringify(requests));
+    assert.equal(requests.length,14,"Unexpected number of UI mutation requests: "+JSON.stringify(requests));
     assert.deepEqual(errors,[]);
-    process.stdout.write("OPERATOR_CAPA_PCT_CT_BROWSER_PASS mutations="+requests.length+"\n");
+    process.stdout.write("OPERATOR_FULL_CASE_CERTIFICATE_BROWSER_PASS mutations="+requests.length+"\n");
   } catch(e) {
     await page.screenshot({path:join(artifacts,"operator-capa-approval-failed.png"),fullPage:true}).catch(()=>{});
     process.stderr.write("OPERATOR_CAPA_PCT_CT_BROWSER_FAILED "+String(e?.stack||e)+"\n");

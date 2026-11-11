@@ -274,6 +274,10 @@ export function BusinessEligibilityWorkspace({
   const [issueIntent, setIssueIntent] = useState<{ siteId: string; owner: string | null } | null>(null);
   const issueLock = useFacilityCommandLock(`business-eligibility.issue:${siteId}`);
   const certificateLock = useFacilityCommandLock(`business-eligibility.write:${selectedCertificateId ?? "none"}`);
+  const submittedIssue = issueLock.pending || issueLock.requiresReview ? issueLock.commandPayload<SubmittedDdkMutation>() : undefined;
+  const recoveredIssue = submittedIssue?.kind === "issue" && submittedIssue.siteId === siteId ? submittedIssue : null;
+  const submittedEdit = certificateLock.pending || certificateLock.requiresReview ? certificateLock.commandPayload<SubmittedDdkMutation>() : undefined;
+  const recoveredEdit = submittedEdit?.kind === "edit" && submittedEdit.certificateId === selectedCertificateId ? submittedEdit : null;
   async function promoteOwned(expectedVersion: number) {
     const command = certificateLock.acquire();
     if (!command) return;
@@ -286,7 +290,9 @@ export function BusinessEligibilityWorkspace({
     }
   }
   async function issueOwned(payload: BusinessEligibilityIssueRequest) {
-    const command = issueLock.acquire();
+    const command = issueLock.acquire({
+      kind: "issue", siteId, request: { ...payload, linked_certificates: cloneLinks(payload.linked_certificates) },
+    } satisfies SubmittedDdkIssue);
     if (!command) throw new CaseFieldMutationRecoveryError("Chưa xác minh kết quả cấp GCN đủ điều kiện trước; không gửi lại.");
     try {
       await onIssue(payload);
@@ -307,7 +313,10 @@ export function BusinessEligibilityWorkspace({
   const hintId = useId();
   const rowProps = useCertificateRows(items.map((item) => item.business_eligibility_certificate_id), selectedCertificateId, onSelectCertificate, listLoading || Boolean(listError));
   detail = detail?.business_eligibility_certificate_id === selectedCertificateId ? detail : null;
-  const visibleDraft = editDraft?.detail.business_eligibility_certificate_id === selectedCertificateId ? editDraft : null;
+  const visibleDraft = editDraft?.detail.business_eligibility_certificate_id === selectedCertificateId ? editDraft
+    : recoveredEdit ? { detail: recoveredEdit.detail, expectedVersion: recoveredEdit.request.expected_version } : null;
+  const visibleIssueIntent = issueIntent?.siteId === siteId && issueIntent.owner === issueLock.owner
+    ? issueIntent : recoveredIssue ? { siteId, owner: issueLock.owner } : null;
 
   const actions = detail?.action_readiness ?? [];
   const edit = actions.find((action) => action.action_key === "edit_latest_version");
@@ -380,7 +389,7 @@ export function BusinessEligibilityWorkspace({
         {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="ddk" state={versionHistory} /> : null}
       </section>
 
-      {issueIntent && issueIntent.siteId === siteId && issueIntent.owner === issueLock.owner ? <BusinessEligibilityMutationDialog
+      {visibleIssueIntent ? <BusinessEligibilityMutationDialog key={siteId}
         basisCertificates={basisCertificates}
         basisError={basisError}
         basisLoading={basisLoading}
@@ -389,19 +398,22 @@ export function BusinessEligibilityWorkspace({
         mode="issue"
         saveAvailable={issueReadiness?.available === true && !issueLock.pending && !issueLock.requiresReview}
         issueRequiresReview={issueLock.requiresReview}
+        issuePending={issueLock.pending}
+        recovered={recoveredIssue}
         onClose={() => setIssueIntent(current => current === issueIntent ? null : current)}
         onEdit={onEditLatestVersion}
         onIssue={issueOwned}
         onStaleConflict={() => undefined}
       /> : null}
 
-      {visibleDraft ? <BusinessEligibilityMutationDialog
+      {visibleDraft ? <BusinessEligibilityMutationDialog key={selectedCertificateId}
         basisCertificates={basisCertificates}
         basisError={basisError}
         basisLoading={basisLoading}
         detail={visibleDraft.detail}
         expectedVersion={visibleDraft.expectedVersion}
         mode="edit"
+        recovered={recoveredEdit}
         saveAvailable={!detailLoading && edit?.available === true && !certificateLock.pending && !certificateLock.requiresReview}
         onClose={() => setEditDraft(current => current === visibleDraft ? null : current)}
         onEdit={onEditLatestVersion}

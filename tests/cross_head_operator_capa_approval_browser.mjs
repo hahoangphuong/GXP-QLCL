@@ -108,7 +108,7 @@ try {
     assert.equal(pct.round_no,1);
     const pctGroup=approval.getByRole("group",{name:"Hoàn tất PCT lần 1"});
     await pctGroup.getByLabel("Ngày hoàn tất trình",{exact:true}).fill("2026-11-11");
-    await pctGroup.getByRole("button",{name:"Hoàn tất PCT"}).click();
+    await pctGroup.getByRole("button",{name:"Hoàn tất PCT",exact:true}).click();
     await until("PCT completed",x=>x.inspection.approval_submissions.some(a=>
       a.approval_submission_id===pct.approval_submission_id&&a.completed_on==="2026-11-11"));
 
@@ -120,7 +120,7 @@ try {
     assert.equal(ct.pct_submission_id,pct.approval_submission_id);
     const ctGroup=approval.getByRole("group",{name:"Hoàn tất CT lần 1"});
     await ctGroup.getByLabel("Ngày hoàn tất trình",{exact:true}).fill("2026-11-11");
-    await ctGroup.getByRole("button",{name:"Hoàn tất CT"}).click();
+    await ctGroup.getByRole("button",{name:"Hoàn tất CT",exact:true}).click();
     ws=await until("CT completed",x=>x.inspection.approval_submissions.some(a=>
       a.approval_submission_id===ct.approval_submission_id&&a.completed_on==="2026-11-11"));
     assert.equal(ws.case_summary.site_id,siteId);

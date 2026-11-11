@@ -172,3 +172,56 @@ describe("evaluation scope late-result editor ownership", () => {
     expect(save).toHaveBeenCalledOnce();
   });
 });
+
+describe("evaluation taxonomy operator search", () => {
+  it("finds keys, descriptions and accent-insensitive hints without changing selection or posting", () => {
+    const save = vi.fn();
+    render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={save} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    const search = screen.getByRole("textbox", { name: "Tìm mục phạm vi" });
+    fireEvent.change(search, { target: { value: "goi y" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Tìm thấy 1/2");
+    expect(screen.getByRole("treeitem", { name: /Root/ })).toBeInTheDocument();
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toBeDisabled();
+    fireEvent.change(search, { target: { value: "1.1" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Tìm thấy 1/2");
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.getByText("Child")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toBeEnabled();
+    fireEvent.change(search, { target: { value: "khong-co-muc" } });
+    expect(screen.getByText("Không có mục phạm vi phù hợp.")).toBeInTheDocument();
+    expect(screen.queryByText("Root")).not.toBeInTheDocument();
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa tìm kiếm phạm vi" }));
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toHaveAttribute("aria-checked", "true");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("reveals a matching leaf even with its ancestor collapsed, preserving collapse on reset and excluding hidden subtree toggles", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={save} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thu gọn 1" }));
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm mục phạm vi" }), { target: { value: "CHILD" } });
+    expect(screen.getByText("Child")).toBeInTheDocument();
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mở rộng 1" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Chọn 1.1" }));
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toHaveAttribute("aria-checked", "false");
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa tìm kiếm phạm vi" }));
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mở rộng 1" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Mở rộng 1" }));
+    expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      expected_version: 3, blocks: [expect.objectContaining({ selections: [] })],
+    }));
+  });
+});

@@ -429,3 +429,71 @@ describe("actionable approval history", () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 });
+
+
+describe("approval exact submitted command evidence from canonical HTTP owner", () => {
+  const createCommand = {
+    kind: "create" as const, caseId: "case-1", stage: "CT" as const,
+    request: { reference: "CT-SENT", submitted_on: "2026-11-11", submitted_time: "10:25",
+      pct_submission_id: "pct-canonical-uuid", reason: "Trình sau PCT" },
+  };
+  const completeCommand = {
+    kind: "complete" as const, caseId: "case-1", submissionId: "ct-canonical-uuid",
+    request: { expected_version: 22, completed_on: "2026-11-11", completed_time: "11:05", reason: "Đã duyệt" },
+  };
+
+  it.each(["pending", "review"] as const)("shows exact submitted CT request when %s even after Case and history change", phase => {
+    const onCreate = vi.fn(), onComplete = vi.fn();
+    const renderEditor = (caseId: string, show = true, command = createCommand) =>
+      <CaseDraftSession identity={caseId}>
+        <ApprovalMutationContext.Provider value={{
+          pending: phase === "pending", requiresReview: phase === "review", submitted: command,
+        }}>
+          {show ? <CaseApprovalWorkspace caseWorkspace={{ ...workspace(), case_summary: { id: caseId } } as CaseWorkspace}
+            onCreate={onCreate} onComplete={onComplete} /> : null}
+        </ApprovalMutationContext.Provider>
+      </CaseDraftSession>;
+    const view = render(renderEditor("case-1"));
+    const evidence = screen.getByRole("region", { name: "Lệnh trình phê duyệt đã gửi" });
+    expect(evidence).toHaveTextContent("Tạo trình CT");
+    expect(evidence).toHaveTextContent("CT-SENT");
+    expect(evidence).toHaveTextContent("2026-11-11");
+    expect(evidence).toHaveTextContent("10:25");
+    expect(evidence).toHaveTextContent("pct-canonical-uuid");
+    expect(evidence).toHaveTextContent("Trình sau PCT");
+    expect(screen.getByRole("button", { name: "Tạo trình CT" })).toBeDisabled();
+    view.rerender(renderEditor("case-1", false));
+    view.rerender(renderEditor("case-1"));
+    expect(screen.getByRole("region", { name: "Lệnh trình phê duyệt đã gửi" })).toHaveTextContent("pct-canonical-uuid");
+    view.rerender(renderEditor("case-2"));
+    expect(screen.queryByRole("region", { name: "Lệnh trình phê duyệt đã gửi" })).not.toBeInTheDocument();
+    view.rerender(renderEditor("case-1"));
+    expect(screen.getByRole("region", { name: "Lệnh trình phê duyệt đã gửi" })).toHaveTextContent("CT-SENT");
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("preserves exact completion target, reviewed version and sent details when canonical row disappears", () => {
+    const onCreate = vi.fn(), onComplete = vi.fn();
+    const view = render(<CaseDraftSession identity="case-1">
+      <ApprovalMutationContext.Provider value={{ pending: false, requiresReview: true, submitted: completeCommand }}>
+        <CaseApprovalWorkspace caseWorkspace={workspace()} onCreate={onCreate} onComplete={onComplete} />
+      </ApprovalMutationContext.Provider>
+    </CaseDraftSession>);
+    const evidence = screen.getByRole("region", { name: "Lệnh trình phê duyệt đã gửi" });
+    expect(evidence).toHaveTextContent("Hoàn tất trình");
+    expect(evidence).toHaveTextContent("ct-canonical-uuid");
+    expect(evidence).toHaveTextContent("22");
+    expect(evidence).toHaveTextContent("11:05");
+    expect(evidence).toHaveTextContent("Đã duyệt");
+    expect(screen.queryByRole("group", { name: /Hoàn tất CT/ })).not.toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    view.rerender(<CaseDraftSession identity="case-1">
+      <ApprovalMutationContext.Provider value={{ pending: false, requiresReview: false }}>
+        <CaseApprovalWorkspace caseWorkspace={workspace()} onCreate={onCreate} onComplete={onComplete} />
+      </ApprovalMutationContext.Provider>
+    </CaseDraftSession>);
+    expect(screen.queryByRole("region", { name: "Lệnh trình phê duyệt đã gửi" })).not.toBeInTheDocument();
+  });
+});

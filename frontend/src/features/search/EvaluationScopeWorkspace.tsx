@@ -176,12 +176,12 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
     : currentCertificates.length === 0 && linkedCertificates.length === 1
       ? linkedCertificates[0]
       : null;
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorOwner, setEditorOwner] = useState<string | null>(null);
   const [activeScope, setActiveScope] = useState(0);
   const [focusedScope, setFocusedScope] = useState(0);
   const scopeTabsId = useId();
   const scopeTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  useEffect(() => setEditorOpen(false), [scope.id, scope.row_version]);
+  useEffect(() => setEditorOwner(null), [caseWorkspace.case_summary.id, scope.id, scope.row_version]);
   const isHistorical = scope.summary_source === "historical_prose";
   return <section className="evaluation-scope-workspace">
     <div aria-label="Phạm vi hồ sơ" className="legacy-scope-tabs" role="tablist">
@@ -204,7 +204,7 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
       <section aria-labelledby={`${scopeTabsId}-tab-0`} className="workspace-section scope-information-pane" hidden={activeScope !== 0} id={`${scopeTabsId}-panel-0`} role="tabpanel" tabIndex={0}>
         <header className="workspace-section-header">
           <h4>{isHistorical ? "Phạm vi đánh giá lịch sử" : "Phạm vi đánh giá"}</h4>
-          {scope.id && scope.editable ? <button className="secondary" disabled={frozen} onClick={() => { if (!frozen) setEditorOpen(true); }} type="button">Sửa phạm vi</button> : null}
+          {scope.id && scope.editable ? <button className="secondary" disabled={frozen} onClick={() => { if (!frozen) setEditorOwner(caseWorkspace.case_summary.id); }} type="button">Sửa phạm vi</button> : null}
         </header>
         {scope.read_only_reason ? <p className="workspace-note">{scope.read_only_reason}</p> : null}
         <pre className="evaluation-scope-summary">{scope.summary_text || "Chưa có nội dung phạm vi đánh giá để hiển thị."}</pre>
@@ -230,6 +230,6 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
         {block.selections.map((selection, i) => <p key={i}>Taxonomy UUID: {selection.taxonomy_node_id}; Mô tả: {selection.custom_description || "Không nhập"}</p>)}
       </div>)}
     </section> : commandLock.requiresReview ? <p className="workspace-note" role="status">Lệnh cập nhật phạm vi chưa được xác minh. Không gửi lại trước khi kiểm tra hồ sơ canonical.</p> : null}
-    {editorOpen ? <EvaluationScopeEditorDialog scope={scope} locked={frozen} onClose={() => { if (!frozen) setEditorOpen(false); }} onSave={saveOwned} /> : null}
+    {editorOwner === caseWorkspace.case_summary.id ? <EvaluationScopeEditorDialog key={caseWorkspace.case_summary.id} scope={scope} locked={frozen} onClose={() => { if (!frozen) setEditorOwner(null); }} onSave={saveOwned} /> : null}
   </section>;
 }

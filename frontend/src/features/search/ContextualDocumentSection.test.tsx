@@ -188,3 +188,101 @@ describe("Document workspace identity and focus", () => {
     expect(screen.getByRole("button", { name: "Lịch sử A" })).toBeEnabled();
   });
 });
+
+describe("contextual document lookup ownership and accessible filtering", () => {
+  it("filters canonical name, filename and status accent-insensitively without fetching or mutating", () => {
+    const a = item("A");
+    a.label = "Kế hoạch kiểm tra";
+    a.original_filename = "Kế hoạch đợt tái kiểm.docx";
+    const b = item("B");
+    b.label = "Báo cáo khắc phục";
+    b.status = "missing";
+    b.document_id = null;
+    b.original_filename = null;
+    const c = item("C");
+    c.label = "Quyết định";
+    c.original_filename = "QD-KT-2026.docx";
+    const load = vi.fn(), open = vi.fn(), create = vi.fn();
+    render(<ContextualDocumentSection contextKey="case-A" items={[a, b, c]}
+      onLoadDocumentDetail={load} onOpenDocument={open} onCreateDocument={create} />);
+    expect(screen.getByText("Hiển thị 3/3 tài liệu.")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" }), { target: { value: "ke hoach dot tai" } });
+    expect(screen.getByText("Hiển thị 1/3 tài liệu.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chọn Kế hoạch kiểm tra" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chọn Báo cáo khắc phục" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa lọc tài liệu" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Lọc trạng thái tài liệu" }), { target: { value: "missing" } });
+    expect(screen.getByRole("button", { name: "Chọn Báo cáo khắc phục" })).toBeInTheDocument();
+    expect(screen.getByText("Hiển thị 1/3 tài liệu.")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" }), { target: { value: "khong-co" } });
+    expect(screen.getByText("Không có tài liệu khớp bộ lọc.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa lọc tài liệu" }));
+    expect(screen.getByText("Hiển thị 3/3 tài liệu.")).toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("navigates only filtered visible document rows with arrow/Home/End and avoids opening any binary", () => {
+    const a = item("A"), b = item("B"), c = item("C");
+    b.status = "missing";
+    const open = vi.fn(), create = vi.fn(), load = vi.fn();
+    render(<ContextualDocumentSection contextKey="case-A" items={[a, b, c]}
+      onLoadDocumentDetail={load} onOpenDocument={open} onCreateDocument={create} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Lọc trạng thái tài liệu" }), { target: { value: "available" } });
+    const first = screen.getByRole("button", { name: "Chọn A" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    const last = screen.getByRole("button", { name: "Chọn C" });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "Home" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "End" });
+    expect(last).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Chọn B" })).not.toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("invalidates late A detail when filtering A out, then opens B only on explicit selection", async () => {
+    const first = deferred<DocumentDetail>();
+    const load = vi.fn((id: string) => id === "A" ? first.promise : Promise.resolve(detail(id)));
+    const open = vi.fn(), create = vi.fn();
+    render(<ContextualDocumentSection contextKey="case-A" items={[item("A"), item("B")]}
+      onLoadDocumentDetail={load} onOpenDocument={open} onCreateDocument={create} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn A" }));
+    expect(load).toHaveBeenCalledExactlyOnceWith("A");
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" }), { target: { value: "B" } });
+    expect(screen.getByText("Chọn tài liệu để xem chi tiết.")).toBeInTheDocument();
+    await act(async () => first.resolve(detail("A")));
+    expect(screen.queryByText("Detail A")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chọn B" }));
+    expect(await screen.findByText("Detail B")).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(open).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("isolates filters by context and reveals exact navigation slot without loading or creating", () => {
+    const load = vi.fn(), open = vi.fn(), create = vi.fn();
+    const first = item("A"); first.label = "A-exclusive";
+    const second = item("B");
+    const props = { onLoadDocumentDetail: load, onOpenDocument: open, onCreateDocument: create };
+    const view = render(<ContextualDocumentSection {...props} contextKey="case-A" items={[first, second]} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" }), { target: { value: "a-exclusive" } });
+    expect(screen.queryByRole("button", { name: "Chọn B" })).not.toBeInTheDocument();
+    view.rerender(<ContextualDocumentSection {...props} contextKey="case-A" initialSelectionKey="slot-B" items={[first, second]} />);
+    expect(screen.getByRole("button", { name: "Chọn B" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" })).toHaveValue("");
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" }), { target: { value: "a-exclusive" } });
+    view.rerender(<ContextualDocumentSection {...props} contextKey="case-B" items={[first, second]} />);
+    expect(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" })).toHaveValue("");
+    expect(screen.getByText("Hiển thị 2/2 tài liệu.")).toBeInTheDocument();
+    view.rerender(<ContextualDocumentSection {...props} contextKey="case-A" items={[first, second]} />);
+    expect(screen.getByRole("textbox", { name: "Tìm tài liệu liên quan" })).toHaveValue("");
+    expect(load).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+});

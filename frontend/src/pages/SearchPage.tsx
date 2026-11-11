@@ -2043,8 +2043,10 @@ export function SearchPage({
     }
     const caseId = selectedHistory.id;
     const operationOwner = caseOperationOwner.current;
-    await upsertEvaluationScope(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await runCaseFieldMutation(
+      () => upsertEvaluationScope(caseId, payload, auth, useStubAuth, bearerToken),
+      () => refreshSelectedCaseWorkspace(caseId, undefined, operationOwner),
+    );
   }
 
   async function handleCaseAssessmentSave(payload: CaseAssessmentUpsertRequest) {

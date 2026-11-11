@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
 import { getCertificateReport, getChangeRequestReport } from "../../lib/api";
@@ -30,6 +30,22 @@ beforeEach(() => {
 });
 
 describe("canonical record report workflow", () => {
+  it("opens Change Request checklist with the exact applied report return context", async () => {
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="change-doc-return">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={["/reports?report=change_requests&state=received&q=facility"]}>
+      <Routes>
+        <Route path="/reports" element={<CanonicalRecordReport access={access} kind="change_requests" showDocumentsLink urlState />} />
+        <Route path="/documents/change-requests/:changeRequestId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Xem tài liệu" }));
+    expect(screen.getByTestId("change-doc-return")).toHaveTextContent("/reports?report=change_requests&state=received&q=facility");
+    expect(getChangeRequestReport).toHaveBeenCalledOnce();
+  });
+
   it("filters current Certificates by GxP and expiry window, linking to exact UUID", async () => {
     render(<MemoryRouter><CanonicalRecordReport access={access} kind="certificates" /></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "GCN-123" })).toHaveAttribute("href", expect.stringContaining("certificate_id=cert-uuid"));

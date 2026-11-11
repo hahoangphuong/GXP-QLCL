@@ -268,15 +268,56 @@ describe("canonical Case UUID entry", () => {
     expect(uri.searchParams.get("return_queue")).toBe("inspection");
     expect(uri.searchParams.has("event_tab")).toBe(false);
   });
-  it("falls back to general Case when the hinted document belongs elsewhere", async () => {
+  it("fails closed when a stale or foreign document key is no longer in canonical Case checklist", async () => {
     const value = workspace("case-uuid");
     value.documents = { items: [] };
     value.contextual_document_actions = [];
     vi.mocked(getCaseWorkspace).mockResolvedValue(value);
     mount("/cases/case-uuid?document_key=foreign");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Mục tài liệu không còn khớp checklist");
+    expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
+    expect(getCaseWorkspace).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    "?document_key=",
+    "?document_key=a&document_key=b",
+    "?document_key=%20%20",
+    "?document_key=" + "x".repeat(1025),
+    "?source_certificate_id=cert-uuid&source_site_id=site-uuid&document_key=case%3Acase-uuid%3APLAN",
+  ])("rejects ambiguous or conflicting document link hints before any protected Case GET (%s)", search => {
+    mount("/cases/case-uuid" + search);
+    expect(screen.getByRole("alert")).toHaveTextContent("Tham số mục tài liệu không hợp lệ hoặc xung đột");
+    expect(getCaseWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("rejects a once-available document whose action was revoked in canonical readback", async () => {
+    const value = workspace("case-uuid");
+    const item = { checklist_key: "case:case-uuid:PLAN", parent_scope: "case", parent_id: "case-uuid",
+      family_code: "PLAN", status: "available", document_id: "doc-uuid" };
+    value.documents = { items: [item as typeof value.documents.items[number]] };
+    value.contextual_document_actions = [{ ...item, workflow_step: "Kiểm tra",
+      actions: [{ action_key: "open", available: false }] } as typeof value.contextual_document_actions[number]];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/cases/case-uuid?document_key=case%3Acase-uuid%3APLAN");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Mục tài liệu không còn khớp checklist");
+    expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
+  });
+
+  it("opens an exact available Case document only when the checklist and active action agree", async () => {
+    const value = workspace("case-uuid");
+    const item = { checklist_key: "case:case-uuid:PLAN", parent_scope: "case", parent_id: "case-uuid",
+      family_code: "PLAN", status: "available", document_id: "doc-uuid" };
+    value.documents = { items: [item as typeof value.documents.items[number]] };
+    value.contextual_document_actions = [{ ...item, workflow_step: "Kiểm tra",
+      actions: [{ action_key: "history", available: true }] } as typeof value.contextual_document_actions[number]];
+    vi.mocked(getCaseWorkspace).mockResolvedValue(value);
+    mount("/cases/case-uuid?document_key=case%3Acase-uuid%3APLAN");
     const uri = new URL((await screen.findByTestId("resolved-url")).textContent!, "https://app.test");
-    expect(uri.searchParams.has("document_key")).toBe(false);
-    expect(uri.searchParams.has("event_tab")).toBe(false);
+    expect(uri.searchParams.get("document_key")).toBe(item.checklist_key);
+    expect(uri.searchParams.get("document_id")).toBe("doc-uuid");
+    expect(uri.searchParams.get("document_parent_id")).toBe("case-uuid");
+    expect(getCaseWorkspace).toHaveBeenCalledOnce();
   });
   it("ignores the first A response after navigating A to B to A", async () => {
     type Workspace = Awaited<ReturnType<typeof getCaseWorkspace>>;

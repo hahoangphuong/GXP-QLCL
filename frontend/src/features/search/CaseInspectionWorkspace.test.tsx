@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
@@ -306,5 +306,71 @@ describe("Inspection minutes canonical date/time prerequisites", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ expected_version: 6, minutes_recorded_time: "14:45" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByLabelText("Giờ biên bản/report")).toHaveValue("14:45");
+  });
+});
+
+
+describe("final evaluation submitted command ownership across Case A → B → A", () => {
+  const ready = { action_key: "finalize_inspection_outcome", label: "Chốt đánh giá cuối cùng",
+    available: true, expected_version: 6, reason_code: null, required_permissions: [] };
+  function editor(id: string, onFinalize: ReturnType<typeof vi.fn>, available = true) {
+    const w = workspace({
+      outcome_row_version: available ? 6 : 9, final_evaluation: null,
+      final_evaluation_readiness: { ...ready, available, expected_version: available ? 6 : 9, reason_code: available ? null : "blocked" },
+    });
+    return <CaseDraftSession identity={id}>
+      <CaseInspectionWorkspace
+        caseWorkspace={{ ...w, case_summary: { ...w.case_summary, id } }}
+        onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()}
+        onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()}
+        onLoadInspectionTeamIdentityOptions={vi.fn()}
+        onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()}
+        onTransitionCase={vi.fn()} onFinalizeInspectionOutcome={onFinalize}
+      />
+    </CaseDraftSession>;
+  }
+
+  it("reopens the exact submitted final assessment and version while pending, then after unknown result and readiness withdrawal", async () => {
+    let fail!: (reason: Error) => void;
+    const onFinalize = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const view = render(editor("case-A", onFinalize));
+    fireEvent.change(screen.getByLabelText("Đánh giá cuối cùng"), { target: { value: "  CAPA đã khắc phục đủ  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
+    expect(onFinalize).toHaveBeenCalledOnce();
+    expect(onFinalize).toHaveBeenCalledWith({ expected_version: 6, final_evaluation: "CAPA đã khắc phục đủ" });
+    view.rerender(editor("case-B", onFinalize));
+    expect(screen.getByLabelText("Đánh giá cuối cùng")).toHaveValue("");
+    view.rerender(editor("case-A", onFinalize, false));
+    const region = screen.getByRole("region", { name: "Khu vực đánh giá cuối cùng" });
+    const field = within(region).getByLabelText("Đánh giá cuối cùng");
+    expect(field).toHaveValue("CAPA đã khắc phục đủ");
+    expect(field).toHaveAttribute("readonly");
+    expect(field).toBeEnabled();
+    expect(within(region).getByRole("status")).toHaveTextContent("expected_version 6");
+    expect(within(region).getByRole("button", { name: "Chốt đánh giá cuối cùng" })).toBeDisabled();
+    expect(within(region).getByRole("button", { name: "Hủy nhập đánh giá" })).toBeDisabled();
+    fireEvent.change(field, { target: { value: "Do not overwrite" } });
+    expect(field).toHaveValue("CAPA đã khắc phục đủ");
+    await act(async () => fail(new CaseFieldMutationRecoveryError("canonical readback unknown")));
+    expect(within(region).getByRole("status")).toHaveTextContent("Kết quả chốt chưa được xác minh");
+    view.rerender(editor("case-B", onFinalize));
+    view.rerender(editor("case-A", onFinalize, false));
+    expect(screen.getByLabelText("Đánh giá cuối cùng")).toHaveValue("CAPA đã khắc phục đủ");
+    expect(screen.getByRole("button", { name: "Hủy nhập đánh giá" })).toBeDisabled();
+    expect(onFinalize).toHaveBeenCalledOnce();
+  });
+
+  it("does not restore an old finalization after a definitive 409 rejection", async () => {
+    const onFinalize = vi.fn().mockRejectedValue(Object.assign(new Error("stale"), { status: 409 }));
+    const view = render(editor("case-A", onFinalize));
+    fireEvent.change(screen.getByLabelText("Đánh giá cuối cùng"), { target: { value: "Old finalization" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" }));
+    await screen.findByRole("alert");
+    view.rerender(editor("case-B", onFinalize));
+    view.rerender(editor("case-A", onFinalize));
+    expect(screen.getByLabelText("Đánh giá cuối cùng")).toHaveValue("");
+    expect(screen.getByLabelText("Đánh giá cuối cùng")).not.toHaveAttribute("readonly");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(onFinalize).toHaveBeenCalledOnce();
   });
 });

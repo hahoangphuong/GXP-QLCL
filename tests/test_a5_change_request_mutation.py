@@ -2087,3 +2087,113 @@ def test_a5_legacy_ids_are_read_only_across_runtime_mutations(tmp_path):
         assert row is not None and row.legacy_change_request_id == 123
         assert detail is not None and detail.legacy_change_detail_id == 456
         assert result["row_version"] == row.row_version
+
+
+def test_a5_cached_detail_audit_uses_committed_child_snapshot_after_parent_lock(tmp_path):
+    """An old Session identity must never become the audit BEFORE of a fresh-token write."""
+    import json
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'a5-detail-owner-refresh.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+    with Session(engine) as seed:
+        site_id = _seed_site(seed)
+        row = ChangeRequest(site_id=site_id, state=ChangeRequestState.RECEIVED)
+        seed.add(row)
+        seed.flush()
+        detail = ChangeRequestDetail(change_request_id=row.id, old_value="old-1", note="note-1")
+        seed.add(detail)
+        seed.commit()
+        detail_id, initial_version = detail.id, row.row_version
+
+    # Hold the detail identity in another Session, but release its DB read
+    # transaction so the first writer can commit. The second update supplies
+    # a NEW valid aggregate version, not a stale optimistic token.
+    with Session(engine, expire_on_commit=False) as cached:
+        stale = cached.get(ChangeRequestDetail, detail_id)
+        assert stale is not None and stale.old_value == "old-1"
+        cached.commit()
+
+        with Session(engine) as writer:
+            first = workflow.update_change_request_detail(
+                writer, change_detail_id=detail_id, expected_version=initial_version,
+                classification_id=None, classification_label=None, approval_status=None,
+                old_value="old-2", new_value=None, note=None, reason="first edit",
+                user=_editor(), fields_set={"old_value"},
+            )
+            writer.commit()
+
+        assert stale.old_value == "old-1", "Fixture must retain a stale ORM child identity."
+        second = workflow.update_change_request_detail(
+            cached, change_detail_id=detail_id, expected_version=first["row_version"],
+            classification_id=None, classification_label=None, approval_status=None,
+            old_value=None, new_value=None, note="note-2", reason="second edit",
+            user=_editor(), fields_set={"note"},
+        )
+        cached.commit()
+
+    with Session(engine) as verify:
+        actual = verify.get(ChangeRequestDetail, detail_id)
+        audit = verify.get(AuditEvent, second["audit_event_id"])
+        assert actual is not None and actual.old_value == "old-2" and actual.note == "note-2"
+        assert audit is not None
+        before = json.loads(audit.old_values_json)
+        after = json.loads(audit.new_values_json)
+        assert before["old_value"] == after["old_value"] == "old-2"
+        assert before["note"] == "note-1"
+        assert after["note"] == "note-2"
+        assert json.loads(audit.changed_fields_json).keys() == {"note"}
+
+
+def test_a5_cached_approval_audit_uses_committed_child_snapshot_after_parent_lock(tmp_path):
+    """Partial approval writes may not audit pre-commit values from a cached identity."""
+    import json
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'a5-approval-owner-refresh.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+    with Session(engine) as seed:
+        site_id = _seed_site(seed)
+        row = ChangeRequest(site_id=site_id, state=ChangeRequestState.UNDER_REVIEW)
+        seed.add(row)
+        seed.flush()
+        approval = ChangeApproval(change_request_id=row.id, handled_by_name="old-handler", approval_reference="old-ref")
+        seed.add(approval)
+        seed.commit()
+        change_id, approval_id, initial_version = row.id, approval.id, row.row_version
+
+    with Session(engine, expire_on_commit=False) as cached:
+        stale = cached.get(ChangeApproval, approval_id)
+        assert stale is not None and stale.handled_by_name == "old-handler"
+        cached.commit()
+
+        with Session(engine) as writer:
+            first = workflow.upsert_change_approval(
+                writer, change_request_id=change_id, expected_version=initial_version,
+                handled_on=None, handled_by_name="new-handler", result_label=None,
+                effective_on=None, approval_reference=None, reason="first approval",
+                user=_approver(), fields_set={"handled_by_name"},
+            )
+            writer.commit()
+
+        assert stale.handled_by_name == "old-handler"
+        second = workflow.upsert_change_approval(
+            cached, change_request_id=change_id, expected_version=first["row_version"],
+            handled_on=None, handled_by_name=None, result_label=None,
+            effective_on=None, approval_reference="new-ref", reason="second approval",
+            user=_approver(), fields_set={"approval_reference"},
+        )
+        cached.commit()
+
+    with Session(engine) as verify:
+        actual = verify.get(ChangeApproval, approval_id)
+        audit = verify.get(AuditEvent, second["audit_event_id"])
+        assert actual is not None and actual.handled_by_name == "new-handler"
+        assert actual.approval_reference == "new-ref"
+        assert audit is not None
+        before = json.loads(audit.old_values_json)
+        after = json.loads(audit.new_values_json)
+        assert before["handled_by_name"] == after["handled_by_name"] == "new-handler"
+        assert before["approval_reference"] == "old-ref"
+        assert after["approval_reference"] == "new-ref"
+        assert json.loads(audit.changed_fields_json).keys() == {"approval_reference"}

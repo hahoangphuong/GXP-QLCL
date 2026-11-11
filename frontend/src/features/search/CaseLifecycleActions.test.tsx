@@ -262,7 +262,7 @@ describe("Case lifecycle exact command ownership after Case A → B → A", () =
     view.rerender(renderCase("case-B", onTransition, [second]));
     expect(screen.getByRole("button", { name: "Chuyển theo policy" })).toBeEnabled();
     view.rerender(renderCase("case-A", onTransition));
-    expect(screen.getByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("");
     expect(screen.getByLabelText("Lý do chuyển trạng thái")).not.toHaveAttribute("readonly");
     expect(onTransition).toHaveBeenCalledOnce();

@@ -23,8 +23,7 @@ function certificateDetailReturn(state: unknown, certificateId: string): string 
   const allowed = ["site_id", "version_id"];
   if (![...params.keys()].every(key => allowed.includes(key))
     || allowed.some(key => params.getAll(key).length > 1)
-    || !params.get("site_id")?.trim()
-    || params.get("site_id")!.length > 128
+    || (params.has("site_id") && (!params.get("site_id")?.trim() || params.get("site_id")!.length > 128))
     || (params.has("version_id") && (!params.get("version_id")?.trim() || params.get("version_id")!.length > 128))) return null;
   return target;
 }

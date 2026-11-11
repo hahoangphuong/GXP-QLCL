@@ -211,3 +211,60 @@ it("keeps reviewed lifecycle intent and the pending guard across same-Case pane 
   expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("");
   expect(onTransition).toHaveBeenCalledOnce();
 });
+
+
+describe("Case lifecycle exact command ownership after Case A → B → A", () => {
+  const first = { action_key: "policy-A", label: "Chuyển theo policy", target_state: "planned", available: true, expected_version: 18, reason_code: null, required_permissions: ["case.edit"] };
+  const second = { ...first, action_key: "policy-B", target_state: "closed", expected_version: 99 };
+  function renderCase(id: string, onTransition: (payload: import("../../types").CaseTransitionRequest) => Promise<void>, actions = [first]) {
+    return <CaseDraftSession identity={id}>
+      <CaseLifecycleActions
+        caseWorkspace={{ ...workspace(actions), case_summary: { id } } as CaseWorkspace}
+        onTransition={onTransition}
+      />
+    </CaseDraftSession>;
+  }
+
+  it("restores exactly submitted target, token and trimmed reason in pending and unknown states without replay", async () => {
+    let fail!: (reason: Error) => void;
+    const onTransition = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const view = render(renderCase("case-A", onTransition));
+    fireEvent.change(screen.getByLabelText("Lý do chuyển trạng thái"), { target: { value: "  Lý do đã gửi  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển theo policy" }));
+    expect(onTransition).toHaveBeenCalledWith({ target_state: "planned", expected_version: 18, reason: "Lý do đã gửi" });
+    view.rerender(renderCase("case-B", onTransition, [second]));
+    expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Chuyển theo policy" })).toBeEnabled();
+    view.rerender(renderCase("case-A", onTransition, [{ ...first, expected_version: 19, available: false }]));
+    const restored = screen.getByLabelText("Lý do chuyển trạng thái");
+    expect(restored).toHaveValue("Lý do đã gửi");
+    expect(restored).toHaveAttribute("readonly");
+    expect(screen.getByRole("status")).toHaveTextContent("expected_version 18");
+    expect(screen.getByRole("status")).toHaveTextContent("Đang xác minh kết quả chuyển trạng thái");
+    expect(screen.getByRole("button", { name: "Hủy nhập lý do chuyển trạng thái" })).toBeDisabled();
+    fireEvent.change(restored, { target: { value: "Không được ghi đè" } });
+    expect(restored).toHaveValue("Lý do đã gửi");
+    await act(async () => fail(new CaseFieldMutationRecoveryError("canonical readback failed")));
+    expect(screen.getByRole("status")).toHaveTextContent("Kết quả chuyển trạng thái chưa xác minh");
+    view.rerender(renderCase("case-B", onTransition, [second]));
+    view.rerender(renderCase("case-A", onTransition, [{ ...first, expected_version: 19, available: false }]));
+    expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("Lý do đã gửi");
+    expect(screen.getByRole("button", { name: "Hủy nhập lý do chuyển trạng thái" })).toBeDisabled();
+    expect(onTransition).toHaveBeenCalledOnce();
+  });
+
+  it("does not resurrect an edit for a definite HTTP rejection and keeps Case B isolated", async () => {
+    const onTransition = vi.fn().mockRejectedValue(Object.assign(new Error("stale"), { status: 409 }));
+    const view = render(renderCase("case-A", onTransition));
+    fireEvent.change(screen.getByLabelText("Lý do chuyển trạng thái"), { target: { value: "To be rejected" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chuyển theo policy" }));
+    await screen.findByText("stale");
+    view.rerender(renderCase("case-B", onTransition, [second]));
+    expect(screen.getByRole("button", { name: "Chuyển theo policy" })).toBeEnabled();
+    view.rerender(renderCase("case-A", onTransition));
+    expect(screen.getByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Lý do chuyển trạng thái")).toHaveValue("");
+    expect(screen.getByLabelText("Lý do chuyển trạng thái")).not.toHaveAttribute("readonly");
+    expect(onTransition).toHaveBeenCalledOnce();
+  });
+});

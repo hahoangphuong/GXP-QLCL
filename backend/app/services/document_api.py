@@ -1217,7 +1217,18 @@ class DocumentWorkflowService:
         expected_parent_id: str,
         expected_case_id: str | None = None,
     ) -> DocumentBinaryLocator:
-        row = session.get(Document, document_id)
+        # Binary access must never derive exclusive ownership from a cached
+        # ORM object. Select scalar FK values under a shared row lock: unlike
+        # populate_existing on a versioned entity, this also avoids leaking
+        # StaleDataError when another transaction committed a new owner.
+        row = session.execute(
+            select(
+                Document.id, Document.case_id, Document.capa_cycle_id,
+                Document.certificate_id,
+                Document.business_eligibility_certificate_id,
+                Document.change_request_id,
+            ).where(Document.id == document_id).with_for_update(read=True)
+        ).one_or_none()
         if row is None:
             raise HTTPException(status_code=404, detail="Document not found.")
         parent_ids = {
@@ -1234,15 +1245,20 @@ class DocumentWorkflowService:
         if parent_ids != {expected_parent_scope: expected_parent_id}:
             raise HTTPException(status_code=404, detail="Document not found for requested business owner.")
         if expected_parent_scope == "case":
-            if session.get(Case, expected_parent_id) is None:
+            if session.scalar(select(Case.id).where(Case.id == expected_parent_id)) is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
         else:
-            cycle = session.get(CapaCycle, expected_parent_id)
-            if cycle is None:
+            # Read the canonical relationship as a scalar, not through a
+            # versioned CAPA ORM instance cached before a concurrent update.
+            cycle_case_id = session.scalar(
+                select(CapaCycle.case_id).where(CapaCycle.id == expected_parent_id)
+                .with_for_update(read=True)
+            )
+            if cycle_case_id is None:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found.")
-            if expected_case_id is None or cycle.case_id != expected_case_id:
+            if expected_case_id is None or cycle_case_id != expected_case_id:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found for requested case.")
-            if session.get(Case, expected_case_id) is None:
+            if session.scalar(select(Case.id).where(Case.id == expected_case_id)) is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
         variants = list(
             session.scalars(

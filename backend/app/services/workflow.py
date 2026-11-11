@@ -3462,6 +3462,7 @@ class CaseWorkflowService:
                 select(InspectionPeriodSegment)
                 .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
                 .order_by(InspectionPeriodSegment.ordinal)
+                .execution_options(populate_existing=True)
             )
         )
         if has_compatibility_period and len(period_segments) > 1:
@@ -3624,6 +3625,7 @@ class CaseWorkflowService:
             select(InspectionPeriodSegment)
             .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
             .order_by(InspectionPeriodSegment.ordinal)
+            .execution_options(populate_existing=True)
         ))
         before = {
             "inspection_period_state": outcome.inspection_period_state,
@@ -3634,6 +3636,11 @@ class CaseWorkflowService:
         }
         for item in existing:
             session.delete(item)
+        # A replace-all may reuse ordinal 1..N. SQLAlchemy can otherwise
+        # INSERT before DELETE during the next implicit flush and violate
+        # the unique (inspection_outcome_id, ordinal) constraint.
+        # Keep both stages in this same transaction; audit BEFORE is captured.
+        session.flush()
         for item in normalized:
             session.add(InspectionPeriodSegment(
                 inspection_outcome_id=outcome.id,
@@ -3750,9 +3757,6 @@ class CaseWorkflowService:
         if normalized_stage == "CT":
             if pct_submission_id is None:
                 raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
-            # The Case lock fences approval mutations, but Session.get may
-            # return a PCT cached before another transaction completed it.
-            # Read the committed child snapshot before CT parent validation.
             parent = session.scalars(
                 select(InspectionApprovalSubmission)
                 .where(InspectionApprovalSubmission.id == pct_submission_id)

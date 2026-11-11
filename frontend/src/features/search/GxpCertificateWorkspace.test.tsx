@@ -628,3 +628,98 @@ describe("certificate version edit command ownership across selection switches",
     expect(save).toHaveBeenCalledOnce();
   });
 });
+
+
+describe("Facility GxP Certificate to canonical owning Case handoff", () => {
+  function renderHandoff(overrides: {
+    certificate?: Partial<GxpCertificateDetail>;
+    listed?: Partial<GxpCertificateListItem>;
+    loading?: boolean;
+    listError?: string | null;
+    ownerSiteId?: string;
+  } = {}) {
+    const onOpenOwningCase = vi.fn();
+    const onEdit = vi.fn(), onPromote = vi.fn();
+    const props = {
+      detail: { ...detail(), ...overrides.certificate },
+      detailError: null, detailLoading: overrides.loading ?? false,
+      items: [{ ...items[0], ...overrides.listed }],
+      listError: overrides.listError ?? null, listLoading: false,
+      selectedCertificateId: "cert-1", onSelectCertificate: vi.fn(),
+      onEditLatestVersion: onEdit, onPromoteCurrent: onPromote,
+      promotionError: null, promotionPending: false, onOpenOwningCase,
+      ownerSiteId: overrides.ownerSiteId ?? "site-1",
+    };
+    return { ...render(<GxpCertificateWorkspace {...props} />), props, onOpenOwningCase, onEdit, onPromote };
+  }
+
+  it("opens only the selected, matching Certificate UUID/Site/Case via the verified Case owner", () => {
+    const { onOpenOwningCase, onEdit, onPromote } = renderHandoff();
+    fireEvent.click(screen.getByRole("button", { name: "Mở Case cấp GCN này" }));
+    expect(onOpenOwningCase).toHaveBeenCalledExactlyOnceWith("case-1", "cert-1", "site-1");
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(onPromote).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { certificate: { case_id: null } },
+    { certificate: { case_id: "another-case" } },
+    { certificate: { site_id: "another-site" } },
+    { ownerSiteId: "foreign-facility" },
+    { certificate: { certificate_type: "GSP" } },
+    { certificate: { certificate_type: "GDP" } },
+    { certificate: { case_id: "  " } },
+    { listed: { case_id: null } },
+    { loading: true },
+    { listError: "unverified list" },
+  ])("hides owning Case navigation for absent, unsupported, stale or unverified identity (%j)", options => {
+    const { onOpenOwningCase } = renderHandoff(options);
+    expect(screen.queryByRole("button", { name: "Mở Case cấp GCN này" })).not.toBeInTheDocument();
+    expect(onOpenOwningCase).not.toHaveBeenCalled();
+  });
+
+  it("does not expose the previous Certificate's owning Case during selection change", () => {
+    const { rerender, props, onOpenOwningCase } = renderHandoff();
+    rerender(<GxpCertificateWorkspace {...props} selectedCertificateId="cert-2" />);
+    expect(screen.queryByRole("button", { name: "Mở Case cấp GCN này" })).not.toBeInTheDocument();
+    expect(onOpenOwningCase).not.toHaveBeenCalled();
+  });
+
+  it("withdraws the Case shortcut during an unsaved edit and restores it only after Cancel", () => {
+    const { onOpenOwningCase } = renderHandoff();
+    expect(screen.getByRole("button", { name: "Mở Case cấp GCN này" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    expect(screen.queryByRole("button", { name: "Mở Case cấp GCN này" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+    expect(screen.getByRole("button", { name: "Mở Case cấp GCN này" })).toBeInTheDocument();
+    expect(onOpenOwningCase).not.toHaveBeenCalled();
+  });
+
+  it("does not abandon the Facility command review lock for an unknown Certificate edit", async () => {
+    const onOpenOwningCase = vi.fn();
+    const onEdit = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("unknown write"));
+    render(<CaseDraftSession identity="case-1" facilityIdentity="site-1">
+      <GxpCertificateWorkspace
+        ownerSiteId="site-1" detail={detail()} detailError={null} detailLoading={false}
+        items={items} listError={null} listLoading={false} selectedCertificateId="cert-1"
+        onSelectCertificate={vi.fn()} onEditLatestVersion={onEdit}
+        onPromoteCurrent={vi.fn()} promotionError={null} promotionPending={false}
+        onOpenOwningCase={onOpenOwningCase}
+      />
+    </CaseDraftSession>);
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    await screen.findByText("unknown write");
+    expect(screen.queryByRole("button", { name: "Mở Case cấp GCN này" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hủy" })).toBeDisabled();
+    expect(onOpenOwningCase).not.toHaveBeenCalled();
+    expect(onEdit).toHaveBeenCalledOnce();
+  });
+
+  it("supports an explicit non-current candidate's canonical owning Case without promoting it", () => {
+    const { onOpenOwningCase, onPromote } = renderHandoff({ certificate: { latest_flag: false }, listed: { latest_flag: false } });
+    fireEvent.click(screen.getByRole("button", { name: "Mở Case cấp GCN này" }));
+    expect(onOpenOwningCase).toHaveBeenCalledExactlyOnceWith("case-1", "cert-1", "site-1");
+    expect(onPromote).not.toHaveBeenCalled();
+  });
+});

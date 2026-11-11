@@ -292,7 +292,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / {kind === "cases" ? "Case" : "Change Request"}</p>
       <h2>Danh mục tài liệu</h2>
-    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? (kind === "cases" ? "Quay lại báo cáo hồ sơ" : "Quay lại báo cáo yêu cầu thay đổi") : "Quay lại danh sách hồ sơ"}</Link></header>
+    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? (kind === "cases" ? "Quay lại báo cáo hồ sơ" : reportReturn.startsWith("/workflow?") ? "Quay lại Bàn công việc" : "Quay lại báo cáo yêu cầu thay đổi") : "Quay lại danh sách hồ sơ"}</Link></header>
     {!context ? <p role="status">Đang tải checklist tài liệu...</p>
       : context.error ? <ErrorState message={context.error} />
       : requestedKey && !context.items.some(item => item.checklist_key === requestedKey)

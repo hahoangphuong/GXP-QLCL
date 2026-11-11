@@ -3462,6 +3462,7 @@ class CaseWorkflowService:
                 select(InspectionPeriodSegment)
                 .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
                 .order_by(InspectionPeriodSegment.ordinal)
+                .execution_options(populate_existing=True)
             )
         )
         if has_compatibility_period and len(period_segments) > 1:
@@ -3624,6 +3625,7 @@ class CaseWorkflowService:
             select(InspectionPeriodSegment)
             .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
             .order_by(InspectionPeriodSegment.ordinal)
+            .execution_options(populate_existing=True)
         ))
         before = {
             "inspection_period_state": outcome.inspection_period_state,
@@ -3634,6 +3636,11 @@ class CaseWorkflowService:
         }
         for item in existing:
             session.delete(item)
+        # A replace-all may reuse ordinal 1..N. SQLAlchemy can otherwise
+        # INSERT before DELETE during the next implicit flush and violate
+        # the unique (inspection_outcome_id, ordinal) constraint.
+        # Keep both stages in this same transaction; audit BEFORE is captured.
+        session.flush()
         for item in normalized:
             session.add(InspectionPeriodSegment(
                 inspection_outcome_id=outcome.id,
@@ -3750,7 +3757,14 @@ class CaseWorkflowService:
         if normalized_stage == "CT":
             if pct_submission_id is None:
                 raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
-            parent = session.get(InspectionApprovalSubmission, pct_submission_id)
+            # The Case lock fences approval mutations, but Session.get may
+            # return a PCT cached before another transaction completed it.
+            # Read the committed child snapshot before CT parent validation.
+            parent = session.scalars(
+                select(InspectionApprovalSubmission)
+                .where(InspectionApprovalSubmission.id == pct_submission_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
             if parent is None:
                 raise HTTPException(status_code=404, detail="PCT approval submission not found.")
             try:
@@ -3783,6 +3797,11 @@ class CaseWorkflowService:
         ).one_or_none()
         if row is None:
             raise HTTPException(status_code=404, detail="Approval submission not found.")
+        # Session.get before the Case lock can provide a cached owner FK. If
+        # canonical readback belongs to another Case, this transaction holds
+        # the wrong Case lock and must not mutate that submission.
+        if row.case_id != parent.id:
+            raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
         self._assert_expected_version(row, expected_version, label="approval_submission")
         try:
             validate_approval_completion(existing_completed_on=row.completed_on, existing_completed_time=row.completed_time, completed_on=completed_on, completed_time=completed_time)

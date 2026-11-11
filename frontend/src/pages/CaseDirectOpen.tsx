@@ -6,6 +6,7 @@ import type { CaseWorkspace } from "../types";
 import { caseWorkflowQueue, type CaseWorkflowQueue } from "../features/search/caseNavigation";
 import { resolveDocumentWorkspace } from "../features/documents/documentNavigation";
 import { caseReportReturn } from "../features/reports/caseReportUrl";
+import { reportReturnLocation } from "../features/reports/reportReturnLocation";
 
 type Resolved = { owner: object; location: string | null; error: string | null };
 
@@ -86,6 +87,7 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   const returnHint = caseReportReturn(location.state);
   const reportReturn = returnHint?.startsWith("/workflow?") && new URLSearchParams(returnHint.slice("/workflow?".length)).get("queue") !== queue ? null : returnHint;
   const documentKey = params.get("document_key");
+  const certificateReportReturn = reportReturnLocation(location.state, "certificates");
   const sourceCertificateId = params.get("source_certificate_id");
   const sourceSiteId = params.get("source_site_id");
   const hasSourceHint = params.has("source_certificate_id") || params.has("source_site_id");
@@ -119,7 +121,7 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   if (!canLoadSecureApi) return <section className="page-section"><h2>Cần đăng nhập</h2><p>Đăng nhập để mở hồ sơ được phân quyền.</p></section>;
   if (!caseId) return <p>Thiếu Case UUID.</p>;
   if (!validSourceHint) return <p role="alert">Tham số Certificate/Site liên kết không hợp lệ.</p>;
-  if (current?.location) return <Navigate to={current.location} replace state={reportReturn ? { caseReportReturn: reportReturn, caseReportCaseId: caseId } : undefined} />;
+  if (current?.location) return <Navigate to={current.location} replace state={reportReturn ? { caseReportReturn: reportReturn, caseReportCaseId: caseId } : sourceCertificate && certificateReportReturn && !documentKey ? { certificateReportReturn, certificateReportCaseId: caseId } : undefined} />;
   return <section className="page-section">
     <h2>Định vị hồ sơ</h2>
     {current?.error ? <p role="alert">{current.error}</p> : <p role="status">Đang xác minh Case UUID và ngữ cảnh cơ sở...</p>}

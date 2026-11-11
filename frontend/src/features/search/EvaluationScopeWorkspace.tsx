@@ -230,6 +230,6 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
         {block.selections.map((selection, i) => <p key={i}>Taxonomy UUID: {selection.taxonomy_node_id}; Mô tả: {selection.custom_description || "Không nhập"}</p>)}
       </div>)}
     </section> : commandLock.requiresReview ? <p className="workspace-note" role="status">Lệnh cập nhật phạm vi chưa được xác minh. Không gửi lại trước khi kiểm tra hồ sơ canonical.</p> : null}
-    {editorOwner === caseWorkspace.case_summary.id ? <EvaluationScopeEditorDialog key={caseWorkspace.case_summary.id} scope={scope} locked={frozen} onClose={() => { if (!frozen) setEditorOwner(null); }} onSave={saveOwned} /> : null}
+    {editorOwner === caseWorkspace.case_summary.id ? <EvaluationScopeEditorDialog key={caseWorkspace.case_summary.id} scope={scope} locked={frozen} onClose={() => { if (!frozen) setEditorOwner(current => current === caseWorkspace.case_summary.id ? null : current); }} onSave={saveOwned} /> : null}
   </section>;
 }

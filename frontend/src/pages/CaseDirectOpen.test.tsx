@@ -275,6 +275,8 @@ describe("canonical Case UUID entry", () => {
     vi.mocked(getCaseWorkspace).mockResolvedValue(value);
     mount("/cases/case-uuid?document_key=foreign");
     expect(await screen.findByRole("alert")).toHaveTextContent("Mục tài liệu không còn khớp checklist");
+    expect(screen.getByRole("link", { name: "Mở Case không chọn mục tài liệu" }))
+      .toHaveAttribute("href", "/cases/case-uuid");
     expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
     expect(getCaseWorkspace).toHaveBeenCalledOnce();
   });

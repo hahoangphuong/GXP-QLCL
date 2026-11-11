@@ -160,7 +160,7 @@ try {
     // Re-enter Case lifecycle; no client-inferred transition is allowed.
     await page.getByRole("tab",{name:"Các đợt kiểm tra & thay đổi"}).click();
     await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
-    const lifecycle=page.locator("[data-case-lifecycle]");
+    // Reuse the Case lifecycle locator from the previous transition.
     await lifecycle.getByRole("button",{name:"Chuyển: Đã cấp chứng nhận"}).click();
     await until("Case certified",x=>x.case_summary.state==="certified");
     await lifecycle.getByRole("button",{name:"Chuyển: Đã đóng hồ sơ"}).click();

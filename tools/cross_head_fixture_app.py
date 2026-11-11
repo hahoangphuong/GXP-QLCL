@@ -61,7 +61,8 @@ physical_path.parent.mkdir()
 physical_path.write_bytes(payload)
 
 fixture_ids = {key: str(uuid4()) for key in (
-    "company", "site", "case", "other_case", "document", "variant",
+    "company", "site", "case", "other_case",
+    "operator_company", "operator_site", "operator_case", "document", "variant",
     "version", "conflict_document", "conflict_variant",
     "missing_file_document", "missing_file_variant", "missing_file_version",
     "wrong_checksum_document", "wrong_checksum_variant", "wrong_checksum_version",
@@ -89,6 +90,26 @@ try:
                 id=fixture_ids[key], site_id=fixture_ids["site"],
                 gxp_type="GMP", state=CaseState.DRAFT,
             ))
+        session.flush()
+        # Independent operator-mutation fixture; never changes the pre-existing
+        # read-only Cross-head Site/Case or its document/certificate assertions.
+        # Starting at DRAFT lets Chromium exercise consecutive real Case
+        # transitions through the UI without pre-seeding a business decision.
+        session.add(Company(
+            id=fixture_ids["operator_company"],
+            legal_name="Browser Operator CI synthetic company",
+        ))
+        session.flush()
+        session.add(Site(
+            id=fixture_ids["operator_site"],
+            company_id=fixture_ids["operator_company"],
+            site_name="Browser Operator CI synthetic facility",
+        ))
+        session.flush()
+        session.add(Case(
+            id=fixture_ids["operator_case"], site_id=fixture_ids["operator_site"],
+            gxp_type="GMP", state=CaseState.DRAFT,
+        ))
         session.flush()
         session.add_all([
             Document(

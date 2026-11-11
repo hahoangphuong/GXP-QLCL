@@ -66,7 +66,7 @@ def test_ct_parent_uses_fresh_authoritative_snapshot_after_case_lock(change, all
         contender = factory()
         cached = contender.get(InspectionApprovalSubmission, pct_id)
         assert cached is not None
-        assert (cached.completed_on is None) is allow_ct
+        assert (cached.completed_on is None) == allow_ct
         assert cached.case_id == case_id
 
         # The writer changes committed PCT truth after another Session has

@@ -3462,6 +3462,7 @@ class CaseWorkflowService:
                 select(InspectionPeriodSegment)
                 .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
                 .order_by(InspectionPeriodSegment.ordinal)
+                .execution_options(populate_existing=True)
             )
         )
         if has_compatibility_period and len(period_segments) > 1:
@@ -3624,6 +3625,7 @@ class CaseWorkflowService:
             select(InspectionPeriodSegment)
             .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
             .order_by(InspectionPeriodSegment.ordinal)
+            .execution_options(populate_existing=True)
         ))
         before = {
             "inspection_period_state": outcome.inspection_period_state,

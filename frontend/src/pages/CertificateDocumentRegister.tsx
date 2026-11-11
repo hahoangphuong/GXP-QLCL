@@ -72,7 +72,7 @@ export function CertificateDocumentRegister({ access, kind }: { access: ApiAcces
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / Chứng nhận</p>
       <h2>{kind === "certificate" ? "Tài liệu GCN GxP" : "Tài liệu giấy đủ điều kiện kinh doanh dược"}</h2>
-    </div><Link className="text-link" to={returnTarget}>{detailReturn ? "Quay lại chi tiết GCN" : reportReturn ? "Quay lại báo cáo GCN" : "Quay lại danh mục"}</Link></header>
+    </div><Link className="text-link" state={detailReturn && reportReturn ? { reportReturn } : undefined} to={returnTarget}>{detailReturn ? "Quay lại chi tiết GCN" : reportReturn ? "Quay lại báo cáo GCN" : "Quay lại danh mục"}</Link></header>
     {!current ? <p role="status">Đang tải metadata tài liệu chứng nhận...</p>
       : current.error ? <p role="alert">{current.error}</p>
       : current.value && <>

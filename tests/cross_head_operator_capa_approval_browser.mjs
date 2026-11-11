@@ -102,7 +102,7 @@ try {
 
     const approval=page.getByRole("region",{name:"Trình phê duyệt PCT / CT"});
     await approval.getByRole("textbox",{name:"Tham chiếu trình"}).fill("BROWSER-PCT-1");
-    await approval.getByRole("button",{name:"Tạo trình PCT"}).click();
+    await approval.getByRole("button",{name:"Tạo trình PCT",exact:true}).click();
     ws=await until("PCT created",x=>x.inspection.approval_submissions.some(a=>a.stage==="PCT"));
     const pct=ws.inspection.approval_submissions.find(a=>a.stage==="PCT");
     assert.equal(pct.round_no,1);
@@ -114,7 +114,7 @@ try {
 
     await approval.getByRole("combobox",{name:"PCT hoàn tất cho CT"}).selectOption(pct.approval_submission_id);
     await approval.getByRole("textbox",{name:"Tham chiếu trình"}).fill("BROWSER-CT-1");
-    await approval.getByRole("button",{name:"Tạo trình CT"}).click();
+    await approval.getByRole("button",{name:"Tạo trình CT",exact:true}).click();
     ws=await until("CT created",x=>x.inspection.approval_submissions.some(a=>a.stage==="CT"));
     const ct=ws.inspection.approval_submissions.find(a=>a.stage==="CT");
     assert.equal(ct.pct_submission_id,pct.approval_submission_id);

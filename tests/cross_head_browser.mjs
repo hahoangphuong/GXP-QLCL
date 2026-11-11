@@ -30,9 +30,12 @@ try {
       }));
     });
     const page = await context.newPage();
-    const calls = [], errors = [];
+    const calls = [], errors = [], mutations = [];
     page.on("request", req => {
-      if (req.url().startsWith(origin + "/api/")) calls.push(req.url());
+      if (req.url().startsWith(origin + "/api/")) {
+        calls.push(req.url());
+        if (!["GET", "HEAD", "OPTIONS"].includes(req.method())) mutations.push(`${req.method()} ${req.url()}`);
+      }
     });
     page.on("pageerror", error => errors.push(error.message));
     await page.route("**/*", route => {
@@ -71,6 +74,42 @@ try {
       await first.press("Enter");
       await page.getByText("Chi tiết tài liệu", {exact:true}).waitFor();
       await page.screenshot({path:join(artifacts,size.name+".png"),fullPage:true});
+
+      // Certificate -> owning Case must be independently verified by the
+      // authorized Case workspace. Neither the URL hint nor the fixture's
+      // Certificate number is an access or legal-issuance decision.
+      const verifiedCase = new URL(`/cases/${fixture.case}`, origin);
+      verifiedCase.searchParams.set("source_certificate_id", fixture.gxp_certificate);
+      verifiedCase.searchParams.set("source_site_id", fixture.site);
+      await page.goto(verifiedCase.toString(), {waitUntil:"domcontentloaded"});
+      await page.waitForURL(url => url.pathname === "/search"
+        && url.searchParams.get("history_id") === fixture.case, {timeout:30000});
+      const verifiedWorkspace = new URL(page.url());
+      assert.equal(verifiedWorkspace.searchParams.get("site_id"), fixture.site);
+      assert.equal(verifiedWorkspace.searchParams.get("event_tab"), "Chứng nhận GxP");
+
+      // Same Site is NOT sufficient: the sibling Case does not own this GCN.
+      const unrelatedCase = new URL(`/cases/${fixture.other_case}`, origin);
+      unrelatedCase.searchParams.set("source_certificate_id", fixture.gxp_certificate);
+      unrelatedCase.searchParams.set("source_site_id", fixture.site);
+      await page.goto(unrelatedCase.toString(), {waitUntil:"domcontentloaded"});
+      await page.getByRole("alert").filter({hasText:"Case không khớp chứng nhận và Site canonical"})
+        .waitFor({state:"visible",timeout:30000});
+      assert.equal(new URL(page.url()).pathname, `/cases/${fixture.other_case}`);
+
+      // Registration metadata is read-only, with distinct GxP and DDK
+      // document owners. Never infer a signed original or download binary.
+      await page.goto(origin+`/documents/certificates/${fixture.gxp_certificate}`, {waitUntil:"domcontentloaded"});
+      await page.getByText("Synthetic unverified GxP metadata", {exact:true}).waitFor({state:"visible",timeout:30000});
+      await page.getByText(/chưa xác minh tệp binary hoặc bản gốc đã ký/i).waitFor({state:"visible"});
+      assert.equal(await page.getByRole("button", {name:/Tải|Ban hành|Lưu thay đổi/}).count(), 0);
+
+      await page.goto(origin+`/documents/business-eligibility-certificates/${fixture.ddk_certificate}`,
+        {waitUntil:"domcontentloaded"});
+      await page.getByText("Synthetic unverified DDK metadata", {exact:true}).waitFor({state:"visible",timeout:30000});
+      assert.equal(await page.getByText("Synthetic unverified GxP metadata", {exact:true}).count(), 0);
+      assert.deepEqual(mutations, [], "Read-only Certificate -> Case -> metadata browser journey mutated data");
+      process.stdout.write("CERTIFICATE_CASE_DOCUMENT_PASS "+size.name+"\n");
       assert.deepEqual(errors, []);
       assert.ok(calls.length > 0);
       process.stdout.write("BROWSER_PASS "+size.name+" "+size.width+"x"+size.height+" calls="+calls.length+"\n");

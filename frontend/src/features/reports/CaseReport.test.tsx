@@ -29,6 +29,21 @@ describe("case report", () => {
     expect(screen.getByTestId("documents-report-return")).toHaveTextContent("/reports?report=cases&gxp_type=GMP&q=Cong+ty+A");
   });
 
+  it("returns to the exact workflow queue rather than changing the operator's task list", async () => {
+    vi.mocked(getCaseReport).mockResolvedValue({ items: [row], total_count: 1, offset: 0, limit: 100 });
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="queue-return">{caseReportReturn(location.state) ?? "missing"}</output>;
+    }
+    render(<MemoryRouter initialEntries={["/workflow?queue=inspection&q=Co+so"]}>
+      <Routes>
+        <Route path="/workflow" element={<CaseReport access={access} inspectionQueue returnQueue="inspection" urlState showDocumentsLink />} />
+        <Route path="/documents/cases/:caseId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Xem tài liệu" }));
+    expect(screen.getByTestId("queue-return")).toHaveTextContent("/workflow?queue=inspection&q=Co+so");
+  });
   it("filters cases and links the canonical case and line", async () => {
     vi.mocked(getCaseReport).mockResolvedValue({ items: [row], total_count: 1, offset: 0, limit: 100 });
     render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} /></MemoryRouter>);

@@ -120,6 +120,33 @@ afterEach(() => {
 });
 
 describe("document report return navigation", () => {
+  it("restores the originating Change Request report and opens the exact document section", async () => {
+    const origin = "/reports?report=change_requests&state=received&q=company&offset=100";
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="request-detail-return">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: origin } }]}>
+      <Routes>
+        <Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} />
+        <Route path="/reports/change-requests/:changeRequestId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại báo cáo yêu cầu thay đổi" })).toHaveAttribute("href", origin);
+    await screen.findByText("Yêu cầu thay đổi change-1");
+    const details = screen.getByRole("link", { name: "Xem yêu cầu thay đổi" });
+    expect(details).toHaveAttribute("href", "/reports/change-requests/change-1?section=documents");
+    fireEvent.click(details);
+    expect(screen.getByTestId("request-detail-return")).toHaveTextContent(origin);
+  });
+  it.each(["https://external.invalid", "/reports?report=certificates", "/reports?report=change_requests&report=change_requests"])("rejects unrelated Change Request report return (%s)", hint => {
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: hint } }]}>
+      <Routes><Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} /></Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại danh sách hồ sơ" })).toHaveAttribute("href", "/documents");
+    expect(screen.queryByRole("link", { name: "Quay lại báo cáo yêu cầu thay đổi" })).not.toBeInTheDocument();
+  });
+
   it("returns to the exact report filter rather than resetting the Case search", async () => {
     const source = "/reports?report=cases&q=GMP&offset=100";
     render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: source } }]}>

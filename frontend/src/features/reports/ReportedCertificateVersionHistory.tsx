@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../../App";
 import type { GxpCertificateDetail } from "../../types";
 import { PersistedCertificateHistory } from "../search/PersistedCertificateHistory";
@@ -10,7 +10,9 @@ export function ReportedCertificateVersionHistory({ detail, access }: {
   detail: GxpCertificateDetail;
   access: ApiAccess;
 }) {
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const selectedValues = params.getAll("version_id");
   const requestedVersionId = selectedValues.length === 1 ? selectedValues[0] : null;
   const invalidVersionHint = selectedValues.length > 1 || (selectedValues.length === 1 && !requestedVersionId?.trim());
@@ -39,7 +41,7 @@ export function ReportedCertificateVersionHistory({ detail, access }: {
       if (!history.data.versions.some(version => version.certificate_version_id === id)) return;
       const next = new URLSearchParams(params);
       next.set("version_id", id);
-      setParams(next);
+      navigate({ pathname: location.pathname, search: `?${next}` }, { state: location.state });
     },
   } : history;
   return <section aria-label="Lịch sử phiên bản GCN chỉ đọc">

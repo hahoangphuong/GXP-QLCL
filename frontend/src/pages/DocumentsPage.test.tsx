@@ -586,7 +586,7 @@ describe("contextual document register", () => {
     mount("/documents/change-requests/change-1");
     expect(await screen.findByText("Cơ sở B")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Xem yêu cầu thay đổi" }))
-      .toHaveAttribute("href", "/reports/change-requests/change-1");
+      .toHaveAttribute("href", "/reports/change-requests/change-1?section=documents");
     fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
     await waitFor(() => expect(getDocumentDetail).toHaveBeenCalledWith("change-doc", expect.anything(), true, null));
     expect(await screen.findByText(/Phiên bản 2:/)).toBeInTheDocument();

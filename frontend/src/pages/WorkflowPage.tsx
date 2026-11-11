@@ -33,7 +33,7 @@ export function WorkflowPage({ access, statusError }: { access: ApiAccess; statu
   function selectQueue(next: Queue) {
     setSearchParams(params => {
       const nextParams = new URLSearchParams(params);
-      for (const key of ["gxp_type", "state", "case_state", "q", "opened_year", "offset", "expiry_days", "number"]) nextParams.delete(key);
+      for (const key of ["report", "gxp_type", "state", "case_state", "q", "opened_year", "offset", "expiry_days", "number"]) nextParams.delete(key);
       nextParams.set("queue", next);
       return nextParams;
     });

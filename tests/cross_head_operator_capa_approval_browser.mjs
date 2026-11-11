@@ -67,9 +67,9 @@ try {
     await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
 
     // Create the real InspectionOutcome through the owned field editor.
-    await page.getByRole("button",{name:"Sửa Kết quả kiểm tra"}).press("Enter");
+    await page.getByRole("button",{name:"Sửa Kết quả kiểm tra",exact:true}).press("Enter");
     await page.getByRole("textbox",{name:"Kết quả kiểm tra"}).fill("CI synthetic inspection result");
-    await page.getByRole("button",{name:"Lưu Đánh giá kết quả"}).click();
+    await page.getByRole("button",{name:"Lưu Đánh giá kết quả",exact:true}).click();
     await until("InspectionOutcome persisted",ws=>
       ws.inspection.outcome_result==="CI synthetic inspection result"&&ws.inspection.outcome_row_version!=null);
 
@@ -93,11 +93,11 @@ try {
     await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
     const final=page.getByRole("group",{name:"Chốt đánh giá cuối cùng"});
     await final.getByRole("textbox",{name:"Đánh giá cuối cùng"}).fill("Đạt");
-    await final.getByRole("button",{name:"Chốt đánh giá cuối cùng"}).click();
+    await final.getByRole("button",{name:"Chốt đánh giá cuối cùng",exact:true}).click();
     await until("final evaluation",x=>x.inspection.final_evaluation==="Đạt");
 
     const lifecycle=page.locator("[data-case-lifecycle]");
-    await lifecycle.getByRole("button",{name:"Chuyển: Chờ cấp chứng nhận"}).click();
+    await lifecycle.getByRole("button",{name:"Chuyển: Chờ cấp chứng nhận",exact:true}).click();
     await until("awaiting certificate decision",x=>x.case_summary.state==="awaiting_certificate_decision");
 
     const approval=page.getByRole("region",{name:"Trình phê duyệt PCT / CT"});
@@ -161,9 +161,9 @@ try {
     await page.getByRole("tab",{name:"Các đợt kiểm tra & thay đổi"}).click();
     await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
     // Reuse the Case lifecycle locator from the previous transition.
-    await lifecycle.getByRole("button",{name:"Chuyển: Đã cấp chứng nhận"}).click();
+    await lifecycle.getByRole("button",{name:"Chuyển: Đã cấp chứng nhận",exact:true}).click();
     await until("Case certified",x=>x.case_summary.state==="certified");
-    await lifecycle.getByRole("button",{name:"Chuyển: Đã đóng hồ sơ"}).click();
+    await lifecycle.getByRole("button",{name:"Chuyển: Đã đóng hồ sơ",exact:true}).click();
     await until("Case closed",x=>x.case_summary.state==="closed");
 
     const afterClose=await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");

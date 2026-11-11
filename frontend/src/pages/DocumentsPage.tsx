@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { CaseReport } from "../features/reports/CaseReport";
 import { caseReportReturn } from "../features/reports/caseReportUrl";
+import { reportReturnLocation } from "../features/reports/reportReturnLocation";
 import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { CaseWorkspace, ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
@@ -139,7 +140,8 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
 
 export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Scope }) {
   const location = useLocation();
-  const reportReturn = kind === "cases" ? caseReportReturn(location.state) : null;
+  const reportReturn = kind === "cases" ? caseReportReturn(location.state)
+    : reportReturnLocation(location.state, "change_requests");
   const { caseId, changeRequestId } = useParams();
   const id = kind === "cases" ? caseId : changeRequestId;
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
@@ -273,7 +275,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / {kind === "cases" ? "Case" : "Change Request"}</p>
       <h2>Danh mục tài liệu</h2>
-    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? "Quay lại báo cáo hồ sơ" : "Quay lại danh sách hồ sơ"}</Link></header>
+    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? "Quay lại báo cáo" : "Quay lại danh sách hồ sơ"}</Link></header>
     {!context ? <p role="status">Đang tải checklist tài liệu...</p>
       : context.error ? <ErrorState message={context.error} />
       : <><section className="panel">
@@ -281,7 +283,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
           <p className="muted-copy">{context.subtitle}</p>
           <p>{context.items.length} mục trong checklist · {available} đã có · {missing} chưa có</p>
           {kind === "cases" && <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={`/cases/${encodeURIComponent(id)}`}>Mở Case trong workspace</Link>}
-          {kind === "change-requests" && <Link className="text-link" to={`/reports/change-requests/${encodeURIComponent(id)}`}>Xem yêu cầu thay đổi</Link>}
+          {kind === "change-requests" && <Link className="text-link" state={reportReturn ? { reportReturn } : undefined} to={`/reports/change-requests/${encodeURIComponent(id)}?section=documents`}>Xem yêu cầu thay đổi</Link>}
           <div className="report-filter-grid">
             <label>Trạng thái tài liệu
               <select value={filter} onChange={event => setFilter(event.target.value as typeof filter)}>

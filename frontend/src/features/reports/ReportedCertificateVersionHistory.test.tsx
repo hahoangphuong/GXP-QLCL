@@ -44,6 +44,34 @@ function mount(route = "/reports/certificates/cert-uuid?site_id=site-uuid") {
 }
 beforeEach(() => vi.mocked(getGxpCertificateVersionHistory).mockReset().mockResolvedValue(history));
 
+it("retains report return state when selecting a historical version and navigating Back", async () => {
+  function StateControls() {
+    const location = useLocation();
+    const navigate = useNavigate();
+    return <>
+      <output data-testid="report-return-state">{JSON.stringify(location.state)}</output>
+      <button onClick={() => navigate(-1)}>Back</button>
+      <ReportedCertificateVersionHistory detail={detail} access={access} />
+    </>;
+  }
+  const source = "/reports?report=certificates&gxp_type=GSP&expiry_days=30&offset=100";
+  render(<MemoryRouter initialEntries={[{
+    pathname: "/reports/certificates/cert-uuid",
+    search: "?site_id=site-uuid",
+    state: { reportReturn: source },
+  }]}><StateControls /></MemoryRouter>);
+  fireEvent.click(await screen.findByText("Các phiên bản GPs đã lưu"));
+  await screen.findByText("Bảo quản lần 2");
+  fireEvent.change(screen.getByRole("combobox", { name: "Phiên bản đã lưu" }),
+    { target: { value: "version-one" } });
+  expect(screen.getByTestId("report-return-state")).toHaveTextContent(source);
+  expect(screen.getByRole("combobox", { name: "Phiên bản đã lưu" })).toHaveValue("version-one");
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(screen.getByTestId("report-return-state")).toHaveTextContent(source);
+  expect(screen.getByRole("combobox", { name: "Phiên bản đã lưu" })).toHaveValue("version-two");
+  expect(getGxpCertificateVersionHistory).toHaveBeenCalledOnce();
+});
+
 it("selects a persisted GxP version in the URL, preserves Site, and restores selection with Back", async () => {
   mount();
   fireEvent.click(await screen.findByText("Các phiên bản GPs đã lưu"));

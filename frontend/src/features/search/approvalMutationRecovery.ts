@@ -1,6 +1,17 @@
 import { createContext } from "react";
+import type { InspectionApprovalSubmissionCreateRequest, InspectionApprovalSubmissionCompleteRequest } from "../../types";
 
-export const ApprovalMutationContext = createContext({ pending: false, requiresReview: false });
+// Exact immutable request as accepted by the HTTP mutation owner. This is
+// in-session evidence of what was sent, not proof of a committed submission.
+export type ApprovalSubmittedCommand =
+  | { kind: "create"; caseId: string; stage: "PCT" | "CT"; request: InspectionApprovalSubmissionCreateRequest }
+  | { kind: "complete"; caseId: string; submissionId: string; request: InspectionApprovalSubmissionCompleteRequest };
+
+export const ApprovalMutationContext = createContext<{
+  pending: boolean;
+  requiresReview: boolean;
+  submitted?: ApprovalSubmittedCommand;
+}>({ pending: false, requiresReview: false });
 
 export class ApprovalMutationRecoveryError extends Error {}
 

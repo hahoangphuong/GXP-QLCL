@@ -81,7 +81,7 @@ function CaseApprovalEditor({
   const navigateToId = useRef<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const { pending: ownerPending, requiresReview } = useContext(ApprovalMutationContext);
+  const { pending: ownerPending, requiresReview, submitted: ownerSubmission } = useContext(ApprovalMutationContext);
   const [error, setError] = useCaseDraftState<string | null>("approval.create.error", null);
 
   const submissions = useMemo(
@@ -91,6 +91,7 @@ function CaseApprovalEditor({
     [caseWorkspace.inspection.approval_submissions],
   );
   const caseId = caseWorkspace.case_summary.id;
+  const submitted = (ownerPending || requiresReview) && ownerSubmission?.caseId === caseId ? ownerSubmission : null;
   const completedPct = submissions.filter((item) => item.stage === "PCT" && item.case_id === caseId && item.completed_on !== null);
   const pctById = useMemo(() => new Map(submissions.filter(item => item.stage === "PCT" && item.case_id === caseId).map(item => [item.approval_submission_id, item])), [submissions, caseId]);
   const ctByParent = useMemo(() => {
@@ -228,7 +229,29 @@ function CaseApprovalEditor({
       </div>;
     })}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
-    {requiresReview ? <p className="workspace-note" role="status">Chưa xác minh kết quả ghi. Thông tin trình và PCT cha đã chọn được giữ nguyên để đối chiếu canonical; không sửa, hủy hoặc gửi lại trước khi xác minh.</p> : null}
+    {submitted ? <section className="workspace-section" aria-label="Lệnh trình phê duyệt đã gửi" role="region">
+      <h5>Đối chiếu lệnh trình đã gửi (chỉ đọc)</h5>
+      <p className="workspace-note" role="status">{ownerPending
+        ? "Lệnh đang xử lý; chưa có xác nhận canonical."
+        : "Kết quả ghi chưa xác minh; không sửa hoặc gửi lại trước khi kiểm tra canonical."}</p>
+      <dl>
+        <dt>Thao tác</dt><dd>{submitted.kind === "create" ? `Tạo trình ${submitted.stage}` : "Hoàn tất trình"}</dd>
+        {submitted.kind === "create" ? <>
+          <dt>Tham chiếu đã gửi</dt><dd>{submitted.request.reference ?? "Không nhập"}</dd>
+          <dt>Ngày trình</dt><dd>{submitted.request.submitted_on ?? "Không nhập"}</dd>
+          <dt>Giờ trình</dt><dd>{submitted.request.submitted_time ?? "Không nhập"}</dd>
+          <dt>PCT cha (UUID)</dt><dd>{submitted.request.pct_submission_id ?? "Không có"}</dd>
+          <dt>Lý do</dt><dd>{submitted.request.reason ?? "Không nhập"}</dd>
+        </> : <>
+          <dt>Submission UUID</dt><dd>{submitted.submissionId}</dd>
+          <dt>Phiên bản đã gửi</dt><dd>{submitted.request.expected_version}</dd>
+          <dt>Ngày hoàn tất</dt><dd>{submitted.request.completed_on}</dd>
+          <dt>Giờ hoàn tất</dt><dd>{submitted.request.completed_time ?? "Không nhập"}</dd>
+          <dt>Lý do</dt><dd>{submitted.request.reason ?? "Không nhập"}</dd>
+        </>}
+      </dl>
+    </section> : null}
+    {requiresReview && !submitted ? <p className="workspace-note" role="status">Chưa xác minh kết quả ghi. Không gửi lại trước khi đối chiếu hồ sơ canonical.</p> : null}
   </section>;
 }
 

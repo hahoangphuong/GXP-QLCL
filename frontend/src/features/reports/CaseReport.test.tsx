@@ -1,10 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
 import { getCaseReport } from "../../lib/api";
 import { CaseReport } from "./CaseReport";
+import { caseReportReturn } from "./caseReportUrl";
 
 vi.mock("../../lib/api", () => ({ getCaseReport: vi.fn() }));
 const access: ApiAccess = { auth: { username: "test", role: "reader" }, useStubAuth: true, bearerToken: null, canLoadSecureApi: true, accessGeneration: 1 };
@@ -12,6 +13,22 @@ const row = { case_id: "case-a", site_id: "site-a", result_key: "site-a:GMP:cano
 
 beforeEach(() => { vi.mocked(getCaseReport).mockReset(); });
 describe("case report", () => {
+  it("opens Case documents with the exact applied report filters and page as a validated return hint", async () => {
+    vi.mocked(getCaseReport).mockResolvedValue({ items: [row], total_count: 1, offset: 0, limit: 100 });
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="documents-report-return">{caseReportReturn(location.state) ?? "missing"}</output>;
+    }
+    render(<MemoryRouter initialEntries={["/reports?report=cases&q=Cong+ty+A&gxp_type=GMP"]}>
+      <Routes>
+        <Route path="/reports" element={<CaseReport access={access} inspectionQueue={false} urlState showDocumentsLink />} />
+        <Route path="/documents/cases/:caseId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Xem tài liệu" }));
+    expect(screen.getByTestId("documents-report-return")).toHaveTextContent("/reports?report=cases&gxp_type=GMP&q=Cong+ty+A");
+  });
+
   it("filters cases and links the canonical case and line", async () => {
     vi.mocked(getCaseReport).mockResolvedValue({ items: [row], total_count: 1, offset: 0, limit: 100 });
     render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} /></MemoryRouter>);

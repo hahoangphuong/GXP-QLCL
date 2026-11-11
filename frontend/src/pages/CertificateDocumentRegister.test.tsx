@@ -81,11 +81,26 @@ describe("certificate document metadata register", () => {
   });
 
   it.each([
+    "/reports/certificates/cert-1",
+    "/reports/certificates/cert-1?version_id=version-1",
+  ])("accepts an exact canonical Certificate detail URL without Site hint (%s)", detail => {
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/documents/certificates/cert-1",
+      state: { certificateDetailReturn: detail },
+    }]}>
+      <Routes><Route path="/documents/certificates/:certificateId"
+        element={<CertificateDocumentRegister access={access} kind="certificate" />} /></Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại chi tiết GCN" }))
+      .toHaveAttribute("href", detail);
+  });
+
+  it.each([
     "/reports/certificates/other-cert?site_id=site-uuid",
     "https://invalid.example/reports/certificates/cert-1",
     "/reports/certificates/cert-1?site_id=site-a&site_id=site-b",
     "/reports/certificates/cert-1?site_id=site-uuid&foreign=1",
-    "/reports/certificates/cert-1?version_id=version-1",
+    "/reports/certificates/cert-1?site_id=&version_id=version-1",
   ])("rejects a foreign or malformed certificate detail return (%s)", hint => {
     render(<MemoryRouter initialEntries={[{
       pathname: "/documents/certificates/cert-1",

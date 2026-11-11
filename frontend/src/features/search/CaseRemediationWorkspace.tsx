@@ -17,6 +17,12 @@ import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
 import { CapaCycleComparison } from "./CapaCycleComparison";
 
+type SubmittedCapaCommand =
+  | { kind: "create"; caseId: string; request: CapaCycleCreateRequest }
+  | { kind: "update"; caseId: string; cycleId: string; request: CapaCycleUpdateRequest }
+  | { kind: "submit"; caseId: string; cycleId: string; request: CapaCycleSubmitRequest }
+  | { kind: "assess"; caseId: string; cycleId: string; request: CapaCycleAssessRequest };
+
 type CycleDraft = {
   incoming_reference: string;
   requested_on: string;
@@ -183,6 +189,17 @@ export function CaseRemediationWorkspace({
   const cycleOperationOwner = useCaseDraftRef("capa.operationOwner", { key: cycleIdentityKey, generation: 0 });
   const commandLock = useCaseCommandLock(`capa:${cycleIdentityKey}`);
   const createLock = useCaseCommandLock(`capa-create:${caseWorkspace.case_summary.id}`);
+  // The lock is an in-session request fence, not a canonical lifecycle fact.
+  // Snapshot exact normalized payload at acquisition so A→B→A cannot rewrite
+  // the information an operator needs to reconcile an unknown HTTP outcome.
+  const cycleEvidence = commandLock.pending || commandLock.requiresReview
+    ? commandLock.commandPayload<SubmittedCapaCommand>() : undefined;
+  const createEvidence = createLock.pending || createLock.requiresReview
+    ? createLock.commandPayload<SubmittedCapaCommand>() : undefined;
+  const caseId = caseWorkspace.case_summary.id;
+  const submittedCycle = cycleEvidence?.caseId === caseId && cycleEvidence.kind !== "create"
+    && cycleEvidence.cycleId === selectedCycle?.capa_cycle_id ? cycleEvidence : null;
+  const submittedCreate = createEvidence?.kind === "create" && createEvidence.caseId === caseId ? createEvidence : null;
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -245,17 +262,18 @@ export function CaseRemediationWorkspace({
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = createLock.acquire();
+    const request: CapaCycleCreateRequest = {
+      expected_case_version: createCaseVersion,
+      incoming_reference: normalizeText(draft.incoming_reference),
+      requested_on: normalizeText(draft.requested_on),
+      notes: normalizeText(draft.notes),
+    };
+    const command = createLock.acquire({ kind: "create", caseId, request: { ...request } } satisfies SubmittedCapaCommand);
     if (!command) return;
     setPendingAction("create");
     setErrorMessage(null);
     try {
-      await onCreateCycle({
-        expected_case_version: createCaseVersion,
-        incoming_reference: normalizeText(draft.incoming_reference),
-        requested_on: normalizeText(draft.requested_on),
-        notes: normalizeText(draft.notes),
-      });
+      await onCreateCycle(request);
       if (isCurrentCycleOperation(operationOwner)) {
         setIsCreating(false);
         setDraftChanged(false);
@@ -277,22 +295,21 @@ export function CaseRemediationWorkspace({
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = commandLock.acquire();
+    // Partial update: never add unrelated draft fields to the posted request.
+    const fieldValue = editingField === "requested_on"
+      ? normalizeText(draft.requested_on)
+      : editingField === "incoming_reference"
+        ? normalizeText(draft.incoming_reference)
+        : normalizeText(draft.notes);
+    const request: CapaCycleUpdateRequest = { expected_version: draftVersion, [editingField]: fieldValue };
+    const command = commandLock.acquire({
+      kind: "update", caseId, cycleId: selectedCycle.capa_cycle_id, request: { ...request },
+    } satisfies SubmittedCapaCommand);
     if (!command) return;
     setPendingAction("update");
     setErrorMessage(null);
     try {
-      // Backend Pydantic fields_set owns partial updates: submitting unrelated
-      // draft fields could silently overwrite canonical CAPA values.
-      const fieldValue = editingField === "requested_on"
-        ? normalizeText(draft.requested_on)
-        : editingField === "incoming_reference"
-          ? normalizeText(draft.incoming_reference)
-          : normalizeText(draft.notes);
-      await onUpdateCycle(selectedCycle.capa_cycle_id, {
-        expected_version: draftVersion,
-        [editingField]: fieldValue,
-      });
+      await onUpdateCycle(selectedCycle.capa_cycle_id, request);
       if (isCurrentCycleOperation(operationOwner)) {
         setEditingField(null);
         setDraftChanged(false);
@@ -316,16 +333,19 @@ export function CaseRemediationWorkspace({
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = commandLock.acquire();
+    const request: CapaCycleSubmitRequest = {
+      expected_version: draftVersion,
+      submitted_on: draft.submitted_on,
+      notes: normalizeText(draft.notes),
+    };
+    const command = commandLock.acquire({
+      kind: "submit", caseId, cycleId: selectedCycle.capa_cycle_id, request: { ...request },
+    } satisfies SubmittedCapaCommand);
     if (!command) return;
     setPendingAction("submit");
     setErrorMessage(null);
     try {
-      await onSubmitCycle(selectedCycle.capa_cycle_id, {
-        expected_version: draftVersion,
-        submitted_on: draft.submitted_on,
-        notes: normalizeText(draft.notes),
-      });
+      await onSubmitCycle(selectedCycle.capa_cycle_id, request);
       if (isCurrentCycleOperation(operationOwner)) setDraftChanged(false);
     } catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
@@ -346,17 +366,20 @@ export function CaseRemediationWorkspace({
       return;
     }
     const operationOwner = cycleOperationOwner.current;
-    const command = commandLock.acquire();
+    const request: CapaCycleAssessRequest = {
+      expected_version: draftVersion,
+      assessed_on: draft.assessed_on,
+      result: draft.result,
+      notes: normalizeText(draft.notes),
+    };
+    const command = commandLock.acquire({
+      kind: "assess", caseId, cycleId: selectedCycle.capa_cycle_id, request: { ...request },
+    } satisfies SubmittedCapaCommand);
     if (!command) return;
     setPendingAction("assess");
     setErrorMessage(null);
     try {
-      await onAssessCycle(selectedCycle.capa_cycle_id, {
-        expected_version: draftVersion,
-        assessed_on: draft.assessed_on,
-        result: draft.result,
-        notes: normalizeText(draft.notes),
-      });
+      await onAssessCycle(selectedCycle.capa_cycle_id, request);
       if (isCurrentCycleOperation(operationOwner)) setDraftChanged(false);
     } catch (error) {
       if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command);
@@ -465,6 +488,41 @@ export function CaseRemediationWorkspace({
       <CapaCycleComparison key={caseWorkspace.case_summary.id} cycles={cycles} />
 
       {commandLock.requiresReview || createLock.requiresReview ? <p className="form-error" role="alert">Chưa thể xác minh kết quả thao tác. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra.</p> : null}
+
+      {[submittedCreate, submittedCycle].filter((item): item is SubmittedCapaCommand => item !== null).map((item) => (
+        <section aria-label={item.kind === "create" ? "Lệnh tạo CAPA đã gửi" : "Lệnh vòng CAPA đã gửi"}
+          className="workspace-section" key={item.kind} role="region">
+          <h4>Đối chiếu lệnh CAPA đã gửi — chỉ đọc</h4>
+          <p className="workspace-note" role="status">
+            {(item.kind === "create" ? createLock.pending : commandLock.pending)
+              ? "Đang xác minh kết quả ghi." : "Kết quả ghi chưa xác minh."}
+            {" "}Không gửi lại trước khi đối chiếu Case canonical.
+          </p>
+          <dl>
+            <dt>Thao tác</dt><dd>{{ create: "Tạo vòng CAPA", update: "Cập nhật vòng CAPA",
+              submit: "Ghi nhận tiếp nhận CAPA", assess: "Đánh giá CAPA" }[item.kind]}</dd>
+            {item.kind === "create" ? <>
+              <dt>Case version đã gửi</dt><dd>{item.request.expected_case_version}</dd>
+              <dt>Tham chiếu đến</dt><dd>{item.request.incoming_reference ?? "Không nhập"}</dd>
+              <dt>Ngày yêu cầu</dt><dd>{item.request.requested_on ?? "Không nhập"}</dd>
+            </> : <>
+              <dt>Vòng CAPA UUID</dt><dd>{item.cycleId}</dd>
+              <dt>Cycle version đã gửi</dt><dd>{item.request.expected_version}</dd>
+              {item.kind === "update" ? <>
+                {Object.entries(item.request).filter(([name]) => name !== "expected_version").map(([name, value]) => (
+                  <div key={name}><dt>Trường cập nhật: {name}</dt><dd>{value ?? "Không nhập"}</dd></div>
+                ))}
+              </> : item.kind === "submit" ? <>
+                <dt>Ngày tiếp nhận</dt><dd>{item.request.submitted_on}</dd>
+              </> : <>
+                <dt>Ngày đánh giá</dt><dd>{item.request.assessed_on}</dd>
+                <dt>Kết quả</dt><dd>{item.request.result}</dd>
+              </>}
+            </>}
+            {item.kind !== "update" ? <><dt>Ghi chú</dt><dd>{item.request.notes ?? "Không nhập"}</dd></> : null}
+          </dl>
+        </section>
+      ))}
 
       {isCreating ? (
         <section className="workspace-section">

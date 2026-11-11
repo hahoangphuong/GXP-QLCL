@@ -1,6 +1,6 @@
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -760,4 +760,147 @@ it("compares CAPA history without changing selected cycle or invoking any lifecy
   for (const callback of ["onCreateCycle", "onUpdateCycle", "onSubmitCycle", "onAssessCycle"] as const) {
     expect(view.handlers[callback]).not.toHaveBeenCalled();
   }
+});
+
+describe("CAPA exact submitted command evidence across Case ownership changes", () => {
+  function caseEditor(id: string, actions: LifecycleActionReadiness[], handlers: {
+    onSelectedCycleChange: ReturnType<typeof vi.fn>;
+    onCreateCycle: ReturnType<typeof vi.fn>;
+    onUpdateCycle: ReturnType<typeof vi.fn>;
+    onSubmitCycle: ReturnType<typeof vi.fn>;
+    onAssessCycle: ReturnType<typeof vi.fn>;
+  }, cycles: CaseWorkspaceRemediationCycle[] = [cycle()]) {
+    const current = workspace(cycles, actions);
+    return <CaseDraftSession identity={id}>
+      <CaseRemediationWorkspace
+        caseWorkspace={{ ...current, case_summary: { ...current.case_summary, id } }}
+        selectedCycleId={cycles[0]?.capa_cycle_id ?? null} {...handlers}
+      />
+    </CaseDraftSession>;
+  }
+  function handlers() {
+    return { onSelectedCycleChange: vi.fn(), onCreateCycle: vi.fn(), onUpdateCycle: vi.fn(),
+      onSubmitCycle: vi.fn(), onAssessCycle: vi.fn() };
+  }
+
+  it("retains the exact create request after A→B→A and unknown result, without showing A data in B", async () => {
+    const request = deferred<void>();
+    const h = handlers();
+    h.onCreateCycle.mockReturnValue(request.promise);
+    const actions = [action("create_capa_cycle", true, 8)];
+    const view = render(caseEditor("case-A", actions, h, []));
+    fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+    fireEvent.change(screen.getByLabelText("Số tham chiếu đến"), { target: { value: "  CAPA-NEW  " } });
+    fireEvent.change(screen.getByLabelText("Ngày yêu cầu"), { target: { value: "2026-11-11" } });
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "  Nội dung đã gửi  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
+    expect(h.onCreateCycle).toHaveBeenCalledExactlyOnceWith({
+      expected_case_version: 8, incoming_reference: "CAPA-NEW",
+      requested_on: "2026-11-11", notes: "Nội dung đã gửi",
+    });
+    const evidence = screen.getByRole("region", { name: "Lệnh tạo CAPA đã gửi" });
+    expect(evidence).toHaveTextContent("Case version đã gửi");
+    expect(evidence).toHaveTextContent("CAPA-NEW");
+    expect(evidence).toHaveTextContent("Nội dung đã gửi");
+    view.rerender(caseEditor("case-B", actions, h, []));
+    expect(screen.queryByRole("region", { name: "Lệnh tạo CAPA đã gửi" })).not.toBeInTheDocument();
+    view.rerender(caseEditor("case-A", actions, h, []));
+    expect(screen.getByRole("region", { name: "Lệnh tạo CAPA đã gửi" })).toHaveTextContent("CAPA-NEW");
+    await act(async () => request.reject(new CaseFieldMutationRecoveryError("unverified create")));
+    view.rerender(caseEditor("case-B", actions, h, []));
+    view.rerender(caseEditor("case-A", actions, h, []));
+    expect(within(screen.getByRole("region", { name: "Lệnh tạo CAPA đã gửi" })).getByRole("status")).toHaveTextContent("Kết quả ghi chưa xác minh");
+    expect(h.onCreateCycle).toHaveBeenCalledOnce();
+  });
+
+  it.each(["submit", "assess"] as const)(
+    "preserves the exact %s payload and original version when Case A is selected again", async kind => {
+      const request = deferred<void>();
+      const h = handlers();
+      const handler = kind === "submit" ? h.onSubmitCycle : h.onAssessCycle;
+      handler.mockReturnValue(request.promise);
+      const actions = [action(`${kind}_capa_cycle:capa-1`, true, 2)];
+      const view = render(caseEditor("case-A", actions, h));
+      if (kind === "submit") {
+        fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-11-10" } });
+      } else {
+        fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-11-11" } });
+        fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "rejected" } });
+      }
+      fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "  CAPA gửi đi  " } });
+      fireEvent.click(screen.getByRole("button", { name: kind === "submit" ? "Ghi nhận tiếp nhận" : "Đánh giá" }));
+      expect(handler).toHaveBeenCalledOnce();
+      const original = handler.mock.calls[0][1];
+      expect(original).toMatchObject({
+        expected_version: 2, notes: "CAPA gửi đi",
+        ...(kind === "submit" ? { submitted_on: "2026-11-10" } : { assessed_on: "2026-11-11", result: "rejected" }),
+      });
+      view.rerender(caseEditor("case-B", actions, h));
+      expect(screen.queryByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).not.toBeInTheDocument();
+      view.rerender(caseEditor("case-A", actions, h, [cycle({ row_version: 9 })]));
+      const evidence = screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" });
+      expect(evidence).toHaveTextContent("Cycle version đã gửi");
+      expect(evidence).toHaveTextContent("2");
+      expect(evidence).toHaveTextContent("CAPA gửi đi");
+      expect(evidence).toHaveTextContent(kind === "submit" ? "2026-11-10" : "2026-11-11");
+      if (kind === "assess") expect(evidence).toHaveTextContent("rejected");
+      await act(async () => request.reject(new CaseFieldMutationRecoveryError("canonical readback unknown")));
+      expect(within(screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).getByRole("status")).toHaveTextContent("Kết quả ghi chưa xác minh");
+      expect(handler).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("shows exact partial-update payload during pending and unknown outcome without inheriting another CAPA cycle", async () => {
+    const request = deferred<void>();
+    const h = handlers();
+    h.onUpdateCycle.mockReturnValue(request.promise);
+    const actions = [
+      action("update_capa_cycle:capa-1", true, 2),
+      action("update_capa_cycle:capa-2", true, 7),
+    ];
+    const cycles = [cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2, row_version: 7 })];
+    const editor = (id: string, selectedId: string) => {
+      const current = workspace(cycles, actions);
+      return <CaseDraftSession identity={id}><CaseRemediationWorkspace
+        caseWorkspace={{ ...current, case_summary: { ...current.case_summary, id } }}
+        selectedCycleId={selectedId} {...h}
+      /></CaseDraftSession>;
+    };
+    const view = render(editor("case-A", "capa-1"));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Ghi chú" }), { key: "F2" });
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "  Ghi chú của lệnh A  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Ghi chú" }));
+    expect(h.onUpdateCycle).toHaveBeenCalledExactlyOnceWith("capa-1", { expected_version: 2, notes: "Ghi chú của lệnh A" });
+    const original = screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" });
+    expect(original).toHaveTextContent("Trường cập nhật: notes");
+    expect(original).toHaveTextContent("Ghi chú của lệnh A");
+    expect(original).not.toHaveTextContent("Ngày yêu cầu");
+    view.rerender(editor("case-A", "capa-2"));
+    expect(screen.queryByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).not.toBeInTheDocument();
+    view.rerender(editor("case-B", "capa-1"));
+    expect(screen.queryByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).not.toBeInTheDocument();
+    view.rerender(editor("case-A", "capa-1"));
+    expect(screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).toHaveTextContent("Ghi chú của lệnh A");
+    await act(async () => request.reject(new CaseFieldMutationRecoveryError("unknown update")));
+    expect(within(screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).getByRole("status")).toHaveTextContent("Kết quả ghi chưa xác minh");
+    expect(h.onUpdateCycle).toHaveBeenCalledOnce();
+  });
+
+  it("captures only the edited field, not the other CAPA draft fields, and clears after definitive rejection", async () => {
+    const h = handlers();
+    h.onUpdateCycle.mockRejectedValue(Object.assign(new Error("stale"), { status: 409 }));
+    const actions = [action("update_capa_cycle:capa-1", true, 2)];
+    const view = render(caseEditor("case-A", actions, h));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Số tham chiếu đến" }), { key: "F2" });
+    fireEvent.change(screen.getByLabelText("Số tham chiếu đến"), { target: { value: "  CV CHỈ GỬI  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Số CV đến" }));
+    expect(h.onUpdateCycle).toHaveBeenCalledExactlyOnceWith("capa-1", {
+      expected_version: 2, incoming_reference: "CV CHỈ GỬI",
+    });
+    await screen.findByRole("alert");
+    view.rerender(caseEditor("case-B", actions, h));
+    view.rerender(caseEditor("case-A", actions, h));
+    expect(screen.queryByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).not.toBeInTheDocument();
+    expect(h.onUpdateCycle).toHaveBeenCalledOnce();
+  });
 });

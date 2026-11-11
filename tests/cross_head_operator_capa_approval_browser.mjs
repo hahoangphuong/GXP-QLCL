@@ -67,7 +67,7 @@ try {
     await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
 
     // Create the real InspectionOutcome through the owned field editor.
-    await page.getByRole("button",{name:"Sửa Kết quả kiểm tra"}).click();
+    await page.getByRole("button",{name:"Sửa Kết quả kiểm tra"}).press("Enter");
     await page.getByRole("textbox",{name:"Kết quả kiểm tra"}).fill("CI synthetic inspection result");
     await page.getByRole("button",{name:"Lưu Đánh giá kết quả"}).click();
     await until("InspectionOutcome persisted",ws=>

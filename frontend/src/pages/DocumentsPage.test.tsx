@@ -120,6 +120,64 @@ afterEach(() => {
 });
 
 describe("document report return navigation", () => {
+  it("returns from the Change Request checklist to the originating workflow queue", async () => {
+    const source = "/workflow?queue=change_requests&state=received&q=facility&offset=100";
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: source } }]}>
+      <Routes><Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} /></Routes>
+    </MemoryRouter>);
+    const link = screen.getByRole("link", { name: "Quay lại Bàn công việc" });
+    expect(link).toHaveAttribute("href", source);
+    await screen.findByText("Yêu cầu thay đổi change-1");
+  });
+  it.each(["/workflow?queue=inspection", "/workflow?queue=change_requests&offset=1", "/workflow?queue=change_requests&state=approved", "/workflow?queue=change_requests&queue=change_requests", "/workflow?queue=change_requests&site_id=foreign"])("rejects malformed Change Request workflow return (%s)", hint => {
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: hint } }]}>
+      <Routes><Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} /></Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại danh sách hồ sơ" })).toHaveAttribute("href", "/documents");
+  });
+
+  it("opens the exact verified Change Request checklist document from a shareable key", async () => {
+    vi.mocked(getDocumentDetail).mockResolvedValue(detailPayload("change"));
+    mount("/documents/change-requests/change-1?document_key=change_request%3Achange-1%3AREQUEST");
+    expect(await screen.findByRole("heading", { name: "Chi tiết: Biên bản kiểm tra" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Xem toàn bộ checklist" })).toHaveAttribute("href", "/documents/change-requests/change-1");
+    expect(getDocumentDetail).toHaveBeenCalledWith("change-doc", expect.anything(), true, null);
+  });
+  it.each(["document_key=unknown", "document_key=change_request%3Achange-1%3AREQUEST&document_key=another", "site_id=foreign"])("fails closed for missing or invalid document key (%s)", async query => {
+    mount("/documents/change-requests/change-1?" + query);
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(/mục tài liệu/);
+    expect(screen.queryByRole("button", { name: "Xem chi tiết" })).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
+  it("restores the originating Change Request report and opens the exact document section", async () => {
+    const origin = "/reports?report=change_requests&state=received&q=company&offset=100";
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="request-detail-return">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: origin } }]}>
+      <Routes>
+        <Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} />
+        <Route path="/reports/change-requests/:changeRequestId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại báo cáo yêu cầu thay đổi" })).toHaveAttribute("href", origin);
+    await screen.findByText("Yêu cầu thay đổi change-1");
+    const details = screen.getByRole("link", { name: "Xem yêu cầu thay đổi" });
+    expect(details).toHaveAttribute("href", "/reports/change-requests/change-1?section=documents");
+    fireEvent.click(details);
+    expect(screen.getByTestId("request-detail-return")).toHaveTextContent(origin);
+  });
+  it.each(["https://external.invalid", "/reports?report=certificates", "/reports?report=change_requests&report=change_requests"])("rejects unrelated Change Request report return (%s)", hint => {
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: hint } }]}>
+      <Routes><Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} /></Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại danh sách hồ sơ" })).toHaveAttribute("href", "/documents");
+    expect(screen.queryByRole("link", { name: "Quay lại báo cáo yêu cầu thay đổi" })).not.toBeInTheDocument();
+  });
+
   it("returns to the exact report filter rather than resetting the Case search", async () => {
     const source = "/reports?report=cases&q=GMP&offset=100";
     render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: source } }]}>
@@ -544,7 +602,7 @@ describe("contextual document register", () => {
     mount("/documents/change-requests/change-1");
     expect(await screen.findByText("Cơ sở B")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Xem yêu cầu thay đổi" }))
-      .toHaveAttribute("href", "/reports/change-requests/change-1");
+      .toHaveAttribute("href", "/reports/change-requests/change-1?section=documents");
     fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }));
     await waitFor(() => expect(getDocumentDetail).toHaveBeenCalledWith("change-doc", expect.anything(), true, null));
     expect(await screen.findByText(/Phiên bản 2:/)).toBeInTheDocument();

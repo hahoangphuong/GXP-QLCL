@@ -3819,6 +3819,10 @@ class CaseWorkflowService:
                 select(InspectionTeamMember)
                 .where(InspectionTeamMember.team_id == existing_team.id)
                 .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
+                # The Case lock fences this replacement, but a long-lived
+                # Session may still cache pre-commit member identities.
+                # Validate and audit the committed child snapshot instead.
+                .execution_options(populate_existing=True)
             )
         )
         if existing_team is not None:

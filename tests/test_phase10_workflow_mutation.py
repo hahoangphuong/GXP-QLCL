@@ -4441,3 +4441,101 @@ def test_inspection_stage_create_only_null_and_versioned_updates(kind):
         assert err.value.status_code == 409
         session.rollback()
     engine.dispose()
+
+
+def test_inspection_team_replace_reads_committed_members_not_cached_before_audit(tmp_path):
+    """A fresh team token must not legalize old cached member values as the audit BEFORE."""
+    engine = create_engine(f"sqlite:///{(tmp_path / 'team-member-committed-before.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as seed:
+        case_id = seed_case(seed)
+        identities = seed_inspection_team_identities(seed)
+        initial = service.upsert_inspection_team(
+            seed, case_id=case_id,
+            members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
+                      "role_code": "LEADER", "role_label": "original", "sort_order": 1}],
+            reason="Seed canonical team.", user=build_authenticated_user("team-writer", "manager"),
+        )
+        seed.commit()
+        team_id, version = initial["team_id"], initial["row_version"]
+        member_id = seed.scalar(select(InspectionTeamMember.id).where(InspectionTeamMember.team_id == team_id))
+
+    with Session(engine, expire_on_commit=False) as cached:
+        member = cached.get(InspectionTeamMember, member_id)
+        assert member is not None and member.role_label == "original"
+        cached.commit()
+
+        with Session(engine) as writer:
+            live = writer.get(InspectionTeamMember, member_id)
+            assert live is not None
+            live.role_label = "committed-correction"
+            writer.commit()
+
+        assert member.role_label == "original", "Test must preserve the older ORM identity."
+        replaced = service.upsert_inspection_team(
+            cached, case_id=case_id, expected_version=version,
+            members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
+                      "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
+            reason="Replace after committed correction.", user=build_authenticated_user("team-writer", "manager"),
+        )
+        cached.commit()
+
+    with Session(engine) as verify:
+        audit = verify.get(AuditEvent, replaced["audit_event_id"])
+        assert audit is not None
+        before = json.loads(audit.old_values_json)
+        after = json.loads(audit.new_values_json)
+        assert before["members"][0]["role_label"] == "committed-correction"
+        assert after["members"][0]["role_label"] == "replacement"
+
+
+def test_inspection_team_cached_valid_member_cannot_bypass_newly_ambiguous_identity(tmp_path):
+    """Owner lock must re-read the member shape before replace-all authorization."""
+    engine = create_engine(f"sqlite:///{(tmp_path / 'team-member-canonical-shape.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as seed:
+        case_id = seed_case(seed)
+        identities = seed_inspection_team_identities(seed)
+        initial = service.upsert_inspection_team(
+            seed, case_id=case_id,
+            members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
+                      "role_code": "LEADER", "role_label": "original", "sort_order": 1}],
+            reason="Seed a valid member.", user=build_authenticated_user("team-writer", "manager"),
+        )
+        seed.commit()
+        team_id, version = initial["team_id"], initial["row_version"]
+        member_id = seed.scalar(select(InspectionTeamMember.id).where(InspectionTeamMember.team_id == team_id))
+        audit_count = seed.query(AuditEvent).count()
+
+    with Session(engine, expire_on_commit=False) as cached:
+        member = cached.get(InspectionTeamMember, member_id)
+        assert member is not None and member.inspector_profile_id is None
+        cached.commit()
+
+        with Session(engine) as writer:
+            live = writer.get(InspectionTeamMember, member_id)
+            assert live is not None
+            # Legacy/null identity_kind allows this imported ambiguous shape at
+            # the DB expand boundary, but normal runtime may never replace it.
+            live.inspector_profile_id = identities["profile_id"]
+            writer.commit()
+
+        assert member.inspector_profile_id is None
+        with pytest.raises(HTTPException, match="cannot be replaced"):
+            service.upsert_inspection_team(
+                cached, case_id=case_id, expected_version=version,
+                members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
+                          "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
+                reason="Must reject ambiguous persisted member.", user=build_authenticated_user("team-writer", "manager"),
+            )
+        cached.rollback()
+
+    with Session(engine) as verify:
+        actual = verify.get(InspectionTeamMember, member_id)
+        assert actual is not None and actual.inspector_profile_id == identities["profile_id"]
+        assert actual.person_id == identities["direct_person_id"]
+        team = verify.get(InspectionTeam, team_id)
+        assert team is not None and team.row_version == version
+        assert verify.query(AuditEvent).count() == audit_count

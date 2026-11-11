@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace } from "../../lib/api";
@@ -56,6 +56,55 @@ beforeEach(() => {
 });
 
 describe("full canonical Change Request read workspace", () => {
+  it("deep-links to the document section and restores tab selection on Back/Forward without new GETs", async () => {
+    function History() {
+      const location = useLocation(), navigate = useNavigate();
+      return <><output data-testid="section-url">{location.search}</output>
+        <button onClick={() => navigate(-1)}>Back</button><button onClick={() => navigate(1)}>Forward</button></>;
+    }
+    render(<MemoryRouter initialEntries={["/reports/change-requests/cr-uuid?section=documents"]}>
+      <History /><Routes><Route path="/reports/change-requests/:changeRequestId"
+        element={<ChangeRequestReadWorkspace access={access} />} /></Routes>
+    </MemoryRouter>);
+    await screen.findByText("quyet-dinh.pdf");
+    expect(screen.getByRole("button", { name: "Tài liệu" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý và chứng nhận" }));
+    expect(screen.getByTestId("section-url")).toHaveTextContent("section=processing");
+    expect(screen.getByText("123/QĐ")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("button", { name: "Tài liệu" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("quyet-dinh.pdf")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+    expect(screen.getByRole("button", { name: "Xử lý và chứng nhận" })).toHaveAttribute("aria-pressed", "true");
+    expect(getChangeRequestWorkspace).toHaveBeenCalledOnce();
+  });
+
+  it.each(["section=unknown", "section=documents&section=details", "site_id=foreign"])("rejects malformed detail section hint before canonical GET (%s)", async query => {
+    mount("/reports/change-requests/cr-uuid?" + query);
+    expect(screen.getByRole("alert")).toHaveTextContent("Tham số phần yêu cầu thay đổi không hợp lệ");
+    expect(getChangeRequestWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("keeps report return context when switching sections and opening the Change Request checklist", async () => {
+    const origin = "/reports?report=change_requests&state=under_review&offset=100";
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="checklist-return">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={[{ pathname: "/reports/change-requests/cr-uuid", state: { reportReturn: origin } }]}>
+      <Routes>
+        <Route path="/reports/change-requests/:changeRequestId" element={<ChangeRequestReadWorkspace access={access} />} />
+        <Route path="/documents/change-requests/:changeRequestId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    await screen.findByText("site-uuid");
+    fireEvent.click(screen.getByRole("button", { name: "Tài liệu" }));
+    expect(screen.getByRole("link", { name: "Quay lại Báo cáo" })).toHaveAttribute("href", origin);
+    fireEvent.click(screen.getByRole("link", { name: "Xem checklist và phiên bản" }));
+    expect(screen.getByTestId("checklist-return")).toHaveTextContent(origin);
+    expect(getChangeRequestWorkspace).toHaveBeenCalledOnce();
+  });
+
   it("returns to the originating report filters and page", async () => {
     render(<MemoryRouter initialEntries={[{ pathname: "/reports/change-requests/cr-uuid", state: { reportReturn: "/reports?report=change_requests&state=received&offset=100" } }]}><Routes><Route path="/reports/change-requests/:changeRequestId" element={<ChangeRequestReadWorkspace access={access} />} /></Routes></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "Quay lại Báo cáo" })).toHaveAttribute("href", "/reports?report=change_requests&state=received&offset=100");
@@ -81,6 +130,8 @@ describe("full canonical Change Request read workspace", () => {
       .toEqual(["/documents/certificates/gcn-uuid", "/documents/business-eligibility-certificates/ddk-uuid"]);
     fireEvent.click(screen.getByRole("button", { name: "Tài liệu" }));
     expect(screen.getByText("quyet-dinh.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Xem mục này" })).toHaveAttribute("href",
+      "/documents/change-requests/cr-uuid?document_key=cr%3Acr-uuid%3Adecision");
     expect(screen.getByRole("link", { name: "Xem checklist và phiên bản" }))
       .toHaveAttribute("href", "/documents/change-requests/cr-uuid");
   });

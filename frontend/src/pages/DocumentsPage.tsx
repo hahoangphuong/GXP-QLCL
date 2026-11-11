@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { CaseReport } from "../features/reports/CaseReport";
 import { caseReportReturn } from "../features/reports/caseReportUrl";
+import { reportReturnLocation } from "../features/reports/reportReturnLocation";
 import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { CaseWorkspace, ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
@@ -139,7 +140,14 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
 
 export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Scope }) {
   const location = useLocation();
-  const reportReturn = kind === "cases" ? caseReportReturn(location.state) : null;
+  const [documentParams] = useSearchParams();
+  const hints = documentParams.getAll("document_key");
+  const documentHintValid = kind !== "change-requests" || (hints.length <= 1
+    && [...documentParams.keys()].every(key => key === "document_key")
+    && (hints.length === 0 || (hints[0].length > 0 && hints[0].length <= 1024 && hints[0] === hints[0].trim())));
+  const requestedKey = kind === "change-requests" && documentHintValid ? hints[0] ?? null : null;
+  const reportReturn = kind === "cases" ? caseReportReturn(location.state)
+    : reportReturnLocation(location.state, "change_requests");
   const { caseId, changeRequestId } = useParams();
   const id = kind === "cases" ? caseId : changeRequestId;
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
@@ -163,11 +171,20 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
   useEffect(() => { downloadToken.current = null; setDownloadPending(false); setDownloadError(null); }, [selection]);
 
   const context = source?.owner === owner ? source : null;
-  const currentItem = selection?.owner === owner ? context?.items.find(item => item.checklist_key === selection.key && item.document_id === selection.id) ?? null : null;
-  const visibleDetail = detail?.owner === owner && detail.selection === selection ? detail : null;
+  const currentItem = selection?.owner === owner && (!requestedKey || selection.key === requestedKey)
+    ? context?.items.find(item => item.checklist_key === selection.key && item.document_id === selection.id) ?? null : null;
+  const visibleDetail = currentItem && detail?.owner === owner && detail.selection === selection ? detail : null;
+  useEffect(() => {
+    // A deep-link key is a lookup hint: select only after canonical checklist ownership is verified.
+    if (kind !== "change-requests" || !requestedKey || !context || context.error) return;
+    const item = context.items.find(candidate => candidate.checklist_key === requestedKey);
+    if (item?.status === "available" && item.document_id && item.detail_available) {
+      setSelection({ owner, key: item.checklist_key, id: item.document_id });
+    }
+  }, [kind, requestedKey, context, owner]);
 
   useEffect(() => {
-    if (!canLoadSecureApi || !id) return;
+    if (!canLoadSecureApi || !id || !documentHintValid) return;
     let live = true;
     const lookup = kind === "cases"
       ? getCaseWorkspace(id, auth, useStubAuth, bearerToken).then(workspace => {
@@ -199,7 +216,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
       if (live) setSource({ owner, name: "", subtitle: "", siteId: "", items: [], actions: [], error: error.message });
     });
     return () => { live = false; };
-  }, [id, owner, kind, auth, useStubAuth, bearerToken, canLoadSecureApi]);
+  }, [id, owner, kind, auth, useStubAuth, bearerToken, canLoadSecureApi, documentHintValid]);
 
   useEffect(() => {
     if (!canLoadSecureApi || !id || !selection || !currentItem?.document_id || !currentItem.detail_available) return;
@@ -261,8 +278,10 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
 
   if (!canLoadSecureApi) return <EmptyState title="Cần đăng nhập" description="Đăng nhập để đọc checklist tài liệu theo hồ sơ." />;
   if (!id) return <p role="alert">Thiếu định danh hồ sơ.</p>;
+  if (!documentHintValid) return <p role="alert">Tham số mục tài liệu không hợp lệ.</p>;
   const items = (context?.items ?? []).filter(item =>
-    (filter === "all" || item.status === filter)
+    (!requestedKey || item.checklist_key === requestedKey)
+    && (filter === "all" || item.status === filter)
     && [item.label, item.title ?? "", item.family_code ?? "", item.original_filename ?? ""]
       .some(value => value.toLocaleLowerCase("vi").includes(query.trim().toLocaleLowerCase("vi"))),
   );
@@ -273,15 +292,20 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / {kind === "cases" ? "Case" : "Change Request"}</p>
       <h2>Danh mục tài liệu</h2>
-    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? "Quay lại báo cáo hồ sơ" : "Quay lại danh sách hồ sơ"}</Link></header>
+    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? (kind === "cases" ? "Quay lại báo cáo hồ sơ" : reportReturn.startsWith("/workflow?") ? "Quay lại Bàn công việc" : "Quay lại báo cáo yêu cầu thay đổi") : "Quay lại danh sách hồ sơ"}</Link></header>
     {!context ? <p role="status">Đang tải checklist tài liệu...</p>
       : context.error ? <ErrorState message={context.error} />
+      : requestedKey && !context.items.some(item => item.checklist_key === requestedKey)
+        ? <p role="alert">Không tìm thấy mục tài liệu trong checklist canonical của yêu cầu thay đổi.</p>
       : <><section className="panel">
           <h3>{context.name}</h3>
           <p className="muted-copy">{context.subtitle}</p>
           <p>{context.items.length} mục trong checklist · {available} đã có · {missing} chưa có</p>
           {kind === "cases" && <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={`/cases/${encodeURIComponent(id)}`}>Mở Case trong workspace</Link>}
-          {kind === "change-requests" && <Link className="text-link" to={`/reports/change-requests/${encodeURIComponent(id)}`}>Xem yêu cầu thay đổi</Link>}
+          {kind === "change-requests" && <Link className="text-link" state={reportReturn ? { reportReturn } : undefined} to={`/reports/change-requests/${encodeURIComponent(id)}?section=documents`}>Xem yêu cầu thay đổi</Link>}
+          {kind === "change-requests" && requestedKey && <p><Link className="text-link"
+            state={reportReturn ? { reportReturn } : undefined}
+            to={`/documents/change-requests/${encodeURIComponent(id)}`}>Xem toàn bộ checklist</Link></p>}
           <div className="report-filter-grid">
             <label>Trạng thái tài liệu
               <select value={filter} onChange={event => setFilter(event.target.value as typeof filter)}>

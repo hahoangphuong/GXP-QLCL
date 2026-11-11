@@ -3750,7 +3750,14 @@ class CaseWorkflowService:
         if normalized_stage == "CT":
             if pct_submission_id is None:
                 raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
-            parent = session.get(InspectionApprovalSubmission, pct_submission_id)
+            # The Case lock fences approval mutations, but Session.get may
+            # return a PCT cached before another transaction completed it.
+            # Read the committed child snapshot before CT parent validation.
+            parent = session.scalars(
+                select(InspectionApprovalSubmission)
+                .where(InspectionApprovalSubmission.id == pct_submission_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
             if parent is None:
                 raise HTTPException(status_code=404, detail="PCT approval submission not found.")
             try:

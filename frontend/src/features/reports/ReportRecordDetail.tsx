@@ -88,7 +88,7 @@ export function ReportRecordDetail({ access, kind }: { access: ApiAccess; kind: 
           </dl>
           <h3>Phạm vi chứng nhận</h3>
           {Array.isArray(item.scopes) && item.scopes.length > 0 ? <ul>{item.scopes.map(scope => <li className="persisted-version-text" key={scope.id}>{scope.scope_text}</li>)}</ul> : <p>Chưa có phạm vi chứng nhận.</p>}
-          <p><Link className="text-link" to={`/documents/certificates/${encodeURIComponent(item.certificate_id)}`}>Xem metadata tài liệu</Link></p>
+          <p><Link className="text-link" state={{ ...(reportReturn ? { reportReturn } : {}), certificateDetailReturn: `${location.pathname}${location.search}` }} to={`/documents/certificates/${encodeURIComponent(item.certificate_id)}`}>Xem metadata tài liệu</Link></p>
           <p className="muted-copy">Danh mục tài liệu chỉ chứa metadata; chưa xác minh tệp gốc hoặc chữ ký.</p>
           <ReportedCertificateVersionHistory detail={item} access={access} />
         </section>

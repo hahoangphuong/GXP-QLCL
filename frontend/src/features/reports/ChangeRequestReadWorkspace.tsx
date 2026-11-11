@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { ApiAccess } from "../../App";
 import { getChangeRequestWorkspace } from "../../lib/api";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
@@ -44,10 +44,17 @@ function ArtifactTable({ title, items, siteId, changeRequestId }: { title: strin
 
 export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
   const { changeRequestId } = useParams();
-  const returnLocation = reportReturnLocation(useLocation().state, "change_requests");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const returnLocation = reportReturnLocation(location.state, "change_requests");
+  const sectionParams = new URLSearchParams(location.search);
+  const selectedSection = sectionParams.get("section");
+  const sectionValid = [...sectionParams.keys()].every(key => key === "section")
+    && sectionParams.getAll("section").length <= 1
+    && (selectedSection === null || SECTIONS.some(tab => tab.key === selectedSection));
+  const section: Section = sectionValid && selectedSection ? selectedSection as Section : "request";
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [changeRequestId, accessGeneration, auth, bearerToken, useStubAuth, canLoadSecureApi]);
-  const [section, setSection] = useState<Section>("request");
   const [resource, setResource] = useState<{
     owner: object; value: ChangeRequestWorkspace | null; error: string | null;
   } | null>(null);
@@ -55,7 +62,7 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
   const item = current?.value;
 
   useEffect(() => {
-    if (!canLoadSecureApi || !changeRequestId) return;
+    if (!canLoadSecureApi || !changeRequestId || !sectionValid) return;
     let live = true;
     void getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken)
       .then(value => {
@@ -68,12 +75,13 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
         if (live) setResource({ owner, value: null, error: error.message });
       });
     return () => { live = false; };
-  }, [auth, bearerToken, canLoadSecureApi, changeRequestId, owner, useStubAuth]);
+  }, [auth, bearerToken, canLoadSecureApi, changeRequestId, owner, useStubAuth, sectionValid]);
 
   if (!canLoadSecureApi) return <section className="page-section">
     <h2>Cần đăng nhập</h2><p>Đăng nhập để xem yêu cầu thay đổi được phân quyền.</p>
   </section>;
   if (!changeRequestId) return <p role="alert">Đường dẫn thiếu Change Request UUID.</p>;
+  if (!sectionValid) return <p role="alert">Tham số phần yêu cầu thay đổi không hợp lệ.</p>;
   return <section className="page-section">
     <header className="section-title">
       <div><p className="eyebrow">Nghiệp vụ / Thay đổi cơ sở</p><h2>Hồ sơ yêu cầu thay đổi</h2></div>
@@ -99,7 +107,9 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
           {SECTIONS.map(tab => <button type="button" key={tab.key}
             className={section === tab.key ? "" : "secondary"}
             aria-pressed={section === tab.key}
-            onClick={() => setSection(tab.key)}>{tab.label}</button>)}
+            onClick={() => navigate({ pathname: location.pathname,
+              search: tab.key === "request" ? "" : `?${new URLSearchParams({ section: tab.key })}` },
+              { state: location.state })}>{tab.label}</button>)}
         </nav>
         {section === "request" && <section className="panel">
           <h3>Thông tin đề nghị</h3>
@@ -141,7 +151,8 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
         </>}
         {section === "documents" && <section className="panel">
           <div className="panel-header"><h3>Danh mục tài liệu ({item.documents.items.length})</h3>
-            <Link className="text-link" to={"/documents/change-requests/" + encodeURIComponent(item.id)}>
+            <Link className="text-link" state={returnLocation ? { reportReturn: returnLocation } : undefined}
+              to={"/documents/change-requests/" + encodeURIComponent(item.id)}>
               Xem checklist và phiên bản
             </Link></div>
           {item.documents.items.length === 0 ? <p>Chưa có mục tài liệu được liên kết.</p> :

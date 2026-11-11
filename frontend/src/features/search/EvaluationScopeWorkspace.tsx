@@ -181,7 +181,7 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
   const [focusedScope, setFocusedScope] = useState(0);
   const scopeTabsId = useId();
   const scopeTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  useEffect(() => { if (!frozen) setEditorOpen(false); }, [scope.id, scope.row_version, frozen]);
+  useEffect(() => setEditorOpen(false), [scope.id, scope.row_version]);
   const isHistorical = scope.summary_source === "historical_prose";
   return <section className="evaluation-scope-workspace">
     <div aria-label="Phạm vi hồ sơ" className="legacy-scope-tabs" role="tablist">

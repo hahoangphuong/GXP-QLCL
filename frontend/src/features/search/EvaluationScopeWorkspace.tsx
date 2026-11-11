@@ -6,6 +6,9 @@ import type { CaseWorkspace, CaseWorkspaceEvaluationScope, EvaluationScopeUpsert
 
 type DraftBlock = { name: string; note: string; selected: Record<string, string> };
 type SubmittedScope = { caseId: string; request: EvaluationScopeUpsertRequest };
+function foldTaxonomy(value: string): string {
+  return value.toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+}
 function snapshotScope(request: EvaluationScopeUpsertRequest): EvaluationScopeUpsertRequest {
   return { ...request, blocks: request.blocks.map(block => ({
     ...block, selections: block.selections.map(selection => ({ ...selection })),
@@ -46,11 +49,29 @@ function EvaluationScopeEditorDialog({ scope, onClose, onSave, locked }: {
   const [activeBlock, setActiveBlock] = useState(0);
   const [draft, setDraft] = useState(() => buildDraft(scope));
   const [limitation, setLimitation] = useState(scope.limitation_text ?? "");
+  const [taxonomySearch, setTaxonomySearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const nodesById = new Map(scope.taxonomy_nodes.map((node) => [node.id, node]));
   const nodesByParent = new Map<string | null, string[]>();
   for (const node of scope.taxonomy_nodes) nodesByParent.set(node.parent_id, [...(nodesByParent.get(node.parent_id) ?? []), node.id]);
+  const query = foldTaxonomy(taxonomySearch.trim());
+  const matched = new Set<string>();
+  const searchVisible = new Set<string>();
+  if (query) {
+    for (const node of scope.taxonomy_nodes) {
+      if (![node.key, node.description, node.hint ?? ""].some(value => foldTaxonomy(value).includes(query))) continue;
+      matched.add(node.id);
+      searchVisible.add(node.id);
+      const seen = new Set<string>([node.id]);
+      let parent = node.parent_id;
+      while (parent && !seen.has(parent)) {
+        seen.add(parent);
+        searchVisible.add(parent);
+        parent = nodesById.get(parent)?.parent_id ?? null;
+      }
+    }
+  }
   const block = draft[activeBlock];
   const selectedIds = new Set(Object.keys(block?.selected ?? {}));
   const descendantsOf = (nodeId: string): string[] => {
@@ -109,21 +130,33 @@ function EvaluationScopeEditorDialog({ scope, onClose, onSave, locked }: {
         {draft.map((item, index) => <button aria-selected={activeBlock === index} className={activeBlock === index ? "active" : ""} key={`scope-block-${index}`} onClick={() => setActiveBlock(index)} role="tab" type="button">{item.name || `Phạm vi ${index + 1}`}</button>)}
       </div>
       {block ? <fieldset disabled={locked || pending} className="evaluation-scope-editor">
+        <div className="panel-actions" role="group" aria-label="Tra cứu cây phạm vi đánh giá">
+          <label>Tìm mục phạm vi
+            <input aria-label="Tìm mục phạm vi" value={taxonomySearch}
+              placeholder="Mã, nội dung, gợi ý…"
+              onChange={event => setTaxonomySearch(event.target.value)} />
+          </label>
+          {taxonomySearch ? <button className="secondary" type="button"
+            onClick={() => setTaxonomySearch("")}>Xóa tìm kiếm phạm vi</button> : null}
+          {query ? <span className="workspace-note" role="status">Tìm thấy {matched.size}/{scope.taxonomy_nodes.length} mục; hiển thị thêm các mục cha để đối chiếu. Khi tìm kiếm chỉ có thể chọn mục lá.</span> : null}
+        </div>
         <div className="evaluation-scope-block-header">
           <label>Tên phạm vi<input value={block.name} onChange={(event) => updateBlock(activeBlock, (current) => ({ ...current, name: event.target.value }))} /></label>
           <label>Ghi chú<textarea value={block.note} onChange={(event) => updateBlock(activeBlock, (current) => ({ ...current, note: event.target.value }))} /></label>
         </div>
         <div aria-label="Cây phạm vi đánh giá" className="evaluation-scope-tree" role="tree">
+          {query && matched.size === 0 ? <p className="workspace-note">Không có mục phạm vi phù hợp.</p> : null}
           {scope.taxonomy_nodes.map((node) => {
             const hasChildren = (nodesByParent.get(node.id) ?? []).length > 0;
-            if (!ancestorsExpanded(node.id)) return null;
+            if (query ? !searchVisible.has(node.id) : !ancestorsExpanded(node.id)) return null;
             const state = treeState(node.id);
             const isSelected = selectedIds.has(node.id);
             const customDescription = block.selected[node.id] ?? "";
+            const searchSelectionLocked = Boolean(query && (hasChildren || !matched.has(node.id)));
             const depth = node.key.split(".").length - 1;
             return <div aria-expanded={hasChildren ? expanded.has(node.id) : undefined} className={`evaluation-scope-node depth-${Math.min(depth, 2)} ${isSelected ? "is-selected" : ""}`} key={node.id} role="treeitem" style={{ paddingInlineStart: `${depth * 1.1}rem` }} title={node.hint ?? undefined}>
-              {hasChildren ? <button aria-label={`${expanded.has(node.id) ? "Thu gọn" : "Mở rộng"} ${node.key}`} className={`tree-expand ${expanded.has(node.id) ? "is-expanded" : ""}`} onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(node.id)) next.delete(node.id); else next.add(node.id); return next; })} type="button"><span /></button> : <span className="tree-spacer" />}
-              <button aria-checked={state === "mixed" ? "mixed" : state === "checked"} aria-label={`Chọn ${node.key}`} className={`tree-check ${state}`} onClick={() => toggle(node.id)} role="checkbox" type="button"><span /></button>
+              {hasChildren ? <button disabled={Boolean(query)} aria-label={`${expanded.has(node.id) ? "Thu gọn" : "Mở rộng"} ${node.key}`} className={`tree-expand ${expanded.has(node.id) ? "is-expanded" : ""}`} onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(node.id)) next.delete(node.id); else next.add(node.id); return next; })} type="button"><span /></button> : <span className="tree-spacer" />}
+              <button aria-checked={state === "mixed" ? "mixed" : state === "checked"} aria-label={`Chọn ${node.key}`} className={`tree-check ${state}`} disabled={searchSelectionLocked} onClick={() => { if (!searchSelectionLocked) toggle(node.id); }} role="checkbox" type="button"><span /></button>
               <span className="tree-key">{node.key}</span>
               <div className="tree-copy"><span className="tree-taxonomy-description">{node.description}</span>
                 {isSelected ? <textarea aria-label={`Mô tả tùy chỉnh ${node.key}`} className="tree-custom-input" onChange={(event) => updateBlock(activeBlock, (current) => ({ ...current, selected: { ...current.selected, [node.id]: event.target.value } }))} placeholder="Mô tả tùy chỉnh (để trống nếu không có)" value={customDescription} /> : null}

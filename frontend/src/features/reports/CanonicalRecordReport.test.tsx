@@ -30,6 +30,24 @@ beforeEach(() => {
 });
 
 describe("canonical record report workflow", () => {
+  it("passes applied certificate filters through metadata navigation without a new request", async () => {
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="certificate-metadata-return">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={["/reports?report=certificates&gxp_type=GMP&expiry_days=90&q=facility"]}>
+      <Routes>
+        <Route path="/reports" element={<CanonicalRecordReport access={access} kind="certificates" urlState />} />
+        <Route path="/documents/certificates/:certificateId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Xem metadata" }));
+    expect(screen.getByTestId("certificate-metadata-return"))
+      .toHaveTextContent("/reports?report=certificates&gxp_type=GMP&expiry_days=90&q=facility");
+    expect(getCertificateReport).toHaveBeenCalledOnce();
+  });
+
+
   it("restores Change Request workflow queue filters and preserves queue return through document navigation", async () => {
     function History() {
       const location = useLocation(), navigate = useNavigate();

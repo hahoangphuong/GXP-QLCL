@@ -519,7 +519,7 @@ export function CaseRemediationWorkspace({
                 <dt>Kết quả</dt><dd>{item.request.result}</dd>
               </>}
             </>}
-            {item.kind !== "update" ? <><dt>Ghi chú</dt><dd>{item.request.notes ?? "Không nhập"}</> : null}
+            {item.kind !== "update" ? <><dt>Ghi chú</dt><dd>{item.request.notes ?? "Không nhập"}</dd></> : null}
           </dl>
         </section>
       ))}

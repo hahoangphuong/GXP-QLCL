@@ -119,6 +119,7 @@ describe("evaluation aggregate canonical command ownership", () => {
     expect(screen.getByRole("region", { name: "Phạm vi đánh giá đã gửi" })).toHaveTextContent("Mô tả được gửi");
     expect(screen.getByRole("button", { name: "Sửa phạm vi" })).toBeDisabled();
     view.rerender(editor("case-B", save));
+    expect(screen.queryByRole("dialog", { name: "Sửa phạm vi đánh giá" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Phạm vi đánh giá đã gửi" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa phạm vi" })).toBeEnabled();
     view.rerender(editor("case-A", save, workspace({ row_version: 5, editable: false })));

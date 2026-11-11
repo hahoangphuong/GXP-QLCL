@@ -850,6 +850,42 @@ describe("CAPA exact submitted command evidence across Case ownership changes", 
     },
   );
 
+  it("shows exact partial-update payload during pending and unknown outcome without inheriting another CAPA cycle", async () => {
+    const request = deferred<void>();
+    const h = handlers();
+    h.onUpdateCycle.mockReturnValue(request.promise);
+    const actions = [
+      action("update_capa_cycle:capa-1", true, 2),
+      action("update_capa_cycle:capa-2", true, 7),
+    ];
+    const cycles = [cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2, row_version: 7 })];
+    const editor = (id: string, selectedId: string) => {
+      const current = workspace(cycles, actions);
+      return <CaseDraftSession identity={id}><CaseRemediationWorkspace
+        caseWorkspace={{ ...current, case_summary: { ...current.case_summary, id } }}
+        selectedCycleId={selectedId} {...h}
+      /></CaseDraftSession>;
+    };
+    const view = render(editor("case-A", "capa-1"));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Ghi chú" }), { key: "F2" });
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "  Ghi chú của lệnh A  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Ghi chú" }));
+    expect(h.onUpdateCycle).toHaveBeenCalledExactlyOnceWith("capa-1", { expected_version: 2, notes: "Ghi chú của lệnh A" });
+    const original = screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" });
+    expect(original).toHaveTextContent("Trường cập nhật: notes");
+    expect(original).toHaveTextContent("Ghi chú của lệnh A");
+    expect(original).not.toHaveTextContent("Ngày yêu cầu");
+    view.rerender(editor("case-A", "capa-2"));
+    expect(screen.queryByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).not.toBeInTheDocument();
+    view.rerender(editor("case-B", "capa-1"));
+    expect(screen.queryByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).not.toBeInTheDocument();
+    view.rerender(editor("case-A", "capa-1"));
+    expect(screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).toHaveTextContent("Ghi chú của lệnh A");
+    await act(async () => request.reject(new CaseFieldMutationRecoveryError("unknown update")));
+    expect(within(screen.getByRole("region", { name: "Lệnh vòng CAPA đã gửi" })).getByRole("status")).toHaveTextContent("Kết quả ghi chưa xác minh");
+    expect(h.onUpdateCycle).toHaveBeenCalledOnce();
+  });
+
   it("captures only the edited field, not the other CAPA draft fields, and clears after definitive rejection", async () => {
     const h = handlers();
     h.onUpdateCycle.mockRejectedValue(Object.assign(new Error("stale"), { status: 409 }));

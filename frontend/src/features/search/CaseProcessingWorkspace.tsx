@@ -118,6 +118,77 @@ const PROCESSING_EVENT_LABELS: Record<string, string> = {
   certificate_issued: "Cấp chứng nhận",
 };
 
+// Operators can narrow a long canonical Case event history without changing
+// its order, raw evidence or the separately owned assessment editor.
+function CaseEventTimeline({ caseWorkspace, view }: {
+  caseWorkspace: CaseWorkspace;
+  view?: "assessment" | "timeline";
+}) {
+  const events = caseWorkspace.processing.events;
+  const caseId = caseWorkspace.case_summary.id;
+  const [eventType, setEventType] = useCaseDraftState(`timeline.${caseId}.eventType`, "all");
+  const [search, setSearch] = useCaseDraftState(`timeline.${caseId}.search`, "");
+  const types = [...new Set(events.map(event => event.event_type))];
+  // A refreshed Case may no longer contain the previously selected kind.
+  // Treat it as an empty filter result, never infer events from old data.
+  const normalized = search.trim().toLocaleLowerCase();
+  const visibleEvents = events.filter(event => {
+    if (eventType !== "all" && event.event_type !== eventType) return false;
+    if (!normalized) return true;
+    return [
+      event.event_type,
+      PROCESSING_EVENT_LABELS[event.event_type] ?? "",
+      event.occurred_at ?? "",
+      formatCompactDate(event.occurred_at),
+      event.payload ?? "",
+    ].some(value => value.toLocaleLowerCase().includes(normalized));
+  });
+  return <section className={`workspace-section${view === "timeline" ? " processing-timeline-section" : ""}`}>
+    <h4>Các mốc xử lý hành chính</h4>
+    {events.length > 0 ? <>
+      <div className="panel-actions" role="group" aria-label="Tra cứu mốc xử lý hành chính">
+        <label>Loại mốc
+          <select aria-label="Loại mốc xử lý" value={eventType}
+            onChange={event => setEventType(event.target.value)}>
+            <option value="all">Tất cả loại mốc</option>
+            {types.map(type => <option key={type} value={type}>{PROCESSING_EVENT_LABELS[type] ?? type}</option>)}
+            {!types.includes(eventType) && eventType !== "all" ? <option value={eventType}>{eventType} (không còn trong dữ liệu)</option> : null}
+          </select>
+        </label>
+        <label>Tìm trong mốc
+          <input aria-label="Tìm mốc xử lý" value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Loại mốc, ngày, nội dung…" />
+        </label>
+        {(eventType !== "all" || search) ? <button className="secondary" type="button"
+          onClick={() => { setEventType("all"); setSearch(""); }}>Xóa bộ lọc mốc</button> : null}
+      </div>
+      <p className="workspace-note" role="status">Hiển thị {visibleEvents.length}/{events.length} mốc xử lý canonical theo thứ tự trả về từ API.</p>
+      {visibleEvents.length > 0 ? <div
+        aria-label={view === "timeline" ? "Cuộn mốc xử lý hành chính" : undefined}
+        className="table-scroll table-scroll-history"
+        role={view === "timeline" ? "region" : undefined}
+        tabIndex={view === "timeline" ? 0 : undefined}
+      >
+        <table aria-label="Các mốc xử lý hành chính" className="dense-table event-milestone-table">
+          <thead><tr><th>Mốc</th><th>Ngày</th><th>Nội dung</th></tr></thead>
+          <tbody>
+            {visibleEvents.map((event, index) => (
+              <tr key={`${event.event_type}:${event.occurred_at ?? "none"}:${index}`}>
+                <td>{PROCESSING_EVENT_LABELS[event.event_type] ?? event.event_type}</td>
+                <td>{formatCompactDate(event.occurred_at)}</td>
+                <td><InspectionTimelinePayload eventType={event.event_type} payload={event.payload} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div> : <p className="workspace-note">Không có mốc xử lý phù hợp. Xóa bộ lọc để xem toàn bộ lịch sử.</p>}
+    </> : (
+      <EmptyState title="Chưa có mốc xử lý" description="Chưa có inspection event canonical nào cho bước xử lý của hồ sơ này." />
+    )}
+  </section>;
+}
+
 export function CaseProcessingWorkspace({
   caseWorkspace,
   onSave,
@@ -310,38 +381,7 @@ export function CaseProcessingWorkspace({
         </div>
       </section> : null}
 
-      {view !== "assessment" ? <section className={`workspace-section${view === "timeline" ? " processing-timeline-section" : ""}`}>
-        <h4>Các mốc xử lý hành chính</h4>
-        {caseWorkspace.processing.events.length > 0 ? (
-          <div
-            aria-label={view === "timeline" ? "Cuộn mốc xử lý hành chính" : undefined}
-            className="table-scroll table-scroll-history"
-            role={view === "timeline" ? "region" : undefined}
-            tabIndex={view === "timeline" ? 0 : undefined}
-          >
-            <table aria-label="Các mốc xử lý hành chính" className="dense-table event-milestone-table">
-              <thead>
-                <tr>
-                  <th>Mốc</th>
-                  <th>Ngày</th>
-                  <th>Nội dung</th>
-                </tr>
-              </thead>
-              <tbody>
-                {caseWorkspace.processing.events.map((event, index) => (
-                  <tr key={`${event.event_type}:${event.occurred_at ?? "none"}:${index}`}>
-                    <td>{PROCESSING_EVENT_LABELS[event.event_type] ?? event.event_type}</td>
-                    <td>{formatCompactDate(event.occurred_at)}</td>
-                    <td><InspectionTimelinePayload eventType={event.event_type} payload={event.payload} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState title="Chưa có mốc xử lý" description="Chưa có inspection event canonical nào cho bước xử lý của hồ sơ này." />
-        )}
-      </section> : null}
+      {view !== "assessment" ? <CaseEventTimeline caseWorkspace={caseWorkspace} view={view} /> : null}
     </div>
   );
 }

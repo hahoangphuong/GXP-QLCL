@@ -77,15 +77,15 @@ try {
     await page.getByRole("button",{name:"Báo cáo khắc phục",exact:true}).click();
     await page.getByRole("button",{name:"Thêm vòng khắc phục",exact:true}).click();
     await page.getByRole("textbox",{name:"Số tham chiếu đến"}).fill("BROWSER-CAPA-1");
-    await page.getByRole("textbox",{name:"Ngày yêu cầu"}).fill("2026-11-11");
+    await page.getByLabel("Ngày yêu cầu",{exact:true}).fill("2026-11-11");
     await page.getByRole("button",{name:"Tạo vòng khắc phục",exact:true}).click();
     let ws=await until("CAPA created",x=>cycle(x)?.status==="requested");
     const cycleId=cycle(ws).capa_cycle_id;
     assert.ok(cycleId);
-    await page.getByRole("textbox",{name:"Ngày ghi nhận tiếp nhận"}).fill("2026-11-11");
+    await page.getByLabel("Ngày ghi nhận tiếp nhận",{exact:true}).fill("2026-11-11");
     await page.getByRole("button",{name:"Ghi nhận tiếp nhận",exact:true}).click();
     await until("CAPA submitted",x=>cycle(x)?.status==="submitted");
-    await page.getByRole("textbox",{name:"Ngày đánh giá khắc phục"}).fill("2026-11-11");
+    await page.getByLabel("Ngày đánh giá khắc phục",{exact:true}).fill("2026-11-11");
     await page.getByRole("combobox",{name:"Kết quả đánh giá khắc phục"}).selectOption("accepted");
     await page.getByRole("button",{name:"Đánh giá",exact:true}).click();
     await until("CAPA accepted",x=>cycle(x)?.status==="accepted");
@@ -107,7 +107,7 @@ try {
     const pct=ws.inspection.approval_submissions.find(a=>a.stage==="PCT");
     assert.equal(pct.round_no,1);
     const pctGroup=approval.getByRole("group",{name:"Hoàn tất PCT lần 1"});
-    await pctGroup.getByRole("textbox",{name:"Ngày hoàn tất trình"}).fill("2026-11-11");
+    await pctGroup.getByLabel("Ngày hoàn tất trình",{exact:true}).fill("2026-11-11");
     await pctGroup.getByRole("button",{name:"Hoàn tất PCT"}).click();
     await until("PCT completed",x=>x.inspection.approval_submissions.some(a=>
       a.approval_submission_id===pct.approval_submission_id&&a.completed_on==="2026-11-11"));
@@ -119,7 +119,7 @@ try {
     const ct=ws.inspection.approval_submissions.find(a=>a.stage==="CT");
     assert.equal(ct.pct_submission_id,pct.approval_submission_id);
     const ctGroup=approval.getByRole("group",{name:"Hoàn tất CT lần 1"});
-    await ctGroup.getByRole("textbox",{name:"Ngày hoàn tất trình"}).fill("2026-11-11");
+    await ctGroup.getByLabel("Ngày hoàn tất trình",{exact:true}).fill("2026-11-11");
     await ctGroup.getByRole("button",{name:"Hoàn tất CT"}).click();
     ws=await until("CT completed",x=>x.inspection.approval_submissions.some(a=>
       a.approval_submission_id===ct.approval_submission_id&&a.completed_on==="2026-11-11"));

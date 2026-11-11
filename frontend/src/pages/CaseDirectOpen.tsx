@@ -134,6 +134,7 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   return <section className="page-section">
     <h2>Định vị hồ sơ</h2>
     {current?.error ? <p role="alert">{current.error}</p> : <p role="status">Đang xác minh Case UUID và ngữ cảnh cơ sở...</p>}
+    {documentKey && current?.error?.startsWith("Mục tài liệu không còn khớp") && <Link className="text-link" to={`/cases/${encodeURIComponent(caseId)}${queue ? `?return_queue=${encodeURIComponent(queue)}` : ""}`}>Mở Case không chọn mục tài liệu</Link>}
     <Link className="text-link" to={queue ? `/workflow?queue=${queue}` : "/workflow"}>Quay lại Bàn công việc</Link>
   </section>;
 }

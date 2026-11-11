@@ -157,10 +157,15 @@ export function ChangeRequestReadWorkspace({ access }: { access: ApiAccess }) {
             </Link></div>
           {item.documents.items.length === 0 ? <p>Chưa có mục tài liệu được liên kết.</p> :
             <div className="table-scroll"><table className="dense-table">
-              <thead><tr><th>Tài liệu</th><th>Trạng thái</th><th>Tệp hiện có</th></tr></thead>
+              <thead><tr><th>Tài liệu</th><th>Trạng thái</th><th>Tệp hiện có</th><th>Checklist</th></tr></thead>
               <tbody>{item.documents.items.map(doc => <tr key={doc.checklist_key}>
                 <td>{doc.label}</td><td>{doc.status === "available" ? "Đã có" : "Chưa có"}</td>
                 <td>{doc.original_filename ?? "—"}</td>
+                <td><Link className="text-link"
+                  state={returnLocation ? { reportReturn: returnLocation } : undefined}
+                  to={`/documents/change-requests/${encodeURIComponent(item.id)}?${new URLSearchParams({ document_key: doc.checklist_key })}`}>
+                  Xem mục này
+                </Link></td>
               </tr>)}</tbody>
             </table></div>}
         </section>}

@@ -130,6 +130,8 @@ describe("full canonical Change Request read workspace", () => {
       .toEqual(["/documents/certificates/gcn-uuid", "/documents/business-eligibility-certificates/ddk-uuid"]);
     fireEvent.click(screen.getByRole("button", { name: "Tài liệu" }));
     expect(screen.getByText("quyet-dinh.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Xem mục này" })).toHaveAttribute("href",
+      "/documents/change-requests/cr-uuid?document_key=cr%3Acr-uuid%3Adecision");
     expect(screen.getByRole("link", { name: "Xem checklist và phiên bản" }))
       .toHaveAttribute("href", "/documents/change-requests/cr-uuid");
   });

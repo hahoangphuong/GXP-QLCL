@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { CaseReport } from "../features/reports/CaseReport";
+import { caseReportReturn } from "../features/reports/caseReportUrl";
 import { CanonicalRecordReport } from "../features/reports/CanonicalRecordReport";
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { CaseWorkspace, ContextualDocumentAction, DocumentChecklistItem, DocumentDetail } from "../types";
@@ -137,6 +138,8 @@ export function DocumentsPage({ access, statusError }: { access: ApiAccess; stat
 }
 
 export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Scope }) {
+  const location = useLocation();
+  const reportReturn = kind === "cases" ? caseReportReturn(location.state) : null;
   const { caseId, changeRequestId } = useParams();
   const id = kind === "cases" ? caseId : changeRequestId;
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
@@ -270,7 +273,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
     <header className="section-title"><div>
       <p className="eyebrow">Tài liệu / {kind === "cases" ? "Case" : "Change Request"}</p>
       <h2>Danh mục tài liệu</h2>
-    </div><Link className="text-link" to="/documents">Quay lại danh sách hồ sơ</Link></header>
+    </div><Link className="text-link" to={reportReturn ?? "/documents"}>{reportReturn ? "Quay lại báo cáo hồ sơ" : "Quay lại danh sách hồ sơ"}</Link></header>
     {!context ? <p role="status">Đang tải checklist tài liệu...</p>
       : context.error ? <ErrorState message={context.error} />
       : <><section className="panel">

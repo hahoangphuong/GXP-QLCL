@@ -42,6 +42,33 @@ beforeEach(() => {
 });
 
 describe("authorized canonical detail navigation", () => {
+  it("passes a verified GSP certificate detail URL and report origin to document metadata", async () => {
+    vi.mocked(getGxpCertificateDetail).mockResolvedValue({
+      certificate_id: "cert-uuid", site_id: "site-uuid", case_id: null,
+      certificate_type: "GSP", scopes: [], row_version: 3,
+    } as unknown as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="verified-certificate-detail-return">{JSON.stringify(location.state)}</output>;
+    }
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/reports/certificates/cert-uuid",
+      search: "?site_id=site-uuid&version_id=version-gsp-1",
+      state: { reportReturn: "/reports?report=certificates&gxp_type=GSP&expiry_days=90&q=site" },
+    }]}>
+      <Routes>
+        <Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={access} kind="certificates" />} />
+        <Route path="/documents/certificates/:certificateId" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Xem metadata tài liệu" }));
+    const state = screen.getByTestId("verified-certificate-detail-return");
+    expect(state).toHaveTextContent("/reports/certificates/cert-uuid?site_id=site-uuid&version_id=version-gsp-1");
+    expect(state).toHaveTextContent("/reports?report=certificates&gxp_type=GSP&expiry_days=90&q=site");
+    expect(getGxpCertificateDetail).toHaveBeenCalledOnce();
+  });
+
+
   it("returns to the exact report context supplied by an internal navigation", async () => {
     vi.mocked(getChangeRequestWorkspace).mockResolvedValue({ id: "change-uuid", site_id: "site-uuid", facility_name: "Cơ sở", company_name: "Công ty", scope_label: "Đổi tên", state: "received" } as Awaited<ReturnType<typeof getChangeRequestWorkspace>>);
     render(<MemoryRouter initialEntries={[{ pathname: "/reports/change-requests/change-uuid", state: { reportReturn: "/reports?report=change_requests&state=received&offset=100" } }]}><Routes><Route path="/reports/change-requests/:changeRequestId" element={<ReportRecordDetail access={access} kind="change_requests" />} /></Routes></MemoryRouter>);

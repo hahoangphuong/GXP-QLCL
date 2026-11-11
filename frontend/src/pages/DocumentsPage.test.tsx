@@ -121,6 +121,7 @@ afterEach(() => {
 
 describe("document report return navigation", () => {
   it("opens the exact verified Change Request checklist document from a shareable key", async () => {
+    vi.mocked(getDocumentDetail).mockResolvedValue(detailPayload("change"));
     mount("/documents/change-requests/change-1?document_key=change_request%3Achange-1%3AREQUEST");
     expect(await screen.findByRole("heading", { name: "Chi tiết: Biên bản kiểm tra" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Xem toàn bộ checklist" })).toHaveAttribute("href", "/documents/change-requests/change-1");

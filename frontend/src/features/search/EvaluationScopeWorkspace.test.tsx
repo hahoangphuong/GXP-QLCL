@@ -150,3 +150,25 @@ describe("evaluation aggregate canonical command ownership", () => {
     expect(save).toHaveBeenCalledOnce();
   });
 });
+
+
+describe("evaluation scope late-result editor ownership", () => {
+  it("does not close another Case's newer editor when the previous Case's POST resolves late", async () => {
+    let resolve!: () => void;
+    const save = vi.fn(() => new Promise<void>(yes => { resolve = yes; }));
+    const renderCase = (id: string) => <CaseDraftSession identity={id}>
+      <EvaluationScopeWorkspace caseWorkspace={{ ...workspace(), case_summary: { id } } as CaseWorkspace} onSave={save} />
+    </CaseDraftSession>;
+    const view = render(renderCase("case-A"));
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    expect(save).toHaveBeenCalledOnce();
+    view.rerender(renderCase("case-B"));
+    expect(screen.queryByRole("dialog", { name: "Sửa phạm vi đánh giá" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sửa phạm vi" }));
+    expect(screen.getByRole("dialog", { name: "Sửa phạm vi đánh giá" })).toBeVisible();
+    await act(async () => resolve());
+    expect(screen.getByRole("dialog", { name: "Sửa phạm vi đánh giá" })).toBeVisible();
+    expect(save).toHaveBeenCalledOnce();
+  });
+});

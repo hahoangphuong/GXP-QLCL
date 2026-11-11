@@ -194,6 +194,8 @@ export function GxpCertificateWorkspace({
   promotionError,
   promotionPending,
   onEditLatestVersion,
+  onOpenOwningCase,
+  ownerSiteId,
 }: {
   versionHistory?: HistoryState<GxpCertificateVersionHistory>;
   documentMetadata?: CertificateDocumentMetadataState;
@@ -209,6 +211,8 @@ export function GxpCertificateWorkspace({
   promotionError: string | null;
   promotionPending: boolean;
   onEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
+  onOpenOwningCase?: (caseId: string, certificateId: string, siteId: string) => void;
+  ownerSiteId?: string | null;
 }) {
   const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
   const selectedEditLock = useFacilityCommandLock(`gxp-certificate-write:${selectedCertificateId ?? "none"}`);
@@ -237,6 +241,17 @@ export function GxpCertificateWorkspace({
   const rowProps = useCertificateRows(items.map((item) => item.certificate_id), selectedCertificateId, onSelectCertificate, listLoading || Boolean(listError));
   // The selected ID, never the certificate number or version, owns visibility.
   detail = detail?.certificate_id === selectedCertificateId ? detail : null;
+  const selectedListItem = items.find(item => item.certificate_id === selectedCertificateId);
+  const owningCaseAvailable = Boolean(onOpenOwningCase && detail && selectedListItem
+    && !listLoading && !listError && !detailLoading && !detailError
+    && !editDraft && !selectedEditLock.pending && !selectedEditLock.requiresReview && !promotionPending
+    && detail.case_id?.trim() && detail.case_id === detail.case_id.trim()
+    && detail.site_id?.trim() && detail.site_id === detail.site_id.trim()
+    && detail.site_id === selectedListItem.site_id
+    && ownerSiteId === detail.site_id
+    && detail.case_id === selectedListItem.case_id
+    && detail.certificate_type === selectedListItem.certificate_type
+    && ["GMP", "GLP", "GMPbb"].includes(detail.certificate_type));
   const visibleDraft = editDraft?.detail.certificate_id === selectedCertificateId ? editDraft
     : recoveredEdit ? { detail: recoveredEdit.detail, expectedVersion: recoveredEdit.request.expected_version } : null;
   if (listError && items.length === 0) {
@@ -308,6 +323,14 @@ export function GxpCertificateWorkspace({
         ) : !detail ? <EmptyState title="Chưa chọn GCN GxP" description="Chọn một giấy trong danh mục." /> : (
           <>
             <GxpCertificateDetailFields detail={detail} />
+            {owningCaseAvailable && onOpenOwningCase && detail.case_id ? (
+              <div className="certificate-action-bar">
+                <button type="button" className="secondary" onClick={() => {
+                  if (!owningCaseAvailable || !detail?.case_id) return;
+                  onOpenOwningCase(detail.case_id, detail.certificate_id, detail.site_id);
+                }}>Mở Case cấp GCN này</button>
+              </div>
+            ) : null}
             {!detail.latest_flag ? <p className="workspace-note" role="status">Chứng nhận này chưa là chứng nhận hiện hành. Kiểm tra thông tin và chỉ thực hiện “Đặt làm chứng nhận hiện hành” riêng khi backend cho phép; thao tác tạo chứng nhận không tự đặt hiện hành.</p> : null}
             {documentMetadata ? <CertificateDocumentMetadata state={documentMetadata} /> : null}
             {(() => {

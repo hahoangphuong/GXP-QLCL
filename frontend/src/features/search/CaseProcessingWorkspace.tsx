@@ -132,7 +132,7 @@ function CaseEventTimeline({ caseWorkspace, view }: {
   // A refreshed Case may no longer contain the previously selected kind.
   // Treat it as an empty filter result, never infer events from old data.
   const normalized = search.trim().toLocaleLowerCase();
-  const visibleEvents = events.filter(event => {
+  const visibleEvents = events.map((event, originalIndex) => ({ event, originalIndex })).filter(({ event }) => {
     if (eventType !== "all" && event.event_type !== eventType) return false;
     if (!normalized) return true;
     return [
@@ -173,8 +173,8 @@ function CaseEventTimeline({ caseWorkspace, view }: {
         <table aria-label="Các mốc xử lý hành chính" className="dense-table event-milestone-table">
           <thead><tr><th>Mốc</th><th>Ngày</th><th>Nội dung</th></tr></thead>
           <tbody>
-            {visibleEvents.map((event, index) => (
-              <tr key={`${event.event_type}:${event.occurred_at ?? "none"}:${index}`}>
+            {visibleEvents.map(({ event, originalIndex }) => (
+              <tr key={`${event.event_type}:${event.occurred_at ?? "none"}:${originalIndex}`}>
                 <td>{PROCESSING_EVENT_LABELS[event.event_type] ?? event.event_type}</td>
                 <td>{formatCompactDate(event.occurred_at)}</td>
                 <td><InspectionTimelinePayload eventType={event.event_type} payload={event.payload} /></td>

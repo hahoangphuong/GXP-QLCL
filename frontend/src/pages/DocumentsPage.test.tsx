@@ -129,6 +129,21 @@ describe("document report return navigation", () => {
     expect(link).toHaveAttribute("href", source);
     await screen.findByText("2 mục trong checklist · 1 đã có · 1 chưa có");
   });
+  it("carries the validated report return through the canonical Case workspace handoff", async () => {
+    const source = "/reports?report=cases&q=GMP";
+    function CaseDestination() {
+      const location = useLocation();
+      return <output data-testid="case-workspace-return">{String((location.state as { caseReportReturn?: string } | null)?.caseReportReturn ?? "missing")}</output>;
+    }
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: source } }]}>
+      <Routes>
+        <Route path="/documents/cases/:caseId" element={<DocumentRegister kind="cases" access={access} />} />
+        <Route path="/cases/:caseId" element={<CaseDestination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Mở Case trong workspace" }));
+    expect(screen.getByTestId("case-workspace-return")).toHaveTextContent(source);
+  });
   it.each(["https://hostile.example/", "/reports?report=cases&report=inspection", "/reports?report=cases&offset=1", "/reports?report=cases&site_id=foreign"])("rejects an untrusted report return hint (%s)", hint => {
     render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: hint } }]}>
       <Routes><Route path="/documents/cases/:caseId" element={<DocumentRegister kind="cases" access={access} />} /></Routes>

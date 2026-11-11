@@ -27,6 +27,12 @@ import type { CertificateDocumentMetadataState } from "./useCertificateDocumentM
 
 type LinkDraft = { certificate_id: string; link_role: string };
 
+type SubmittedDdkIssue = { kind: "issue"; siteId: string; request: BusinessEligibilityIssueRequest };
+type SubmittedDdkEdit = { kind: "edit"; certificateId: string; detail: BusinessEligibilityDetail; request: BusinessEligibilityLatestVersionUpsertRequest };
+type SubmittedDdkMutation = SubmittedDdkIssue | SubmittedDdkEdit;
+function cloneLinks(links: LinkDraft[]): LinkDraft[] { return links.map(link => ({ ...link })); }
+
+
 function buildLinkDrafts(detail: BusinessEligibilityDetail | null): LinkDraft[] {
   return (detail?.linked_gxp_certificates ?? []).map((item) => ({
     certificate_id: item.certificate_id,
@@ -47,6 +53,8 @@ export function BusinessEligibilityMutationDialog({
   onStaleConflict,
   saveAvailable = true,
   issueRequiresReview = false,
+  issuePending = false,
+  recovered = null,
 }: {
   mode: "issue" | "edit";
   detail: BusinessEligibilityDetail | null;
@@ -60,73 +68,88 @@ export function BusinessEligibilityMutationDialog({
   onStaleConflict: (message: string) => void;
   saveAvailable?: boolean;
   issueRequiresReview?: boolean;
+  issuePending?: boolean;
+  recovered?: SubmittedDdkMutation | null;
 }) {
-  const [certificateNumber, setCertificateNumber] = useState(detail?.certificate_number ?? "");
-  const [issuedOn, setIssuedOn] = useState(detail?.issued_on ?? "");
-  const [expiresOn, setExpiresOn] = useState(detail?.expires_on ?? "");
-  const [responsiblePerson, setResponsiblePerson] = useState(detail?.professional_responsible_person_name ?? "");
-  const [notes, setNotes] = useState(detail?.notes ?? "");
-  const [reason, setReason] = useState("");
-  const [links, setLinks] = useState<LinkDraft[]>(() => buildLinkDrafts(detail));
+  const [certificateNumber, setCertificateNumber] = useState(recovered ? recovered.request.certificate_number ?? "" : detail?.certificate_number ?? "");
+  const [issuedOn, setIssuedOn] = useState(recovered ? recovered.request.issued_on ?? "" : detail?.issued_on ?? "");
+  const [expiresOn, setExpiresOn] = useState(recovered ? recovered.request.expires_on ?? "" : detail?.expires_on ?? "");
+  const [responsiblePerson, setResponsiblePerson] = useState(recovered ? recovered.request.professional_responsible_person_name ?? "" : detail?.professional_responsible_person_name ?? "");
+  const [notes, setNotes] = useState(recovered ? recovered.request.notes ?? "" : detail?.notes ?? "");
+  const [reason, setReason] = useState(recovered ? recovered.request.reason ?? "" : "");
+  const [links, setLinks] = useState<LinkDraft[]>(() => recovered ? cloneLinks(recovered.request.linked_certificates) : buildLinkDrafts(detail));
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [conflicted, setConflicted] = useState(false);
   const dialogRef = useCertificateDialogFocus();
   const editLock = useFacilityCommandLock(`business-eligibility.write:${detail?.business_eligibility_certificate_id ?? "none"}`);
-  const requiresReview = mode === "edit" ? editLock.requiresReview : issueRequiresReview;
+  const frozen = mode === "edit" ? editLock.pending || editLock.requiresReview : issuePending || issueRequiresReview;
+  const submitted = mode === "edit" && frozen ? editLock.commandPayload<SubmittedDdkMutation>() : undefined;
+  const request = submitted?.kind === "edit" && submitted.certificateId === detail?.business_eligibility_certificate_id
+    ? submitted.request : recovered?.request;
+  const visibleNumber = frozen && request ? request.certificate_number ?? "" : certificateNumber;
+  const visibleIssuedOn = frozen && request ? request.issued_on ?? "" : issuedOn;
+  const visibleExpiresOn = frozen && request ? request.expires_on ?? "" : expiresOn;
+  const visibleResponsible = frozen && request ? request.professional_responsible_person_name ?? "" : responsiblePerson;
+  const visibleNotes = frozen && request ? request.notes ?? "" : notes;
+  const visibleReason = frozen && request ? request.reason ?? "" : reason;
+  const visibleLinks = frozen && request ? request.linked_certificates : links;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending && !requiresReview) onClose();
+      if (event.key === "Escape" && !pending && !frozen) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, pending, requiresReview]);
+  }, [onClose, pending, frozen]);
 
   function selectedRole(certificateId: string): string | null {
-    return links.find((item) => item.certificate_id === certificateId)?.link_role ?? null;
+    return visibleLinks.find((item) => item.certificate_id === certificateId)?.link_role ?? null;
   }
 
   function toggleCertificate(certificateId: string) {
-    if (requiresReview) return;
+    if (frozen) return;
     setLinks((current) => current.some((item) => item.certificate_id === certificateId)
       ? current.filter((item) => item.certificate_id !== certificateId)
       : [...current, { certificate_id: certificateId, link_role: "source_certificate" }]);
   }
 
   function updateRole(certificateId: string, linkRole: string) {
-    if (requiresReview) return;
+    if (frozen) return;
     setLinks((current) => current.map((item) =>
       item.certificate_id === certificateId ? { ...item, link_role: linkRole } : item));
   }
 
   async function submit() {
-    if (inFlight.current || conflicted || !saveAvailable || requiresReview || (mode === "edit" && editLock.pending)) return;
-    const command = mode === "edit" ? editLock.acquire() : null;
-    if (mode === "edit" && !command) return;
-    if (mode === "edit" && expectedVersion === null) {
+    if (inFlight.current || conflicted || !saveAvailable || frozen) return;
+    if (mode === "edit" && (expectedVersion === null || !detail)) {
       setError("Thiếu phiên bản đồng bộ để cập nhật GCN đủ điều kiện.");
       return;
     }
-    inFlight.current = true;
-    setPending(true);
-    setError(null);
     const common: BusinessEligibilityIssueRequest = {
       certificate_number: certificateNumber.trim() || null,
       issued_on: issuedOn || null,
       expires_on: expiresOn || null,
       professional_responsible_person_name: responsiblePerson.trim() || null,
       notes: notes.trim() || null,
-      linked_certificates: links,
+      linked_certificates: cloneLinks(links),
       reason: reason.trim() || null,
     };
+    const editRequest: BusinessEligibilityLatestVersionUpsertRequest | null = mode === "edit"
+      ? { ...common, expected_version: expectedVersion as number } : null;
+    const command = editRequest && detail ? editLock.acquire({
+      kind: "edit", certificateId: detail.business_eligibility_certificate_id,
+      detail: { ...detail, linked_gxp_certificates: detail.linked_gxp_certificates.map(link => ({ ...link })) },
+      request: { ...editRequest, linked_certificates: cloneLinks(editRequest.linked_certificates) },
+    } satisfies SubmittedDdkEdit) : null;
+    if (mode === "edit" && !command) return;
+    inFlight.current = true;
+    setPending(true);
+    setError(null);
     try {
-      if (mode === "issue") {
-        await onIssue(common);
-      } else {
-        await onEdit({ ...common, expected_version: expectedVersion as number });
-      }
+      if (mode === "issue") await onIssue(common);
+      else await onEdit(editRequest!);
       onClose();
     } catch (nextError) {
       if (nextError instanceof CaseFieldMutationRecoveryError && command) editLock.requireReview(command);
@@ -154,18 +177,21 @@ export function BusinessEligibilityMutationDialog({
         </div>
       </header>
       <div className="certificate-edit-fields">
-        <label>Số GCN<input aria-label="Số GCN ĐĐK" readOnly={requiresReview} disabled={pending} onChange={(event) => { if (!requiresReview) setCertificateNumber(event.target.value); }} value={certificateNumber} /></label>
-        <label>Ngày cấp<input aria-label="Ngày cấp ĐĐK" readOnly={requiresReview} disabled={pending} onChange={(event) => { if (!requiresReview) setIssuedOn(event.target.value); }} type="date" value={issuedOn} /></label>
-        <label>Ngày hết hạn<input aria-label="Ngày hết hạn ĐĐK" readOnly={requiresReview} disabled={pending} onChange={(event) => { if (!requiresReview) setExpiresOn(event.target.value); }} type="date" value={expiresOn} /></label>
-        <label>Người PTCM<input aria-label="Người PTCM" readOnly={requiresReview} disabled={pending} onChange={(event) => { if (!requiresReview) setResponsiblePerson(event.target.value); }} value={responsiblePerson} /></label>
-        <label>Ghi chú<textarea aria-label="Ghi chú ĐĐK" readOnly={requiresReview} disabled={pending} onChange={(event) => { if (!requiresReview) setNotes(event.target.value); }} value={notes} /></label>
-        <label className="certificate-edit-reason">Lý do<textarea aria-label="Lý do ĐĐK" readOnly={requiresReview} disabled={pending} onChange={(event) => { if (!requiresReview) setReason(event.target.value); }} value={reason} /></label>
+        <label>Số GCN<input aria-label="Số GCN ĐĐK" readOnly={frozen} disabled={pending} onChange={(event) => { if (!frozen) setCertificateNumber(event.target.value); }} value={visibleNumber} /></label>
+        <label>Ngày cấp<input aria-label="Ngày cấp ĐĐK" readOnly={frozen} disabled={pending} onChange={(event) => { if (!frozen) setIssuedOn(event.target.value); }} type="date" value={visibleIssuedOn} /></label>
+        <label>Ngày hết hạn<input aria-label="Ngày hết hạn ĐĐK" readOnly={frozen} disabled={pending} onChange={(event) => { if (!frozen) setExpiresOn(event.target.value); }} type="date" value={visibleExpiresOn} /></label>
+        <label>Người PTCM<input aria-label="Người PTCM" readOnly={frozen} disabled={pending} onChange={(event) => { if (!frozen) setResponsiblePerson(event.target.value); }} value={visibleResponsible} /></label>
+        <label>Ghi chú<textarea aria-label="Ghi chú ĐĐK" readOnly={frozen} disabled={pending} onChange={(event) => { if (!frozen) setNotes(event.target.value); }} value={visibleNotes} /></label>
+        <label className="certificate-edit-reason">Lý do<textarea aria-label="Lý do ĐĐK" readOnly={frozen} disabled={pending} onChange={(event) => { if (!frozen) setReason(event.target.value); }} value={visibleReason} /></label>
       </div>
       <section aria-label="GCN GxP làm căn cứ" className="certificate-scope-editor">
         <div className="certificate-scope-editor-header"><h3>GCN GxP làm căn cứ</h3></div>
         {basisLoading ? <p className="workspace-note">Đang tải danh sách GxP…</p> : null}
         {basisError ? <p className="form-error" role="alert">{basisError}</p> : null}
         {!basisLoading && !basisError && basisCertificates.length === 0 ? <p className="workspace-note">Chưa có GCN GxP canonical để chọn làm căn cứ.</p> : null}
+        {visibleLinks.filter(link => !basisCertificates.some(certificate => certificate.certificate_id === link.certificate_id)).map(link =>
+          <div key={link.certificate_id} className="workspace-note">GCN căn cứ theo payload đã gửi (chỉ đọc): {link.certificate_id} · {link.link_role}</div>
+        )}
         {basisCertificates.map((certificate) => {
           const role = selectedRole(certificate.certificate_id);
           const label = `${certificate.certificate_type} ${certificate.line_code ?? "toàn cơ sở"} · ${certificate.certificate_number ?? certificate.certificate_id}`;
@@ -174,14 +200,14 @@ export function BusinessEligibilityMutationDialog({
               <input
                 aria-label={`Chọn căn cứ ${label}`}
                 checked={role !== null}
-                disabled={pending || requiresReview}
+                disabled={pending || frozen}
                 onChange={() => toggleCertificate(certificate.certificate_id)}
                 type="checkbox"
               />
               {label}
             </label>
             {role !== null ? <label>Vai trò
-              <select aria-label={`Vai trò căn cứ ${label}`} disabled={pending || requiresReview} onChange={(event) => updateRole(certificate.certificate_id, event.target.value)} value={role}>
+              <select aria-label={`Vai trò căn cứ ${label}`} disabled={pending || frozen} onChange={(event) => updateRole(certificate.certificate_id, event.target.value)} value={role}>
                 <option value="source_certificate">source_certificate</option>
                 <option value="replacement_certificate">replacement_certificate</option>
               </select>
@@ -191,10 +217,10 @@ export function BusinessEligibilityMutationDialog({
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {conflicted ? <p className="workspace-note">Bản nháp được giữ để đối chiếu. Sao chép nội dung cần giữ, đóng và mở lại form sau khi kiểm tra dữ liệu mới.</p> : null}
-      {requiresReview ? <p className="workspace-note" role="status">Kết quả ghi GCN đủ điều kiện chưa xác minh. Giữ nguyên dữ liệu đã gửi để sao chép và đối chiếu canonical; không sửa, hủy hoặc gửi lại.</p> : null}
+      {frozen ? <p className="workspace-note" role="status">Kết quả ghi GCN đủ điều kiện chưa xác minh. Giữ nguyên dữ liệu đã gửi để sao chép và đối chiếu canonical; không sửa, hủy hoặc gửi lại.</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
-        <button disabled={pending || conflicted || !saveAvailable || requiresReview || (mode === "edit" && editLock.pending)} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : mode === "issue" ? "Cấp GCN" : "Lưu thay đổi"}</button>
-        <button disabled={pending || requiresReview} onClick={onClose} type="button">Hủy</button>
+        <button disabled={pending || conflicted || !saveAvailable || frozen} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : mode === "issue" ? "Cấp GCN" : "Lưu thay đổi"}</button>
+        <button disabled={pending || frozen} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
   </div>;

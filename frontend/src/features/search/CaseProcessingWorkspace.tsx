@@ -151,7 +151,7 @@ function CaseEventTimeline({ caseWorkspace, view }: {
           <select aria-label="Loại mốc xử lý" value={eventType}
             onChange={event => setEventType(event.target.value)}>
             <option value="all">Tất cả loại mốc</option>
-            {types.map(type => <option key={type} value={type}>{PROCESSING_EVENT_LABELS[type] ?? type}</option>)}
+            {types.map(type => <option key={type} value={type}>Lọc: {PROCESSING_EVENT_LABELS[type] ?? type}</option>)}
             {!types.includes(eventType) && eventType !== "all" ? <option value={eventType}>{eventType} (không còn trong dữ liệu)</option> : null}
           </select>
         </label>

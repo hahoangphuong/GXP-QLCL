@@ -10,8 +10,9 @@ vi.mock("../features/reports/CaseReport", () => ({
     <output data-testid="case-queue">{String(inspectionQueue) + ":" + initialState + ":" + showDocumentsLink}</output>,
 }));
 vi.mock("../features/reports/CanonicalRecordReport", () => ({
-  CanonicalRecordReport: ({ kind, showDocumentsLink }: { kind: string; showDocumentsLink?: boolean }) =>
-    <output data-testid="record-queue">{kind + ":" + Boolean(showDocumentsLink)}</output>,
+  CanonicalRecordReport: ({ kind, showDocumentsLink, urlState, returnQueue }: { kind: string; showDocumentsLink?: boolean; urlState?: boolean; returnQueue?: string }) =>
+    <><output data-testid="record-queue">{kind + ":" + Boolean(showDocumentsLink)}</output>
+      <output data-testid="record-queue-url-owner">{String(Boolean(urlState)) + ":" + (returnQueue ?? "none")}</output></>,
 }));
 
 const access: ApiAccess = { auth: { username: "reader", role: "reader" }, useStubAuth: true,
@@ -38,6 +39,7 @@ describe("operator workflow landing", () => {
     expect(screen.getByTestId("case-queue")).toHaveTextContent("false:awaiting_certificate_decision:true");
     fireEvent.click(screen.getByRole("button", { name: "Yêu cầu thay đổi đang mở" }));
     expect(screen.getByTestId("record-queue")).toHaveTextContent("change_requests:true");
+    expect(screen.getByTestId("record-queue-url-owner")).toHaveTextContent("true:change_requests");
     fireEvent.click(screen.getByRole("button", { name: "GCN sắp hết hạn" }));
     expect(screen.getByTestId("record-queue")).toHaveTextContent("certificates:false");
     expect(screen.getByRole("link", { name: "Mở Báo cáo đầy đủ" })).toHaveAttribute("href", "/reports?report=certificates");

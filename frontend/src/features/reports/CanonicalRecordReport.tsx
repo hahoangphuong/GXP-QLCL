@@ -10,7 +10,7 @@ type Filters = { gxp_type: string; expiry_days: string; state: string; q: string
 type Page = CertificateReportPage | ChangeRequestReportPage;
 const EMPTY: Filters = { gxp_type: "", expiry_days: "90", state: "", q: "", number: "" };
 
-function parseReportUrl(params: URLSearchParams, kind: Kind, expiryDefault: string): { filters: Filters; offset: number; valid: boolean } {
+function parseReportUrl(params: URLSearchParams, kind: Kind, expiryDefault: string, returnQueue?: "change_requests"): { filters: Filters; offset: number; valid: boolean } {
   const names = kind === "certificates" ? ["gxp_type", "expiry_days", "number", "q", "offset"] : ["state", "q", "offset"];
   const unique = names.every(name => params.getAll(name).length <= 1);
   const filters = { ...EMPTY, expiry_days: expiryDefault, q: params.get("q") ?? "" };
@@ -21,7 +21,11 @@ function parseReportUrl(params: URLSearchParams, kind: Kind, expiryDefault: stri
   } else filters.state = params.get("state") ?? "";
   const rawOffset = params.get("offset") ?? "0";
   const offset = Number(rawOffset);
-  const valid = unique && /^(0|[1-9]\d*)$/.test(rawOffset) && Number.isSafeInteger(offset) && offset % 100 === 0
+  const routeValid = returnQueue
+    ? kind === "change_requests" && params.getAll("queue").length === 1
+      && params.get("queue") === returnQueue && !params.has("report")
+    : params.getAll("report").length === 1 && params.get("report") === kind && !params.has("queue");
+  const valid = unique && routeValid && /^(0|[1-9]\d*)$/.test(rawOffset) && Number.isSafeInteger(offset) && offset % 100 === 0
     && ["", "GMP", "GLP", "GMPbb", "GSP", "GDP"].includes(filters.gxp_type)
     && ["", "30", "60", "90"].includes(filters.expiry_days)
     && ["", "received", "under_review"].includes(filters.state)
@@ -29,8 +33,8 @@ function parseReportUrl(params: URLSearchParams, kind: Kind, expiryDefault: stri
   return { filters, offset: valid ? offset : 0, valid };
 }
 
-function reportParams(kind: Kind, filters: Filters, offset: number): URLSearchParams {
-  const next = new URLSearchParams({ report: kind });
+function reportParams(kind: Kind, filters: Filters, offset: number, returnQueue?: "change_requests"): URLSearchParams {
+  const next = new URLSearchParams(returnQueue ? { queue: returnQueue } : { report: kind });
   if (kind === "certificates") {
     if (filters.gxp_type) next.set("gxp_type", filters.gxp_type);
     next.set("expiry_days", filters.expiry_days);
@@ -89,10 +93,10 @@ function certificateLocation(item: CertificateReportItem): string {
   return `/search?${params}`;
 }
 
-export function CanonicalRecordReport({ access, kind, showDocumentsLink = false, initialCertificateExpiryDays = "90", urlState = false }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean; initialCertificateExpiryDays?: "90" | ""; urlState?: boolean }) {
+export function CanonicalRecordReport({ access, kind, showDocumentsLink = false, initialCertificateExpiryDays = "90", urlState = false, returnQueue }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean; initialCertificateExpiryDays?: "90" | ""; urlState?: boolean; returnQueue?: "change_requests" }) {
   const [params, setParams] = useSearchParams();
   const query = params.toString();
-  const parsed = useMemo(() => parseReportUrl(new URLSearchParams(query), kind, initialCertificateExpiryDays), [query, kind, initialCertificateExpiryDays]);
+  const parsed = useMemo(() => parseReportUrl(new URLSearchParams(query), kind, initialCertificateExpiryDays, returnQueue), [query, kind, initialCertificateExpiryDays, returnQueue]);
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration, kind]);
   const ownerRef = useRef(owner);
@@ -140,7 +144,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
   }, [active, offset, owner, requestOwner, auth, useStubAuth, bearerToken, canLoadSecureApi, kind, urlState, parsed.valid]);
 
   function updateUrl(filters: Filters, nextOffset: number) {
-    setParams(reportParams(kind, filters, nextOffset));
+    setParams(reportParams(kind, filters, nextOffset, returnQueue));
   }
 
   function apply(event: FormEvent) {
@@ -209,6 +213,9 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
   const isCert = kind === "certificates";
   const rows = current?.page?.items ?? [];
   const total = current?.page?.total_count ?? 0;
+  const originReturn = urlState
+    ? `${returnQueue ? "/workflow" : "/reports"}?${reportParams(kind, active, offset, returnQueue)}`
+    : null;
   return <>
     <section className="panel">
       <form onSubmit={apply}>
@@ -245,16 +252,16 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
             : <><th>Nội dung/phạm vi</th><th>Ngày gửi</th><th>Trạng thái</th>{showDocumentsLink && <th>Tài liệu</th>}</>}
         </tr></thead><tbody>
           {isCert ? (rows as CertificateReportItem[]).map(item => <tr key={item.certificate_id}>
-            <td><Link className="text-link" state={urlState ? { reportReturn: `/reports?${reportParams(kind, active, offset)}` } : undefined} to={["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? certificateLocation(item) : `/reports/certificates/${encodeURIComponent(item.certificate_id)}?${new URLSearchParams({ site_id: item.site_id })}`}>{item.certificate_number ?? item.certificate_id}</Link></td>
+            <td><Link className="text-link" state={originReturn ? { reportReturn: originReturn } : undefined} to={["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? certificateLocation(item) : `/reports/certificates/${encodeURIComponent(item.certificate_id)}?${new URLSearchParams({ site_id: item.site_id })}`}>{item.certificate_number ?? item.certificate_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td>
             <td>{item.issue_date ?? "—"}</td><td>{item.expiry_date ?? "—"}</td><td>{item.status === "expired" ? "Hết hạn" : "Hiện hành"}</td><td>{item.lifecycle_state ?? "Chưa xác minh"}</td>
             <td>{item.case_id && ["GMP", "GLP", "GMPbb"].includes(item.gxp_type) ? <Link className="text-link" to={`/cases/${encodeURIComponent(item.case_id)}?${new URLSearchParams({ source_certificate_id: item.certificate_id, source_site_id: item.site_id })}`}>Mở Case</Link> : "—"}</td>
             <td><Link className="text-link" to={`/documents/certificates/${encodeURIComponent(item.certificate_id)}`}>Xem metadata</Link></td>
           </tr>) : (rows as ChangeRequestReportItem[]).map(item => <tr key={item.change_request_id}>
-            <td><Link className="text-link" state={urlState ? { reportReturn: `/reports?${reportParams(kind, active, offset)}` } : undefined} to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
+            <td><Link className="text-link" state={originReturn ? { reportReturn: originReturn } : undefined} to={`/reports/change-requests/${encodeURIComponent(item.change_request_id)}`}>{item.legacy_change_request_id ?? item.change_request_id}</Link></td>
             <td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.scope_label ?? "—"}</td>
             <td>{item.submitted_on ?? "—"}</td><td>{item.state}</td>
-            {showDocumentsLink && <td><Link className="text-link" to={`/documents/change-requests/${encodeURIComponent(item.change_request_id)}`}>Xem tài liệu</Link></td>}
+            {showDocumentsLink && <td><Link className="text-link" state={originReturn ? { reportReturn: originReturn } : undefined} to={`/documents/change-requests/${encodeURIComponent(item.change_request_id)}`}>Xem tài liệu</Link></td>}
           </tr>)}
         </tbody></table></div>}
       {current?.page && total > 0 && <nav className="report-pagination" aria-label="Phân trang báo cáo">

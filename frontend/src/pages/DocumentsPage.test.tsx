@@ -120,6 +120,22 @@ afterEach(() => {
 });
 
 describe("document report return navigation", () => {
+  it("returns from the Change Request checklist to the originating workflow queue", async () => {
+    const source = "/workflow?queue=change_requests&state=received&q=facility&offset=100";
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: source } }]}>
+      <Routes><Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} /></Routes>
+    </MemoryRouter>);
+    const link = screen.getByRole("link", { name: "Quay lại Bàn công việc" });
+    expect(link).toHaveAttribute("href", source);
+    await screen.findByText("Yêu cầu thay đổi change-1");
+  });
+  it.each(["/workflow?queue=inspection", "/workflow?queue=change_requests&offset=1", "/workflow?queue=change_requests&state=approved", "/workflow?queue=change_requests&queue=change_requests", "/workflow?queue=change_requests&site_id=foreign"])("rejects malformed Change Request workflow return (%s)", hint => {
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: hint } }]}>
+      <Routes><Route path="/documents/change-requests/:changeRequestId" element={<DocumentRegister kind="change-requests" access={access} />} /></Routes>
+    </MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Quay lại danh sách hồ sơ" })).toHaveAttribute("href", "/documents");
+  });
+
   it("opens the exact verified Change Request checklist document from a shareable key", async () => {
     vi.mocked(getDocumentDetail).mockResolvedValue(detailPayload("change"));
     mount("/documents/change-requests/change-1?document_key=change_request%3Achange-1%3AREQUEST");

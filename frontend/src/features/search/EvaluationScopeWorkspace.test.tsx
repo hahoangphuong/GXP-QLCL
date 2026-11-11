@@ -208,7 +208,7 @@ describe("evaluation taxonomy operator search", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Tìm mục phạm vi" }), { target: { value: "CHILD" } });
     expect(screen.getByText("Child")).toBeInTheDocument();
     expect(screen.getByText("Root")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mở rộng 1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Đường dẫn cha 1" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toBeDisabled();
     fireEvent.click(screen.getByRole("checkbox", { name: "Chọn 1.1" }));
     expect(screen.getByRole("checkbox", { name: "Chọn 1.1" })).toHaveAttribute("aria-checked", "false");

@@ -5,6 +5,7 @@ Only initial synthetic entity setup uses the ORM; all workflow steps use HTTP.
 """
 import asyncio
 import json
+from urllib.parse import urlsplit
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
@@ -22,6 +23,7 @@ def api(pg_engine):
     app = create_app(pg_engine.url.render_as_string(hide_password=False), app_env={"AUTH_MODE": "header_stub"})
 
     def call(method, path, payload=None, role="admin"):
+        target = urlsplit(path)
         async def invoke():
             body = b"" if payload is None else json.dumps(payload).encode()
             messages = []
@@ -35,8 +37,8 @@ def api(pg_engine):
             async def send(message):
                 messages.append(message)
             await app({"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
-                       "method": method, "scheme": "http", "path": path, "raw_path": path.encode(),
-                       "query_string": b"", "headers": [(b"content-type", b"application/json"),
+                       "method": method, "scheme": "http", "path": target.path, "raw_path": target.path.encode(),
+                       "query_string": target.query.encode(), "headers": [(b"content-type", b"application/json"),
                            (b"x-auth-user", b"synthetic-http"), (b"x-auth-role", role.encode())],
                        "client": ("127.0.0.1", 12345), "server": ("localhost", 80), "root_path": ""}, receive, send)
             status = next(x["status"] for x in messages if x["type"] == "http.response.start")
@@ -143,17 +145,30 @@ def test_http_end_to_end_capa_approval_certificate_close(pg_engine, api, reject_
         "scopes": [{"scope_key": "synthetic", "scope_text": "Synthetic scope", "language_code": "vi", "sort_order": 1}]})
     detail = ok(api, "GET", f"/certificates/{cert_id}")
     assert detail["certificate_number"] == "HTTP-GMP-UPDATED" and detail["scopes"][0]["scope_text"] == "Synthetic scope"
+    # The read-only report must not advertise a Certificate that is merely
+    # issued but has not been promoted to canonical Current.
+    before_current = ok(api, "GET", "/reports/certificates?gxp_type=GMP&number=HTTP-GMP-UPDATED")
+    assert all(row["certificate_id"] != cert_id for row in before_current["items"])
     action = next(x for x in detail["action_readiness"] if x["action_key"] == "promote_current")
     assert action["available"]
     status, _ = api("POST", f"/certificates/{cert_id}/promote-current", {"expected_version": action["expected_version"] + 1})
     assert status == 409
     ok(api, "POST", f"/certificates/{cert_id}/promote-current", {"expected_version": action["expected_version"]})
     assert ok(api, "GET", f"/certificates/{cert_id}")["latest_flag"]
+    current = ok(api, "GET", "/reports/certificates?gxp_type=GMP&number=HTTP-GMP-UPDATED")
+    assert any(row["certificate_id"] == cert_id and row["site_id"] == site_id
+               and row["certificate_number"] == "HTTP-GMP-UPDATED" for row in current["items"])
+    active_cases = ok(api, "GET", "/reports/cases?gxp_type=GMP")
+    assert any(row["case_id"] == case_id for row in active_cases["items"])
     transition(api, case_id, "certified")
     transition(api, case_id, "closed")
     ws = workspace(api, case_id)
     assert ws["case_summary"]["state"] == "closed"
     assert any(x["certificate_id"] == cert_id for x in ws["linked_gxp_certificates"])
+    after_close = ok(api, "GET", "/reports/cases?gxp_type=GMP")
+    assert all(row["case_id"] != case_id for row in after_close["items"])
+    after_close_certs = ok(api, "GET", "/reports/certificates?gxp_type=GMP&number=HTTP-GMP-UPDATED")
+    assert any(row["certificate_id"] == cert_id for row in after_close_certs["items"])
     with Session(pg_engine) as session:
         assert session.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.entity_id == cert_id, AuditEvent.action == "certificate.issue")) == 1
 

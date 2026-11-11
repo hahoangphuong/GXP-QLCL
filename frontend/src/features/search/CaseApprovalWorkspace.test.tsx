@@ -497,3 +497,76 @@ describe("approval exact submitted command evidence from canonical HTTP owner", 
     expect(screen.queryByRole("region", { name: "Lệnh trình phê duyệt đã gửi" })).not.toBeInTheDocument();
   });
 });
+
+
+describe("canonical PCT/CT history text search", () => {
+  const row = (id: string, stage: "PCT" | "CT", reference: string, pctId: string | null, date: string, completedOn: string | null) => ({
+    approval_submission_id: id, case_id: "case-1", row_version: 3, stage,
+    round_no: stage === "CT" ? 1 : id === "pct-two" ? 2 : 1,
+    reference, submitted_on: date, submitted_time: "08:15",
+    completed_on: completedOn, completed_time: null, pct_submission_id: pctId,
+  });
+  const rows = [
+    row("pct-one", "PCT", "PCT-2026-A", null, "2026-10-01", "2026-10-04"),
+    row("pct-two", "PCT", "PCT-2026-B", null, "2026-11-07", "2026-11-08"),
+    row("ct-final", "CT", "CT-2026-FINAL", "pct-two", "2026-11-09", null),
+  ];
+  const onCreate = vi.fn(), onComplete = vi.fn();
+  const editor = (caseId: string, show = true, events = rows) => {
+    const data = workspace({ approval_submissions: events.map(event => ({ ...event, case_id: caseId })) });
+    return <CaseDraftSession identity={caseId}>{show
+      ? <CaseApprovalWorkspace caseWorkspace={{ ...data, case_summary: { id: caseId } } as CaseWorkspace}
+          onCreate={onCreate} onComplete={onComplete} /> : null}</CaseDraftSession>;
+  };
+
+  it("searches by reference, canonical UUID, parent UUID and date without mutation or reordering", () => {
+    const view = render(editor("case-1"));
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 3/3");
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" }), { target: { value: "ct-2026-final" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 1/3");
+    expect(screen.getByLabelText("CT lần 1 — ct-final")).toBeInTheDocument();
+    expect(screen.queryByLabelText("PCT lần 2 — pct-two")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" }), { target: { value: "pct-two" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 2/3");
+    expect(screen.getByLabelText("CT lần 1 — ct-final")).toBeInTheDocument();
+    expect(screen.getByLabelText("PCT lần 2 — pct-two")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" }), { target: { value: "2026-10-01" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 1/3");
+    expect(screen.getByLabelText("PCT lần 1 — pct-one")).toBeInTheDocument();
+    view.rerender(editor("case-1", true, rows.filter(item => item.approval_submission_id !== "pct-one")));
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 0/2");
+    expect(screen.queryByLabelText("PCT lần 1 — pct-one")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa tìm kiếm PCT/CT" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 2/2");
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("reveals and focuses exact linked PCT hidden by search and stage filters", () => {
+    render(editor("case-1"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" }), { target: { value: "CT-2026-FINAL" } });
+    fireEvent.click(screen.getByRole("button", { name: "CT (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem PCT lần 2 của CT lần 1" }));
+    expect(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Tất cả (3)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("PCT lần 2 — pct-two")).toHaveFocus();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("retains the query across same-Case tab remount but not another Case or a return to A", () => {
+    const view = render(editor("case-1"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" }), { target: { value: "pct-2026-b" } });
+    view.rerender(editor("case-1", false));
+    view.rerender(editor("case-1"));
+    expect(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" })).toHaveValue("pct-2026-b");
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 1/3");
+    view.rerender(editor("case-2"));
+    expect(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" })).toHaveValue("");
+    expect(screen.getByRole("status")).toHaveTextContent("Hiển thị 3/3");
+    view.rerender(editor("case-1"));
+    expect(screen.getByRole("textbox", { name: "Tìm trong lịch sử PCT/CT" })).toHaveValue("");
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+});

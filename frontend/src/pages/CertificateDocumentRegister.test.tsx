@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
 import { getBusinessEligibilityDocumentMetadata, getGxpCertificateDocumentMetadata } from "../lib/api";
@@ -59,15 +59,24 @@ describe("certificate document metadata register", () => {
   it("returns to the verified read-only GSP detail and retains the report as a secondary return", async () => {
     const source = "/reports?report=certificates&gxp_type=GSP&expiry_days=90";
     const detail = "/reports/certificates/cert-1?site_id=site-uuid&version_id=version-1";
+    function Destination() {
+      const location = useLocation();
+      return <output data-testid="returned-report-context">{JSON.stringify(location.state)}</output>;
+    }
     render(<MemoryRouter initialEntries={[{
       pathname: "/documents/certificates/cert-1", state: { reportReturn: source, certificateDetailReturn: detail },
     }]}>
-      <Routes><Route path="/documents/certificates/:certificateId"
-        element={<CertificateDocumentRegister access={access} kind="certificate" />} /></Routes>
+      <Routes>
+        <Route path="/documents/certificates/:certificateId"
+          element={<CertificateDocumentRegister access={access} kind="certificate" />} />
+        <Route path="/reports/certificates/:certificateId" element={<Destination />} />
+      </Routes>
     </MemoryRouter>);
     await screen.findByText("Tệp đã đăng ký");
     expect(screen.getByRole("link", { name: "Quay lại chi tiết GCN" })).toHaveAttribute("href", detail);
     expect(screen.getByRole("link", { name: "Quay lại báo cáo GCN" })).toHaveAttribute("href", source);
+    fireEvent.click(screen.getByRole("link", { name: "Quay lại chi tiết GCN" }));
+    expect(screen.getByTestId("returned-report-context")).toHaveTextContent(source);
     expect(getGxpCertificateDocumentMetadata).toHaveBeenCalledOnce();
   });
 

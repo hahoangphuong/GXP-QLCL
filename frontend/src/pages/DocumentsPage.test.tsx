@@ -120,6 +120,20 @@ afterEach(() => {
 });
 
 describe("document report return navigation", () => {
+  it("opens the exact verified Change Request checklist document from a shareable key", async () => {
+    mount("/documents/change-requests/change-1?document_key=change_request%3Achange-1%3AREQUEST");
+    expect(await screen.findByRole("heading", { name: "Chi tiết: Biên bản kiểm tra" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Xem toàn bộ checklist" })).toHaveAttribute("href", "/documents/change-requests/change-1");
+    expect(getDocumentDetail).toHaveBeenCalledWith("change-doc", expect.anything(), true, null);
+  });
+  it.each(["document_key=unknown", "document_key=change_request%3Achange-1%3AREQUEST&document_key=another", "site_id=foreign"])("fails closed for missing or invalid document key (%s)", async query => {
+    mount("/documents/change-requests/change-1?" + query);
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(/mục tài liệu/);
+    expect(screen.queryByRole("button", { name: "Xem chi tiết" })).not.toBeInTheDocument();
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+  });
+
   it("restores the originating Change Request report and opens the exact document section", async () => {
     const origin = "/reports?report=change_requests&state=received&q=company&offset=100";
     function Destination() {

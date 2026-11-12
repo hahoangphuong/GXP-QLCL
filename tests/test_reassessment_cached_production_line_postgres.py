@@ -88,6 +88,19 @@ def test_reassessment_create_rejects_stale_cached_production_line(change):
             changed_line.code = "LINE-2"
         editor.commit()
 
+        # Readiness and actual write must agree on canonical Site/code,
+        # even though this Session still holds the old ProductionLine row.
+        readiness = CaseWorkflowService().get_create_reassessment_case_action_readiness(
+            creator,
+            site_id=site_a_id,
+            gxp_type="GMP",
+            line_code="LINE-1",
+            production_line_id=line_id,
+            user=build_authenticated_user("synthetic-line-reassessment", "manager"),
+        )
+        assert readiness["readiness_status"] == "unavailable"
+        assert "ProductionLine" in readiness["detail"]
+
         with pytest.raises(HTTPException) as denied:
             CaseWorkflowService().create_inspection_case(
                 creator,

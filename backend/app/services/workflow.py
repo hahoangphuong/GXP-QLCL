@@ -1103,11 +1103,14 @@ class CaseWorkflowService:
         # A long-lived Session may have cached a child before its owning
         # Case FK was changed by another transaction. Never trust the cached
         # relationship to decide which Case lock protects this mutation.
+        cached_cycle = self._get_capa_cycle(session, capa_cycle_id)
         case_id = session.scalar(
             select(CapaCycle.case_id).where(CapaCycle.id == capa_cycle_id)
         )
         if case_id is None:
             raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+        if cached_cycle.case_id != case_id:
+            raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
         parent = self._lock_case(session, case_id)
         self._assert_case_not_terminal(parent, operation=operation)
         cycle = session.scalars(

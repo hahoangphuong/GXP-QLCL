@@ -1683,7 +1683,14 @@ class CaseWorkflowService:
                 detail="Change request artifact link must reference exactly one canonical artifact.",
             )
         if certificate_id is not None:
-            certificate = session.get(Certificate, certificate_id)
+            # A previously loaded certificate can retain its former Site in a
+            # long-lived Session after another writer commits a reparent. The
+            # affected/issued Change Request links must follow committed
+            # canonical ownership, never the identity-map snapshot.
+            certificate = session.scalars(
+                select(Certificate).where(Certificate.id == certificate_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
             if certificate is None or certificate.site_id != site.id:
                 raise HTTPException(
                     status_code=409,
@@ -1692,10 +1699,14 @@ class CaseWorkflowService:
             self._certificate_line_identity(session, certificate)
             return "certificate", certificate.id
 
-        business_eligibility = session.get(
-            BusinessEligibilityCertificate,
-            business_eligibility_certificate_id,
-        )
+        # The same owner boundary applies to Site *and* Company for DDK:
+        # both can change in a committed transaction after an ORM identity
+        # was cached by the Change Request Session.
+        business_eligibility = session.scalars(
+            select(BusinessEligibilityCertificate).where(
+                BusinessEligibilityCertificate.id == business_eligibility_certificate_id
+            ).execution_options(populate_existing=True)
+        ).one_or_none()
         if (
             business_eligibility is None
             or business_eligibility.site_id != site.id

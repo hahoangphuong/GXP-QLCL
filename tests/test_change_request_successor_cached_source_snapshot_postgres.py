@@ -197,8 +197,11 @@ def test_successor_copies_committed_version_and_children(kind):
                  else BusinessEligibilityVersion.business_eligibility_certificate_id) == successor_id,
             ))
             assert successor_version is not None
-            assert successor_version.certificate_number is None
+            # GxP successor is a new draft certificate without a number.
+            # DDK intentionally copies certificate_number from its source
+            # under the existing BUSINESS_ELIGIBILITY_SUCCESSOR_COPY_FIELDS contract.
             if kind == "gxp":
+                assert successor_version.certificate_number is None
                 assert successor_version.applicable_standard == "COMMITTED STANDARD"
                 assert successor_version.issuing_authority == "COMMITTED AUTHORITY"
                 successor_scope = verify.scalar(
@@ -208,6 +211,7 @@ def test_successor_copies_committed_version_and_children(kind):
                 assert successor_scope.sort_order == 7
                 assert verify.get(CertificateScope, ids["child"]).scope_text == "COMMITTED SCOPE"
             else:
+                assert successor_version.certificate_number == "SRC-DDK"
                 assert successor_version.professional_responsible_person_name == "COMMITTED PERSON"
                 assert successor_version.notes == "COMMITTED NOTES"
                 successor_link = verify.scalar(

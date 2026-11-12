@@ -1909,10 +1909,14 @@ class CaseWorkflowService:
                 status_code=409,
                 detail="Change request successors are read-only in the current state.",
             )
-        source_link = session.get(
-            ChangeRequestAffectedArtifact,
-            source_affected_artifact_id,
-        )
+        # The root lock protects this Change Request, but cannot refresh an
+        # affected-link identity already cached by this Session. Re-read the
+        # committed source FK before deciding which artifact may be issued.
+        source_link = session.scalars(
+            select(ChangeRequestAffectedArtifact).where(
+                ChangeRequestAffectedArtifact.id == source_affected_artifact_id
+            ).execution_options(populate_existing=True)
+        ).one_or_none()
         if source_link is None:
             raise HTTPException(
                 status_code=404,
@@ -2064,10 +2068,14 @@ class CaseWorkflowService:
                 status_code=409,
                 detail="Change request successors are read-only in the current state.",
             )
-        source_link = session.get(
-            ChangeRequestAffectedArtifact,
-            source_affected_artifact_id,
-        )
+        # The root lock protects this Change Request, but cannot refresh an
+        # affected-link identity already cached by this Session. Re-read the
+        # committed source FK before deciding which artifact may be issued.
+        source_link = session.scalars(
+            select(ChangeRequestAffectedArtifact).where(
+                ChangeRequestAffectedArtifact.id == source_affected_artifact_id
+            ).execution_options(populate_existing=True)
+        ).one_or_none()
         if source_link is None:
             raise HTTPException(
                 status_code=404,

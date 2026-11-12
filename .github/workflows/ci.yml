@@ -48,7 +48,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"          cache: pip
+          python-version: "3.12"
+          cache: pip
           cache-dependency-path: backend/requirements.dev.lock.txt
 
       - name: Validate tracked-file hygiene policy
@@ -178,7 +179,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"          cache: pip
+          python-version: "3.12"
+          cache: pip
           cache-dependency-path: backend/requirements.dev.lock.txt
 
       - name: Install backend dependencies
@@ -489,7 +491,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"          cache: pip
+          python-version: "3.12"
+          cache: pip
           cache-dependency-path: backend/requirements.dev.lock.txt
 
       - uses: actions/setup-node@v4

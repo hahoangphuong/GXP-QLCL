@@ -140,6 +140,26 @@ try {
     await until("PCT completed",x=>x.inspection.approval_submissions.some(a=>
       a.approval_submission_id===pct.approval_submission_id&&a.completed_on==="2026-11-11"));
 
+    // A second completed PCT exists in the same Case. CT must bind to the
+    // explicitly selected first PCT UUID rather than the newest round or
+    // first visible row, regardless of canonical ordering.
+    await approval.getByRole("textbox",{name:"Tham chiếu trình"}).fill("BROWSER-PCT-2");
+    await approval.getByRole("button",{name:"Tạo trình PCT",exact:true}).click();
+    ws=await until("second PCT created",x=>x.inspection.approval_submissions
+      .some(a=>a.stage==="PCT"&&a.round_no===2));
+    const pct2=ws.inspection.approval_submissions.find(a=>a.stage==="PCT"&&a.round_no===2);
+    assert.notEqual(pct2.approval_submission_id,pct.approval_submission_id);
+    const pct2Group=approval.getByRole("group",{name:"Hoàn tất PCT lần 2"});
+    await pct2Group.getByLabel("Ngày hoàn tất trình",{exact:true}).fill("2026-11-11");
+    await pct2Group.getByRole("button",{name:"Hoàn tất PCT",exact:true}).click();
+    await until("second PCT completed",x=>x.inspection.approval_submissions.some(a=>
+      a.approval_submission_id===pct2.approval_submission_id&&a.completed_on==="2026-11-11"));
+    const pctParent=approval.getByRole("combobox",{name:"PCT hoàn tất cho CT"});
+    await pctParent.selectOption(pct.approval_submission_id);
+    assert.equal(await pctParent.inputValue(),pct.approval_submission_id);
+    ws=await workspace();
+    assert.equal(ws.inspection.approval_submissions.filter(a=>a.stage==="PCT"&&a.completed_on).length,2);
+
     await approval.getByRole("combobox",{name:"PCT hoàn tất cho CT"}).selectOption(pct.approval_submission_id);
     await approval.getByRole("textbox",{name:"Tham chiếu trình"}).fill("BROWSER-CT-1");
     await approval.getByRole("button",{name:"Tạo trình CT",exact:true}).click();
@@ -214,10 +234,10 @@ try {
     assert.ok(retained.items.some(cert=>cert.certificate_id===certId&&cert.site_id===siteId));
     const report=await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");
     assert.ok(report.items.every(x=>x.case_id!==caseId));
-    // One rejected and one accepted CAPA means exactly three additional UI
-    // commands (create/submit/assess), not retries of the rejected mutation.
-    // Keep this independent of the read-only canonical polling above.
-    assert.equal(requests.length,17,"Unexpected number of UI mutation requests: "+JSON.stringify(requests));
+    // The rejected CAPA round adds three actions; the second independent
+    // completed PCT adds two. The CT parent remains the explicitly selected
+    // first PCT, with no duplicate UI requests or blind retries.
+    assert.equal(requests.length,19,"Unexpected number of UI mutation requests: "+JSON.stringify(requests));
     assert.deepEqual(errors,[]);
     process.stdout.write("OPERATOR_FULL_CASE_CERTIFICATE_BROWSER_PASS mutations="+requests.length+"\n");
   } catch(e) {

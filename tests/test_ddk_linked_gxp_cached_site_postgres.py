@@ -160,3 +160,101 @@ def test_ddk_revalidates_linked_gxp_after_committed_site_move(operation):
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_ddk_promotion_rechecks_cached_link_target_after_committed_rebind():
+    """A stale link FK must not validate the previously linked same-site GxP."""
+    url = make_url(DATABASE_URL)
+    if (
+        url.get_backend_name() != "postgresql"
+        or url.database != "gxp_qlcl_test"
+        or url.host not in {"127.0.0.1", "localhost"}
+        or url.port != 5432
+    ):
+        pytest.fail("Only disposable loopback PostgreSQL; no mutations made.")
+    schema = "ddk_rebound_link_" + uuid4().hex
+    admin = create_engine(DATABASE_URL, future=True)
+    engine = contender = writer = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(
+            DATABASE_URL, connect_args={"options": f"-csearch_path={schema}"},
+            future=True,
+        )
+        Base.metadata.create_all(engine)
+        factory = sessionmaker(
+            bind=engine, autoflush=False, expire_on_commit=False, future=True,
+        )
+        with factory() as setup:
+            company = Company(legal_name="DDK reassigned link " + schema)
+            setup.add(company)
+            setup.flush()
+            site_a = Site(company_id=company.id, site_name="DDK original Site")
+            site_b = Site(company_id=company.id, site_name="DDK forbidden Site")
+            setup.add_all([site_a, site_b])
+            setup.flush()
+            same = Certificate(site_id=site_a.id, certificate_type="GMP", latest_flag=False)
+            wrong = Certificate(site_id=site_b.id, certificate_type="GMP", latest_flag=False)
+            ddk = BusinessEligibilityCertificate(
+                company_id=company.id, site_id=site_a.id, latest_flag=False,
+            )
+            setup.add_all([same, wrong, ddk])
+            setup.flush()
+            version = BusinessEligibilityVersion(
+                business_eligibility_certificate_id=ddk.id, version_no=1,
+                certificate_number="CI-DDK-REBOUND-LINK",
+                issued_on=date(2026, 11, 12),
+            )
+            setup.add(version)
+            setup.flush()
+            link = BusinessEligibilityCertificateLink(
+                business_eligibility_version_id=version.id,
+                certificate_id=same.id,
+                link_role="source_certificate",
+            )
+            setup.add(link)
+            setup.commit()
+            ddk_id, link_id, same_id, wrong_id = ddk.id, link.id, same.id, wrong.id
+            ddk_token = ddk.row_version
+
+        contender = factory()
+        cached_link = contender.get(BusinessEligibilityCertificateLink, link_id)
+        assert cached_link.certificate_id == same_id
+        assert contender.get(Certificate, same_id) is not None
+
+        writer = factory()
+        canonical_link = writer.get(BusinessEligibilityCertificateLink, link_id)
+        canonical_link.certificate_id = wrong_id
+        writer.commit()
+
+        with pytest.raises(HTTPException) as denied:
+            CaseWorkflowService().promote_business_eligibility_current(
+                contender,
+                business_eligibility_certificate_id=ddk_id,
+                expected_version=ddk_token,
+                reason="stale DDK link target should not promote",
+                user=build_authenticated_user("ci-ddk-rebound-link", "manager"),
+            )
+        assert denied.value.status_code == 409
+        assert "invalid linked" in str(denied.value.detail).lower()
+        contender.rollback()
+
+        with factory() as verify:
+            assert verify.get(BusinessEligibilityCertificateLink, link_id).certificate_id == wrong_id
+            assert verify.get(BusinessEligibilityCertificate, ddk_id).latest_flag is False
+            assert verify.get(BusinessEligibilityCertificate, ddk_id).row_version == ddk_token
+            assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+    finally:
+        for session in (contender, writer):
+            if session is not None:
+                session.rollback()
+                session.close()
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

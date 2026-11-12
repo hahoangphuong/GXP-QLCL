@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import OperationalError
 
 from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
@@ -163,6 +164,38 @@ def test_successor_copies_committed_version_and_children(kind):
             assert stale_child.link_role == "source_certificate"
 
         service = CaseWorkflowService()
+        # Assert transaction-level source-root locking during the actual
+        # successor mutation, after the version and child snapshot is read.
+        # Without a coordinating FOR UPDATE root lock this NOWAIT competitor
+        # succeeds, making the regression fail instead of silently passing.
+        create_method = (
+            "_create_certificate_candidate" if kind == "gxp"
+            else "_create_business_eligibility_candidate"
+        )
+        original_create = getattr(service, create_method)
+        lock_probes = []
+
+        def create_while_competing_writer_waits(*args, **kwargs):
+            with factory() as competitor:
+                with pytest.raises(OperationalError):
+                    competitor.execute(
+                        select(
+                            Certificate if kind == "gxp"
+                            else BusinessEligibilityCertificate
+                        )
+                        .where(
+                            (
+                                Certificate.id if kind == "gxp"
+                                else BusinessEligibilityCertificate.id
+                            ) == ids["source"]
+                        )
+                        .with_for_update(nowait=True)
+                    ).scalar_one()
+                competitor.rollback()
+            lock_probes.append(True)
+            return original_create(*args, **kwargs)
+
+        setattr(service, create_method, create_while_competing_writer_waits)
         actor = build_authenticated_user(
             "synthetic-snapshot", "manager",
             permissions=["change_request.edit", "change_request.approve"],
@@ -180,6 +213,24 @@ def test_successor_copies_committed_version_and_children(kind):
             issued = service.issue_change_request_business_eligibility_successor(cached, **params)
             successor_id = issued["business_eligibility_certificate_id"]
         cached.commit()
+        assert lock_probes == [True]
+
+        # The source-row lock is released when issuer commits.
+        with factory() as competitor:
+            competitor.execute(
+                select(
+                    Certificate if kind == "gxp"
+                    else BusinessEligibilityCertificate
+                )
+                .where(
+                    (
+                        Certificate.id if kind == "gxp"
+                        else BusinessEligibilityCertificate.id
+                    ) == ids["source"]
+                )
+                .with_for_update(nowait=True)
+            ).scalar_one()
+            competitor.rollback()
 
         with factory() as verify:
             assert verify.get(ChangeRequest, ids["request"]).row_version == issued["row_version"]

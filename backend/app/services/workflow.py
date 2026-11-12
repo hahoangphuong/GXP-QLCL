@@ -663,7 +663,13 @@ class CaseWorkflowService:
     def _validate_certificate_linked_case(session: Session, certificate: Certificate) -> Case | None:
         if certificate.case_id is None:
             return None
-        linked_case = session.get(Case, certificate.case_id)
+        # The Certificate may be current while its owning Case was already
+        # moved/changed by another committed writer. A cached Case snapshot
+        # is not evidence of the Certificate's current legal Site/GxP link.
+        linked_case = session.scalars(
+            select(Case).where(Case.id == certificate.case_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
         if linked_case is None or linked_case.site_id != certificate.site_id or linked_case.gxp_type != certificate.certificate_type:
             raise HTTPException(status_code=409, detail="Certificate references an invalid linked Case.")
         return linked_case
@@ -713,7 +719,12 @@ class CaseWorkflowService:
     def _certificate_line_identity(cls, session: Session, certificate: Certificate) -> dict[str, str | None]:
         cls._validate_certificate_linked_case(session, certificate)
         if certificate.production_line_id is not None:
-            line = session.get(ProductionLine, certificate.production_line_id)
+            # Same canonical ownership boundary for the line identity:
+            # SQLAlchemy may retain a ProductionLine from before reparenting.
+            line = session.scalars(
+                select(ProductionLine).where(ProductionLine.id == certificate.production_line_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
             if line is None or line.site_id != certificate.site_id:
                 raise HTTPException(status_code=409, detail="Certificate references an invalid canonical ProductionLine.")
             return {"production_line_id": line.id, "production_line_code": line.code, "production_line_identity_state": "canonical"}

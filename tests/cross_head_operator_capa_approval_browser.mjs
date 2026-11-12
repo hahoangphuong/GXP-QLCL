@@ -86,9 +86,37 @@ try {
     await page.getByRole("button",{name:"Ghi nhận tiếp nhận",exact:true}).click();
     await until("CAPA submitted",x=>cycle(x)?.status==="submitted");
     await page.getByLabel("Ngày đánh giá khắc phục",{exact:true}).fill("2026-11-11");
+    // A rejected first round must not silently unlock final evaluation
+    // or the Certificate decision. Only an independently assessed second
+    // round can restore readiness, using the same real Case/UI/HTTP path.
+    await page.getByRole("combobox",{name:"Kết quả đánh giá khắc phục"}).selectOption("rejected");
+    await page.getByRole("button",{name:"Đánh giá",exact:true}).click();
+    ws=await until("first CAPA rejected",x=>cycle(x)?.status==="rejected");
+    assert.equal(ws.remediation.cycles.length,1);
+    assert.equal(ws.inspection.final_evaluation_readiness.available,false);
+    const blocked=ws.transition_actions.find(a=>a.target_state==="awaiting_certificate_decision");
+    assert.equal(blocked?.available,false);
+    assert.equal(ws.inspection.final_evaluation,null);
+
+    await page.getByRole("button",{name:"Tạo vòng khắc phục tiếp theo",exact:true}).click();
+    await page.getByRole("textbox",{name:"Số tham chiếu đến"}).fill("BROWSER-CAPA-2");
+    await page.getByLabel("Ngày yêu cầu",{exact:true}).fill("2026-11-11");
+    await page.getByRole("button",{name:"Tạo vòng khắc phục",exact:true}).click();
+    ws=await until("second CAPA requested",x=>x.remediation.cycles.length===2
+      &&x.remediation.cycles[1].round_no===2&&x.remediation.cycles[1].status==="requested");
+    const second=ws.remediation.cycles[1];
+    assert.notEqual(second.capa_cycle_id,cycleId);
+    assert.equal(cycle(ws).status,"rejected");
+    await page.locator(".capa-cycle-table tbody tr").filter({has:page.locator("td:first-child", {hasText:/^2$/})}).click();
+    await page.getByLabel("Ngày ghi nhận tiếp nhận",{exact:true}).fill("2026-11-11");
+    await page.getByRole("button",{name:"Ghi nhận tiếp nhận",exact:true}).click();
+    await until("second CAPA submitted",x=>x.remediation.cycles[1]?.status==="submitted");
+    await page.getByLabel("Ngày đánh giá khắc phục",{exact:true}).fill("2026-11-11");
     await page.getByRole("combobox",{name:"Kết quả đánh giá khắc phục"}).selectOption("accepted");
     await page.getByRole("button",{name:"Đánh giá",exact:true}).click();
-    await until("CAPA accepted",x=>cycle(x)?.status==="accepted");
+    ws=await until("second CAPA accepted",x=>x.remediation.cycles[1]?.status==="accepted");
+    assert.deepEqual(ws.remediation.cycles.map(x=>x.status),["rejected","accepted"]);
+    assert.equal(ws.inspection.final_evaluation_readiness.available,true);
 
     await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
     const final=page.getByRole("group",{name:"Chốt đánh giá cuối cùng"});
@@ -186,8 +214,10 @@ try {
     assert.ok(retained.items.some(cert=>cert.certificate_id===certId&&cert.site_id===siteId));
     const report=await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");
     assert.ok(report.items.every(x=>x.case_id!==caseId));
-    // Browser emits only intended commands; no automatic duplicate submits.
-    assert.equal(requests.length,14,"Unexpected number of UI mutation requests: "+JSON.stringify(requests));
+    // One rejected and one accepted CAPA means exactly three additional UI
+    // commands (create/submit/assess), not retries of the rejected mutation.
+    // Keep this independent of the read-only canonical polling above.
+    assert.equal(requests.length,17,"Unexpected number of UI mutation requests: "+JSON.stringify(requests));
     assert.deepEqual(errors,[]);
     process.stdout.write("OPERATOR_FULL_CASE_CERTIFICATE_BROWSER_PASS mutations="+requests.length+"\n");
   } catch(e) {

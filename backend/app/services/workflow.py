@@ -1509,7 +1509,15 @@ class CaseWorkflowService:
                 certificate_id=source_link.certificate_id,
                 business_eligibility_certificate_id=None,
             )
-            available = editable and can_issue_certificate_successor
+            # The actual successor mutation requires a persisted source
+            # CertificateVersion. Do not advertise an action that would
+            # deterministically fail with HTTP 409 at the owner layer.
+            has_source_version = session.scalar(
+                select(CertificateVersion.id)
+                .where(CertificateVersion.certificate_id == source_link.certificate_id)
+                .limit(1)
+            ) is not None
+            available = editable and can_issue_certificate_successor and has_source_version
             actions.append(
                 {
                     "action_key": f"issue_certificate_successor:{source_link.id}",
@@ -1522,6 +1530,8 @@ class CaseWorkflowService:
                             "missing_permission"
                             if not can_issue_certificate_successor
                             else "state_not_editable"
+                            if not editable
+                            else "source_version_missing"
                         )
                     ),
                     "required_permissions": certificate_successor_permissions,
@@ -1557,7 +1567,15 @@ class CaseWorkflowService:
                 certificate_id=None,
                 business_eligibility_certificate_id=source_link.business_eligibility_certificate_id,
             )
-            available = editable and can_issue_business_eligibility_successor
+            has_source_version = session.scalar(
+                select(BusinessEligibilityVersion.id)
+                .where(
+                    BusinessEligibilityVersion.business_eligibility_certificate_id
+                    == source_link.business_eligibility_certificate_id
+                )
+                .limit(1)
+            ) is not None
+            available = editable and can_issue_business_eligibility_successor and has_source_version
             actions.append(
                 {
                     "action_key": f"issue_business_eligibility_successor:{source_link.id}",
@@ -1570,6 +1588,8 @@ class CaseWorkflowService:
                             "missing_permission"
                             if not can_issue_business_eligibility_successor
                             else "state_not_editable"
+                            if not editable
+                            else "source_version_missing"
                         )
                     ),
                     "required_permissions": business_eligibility_successor_permissions,

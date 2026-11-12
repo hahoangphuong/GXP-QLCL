@@ -23,7 +23,7 @@ from backend.app.db.models.phase1 import (
     ChangeRequestAffectedArtifact, ChangeRequestDetail,
     ChangeRequestIssuedArtifact, Company, Site,
 )
-from backend.app.services.catalog import CatalogService
+from backend.app.services.catalog import CatalogReadService
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
@@ -140,7 +140,7 @@ def test_change_request_workspace_rechecks_committed_parent_and_link_state(scena
         assert cached["site"].site_name == "Original Site"
 
         if scenario == "fresh_values":
-            payload = CatalogService().get_change_request_workspace(
+            payload = CatalogReadService().get_change_request_workspace(
                 stale, change_request_id=ids["root"],
             )
             assert payload["row_version"] == ids["original_version"] + 1
@@ -153,7 +153,7 @@ def test_change_request_workspace_rechecks_committed_parent_and_link_state(scena
             assert payload["issued_artifacts"][0]["artifact_id"] == ids["new_cert"]
         else:
             with pytest.raises(HTTPException) as denied:
-                CatalogService().get_change_request_workspace(
+                CatalogReadService().get_change_request_workspace(
                     stale, change_request_id=ids["root"],
                 )
             assert denied.value.status_code == 409

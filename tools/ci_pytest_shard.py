@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.verify_ci_pytest_shards import digest_nodeids, shard_for
+from tools.verify_ci_pytest_shards import balance_modules, digest_nodeids
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -37,8 +37,19 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     all_ids = [item.nodeid for item in items]
     if not all_ids or len(all_ids) != len(set(all_ids)):
         raise pytest.UsageError("CI shard collection must be nonempty with unique node IDs.")
-    selected = [item for item in items if shard_for(item.nodeid, count) == index]
-    deselected = [item for item in items if shard_for(item.nodeid, count) != index]
+    module_counts = dict(sorted(Counter(
+        item.nodeid.split("::", 1)[0].replace("\\\\", "/")
+        for item in items
+    ).items()))
+    assignments = balance_modules(module_counts, count)
+    selected = [
+        item for item in items
+        if assignments[item.nodeid.split("::", 1)[0].replace("\\\\", "/")] == index
+    ]
+    deselected = [
+        item for item in items
+        if assignments[item.nodeid.split("::", 1)[0].replace("\\\\", "/")] != index
+    ]
     if not selected:
         raise pytest.UsageError(f"CI shard {index} is empty.")
     if deselected:
@@ -51,7 +62,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         "count": count,
         "total_collected": len(all_ids),
         "all_nodeids_sha256": digest_nodeids(all_ids),
-        "all_module_counts": dict(sorted(Counter(nodeid.split("::", 1)[0].replace("\\\\", "/") for nodeid in all_ids).items())),
+        "all_module_counts": module_counts,
         "selected_nodeids": sorted(item.nodeid for item in selected),
     }
     destination = Path(path)

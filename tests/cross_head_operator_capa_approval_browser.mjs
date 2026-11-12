@@ -163,8 +163,22 @@ try {
     // Reuse the Case lifecycle locator from the previous transition.
     await lifecycle.getByRole("button",{name:"Chuyển: Đã cấp chứng nhận",exact:true}).click();
     await until("Case certified",x=>x.case_summary.state==="certified");
+    // Regression for the canonical master-history refresh boundary: the
+    // selected Case row must reflect the completed mutation in the live UI.
+    // Neither a forced page reload nor a synthetic client state is allowed.
+    const selectedHistory=page.locator(".history-table tbody tr[aria-selected='true']");
+    await selectedHistory.waitFor({state:"visible",timeout:30000});
+    await page.waitForFunction(expected=>{
+      const row=document.querySelector(".history-table tbody tr[aria-selected='true']");
+      return row?.getAttribute("title")===expected;
+    },"Đã cấp chứng nhận",{timeout:30000});
     await lifecycle.getByRole("button",{name:"Chuyển: Đã đóng hồ sơ",exact:true}).click();
     await until("Case closed",x=>x.case_summary.state==="closed");
+    await page.waitForFunction(expected=>{
+      const row=document.querySelector(".history-table tbody tr[aria-selected='true']");
+      return row?.getAttribute("title")===expected;
+    },"Đã đóng hồ sơ",{timeout:30000});
+    assert.equal(await selectedHistory.getAttribute("title"),"Đã đóng hồ sơ");
 
     const afterClose=await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");
     assert.ok(afterClose.items.every(x=>x.case_id!==caseId));

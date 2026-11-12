@@ -89,11 +89,20 @@ try {
         const body=await response.json();
         return body.case_summary?.id===caseId && body.case_summary.state===expected;
       },{caseId:fixture.operator_case,expected:state},{timeout:30000});
-      const report = await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");
-      const row=report.items.find(item=>item.case_id===fixture.operator_case);
+      // The transition POST may still be committing when a separate GET
+      // observes the new Case workspace. Demand convergence of the *report*
+      // itself, not a client-side inferred state, with a hard bound and
+      // diagnostic failure if the two canonical read models diverge.
+      let row;
+      for (let attempt=0;attempt<90;attempt++) {
+        const report=await api("/reports/cases?gxp_type=GMP&q=Browser%20Operator%20CI");
+        row=report.items.find(item=>item.case_id===fixture.operator_case);
+        if(row?.state===state) break;
+        await page.waitForTimeout(150);
+      }
       assert.ok(row,"Missing canonical Case after "+state);
       assert.equal(row.site_id,fixture.operator_site);
-      assert.equal(row.state,state,"Stale report after "+state);
+      assert.equal(row.state,state,"Canonical report did not converge after "+state);
     }
     assert.deepEqual(networkMutations,states.map(()=>({
       method:"POST",path:"/api/cases/"+fixture.operator_case+"/transition",

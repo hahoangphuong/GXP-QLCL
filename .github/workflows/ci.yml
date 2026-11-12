@@ -562,6 +562,9 @@ jobs:
       - name: Run real Chromium operator mutations and Case report readback
         run: node tests/cross_head_operator_case_browser.mjs
 
+      - name: Run real Chromium CAPA and PCT CT operator journey
+        run: node tests/cross_head_operator_capa_approval_browser.mjs
+
       - name: Archive synthetic-only browser QA screenshots
         uses: actions/upload-artifact@v4
         if: always()

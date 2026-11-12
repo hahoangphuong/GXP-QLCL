@@ -122,10 +122,15 @@ def verify_shards(receipts: list[dict], *, expected_count: int, expected_sha: st
     selected_counts = Counter(nodeid.split("::", 1)[0].replace("\\\\", "/") for nodeid in all_selected)
     if dict(selected_counts) != canonical_modules:
         raise CiShardError("Shard union does not reconstruct all modules and test counts.")
+    assignments = balance_modules(canonical_modules, expected_count)
+    loads = [
+        sum(nodes for module, nodes in canonical_modules.items() if assignments[module] == i)
+        for i in range(expected_count)
+    ]
     return {
         "status": "BACKEND_PYTEST_SHARDS_PASS", "shards": expected_count,
         "collected": total, "modules": len(canonical_modules),
-        "shard_node_counts": [sum(n for module, n in canonical_modules.items() if balance_modules(canonical_modules, expected_count)[module] == i) for i in range(expected_count)],
+        "shard_node_counts": loads,
         "head_sha": expected_sha,
     }
 

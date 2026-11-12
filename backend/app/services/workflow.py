@@ -477,7 +477,13 @@ class CaseWorkflowService:
                 BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
             )
         ):
-            linked_certificate = session.get(Certificate, link.certificate_id)
+            # A prior Session.get may retain the old Site/line relationship.
+            # Revalidate the linked GxP Certificate from committed SQL before
+            # this DDK may become Current. No client-side relation fallback.
+            linked_certificate = session.scalars(
+                select(Certificate).where(Certificate.id == link.certificate_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
             if linked_certificate is None:
                 return "invalid_linked_certificate"
             try:
@@ -963,7 +969,13 @@ class CaseWorkflowService:
                     detail=f"Duplicate business eligibility linked certificate: {certificate_id}.",
                 )
             seen_certificate_ids.add(certificate_id)
-            certificate = session.get(Certificate, certificate_id)
+            # The DDK aggregate token does not invalidate a linked GxP
+            # identity cached by this Session before a different transaction
+            # reassigned its Site. Validate the canonical linked row.
+            certificate = session.scalars(
+                select(Certificate).where(Certificate.id == certificate_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
             if certificate is None:
                 raise HTTPException(status_code=404, detail=f"Linked certificate {certificate_id} was not found.")
             if certificate.site_id != site_id:

@@ -7,6 +7,7 @@ Normal local pytest collection/execution is unchanged.
 from __future__ import annotations
 
 import json
+from collections import Counter
 import os
 from pathlib import Path
 
@@ -50,6 +51,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         "count": count,
         "total_collected": len(all_ids),
         "all_nodeids_sha256": digest_nodeids(all_ids),
+        "all_module_counts": dict(sorted(Counter(nodeid.split("::", 1)[0].replace("\\\\", "/") for nodeid in all_ids).items())),
         "selected_nodeids": sorted(item.nodeid for item in selected),
     }
     destination = Path(path)

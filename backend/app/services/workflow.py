@@ -1567,15 +1567,54 @@ class CaseWorkflowService:
                 certificate_id=None,
                 business_eligibility_certificate_id=source_link.business_eligibility_certificate_id,
             )
-            has_source_version = session.scalar(
+            source_version_id = session.scalar(
                 select(BusinessEligibilityVersion.id)
                 .where(
                     BusinessEligibilityVersion.business_eligibility_certificate_id
                     == source_link.business_eligibility_certificate_id
                 )
+                .order_by(BusinessEligibilityVersion.version_no.desc())
                 .limit(1)
-            ) is not None
-            available = editable and can_issue_business_eligibility_successor and has_source_version
+            )
+            # DDK successor issuance revalidates every copied GxP link under
+            # _replace_business_eligibility_links. Readiness must not advertise
+            # a deterministic 409/422 for an already-invalid committed link
+            # graph (including stale identities cached in this Session).
+            invalid_source_links = False
+            if source_version_id is not None and editable and can_issue_business_eligibility_successor:
+                seen_certificate_ids: set[str] = set()
+                source_gxp_links = session.scalars(
+                    select(BusinessEligibilityCertificateLink)
+                    .where(
+                        BusinessEligibilityCertificateLink.business_eligibility_version_id
+                        == source_version_id
+                    )
+                    .execution_options(populate_existing=True)
+                )
+                for link in source_gxp_links:
+                    if (
+                        link.link_role not in BUSINESS_ELIGIBILITY_LINK_ROLES
+                        or link.certificate_id in seen_certificate_ids
+                    ):
+                        invalid_source_links = True
+                        break
+                    seen_certificate_ids.add(link.certificate_id)
+                    linked_gxp = session.scalars(
+                        select(Certificate).where(Certificate.id == link.certificate_id)
+                        .execution_options(populate_existing=True)
+                    ).one_or_none()
+                    if linked_gxp is None or linked_gxp.site_id != site.id:
+                        invalid_source_links = True
+                        break
+                    try:
+                        self._certificate_line_identity(session, linked_gxp)
+                    except HTTPException:
+                        invalid_source_links = True
+                        break
+            available = (
+                editable and can_issue_business_eligibility_successor
+                and source_version_id is not None and not invalid_source_links
+            )
             actions.append(
                 {
                     "action_key": f"issue_business_eligibility_successor:{source_link.id}",
@@ -1590,6 +1629,8 @@ class CaseWorkflowService:
                             else "state_not_editable"
                             if not editable
                             else "source_version_missing"
+                            if source_version_id is None
+                            else "invalid_source_links"
                         )
                     ),
                     "required_permissions": business_eligibility_successor_permissions,

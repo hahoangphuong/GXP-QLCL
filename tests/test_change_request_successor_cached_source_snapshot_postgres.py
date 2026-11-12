@@ -153,7 +153,7 @@ def test_successor_copies_committed_version_and_children(kind):
         else:
             authoritative_version.professional_responsible_person_name = "COMMITTED PERSON"
             authoritative_version.notes = "COMMITTED NOTES"
-            authoritative_child.link_role = "supporting_certificate"
+            authoritative_child.link_role = "replacement_certificate"
         writer.commit()
         if kind == "gxp":
             assert stale_version.applicable_standard == "OLD STANDARD"
@@ -191,7 +191,7 @@ def test_successor_copies_committed_version_and_children(kind):
             )
             assert verify.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.action == action)) == 1
             model = Certificate if kind == "gxp" else BusinessEligibilityCertificate
-            assert verify.scalar(select(func.count(model.id))) == (2 if kind == "gxp" else 2)
+            assert verify.scalar(select(func.count(model.id))) == 2
             successor_version = verify.scalar(select(version_model).where(
                 (CertificateVersion.certificate_id if kind == "gxp"
                  else BusinessEligibilityVersion.business_eligibility_certificate_id) == successor_id,
@@ -216,8 +216,8 @@ def test_successor_copies_committed_version_and_children(kind):
                     )
                 )
                 assert successor_link.certificate_id == ids["gxp"]
-                assert successor_link.link_role == "supporting_certificate"
-                assert verify.get(BusinessEligibilityCertificateLink, ids["child"]).link_role == "supporting_certificate"
+                assert successor_link.link_role == "replacement_certificate"
+                assert verify.get(BusinessEligibilityCertificateLink, ids["child"]).link_role == "replacement_certificate"
     finally:
         for session in (cached, writer):
             if session is not None:

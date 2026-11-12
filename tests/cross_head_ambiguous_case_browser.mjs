@@ -103,10 +103,13 @@ async function probe(caseId,mode){
     await page.getByRole("tab",{name:"Giấy chứng nhận GPs",exact:true}).click();
     await page.getByRole("tab",{name:"Các đợt kiểm tra & thay đổi"}).click();
     await page.getByRole("button",{name:"Kiểm tra thực tế",exact:true}).click();
-    const same=lifecycle.getByRole("button",{name:"Chuyển: Đã tiếp nhận hồ sơ",exact:true});
-    await same.waitFor({state:"visible",timeout:30000});
-    assert.equal(await same.isDisabled(),true,
-      "Unknown outcome must fence the original operation after tab round-trip");
+    const candidateActions=lifecycle.getByRole("button",{name:/^Chuyển:/});
+    await candidateActions.first().waitFor({state:"visible",timeout:30000});
+    assert.ok(await candidateActions.count()>0);
+    for(let index=0;index<await candidateActions.count();index++){
+      assert.equal(await candidateActions.nth(index).isDisabled(),true,
+        "Unknown outcome must fence every Case transition after tab round-trip");
+    }
     assert.equal(await lifecycle.getByRole("textbox",{name:"Lý do chuyển trạng thái"}).isEditable(),false,
       "Submitted request evidence must remain read-only");
     assert.match(await lifecycle.innerText(),/Kết quả chuyển trạng thái chưa xác minh/);

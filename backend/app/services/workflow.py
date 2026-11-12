@@ -476,6 +476,9 @@ class CaseWorkflowService:
             select(BusinessEligibilityCertificateLink).where(
                 BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
             )
+            # Revalidate the persisted link FK too: a separate writer may
+            # have rebound it after this Session cached the old target.
+            .execution_options(populate_existing=True)
         ):
             # A prior Session.get may retain the old Site/line relationship.
             # Revalidate the linked GxP Certificate from committed SQL before
@@ -988,6 +991,7 @@ class CaseWorkflowService:
                 select(BusinessEligibilityCertificateLink).where(
                     BusinessEligibilityCertificateLink.business_eligibility_version_id == business_eligibility_version_id
                 )
+                .execution_options(populate_existing=True)
             )
         )
         for item in existing:
@@ -4530,6 +4534,9 @@ class CaseWorkflowService:
                         select(BusinessEligibilityCertificateLink).where(
                             BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
                         )
+                        # Audit BEFORE must describe the committed link graph,
+                        # not an earlier Session identity-map snapshot.
+                        .execution_options(populate_existing=True)
                     )
                 )
             ),

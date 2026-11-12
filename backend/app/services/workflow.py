@@ -1945,7 +1945,14 @@ class CaseWorkflowService:
                 detail="Affected artifact does not reference a certificate.",
             )
 
-        site = self._get_site(session, row.site_id)
+        # Source ownership is validated against the committed Site/Company,
+        # not a Site identity cached before another transaction's change.
+        site = session.scalars(
+            select(Site).where(Site.id == row.site_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if site is None:
+            raise HTTPException(status_code=404, detail="Site not found.")
         self._validate_change_request_artifact_target(
             session,
             site=site,
@@ -1964,6 +1971,9 @@ class CaseWorkflowService:
             session,
             source_certificate.id,
         )
+        # The Change Request lock does not protect a previously cached
+        # CertificateVersion. Copy only committed source-version fields.
+        session.refresh(source_version)
         source_scopes = list(
             session.scalars(
                 select(CertificateScope)
@@ -1976,6 +1986,7 @@ class CaseWorkflowService:
                     CertificateScope.created_at.asc(),
                     CertificateScope.id.asc(),
                 )
+                .execution_options(populate_existing=True)
             )
         )
         scopes = [
@@ -2102,7 +2113,14 @@ class CaseWorkflowService:
                 detail="Affected artifact does not reference a business eligibility certificate.",
             )
 
-        site = self._get_site(session, row.site_id)
+        # Source ownership is validated against the committed Site/Company,
+        # not a Site identity cached before another transaction's change.
+        site = session.scalars(
+            select(Site).where(Site.id == row.site_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if site is None:
+            raise HTTPException(status_code=404, detail="Site not found.")
         self._validate_change_request_artifact_target(
             session,
             site=site,
@@ -2117,6 +2135,8 @@ class CaseWorkflowService:
             session,
             source_certificate.id,
         )
+        # Reload child version values before copying this source snapshot.
+        session.refresh(source_version)
         source_links = list(
             session.scalars(
                 select(BusinessEligibilityCertificateLink)
@@ -2128,6 +2148,7 @@ class CaseWorkflowService:
                     BusinessEligibilityCertificateLink.created_at.asc(),
                     BusinessEligibilityCertificateLink.id.asc(),
                 )
+                .execution_options(populate_existing=True)
             )
         )
         linked_certificates = [

@@ -6,27 +6,13 @@ Normal local pytest collection/execution is unchanged.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
 
 import pytest
 
-
-def shard_for(nodeid: str, count: int) -> int:
-    """Assign a whole module, including parameterizations, to one shard."""
-    if count < 1:
-        raise ValueError("Shard count must be positive.")
-    module = nodeid.split("::", 1)[0].replace("\\", "/")
-    return int.from_bytes(hashlib.sha256(module.encode("utf-8")).digest()[:8], "big") % count
-
-
-def digest_nodeids(nodeids: list[str]) -> str:
-    """A stable digest of the collected pytest identity set."""
-    if len(nodeids) != len(set(nodeids)):
-        raise ValueError("Duplicate collected pytest node IDs.")
-    return hashlib.sha256(json.dumps(sorted(nodeids), ensure_ascii=False).encode("utf-8")).hexdigest()
+from tools.verify_ci_pytest_shards import digest_nodeids, shard_for
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

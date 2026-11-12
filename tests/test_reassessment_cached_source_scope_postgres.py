@@ -106,9 +106,14 @@ def test_reassessment_copy_refreshes_cached_source_scope_after_committed_edit():
         # transaction edits them. Commit the reader transaction so it can
         # subsequently acquire a fresh READ COMMITTED snapshot.
         with factory() as creator:
-            assert creator.get(CaseEvaluationScope, scope_id).limitation_text == "before"
-            assert creator.get(CaseEvaluationScopeBlock, block_id).name == "before"
-            assert creator.get(CaseEvaluationScopeSelection, selection_id).custom_description == "before"
+            # Retain strong references: SQLAlchemy's identity map can drop
+            # clean objects if no Python reference remains.
+            cached_scope = creator.get(CaseEvaluationScope, scope_id)
+            cached_block = creator.get(CaseEvaluationScopeBlock, block_id)
+            cached_selection = creator.get(CaseEvaluationScopeSelection, selection_id)
+            assert cached_scope.limitation_text == "before"
+            assert cached_block.name == "before"
+            assert cached_selection.custom_description == "before"
             creator.commit()
 
             with factory() as editor:

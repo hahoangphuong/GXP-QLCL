@@ -2962,14 +2962,25 @@ class CatalogReadService:
         }
 
     def get_change_request_workspace(self, session: Session, *, change_request_id: str, user: AuthenticatedUser | None = None) -> dict[str, object]:
-        change_request = session.get(ChangeRequest, change_request_id)
+        # Re-read the canonical workspace owner, not an identity-map copy
+        # that predates another Session's committed transition/edit.
+        change_request = session.scalars(
+            select(ChangeRequest).where(ChangeRequest.id == change_request_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
         if change_request is None:
             raise HTTPException(status_code=404, detail="Change request not found.")
 
-        site = session.get(Site, change_request.site_id)
+        site = session.scalars(
+            select(Site).where(Site.id == change_request.site_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
         if site is None:
             raise HTTPException(status_code=404, detail="Facility not found for change request.")
-        company = session.get(Company, site.company_id)
+        company = session.scalars(
+            select(Company).where(Company.id == site.company_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
         if company is None:
             raise HTTPException(status_code=404, detail="Company not found for change request.")
 
@@ -2982,6 +2993,7 @@ class CatalogReadService:
                 ChangeApproval.created_at.desc(),
                 ChangeApproval.id.desc(),
             )
+            .execution_options(populate_existing=True)
         ).first()
         details = list(
             session.scalars(
@@ -2994,6 +3006,7 @@ class CatalogReadService:
                     ChangeRequestDetail.legacy_change_detail_id.asc(),
                     ChangeRequestDetail.id.asc(),
                 )
+                .execution_options(populate_existing=True)
             )
         )
 
@@ -3002,6 +3015,7 @@ class CatalogReadService:
                 select(ChangeRequestAffectedArtifact)
                 .where(ChangeRequestAffectedArtifact.change_request_id == change_request.id)
                 .order_by(ChangeRequestAffectedArtifact.id.asc())
+                .execution_options(populate_existing=True)
             )
         )
         issued_links = list(
@@ -3009,6 +3023,7 @@ class CatalogReadService:
                 select(ChangeRequestIssuedArtifact)
                 .where(ChangeRequestIssuedArtifact.change_request_id == change_request.id)
                 .order_by(ChangeRequestIssuedArtifact.id.asc())
+                .execution_options(populate_existing=True)
             )
         )
         workflow_service = CaseWorkflowService()

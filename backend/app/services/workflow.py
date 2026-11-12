@@ -1483,7 +1483,14 @@ class CaseWorkflowService:
                 "target_state": None,
             },
         ])
-        site = self._get_site(session, row.site_id)
+        # Read-only actions must use the current owning Site/Company too:
+        # a cached Site can make a reparented DDK link look eligible.
+        site = session.scalars(
+            select(Site).where(Site.id == row.site_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if site is None:
+            raise HTTPException(status_code=404, detail="Site not found.")
         certificate_source_links = list(
             session.scalars(
                 select(ChangeRequestAffectedArtifact)
@@ -1492,6 +1499,7 @@ class CaseWorkflowService:
                     ChangeRequestAffectedArtifact.certificate_id.is_not(None),
                 )
                 .order_by(ChangeRequestAffectedArtifact.id.asc())
+                .execution_options(populate_existing=True)
             )
         )
         for source_link in certificate_source_links:
@@ -1539,6 +1547,7 @@ class CaseWorkflowService:
                     ChangeRequestAffectedArtifact.business_eligibility_certificate_id.is_not(None),
                 )
                 .order_by(ChangeRequestAffectedArtifact.id.asc())
+                .execution_options(populate_existing=True)
             )
         )
         for source_link in business_eligibility_source_links:
@@ -1575,6 +1584,7 @@ class CaseWorkflowService:
                 select(ChangeRequestIssuedArtifact)
                 .where(ChangeRequestIssuedArtifact.change_request_id == row.id)
                 .order_by(ChangeRequestIssuedArtifact.id.asc())
+                .execution_options(populate_existing=True)
             )
         )
         for issued_link in issued_links:

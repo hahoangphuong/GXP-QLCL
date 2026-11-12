@@ -1963,6 +1963,17 @@ class CaseWorkflowService:
             session,
             source_link.certificate_id,
         )
+        # Coordinate with Certificate latest-version writers, which lock the
+        # certificate aggregate root. Hold this lock through source version,
+        # scopes, successor and audit writes (until the caller commits).
+        session.refresh(source_certificate, with_for_update=True)
+        # Source ownership may have changed while waiting for this root lock.
+        self._validate_change_request_artifact_target(
+            session,
+            site=site,
+            certificate_id=source_certificate.id,
+            business_eligibility_certificate_id=None,
+        )
         source_identity = self._certificate_line_identity(
             session,
             source_certificate,
@@ -2130,6 +2141,16 @@ class CaseWorkflowService:
         source_certificate = self._get_business_eligibility(
             session,
             source_link.business_eligibility_certificate_id,
+        )
+        # Match BusinessEligibility latest-version writers' root lock. The
+        # source version and certificate links must belong to one committed
+        # aggregate state, not separate reads across a concurrent write.
+        session.refresh(source_certificate, with_for_update=True)
+        self._validate_change_request_artifact_target(
+            session,
+            site=site,
+            certificate_id=None,
+            business_eligibility_certificate_id=source_certificate.id,
         )
         source_version = self._load_latest_business_eligibility_version(
             session,

@@ -1,8 +1,28 @@
 name: CI
 
 on:
+  # Avoid duplicate push + pull_request full suites for ordinary PR branches.
+  # Preserve the explicit integration/recovery branches recognized by jobs below.
   push:
+    branches:
+      - main
+      - 'recovery/b6-**'
+      - integration/frontend-backend-20261009
+      - integration/frontend-backend-auth-20261010
+      - integration/frontend-backend-authguard-20261010
+      - integration/rehearsal-source-20261017
+      - integration/rehearsal-safety-source-20261017
+      - integration/rehearsal-restore-safe-20261017
+      - integration/rehearsal-local-restore-20261017
+      - audit/certificate-case-source-integrity-20261011
   pull_request:
+    branches:
+      - main
+
+# Cancel superseded PR revisions, never a main or special-branch push gate.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:
@@ -29,6 +49,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.dev.lock.txt
 
       - name: Validate tracked-file hygiene policy
         run: |
@@ -158,6 +180,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.dev.lock.txt
 
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.dev.lock.txt
@@ -224,6 +248,19 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Locate pnpm store
+        id: pnpm-store
+        working-directory: frontend
+        run: echo "path=$(pnpm store path --silent)" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore pnpm store cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-node24-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node24-pnpm-
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
@@ -252,7 +289,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Validate tracked-file hygiene
         run: python tools/check_repo_hygiene.py
 
@@ -456,6 +492,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.dev.lock.txt
 
       - uses: actions/setup-node@v4
         with:
@@ -490,6 +528,19 @@ jobs:
             echo "Disposable cross-head backend fixture failed to start."
             exit 1
           fi
+
+      - name: Locate pinned frontend pnpm store
+        id: pnpm-store
+        working-directory: frontend
+        run: echo "path=$(pnpm store path --silent)" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore pinned frontend pnpm store cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-node24-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node24-pnpm-
 
       - name: Install exact frontend commit dependencies
         working-directory: frontend

@@ -2707,7 +2707,13 @@ class CaseWorkflowService:
             or not same_line_identity
         ):
             raise HTTPException(status_code=422, detail="Selected source case does not match the reassessment facility/GxP/line context.")
-        source_scope = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == source_case.id))
+        # The source Case lock serializes writes, but it does not expire ORM
+        # objects that this Session loaded before another writer committed.
+        # Re-read every copied level from PostgreSQL after acquiring the lock.
+        source_scope = session.scalar(
+            select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == source_case.id)
+            .execution_options(populate_existing=True)
+        )
         if source_scope is None:
             return
         copied = CaseEvaluationScope(
@@ -2720,14 +2726,14 @@ class CaseWorkflowService:
         )
         session.add(copied)
         session.flush()
-        source_blocks = list(session.scalars(select(CaseEvaluationScopeBlock).where(CaseEvaluationScopeBlock.case_evaluation_scope_id == source_scope.id).order_by(CaseEvaluationScopeBlock.ordinal.asc())))
+        source_blocks = list(session.scalars(select(CaseEvaluationScopeBlock).where(CaseEvaluationScopeBlock.case_evaluation_scope_id == source_scope.id).order_by(CaseEvaluationScopeBlock.ordinal.asc()).execution_options(populate_existing=True)))
         for source_block in source_blocks:
             copied_block = CaseEvaluationScopeBlock(case_evaluation_scope_id=copied.id, ordinal=source_block.ordinal, name=source_block.name, note=source_block.note, raw_block_value=source_block.raw_block_value)
             session.add(copied_block)
             session.flush()
-            for source_selection in session.scalars(select(CaseEvaluationScopeSelection).where(CaseEvaluationScopeSelection.block_id == source_block.id).order_by(CaseEvaluationScopeSelection.source_order.asc())):
+            for source_selection in session.scalars(select(CaseEvaluationScopeSelection).where(CaseEvaluationScopeSelection.block_id == source_block.id).order_by(CaseEvaluationScopeSelection.source_order.asc()).execution_options(populate_existing=True)):
                 session.add(CaseEvaluationScopeSelection(block_id=copied_block.id, taxonomy_node_id=source_selection.taxonomy_node_id, source_order=source_selection.source_order, custom_description=source_selection.custom_description, node_key_snapshot=source_selection.node_key_snapshot, taxonomy_description_snapshot=source_selection.taxonomy_description_snapshot))
-            for source_entry in session.scalars(select(CaseEvaluationScopeUnkeyedEntry).where(CaseEvaluationScopeUnkeyedEntry.block_id == source_block.id).order_by(CaseEvaluationScopeUnkeyedEntry.source_order.asc())):
+            for source_entry in session.scalars(select(CaseEvaluationScopeUnkeyedEntry).where(CaseEvaluationScopeUnkeyedEntry.block_id == source_block.id).order_by(CaseEvaluationScopeUnkeyedEntry.source_order.asc()).execution_options(populate_existing=True)):
                 session.add(CaseEvaluationScopeUnkeyedEntry(block_id=copied_block.id, source_order=source_entry.source_order, text=source_entry.text))
         session.flush()
 

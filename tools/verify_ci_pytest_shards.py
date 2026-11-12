@@ -18,6 +18,36 @@ def shard_for(nodeid: str, count: int) -> int:
     return int.from_bytes(hashlib.sha256(module.encode("utf-8")).digest()[:8], "big") % count
 
 
+def balance_modules(module_counts: dict[str, int], count: int) -> dict[str, int]:
+    """Deterministic longest-module-first bin packing by collected test count.
+
+    Every module and its parameterized tests run on one isolated PostgreSQL
+    runner. The independent fan-in verifies the same module census on all
+    runners before accepting their partition.
+    """
+    if type(count) is not int or count < 1:
+        raise ValueError("Shard count must be a positive integer.")
+    if (
+        not isinstance(module_counts, dict)
+        or len(module_counts) < count
+        or any(
+            not isinstance(module, str)
+            or not module
+            or type(nodes) is not int
+            or nodes < 1
+            for module, nodes in module_counts.items()
+        )
+    ):
+        raise ValueError("Need at least one valid module per shard.")
+    loads = [0] * count
+    assignments: dict[str, int] = {}
+    for module, nodes in sorted(module_counts.items(), key=lambda item: (-item[1], item[0])):
+        index = min(range(count), key=lambda i: (loads[i], i))
+        assignments[module] = index
+        loads[index] += nodes
+    return assignments
+
+
 def digest_nodeids(nodeids: list[str]) -> str:
     if len(nodeids) != len(set(nodeids)):
         raise ValueError("Duplicate collected pytest node IDs.")
@@ -53,8 +83,6 @@ def verify_shards(receipts: list[dict], *, expected_count: int, expected_sha: st
             raise CiShardError("Each shard must contain collected pytest node IDs.")
         if nodeids != sorted(set(nodeids)):
             raise CiShardError("Shard node IDs must be sorted and unique.")
-        if any(shard_for(n, expected_count) != index for n in nodeids):
-            raise CiShardError("Node ID assigned to an incorrect shard.")
         shard_total = receipt.get("total_collected")
         if type(shard_total) is not int or shard_total <= 0:
             raise CiShardError("Invalid total collection count.")
@@ -76,10 +104,13 @@ def verify_shards(receipts: list[dict], *, expected_count: int, expected_sha: st
             total, canonical_modules = shard_total, modules
         elif total != shard_total or canonical_modules != modules:
             raise CiShardError("Different shards collected different module/test counts.")
+        assignments = balance_modules(modules, expected_count)
+        if any(assignments.get(nodeid.split("::", 1)[0].replace("\\\\", "/")) != index for nodeid in nodeids):
+            raise CiShardError("Node ID assigned to an incorrect shard.")
         own_counts = Counter(nodeid.split("::", 1)[0].replace("\\\\", "/") for nodeid in nodeids)
         expected_own = {
             module: count for module, count in modules.items()
-            if shard_for(module, expected_count) == index
+            if assignments[module] == index
         }
         if dict(own_counts) != expected_own:
             raise CiShardError("Shard did not select every collected node from its assigned modules.")
@@ -94,6 +125,7 @@ def verify_shards(receipts: list[dict], *, expected_count: int, expected_sha: st
     return {
         "status": "BACKEND_PYTEST_SHARDS_PASS", "shards": expected_count,
         "collected": total, "modules": len(canonical_modules),
+        "shard_node_counts": [sum(n for module, n in canonical_modules.items() if balance_modules(canonical_modules, expected_count)[module] == i) for i in range(expected_count)],
         "head_sha": expected_sha,
     }
 

@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  backend:
+  backend-postgres-gates:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -152,8 +152,95 @@ jobs:
           GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
         run: python -m pytest tests/test_canonical_workflow_postgres.py tests/test_canonical_http_workflow_postgres.py -q -p no:cacheprovider
 
-      - name: Run backend tests
-        run: python -m pytest -q
+
+  backend-pytest-shard:
+    # Every runner collects the same full test suite, then executes all tests
+    # from its assigned whole modules against its OWN disposable PostgreSQL.
+    # Do not use shared DBs, test deselection without receipt verification,
+    # or a single partial-success shard as merge admission.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gxp_qlcl_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gxp_qlcl_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test
+      GXP_CI_SHARD_INDEX: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.dev.lock.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.dev.lock.txt
+      - name: Migrate isolated disposable PostgreSQL
+        run: python -m alembic upgrade head
+      - name: Run exact deterministic full-suite shard
+        run: |
+          set -euo pipefail
+          python -m pytest -q -p tools.ci_pytest_shard \
+            --ci-shard-index "${GXP_CI_SHARD_INDEX}" \
+            --ci-shard-count 3 \
+            --ci-shard-manifest "${RUNNER_TEMP}/backend-shard-${GXP_CI_SHARD_INDEX}.json"
+      - name: Upload shard receipt for fail-closed required backend gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/backend-shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  backend:
+    # Keep the existing required check name, but admit only if ALL PostgreSQL
+    # gates and ALL full pytest shards succeeded and the union of their
+    # independent collections exactly reconstructs the complete test suite.
+    if: ${{ always() }}
+    needs: [backend-postgres-gates, backend-pytest-shard]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reject incomplete backend jobs before reading receipts
+        env:
+          POSTGRES_RESULT: ${{ needs['backend-postgres-gates'].result }}
+          SHARDS_RESULT: ${{ needs['backend-pytest-shard'].result }}
+        run: |
+          set -euo pipefail
+          test "${POSTGRES_RESULT}" = success
+          test "${SHARDS_RESULT}" = success
+      - name: Download independently generated shard receipts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-shard-*
+          path: ${{ runner.temp }}/backend-shards
+          merge-multiple: true
+      - name: Verify complete, non-overlapping exact-HEAD pytest collection
+        run: |
+          python3 -m tools.verify_ci_pytest_shards \
+            --directory "${RUNNER_TEMP}/backend-shards" \
+            --expected-count 3 \
+            --expected-sha "${GITHUB_SHA}"
 
   b6-postgres-integration:
     # Recovery and reviewed integration branches only; four disposable DBs.

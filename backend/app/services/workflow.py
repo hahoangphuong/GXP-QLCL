@@ -1100,13 +1100,28 @@ class CaseWorkflowService:
         self, session: Session, *, capa_cycle_id: str, operation: str,
     ) -> CapaCycle:
         """Serialize child mutation against terminal Case owner transitions."""
-        cycle = self._get_capa_cycle(session, capa_cycle_id)
-        parent = self._lock_case(session, cycle.case_id)
+        # A long-lived Session may have cached a child before its owning
+        # Case FK was changed by another transaction. Never trust the cached
+        # relationship to decide which Case lock protects this mutation.
+        cached_cycle = self._get_capa_cycle(session, capa_cycle_id)
+        case_id = session.scalar(
+            select(CapaCycle.case_id).where(CapaCycle.id == capa_cycle_id)
+        )
+        if case_id is None:
+            raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+        if cached_cycle.case_id != case_id:
+            raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
+        parent = self._lock_case(session, case_id)
         self._assert_case_not_terminal(parent, operation=operation)
-        return session.scalars(
+        cycle = session.scalars(
             select(CapaCycle).where(CapaCycle.id == capa_cycle_id)
             .execution_options(populate_existing=True)
-        ).one()
+        ).one_or_none()
+        if cycle is None:
+            raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+        if cycle.case_id != parent.id:
+            raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
+        return cycle
 
     def _site_has_gxp_context(
         self,
@@ -2427,6 +2442,9 @@ class CaseWorkflowService:
             select(CapaCycle)
             .where(CapaCycle.case_id == case_id)
             .order_by(CapaCycle.round_no.desc(), CapaCycle.created_at.desc())
+            # The Case lock serializes writers, but SQLAlchemy can otherwise
+            # reuse a stale child status already present in this Session.
+            .execution_options(populate_existing=True)
         ).first()
 
     def _next_capa_round_no(self, session: Session, case_id: str) -> int:

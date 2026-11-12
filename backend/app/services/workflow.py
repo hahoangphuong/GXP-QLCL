@@ -1306,7 +1306,13 @@ class CaseWorkflowService:
                 "required_permissions": required_permissions,
             }
         if production_line_id is not None:
-            line = session.get(ProductionLine, production_line_id)
+            # Readiness is a projection, not mutation admission, but must
+            # still report the latest committed ProductionLine Site/code.
+            # The creator may have cached this ORM identity before reparenting.
+            line = session.scalars(
+                select(ProductionLine).where(ProductionLine.id == production_line_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
             if line is None or line.site_id != site_id:
                 return {
                     "action_key": "create_reassessment_case",

@@ -1237,7 +1237,15 @@ class CaseWorkflowService:
         if normalized_gxp_type not in SUPPORTED_CASE_GXP_TYPES:
             raise HTTPException(status_code=422, detail="Unsupported GxP context for reassessment creation.")
         normalized_line_code = self._normalize_line_code(line_code)
-        line = None if production_line_id is None else session.get(ProductionLine, production_line_id)
+        # Site lock alone cannot make an already cached ProductionLine canonical.
+        # Lock and refresh the line before validating its Site and code, so an
+        # independently committed reparent or rename cannot create a Case under
+        # a stale line identity.
+        line = None if production_line_id is None else session.scalars(
+            select(ProductionLine).where(ProductionLine.id == production_line_id)
+            .with_for_update(of=ProductionLine)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
         if production_line_id is not None:
             if line is None or line.site_id != site_id:
                 raise HTTPException(status_code=422, detail="Selected ProductionLine does not belong to this site.")

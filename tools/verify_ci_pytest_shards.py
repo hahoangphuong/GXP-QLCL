@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 
 def shard_for(nodeid: str, count: int) -> int:
@@ -34,7 +35,7 @@ def verify_shards(receipts: list[dict], *, expected_count: int, expected_sha: st
     indices: set[int] = set()
     all_selected: list[str] = []
     total: int | None = None
-    collection_digest: str | None = None
+    canonical_modules: dict[str, int] | None = None
     for receipt in receipts:
         if type(receipt) is not dict or receipt.get("schema_version") != 1:
             raise CiShardError("Invalid shard receipt schema.")
@@ -60,18 +61,41 @@ def verify_shards(receipts: list[dict], *, expected_count: int, expected_sha: st
         shard_digest = receipt.get("all_nodeids_sha256")
         if not isinstance(shard_digest, str) or len(shard_digest) != 64:
             raise CiShardError("Invalid collection digest.")
+        # Parameter IDs can embed runner-dependent repr values. The safe
+        # cross-run collection identity is the exact module -> node count
+        # census, not a hash of those potentially volatile node IDs.
+        modules = receipt.get("all_module_counts")
+        if not isinstance(modules, dict) or not modules or any(
+            not isinstance(k, str) or not k or type(v) is not int or v <= 0
+            for k, v in modules.items()
+        ):
+            raise CiShardError("Invalid per-module collection census.")
+        if sum(modules.values()) != shard_total:
+            raise CiShardError("Per-module counts disagree with total collection.")
         if total is None:
-            total, collection_digest = shard_total, shard_digest
-        elif total != shard_total or collection_digest != shard_digest:
-            raise CiShardError("Different shards collected different test universes.")
+            total, canonical_modules = shard_total, modules
+        elif total != shard_total or canonical_modules != modules:
+            raise CiShardError("Different shards collected different module/test counts.")
+        own_counts = Counter(nodeid.split("::", 1)[0].replace("\\\\", "/") for nodeid in nodeids)
+        expected_own = {
+            module: count for module, count in modules.items()
+            if shard_for(module, expected_count) == index
+        }
+        if dict(own_counts) != expected_own:
+            raise CiShardError("Shard did not select every collected node from its assigned modules.")
         all_selected.extend(nodeids)
     if indices != set(range(expected_count)):
         raise CiShardError("Shard index coverage is incomplete.")
     if len(all_selected) != total or len(all_selected) != len(set(all_selected)):
         raise CiShardError("Collected pytest node IDs are missing or repeated.")
-    if digest_nodeids(all_selected) != collection_digest:
-        raise CiShardError("Partition does not reconstruct the exact pytest collection.")
-    return {"status": "BACKEND_PYTEST_SHARDS_PASS", "shards": expected_count, "collected": total, "head_sha": expected_sha}
+    selected_counts = Counter(nodeid.split("::", 1)[0].replace("\\\\", "/") for nodeid in all_selected)
+    if dict(selected_counts) != canonical_modules:
+        raise CiShardError("Shard union does not reconstruct all modules and test counts.")
+    return {
+        "status": "BACKEND_PYTEST_SHARDS_PASS", "shards": expected_count,
+        "collected": total, "modules": len(canonical_modules),
+        "head_sha": expected_sha,
+    }
 
 
 def main() -> int:

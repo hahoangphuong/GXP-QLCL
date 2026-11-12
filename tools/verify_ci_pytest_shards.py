@@ -6,10 +6,22 @@ all shard jobs, and the complete, non-overlapping collection partition pass.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
-from tools.ci_pytest_shard import digest_nodeids, shard_for
+def shard_for(nodeid: str, count: int) -> int:
+    if count < 1:
+        raise ValueError("Shard count must be positive.")
+    module = nodeid.split("::", 1)[0].replace("\\\\", "/")
+    return int.from_bytes(hashlib.sha256(module.encode("utf-8")).digest()[:8], "big") % count
+
+
+def digest_nodeids(nodeids: list[str]) -> str:
+    if len(nodeids) != len(set(nodeids)):
+        raise ValueError("Duplicate collected pytest node IDs.")
+    return hashlib.sha256(json.dumps(sorted(nodeids), ensure_ascii=False).encode("utf-8")).hexdigest()
+
 
 
 class CiShardError(ValueError):

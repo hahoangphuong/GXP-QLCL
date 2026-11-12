@@ -4238,11 +4238,20 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         certificate = self._get_certificate(session, certificate_id)
-        # A Site serializes promotions across every certificate context that it owns.
-        # Re-read the candidate after acquiring the lock so competing promotions
-        # cannot use a stale version/readiness snapshot.
-        self._lock_site(session, certificate.site_id)
+        # The Site lock protects the single-current invariant. A cached
+        # Certificate can predate a committed reassignment to another Site.
+        # Refuse to lock/mutate against an outdated owner identity.
+        owner_site_id = session.scalar(
+            select(Certificate.site_id).where(Certificate.id == certificate_id)
+        )
+        if owner_site_id is None:
+            raise HTTPException(status_code=404, detail="Certificate not found.")
+        if certificate.site_id != owner_site_id:
+            raise HTTPException(status_code=409, detail="Certificate Site owner changed; reload canonical certificate.")
+        self._lock_site(session, owner_site_id)
         session.refresh(certificate)
+        if certificate.site_id != owner_site_id:
+            raise HTTPException(status_code=409, detail="Certificate Site owner changed; reload canonical certificate.")
         # Case transitions lock their own aggregate. A Site lock alone does
         # not prevent a cancelled Case from being promoted via a cached identity.
         # Keep the order Site -> Case, as in reassessment creation.
@@ -4585,11 +4594,20 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_business_eligibility(session, business_eligibility_certificate_id)
-        # The site owns the single-current invariant. Serialize promotion for one
-        # site, then refresh/revalidate the candidate inside that lock so a
-        # readiness snapshot or optimistic-lock token cannot race another promote.
-        self._lock_site(session, row.site_id)
+        # As for GxP, the Site lock must be the candidate's canonical owner.
+        # A previous Session read is not evidence that its Site FK is current.
+        owner_site_id = session.scalar(
+            select(BusinessEligibilityCertificate.site_id)
+            .where(BusinessEligibilityCertificate.id == business_eligibility_certificate_id)
+        )
+        if owner_site_id is None:
+            raise HTTPException(status_code=404, detail="Business eligibility certificate not found.")
+        if row.site_id != owner_site_id:
+            raise HTTPException(status_code=409, detail="Business eligibility Site owner changed; reload canonical certificate.")
+        self._lock_site(session, owner_site_id)
         session.refresh(row)
+        if row.site_id != owner_site_id:
+            raise HTTPException(status_code=409, detail="Business eligibility Site owner changed; reload canonical certificate.")
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
         candidate_version = self._load_latest_business_eligibility_version(session, row.id)
         # A cached version can predate a committed edit even when the root

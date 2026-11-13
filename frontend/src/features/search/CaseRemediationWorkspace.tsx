@@ -417,7 +417,7 @@ export function CaseRemediationWorkspace({
   }
 
   return (
-    <div className="event-step-stack remediation-workspace">
+    <div className="event-step-stack remediation-workspace" data-case-capa tabIndex={-1} aria-label="Khu vực khắc phục">
       <section className="panel panel-tight">
         <div className="panel-header">
           <div className="panel-heading-inline">

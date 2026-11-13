@@ -937,6 +937,21 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("guides an operator to the canonical final evaluation without a mutation", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const value = buildCaseWorkspace();
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...value, inspection: { ...value.inspection, final_evaluation: null, final_evaluation_readiness: { action_key: "finalize_inspection_outcome", label: "Chốt đánh giá cuối cùng", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6 } } });
+    renderApp(["/search?gxp_type=GMP&result_key=site-1%3AGMP%3AA&history_id=case-1&event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
+    const guidance = await screen.findByRole("region", { name: "Bước xử lý tiếp theo" });
+    const reads = apiMocks.getCaseWorkspace.mock.calls.length;
+    fireEvent.click(within(guidance).getByRole("button", { name: "Đến: Chốt đánh giá cuối cùng" }));
+    expect(await screen.findByRole("region", { name: "Khu vực đánh giá cuối cùng" })).toHaveFocus();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(reads);
+    expect(apiMocks.finalizeInspectionOutcome).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
+  });
   it("keeps the verified Case and marks master stale if canonical refresh fails", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValueOnce({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 }).mockRejectedValueOnce(new Error("search unavailable"));
@@ -945,7 +960,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getCaseWorkspace.mockResolvedValueOnce(initial).mockResolvedValue({ ...initial, case_summary: { ...initial.case_summary, state: "closed" }, transition_actions: [] });
     const { container } = renderApp(["/search"]);
     fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Đã đóng hồ sơ/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chuyển: Đã đóng hồ sơ" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Danh sách cơ sở chưa được đồng bộ");
     expect(container.querySelector(".facility-table tbody tr.selected")).toHaveTextContent("Chờ cấp chứng nhận");
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
@@ -960,7 +975,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getCaseWorkspace.mockResolvedValueOnce(initial).mockResolvedValue({ ...initial, case_summary: { ...initial.case_summary, state: "closed" }, transition_actions: [] });
     const { container } = renderApp(["/search?case_state=awaiting_certificate_decision"]);
     fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Đã đóng hồ sơ/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chuyển: Đã đóng hồ sơ" }));
     await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(container.querySelector(".facility-table tbody tr.selected")).toBeNull());
     expect(apiMocks.searchFacilities.mock.calls[1][0].case_state).toEqual(["awaiting_certificate_decision"]);
@@ -1012,7 +1027,7 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(container.querySelectorAll(".facility-table tbody tr")).toHaveLength(101));
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Đã đóng hồ sơ/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chuyển: Đã đóng hồ sơ" }));
     await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(4));
     await waitFor(() => expect(container.querySelector(".facility-table tbody tr.selected")).toHaveTextContent("Đã đóng hồ sơ"));
     expect(container.querySelectorAll(".facility-table tbody tr")).toHaveLength(101);
@@ -1046,7 +1061,7 @@ describe("App Slice A.4 search workspace", () => {
     const requests = apiMocks.getCaseWorkspace.mock.calls.length;
     await act(async () => { fireEvent.click(link); });
     expect(await screen.findByRole("region", { name: "Chuyển trạng thái hồ sơ" })).toHaveFocus();
-    expect(screen.getByRole("button", { name: /Đã đóng hồ sơ/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Chuyển: Đã đóng hồ sơ" })).toBeEnabled();
     expect(apiMocks.transitionCase).not.toHaveBeenCalled();
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(requests);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" })); });

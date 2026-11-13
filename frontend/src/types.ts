@@ -1048,6 +1048,19 @@ export type BusinessEligibilityMutationResponse = {
 
 export type CaseWorkspace = {
   case_summary: CaseWorkspaceSummary;
+  stage_edit_actions?: LifecycleActionReadiness[];
+  business_evidence?: {
+    final_evaluation_recorded: boolean;
+    latest_capa_status: string | null;
+    completed_pct_count: number;
+    completed_ct_count: number;
+    completed_ct_with_pct_count: number;
+    linked_certificate_count: number;
+    complete_certificate_record_count: number;
+    current_certificate_record_count: number;
+    certificate_record_state: "none" | "incomplete" | "recorded_not_current" | "current";
+    certified_case_without_complete_certificate_record: boolean;
+  };
   application: CaseWorkspaceApplication;
   inspection: CaseWorkspaceInspection;
   remediation: CaseWorkspaceRemediation;

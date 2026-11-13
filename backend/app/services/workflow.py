@@ -4012,7 +4012,14 @@ class CaseWorkflowService:
             raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
         self._assert_expected_version(row, expected_version, label="approval_submission")
         try:
-            validate_approval_completion(existing_completed_on=row.completed_on, existing_completed_time=row.completed_time, completed_on=completed_on, completed_time=completed_time)
+            validate_approval_completion(
+                existing_completed_on=row.completed_on,
+                existing_completed_time=row.completed_time,
+                submitted_on=row.submitted_on,
+                submitted_time=row.submitted_time,
+                completed_on=completed_on,
+                completed_time=completed_time,
+            )
         except InspectionContractViolation as exc:
             raise HTTPException(status_code=409 if row.completed_on is not None else 422, detail=str(exc)) from exc
         before = self._serialize_approval_submission(row)

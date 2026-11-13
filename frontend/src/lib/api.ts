@@ -72,6 +72,9 @@ import type {
   InspectionApprovalSubmissionCreateRequest,
   InspectionApprovalSubmissionCompleteRequest,
   InspectionApprovalSubmissionMutationResponse,
+  ApprovalDocumentBindRequest,
+  ApprovalDocumentBindingResponse,
+  ApprovalDocumentReadback,
   Site,
   StubAuthState,
 } from "../types";
@@ -550,6 +553,25 @@ export function transitionCase(caseId: string, payload: CaseTransitionRequest, a
 
 export function createInspectionApprovalSubmission(caseId: string, stage: "PCT" | "CT", payload: InspectionApprovalSubmissionCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<InspectionApprovalSubmissionMutationResponse> {
   return requestJson<InspectionApprovalSubmissionMutationResponse>(`/cases/${caseId}/approval-submissions/${stage}`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
+}
+
+export function bindApprovalSubmissionDocument(
+  submissionId: string, payload: ApprovalDocumentBindRequest,
+  auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null,
+): Promise<ApprovalDocumentBindingResponse> {
+  return requestJson<ApprovalDocumentBindingResponse>(
+    `/approval-submissions/${encodeURIComponent(submissionId)}/documents`,
+    { method: "POST", body: payload, auth, useStubAuth, bearerToken },
+  );
+}
+
+export function readApprovalSubmissionDocuments(
+  submissionId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null,
+): Promise<ApprovalDocumentReadback> {
+  return requestJson<ApprovalDocumentReadback>(
+    `/approval-submissions/${encodeURIComponent(submissionId)}/documents`,
+    { auth, useStubAuth, bearerToken },
+  );
 }
 
 export function completeInspectionApprovalSubmission(approvalSubmissionId: string, payload: InspectionApprovalSubmissionCompleteRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<InspectionApprovalSubmissionMutationResponse> {

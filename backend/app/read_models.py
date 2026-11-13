@@ -86,6 +86,30 @@ class SiteMasterCreateRead(SiteDetailRead):
     audit_event_id: str
 
 
+class ProductionLineMasterCreateRequest(BaseModel):
+    # Client allocates an RFC 4122 v4 UUID *before* first POST, never on retry.
+    production_line_id: UUID4
+    code: str
+    effective_from: date
+    effective_to: date | None = None
+    # Explicit review/source reference is mandatory; no legacy text inference.
+    physical_identity_evidence_reference: str
+    reason: str
+
+
+class ProductionLineMasterRead(BaseModel):
+    id: str
+    site_id: str
+    code: str
+    effective_from: date
+    effective_to: date | None
+    row_version: int
+
+
+class ProductionLineMasterCreateRead(ProductionLineMasterRead):
+    audit_event_id: str
+
+
 class CaseDetailRead(BaseModel):
     id: str
     legacy_inspection_id: int | None

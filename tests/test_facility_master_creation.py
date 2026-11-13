@@ -267,4 +267,4 @@ def test_facility_readiness_only_opens_implemented_master_actions(seeded):
             assert actions["create_company"]["readiness_status"] == expected
             assert actions["create_site"]["readiness_status"] == expected
             assert actions["create_company"]["required_permissions"] == ["case.edit"]
-            assert actions["create_production_line"]["readiness_status"] == "missing_contract"
+            assert actions["create_production_line"]["readiness_status"] == expected

@@ -3372,6 +3372,9 @@ class CatalogReadService:
             "nonissuance_decision": CaseWorkflowService().get_case_nonissuance_decision(
                 session, case_id=case.id,
             ),
+            "nonissuance_record_readiness": CaseWorkflowService().get_case_nonissuance_record_readiness(
+                session, case_id=case.id, user=user,
+            ),
             "certificate_issue_readiness": CaseWorkflowService().get_case_certificate_issue_readiness(
                 session,
                 case_id=case.id,

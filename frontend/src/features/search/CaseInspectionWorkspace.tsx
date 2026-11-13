@@ -119,7 +119,7 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
     catch (error) { if (error instanceof CaseFieldMutationRecoveryError) commandLock.requireReview(command); setErrorMessage(getSectionErrorMessage(error instanceof Error ? error : new Error("Không lưu được các đợt kiểm tra."), "các đợt kiểm tra")); }
     finally { commandLock.release(command); setPending(false); }
   }
-  return <section className="workspace-section inspection-period-section">
+  return <section className="workspace-section inspection-period-section" data-case-period tabIndex={-1} aria-label="Khu vực các đợt kiểm tra">
     <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || frozen || editing} onClick={() => { setDraftVersion(readiness?.expected_version ?? null); setEditing(true); setErrorMessage(null); }} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
     {!readiness?.available && readiness?.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
     {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={formatInspectionPeriods(segments)} /> : <div className="inspection-period-editor">
@@ -200,7 +200,7 @@ function InspectionPlanSection({
 
   return (
     <>
-    <section className="workspace-section inspection-plan-section">
+    <section className="workspace-section inspection-plan-section" data-case-plan tabIndex={-1} aria-label="Khu vực kế hoạch kiểm tra">
       {commandLock.requiresReview ? <p className="form-error" role="alert">Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ để kiểm tra. {errorMessage}</p> : null}
       <h4 className="sr-only">Kế hoạch kiểm tra</h4>
       <div className="detail-grid compact-grid detail-form-matrix inspection-decision-fields">
@@ -429,7 +429,7 @@ function InspectionTeamSection({
   }
 
   return (
-    <section className="workspace-section inspection-team-section">
+    <section className="workspace-section inspection-team-section" data-case-team tabIndex={-1} aria-label="Khu vực đoàn kiểm tra">
       <div className="workspace-section-heading"><h4>Đoàn kiểm tra</h4><button disabled={!readiness.available || pending || editing} onClick={() => void startEdit()} type="button">{readiness.label}</button></div>
       <div className="detail-grid compact-grid detail-form-matrix">
         <DetailValue label="Thanh tra viên" multiline value={caseWorkspace.inspection.team_display_text} />

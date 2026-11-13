@@ -88,6 +88,8 @@ def validate_approval_completion(
     *,
     existing_completed_on: date | None,
     existing_completed_time: time | None,
+    submitted_on: date | None,
+    submitted_time: time | None,
     completed_on: date | None,
     completed_time: time | None,
 ) -> None:
@@ -96,6 +98,18 @@ def validate_approval_completion(
         raise InspectionContractViolation("Approval completion is immutable once set.")
     if completed_on is None:
         raise InspectionContractViolation("Approval completion requires completed_on.")
+    # A completion cannot precede its own submission. Compare clock times
+    # only when both are known; do not invent midnight for date-only facts.
+    if submitted_on is not None:
+        if completed_on < submitted_on:
+            raise InspectionContractViolation("Approval completion cannot precede submission date.")
+        if (
+            completed_on == submitted_on
+            and submitted_time is not None
+            and completed_time is not None
+            and completed_time < submitted_time
+        ):
+            raise InspectionContractViolation("Approval completion cannot precede submission time.")
 
 
 def validate_ct_parent(

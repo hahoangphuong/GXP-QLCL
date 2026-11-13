@@ -141,6 +141,11 @@ class DashboardQueueItemRead(BaseModel):
 
 class CaseReportItemRead(DashboardQueueItemRead):
     production_line_id: str | None
+    # Report classifications describe a persisted decision, not Case closure.
+    certificate_decision_status: Literal["not_at_decision_stage", "awaiting_decision", "nonissuance_recorded"]
+    nonissuance_decision_id: str | None
+    nonissuance_decision_reference: str | None
+    nonissuance_decided_on: date | None
 
 
 class CaseReportPageRead(BaseModel):

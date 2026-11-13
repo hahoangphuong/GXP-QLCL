@@ -271,6 +271,18 @@ class CaseWorkspaceApplicationRead(BaseModel):
     assigned_specialist_source: Literal["company_master"] | None
 
 
+class ApprovalStageDocumentEvidenceRead(BaseModel):
+    # Document is owned by Case, not by any individual approval submission.
+    stage: Literal["PCT", "CT"]
+    family_code: Literal["INSPECTION_PT_PCT", "INSPECTION_PT_CT"]
+    case_document_status: Literal["available", "missing"]
+    selected_case_document_id: str | None
+    selected_case_document_open_available: bool
+    round_document_binding_state: Literal["not_modelled"]
+    submission_ids: list[str]
+    completed_submission_ids: list[str]
+
+
 class CaseWorkspaceInspectionRead(BaseModel):
     plan_row_version: int | None = None
     plan_decision_reference: str | None = None
@@ -298,6 +310,7 @@ class CaseWorkspaceInspectionRead(BaseModel):
     final_evaluation_readiness: "LifecycleActionReadinessRead"
     approval_actions: list["LifecycleActionReadinessRead"] = Field(default_factory=list)
     approval_submissions: list["InspectionApprovalSubmissionRead"] = Field(default_factory=list)
+    approval_document_evidence: list["ApprovalStageDocumentEvidenceRead"] = Field(default_factory=list)
     team_display_text: str | None
     team: "InspectionTeamWorkspaceRead | None" = None
     team_edit_readiness: "InspectionTeamEditReadinessRead"

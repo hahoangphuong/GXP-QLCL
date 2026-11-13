@@ -293,6 +293,28 @@ class ApprovalDocumentBindRequest(BaseModel):
     reason: str | None = None
 
 
+class ApprovalDocumentCandidateRead(BaseModel):
+    # All Case-owned PCT/CT Documents, not merely the checklist's best item.
+    document_id: str
+    stage: Literal["PCT", "CT"]
+    family_code: Literal["INSPECTION_PT_PCT", "INSPECTION_PT_CT"]
+    title: str | None
+    open_available: bool
+    bound_submission_id: str | None
+
+
+class ApprovalDocumentBindReadinessRead(BaseModel):
+    action_key: Literal["bind_approval_document"]
+    approval_submission_id: str
+    stage: Literal["PCT", "CT"]
+    round_no: int
+    expected_version: int
+    available: bool
+    reason_code: Literal["missing_permission", "terminal_case", "no_eligible_documents"] | None
+    required_permissions: list[str]
+    eligible_document_ids: list[str]
+
+
 class ApprovalStageDocumentEvidenceRead(BaseModel):
     # Document is owned by Case, not by any individual approval submission.
     stage: Literal["PCT", "CT"]
@@ -334,6 +356,8 @@ class CaseWorkspaceInspectionRead(BaseModel):
     approval_submissions: list["InspectionApprovalSubmissionRead"] = Field(default_factory=list)
     approval_document_evidence: list["ApprovalStageDocumentEvidenceRead"] = Field(default_factory=list)
     approval_document_links: list["ApprovalDocumentLinkRead"] = Field(default_factory=list)
+    approval_document_candidates: list["ApprovalDocumentCandidateRead"] = Field(default_factory=list)
+    approval_document_bind_readiness: list["ApprovalDocumentBindReadinessRead"] = Field(default_factory=list)
     team_display_text: str | None
     team: "InspectionTeamWorkspaceRead | None" = None
     team_edit_readiness: "InspectionTeamEditReadinessRead"

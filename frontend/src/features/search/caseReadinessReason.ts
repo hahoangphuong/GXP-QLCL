@@ -7,6 +7,12 @@ const REASONS: Record<string, string> = {
   completed_pct_required: "Cần hoàn tất một lần trình PCT trước khi tạo trình CT.",
   terminal_case: "Hồ sơ đã kết thúc; thao tác không còn khả dụng.",
   already_completed: "Lần trình này đã hoàn tất.",
+  outcome_missing: "Cần ghi nhận kết quả kiểm tra trước khi chốt đánh giá cuối.",
+  already_finalized: "Đánh giá cuối đã được chốt.",
+  invalid_case_state: "Trạng thái hồ sơ hiện tại chưa cho phép thao tác này.",
+  latest_cycle_not_rejected: "Chỉ mở thêm vòng khắc phục khi vòng gần nhất bị từ chối.",
+  historical_cycle: "Đây là vòng khắc phục lịch sử; chỉ vòng hiện tại được xử lý.",
+  invalid_cycle_state: "Trạng thái vòng khắc phục chưa cho phép thao tác này.",
 };
 
 export function caseReadinessReason(code: string): string {

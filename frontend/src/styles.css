@@ -1468,6 +1468,12 @@ tr:focus-visible {
 }
 
 .case-transition-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+.case-next-actions { min-width: 0; padding: 0.5rem; margin-bottom: 0.4rem; border: 1px solid #b7ccd2; background: #f3f8f9; }
+.case-next-actions-heading, .case-next-actions-list { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.case-next-actions-list { max-block-size: 7rem; overflow-y: auto; }
+.case-next-actions-heading span { margin-left: auto; }
+.case-next-actions .workspace-note { margin: 0.3rem 0; font-size: 0.85rem; }
+.case-next-actions details ul { margin: 0.3rem 0; padding-left: 1.25rem; }
 
 .event-workspace-body.has-scope-context .event-scope-context {
   overflow: hidden;

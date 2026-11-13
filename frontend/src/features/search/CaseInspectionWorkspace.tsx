@@ -658,7 +658,7 @@ function CaseInspectionEditor({
     }
   }
   return (
-    <div className="inspection-workspace">
+    <div className="inspection-workspace" data-case-inspection tabIndex={-1} aria-label="Khu vực kiểm tra">
       <div className="inspection-detail-grid">
         <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
         <InspectionTeamSection key={caseWorkspace.inspection.team?.team_id ?? "new-team"} caseWorkspace={caseWorkspace} onLoadIdentityOptions={onLoadInspectionTeamIdentityOptions} onSave={onInspectionTeamSave} />

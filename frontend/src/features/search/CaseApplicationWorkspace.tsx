@@ -237,7 +237,7 @@ export function CaseApplicationWorkspace({
   );
 
   return (
-    <div className="event-step-stack">
+    <div className="event-step-stack" data-case-application tabIndex={-1} aria-label="Khu vực hồ sơ đăng ký">
       {requiresReview ? <p className="form-error" role="alert">Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ.</p> : null}
       <section className={`workspace-section case-application-section${assessment ? " legacy-dossier-section" : ""}`}>
         <h4 className={assessment ? "sr-only" : undefined}>Thông tin hồ sơ</h4>

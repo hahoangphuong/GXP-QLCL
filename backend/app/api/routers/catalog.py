@@ -32,6 +32,9 @@ from backend.app.read_models import (
     SiteDetailRead,
     SiteMasterCreateRequest,
     SiteMasterCreateRead,
+    ProductionLineMasterCreateRequest,
+    ProductionLineMasterRead,
+    ProductionLineMasterCreateRead,
     SiteRead,
 )
 from backend.app.services import CatalogReadService, CaseWorkflowService
@@ -78,9 +81,12 @@ def _build_facility_action_readiness(
         {
             "action_key": "create_production_line",
             "label": "Dây chuyền mới",
-            "readiness_status": "missing_contract",
-            "detail": "Chưa có canonical backend write contract để tạo dây chuyền sản xuất mới.",
-            "required_permissions": [],
+            "readiness_status": master_status,
+            "detail": (
+                "Tạo định danh vật lý UUID mới khi có bằng chứng nhận diện và ngày hiệu lực; không tự nối GxP hay dữ liệu legacy."
+                if can_create_masters else "Không có quyền tạo dây chuyền sản xuất."
+            ),
+            "required_permissions": master_permission,
         },
         workflow_service.get_create_reassessment_case_action_readiness(
             session,
@@ -145,6 +151,62 @@ def register_catalog_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return SiteMasterCreateRead(**result)
+
+
+    def create_production_line_master(
+        site_id: str,
+        payload: ProductionLineMasterCreateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = workflow_service.create_production_line_master(
+            session, site_id=site_id,
+            production_line_id=str(payload.production_line_id),
+            code=payload.code, effective_from=payload.effective_from,
+            effective_to=payload.effective_to,
+            physical_identity_evidence_reference=payload.physical_identity_evidence_reference,
+            reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return ProductionLineMasterCreateRead(**result)
+
+    def get_production_line_master(
+        production_line_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        line = session.get(ProductionLine, production_line_id)
+        if line is None:
+            raise HTTPException(status_code=404, detail="ProductionLine not found.")
+        return ProductionLineMasterRead(
+            id=line.id, site_id=line.site_id, code=line.code,
+            effective_from=line.effective_from, effective_to=line.effective_to,
+            row_version=line.row_version,
+        )
+
+    def list_site_production_lines(
+        site_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        # Site existence is verified even if the child collection is empty.
+        service.get_site(session, site_id)
+        from sqlalchemy import select
+        rows = session.scalars(
+            select(ProductionLine).where(ProductionLine.site_id == site_id)
+            .order_by(ProductionLine.code, ProductionLine.id)
+        ).all()
+        return [
+            ProductionLineMasterRead(
+                id=row.id, site_id=row.site_id, code=row.code,
+                effective_from=row.effective_from, effective_to=row.effective_to,
+                row_version=row.row_version,
+            )
+            for row in rows
+        ]
 
     def list_companies(
         q: str | None = Query(default=None),
@@ -503,6 +565,9 @@ def register_catalog_routes(app, session_factory) -> None:
             )
         )
 
+    app.add_api_route("/sites/{site_id}/production-lines", create_production_line_master, methods=["POST"], response_model=ProductionLineMasterCreateRead, tags=["catalog"])
+    app.add_api_route("/sites/{site_id}/production-lines", list_site_production_lines, methods=["GET"], response_model=list[ProductionLineMasterRead], tags=["catalog"])
+    app.add_api_route("/production-lines/{production_line_id}", get_production_line_master, methods=["GET"], response_model=ProductionLineMasterRead, tags=["catalog"])
     app.add_api_route("/companies", create_company_master, methods=["POST"], response_model=CompanyMasterCreateRead, tags=["catalog"])
     app.add_api_route("/companies/{company_id}/sites", create_site_master, methods=["POST"], response_model=SiteMasterCreateRead, tags=["catalog"])
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])

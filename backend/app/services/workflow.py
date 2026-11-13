@@ -1593,6 +1593,80 @@ class CaseWorkflowService:
             "company_id": company.id, **normalized, "audit_event_id": audit.id,
         }
 
+
+    def create_production_line_master(
+        self, session: Session, *, site_id: str, production_line_id: str,
+        code: str, effective_from: date, effective_to: date | None,
+        physical_identity_evidence_reference: str, reason: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Register an explicitly evidenced physical line without legacy inference.
+
+        This is NOT the reviewed B6J legacy population writer, transformation
+        admission, regulatory scope owner, or Case/Certificate linkage.
+        Stable client-generated UUID v4 is the only replay/recovery identity.
+        """
+        normalized_code = self._facility_master_required_text(code, field="code", limit=64)
+        reference = self._facility_master_required_text(
+            physical_identity_evidence_reference,
+            field="physical_identity_evidence_reference", limit=512,
+        )
+        normalized_reason = self._facility_master_required_text(reason, field="reason", limit=10000)
+        if effective_to is not None and effective_from >= effective_to:
+            raise HTTPException(status_code=422, detail="effective_to must be after effective_from.")
+        # Site lock serializes new line creation with Site owner changes.
+        site = session.scalars(
+            select(Site).where(Site.id == site_id)
+            .with_for_update(of=Site).execution_options(populate_existing=True)
+        ).one_or_none()
+        if site is None:
+            raise HTTPException(status_code=404, detail="Site not found.")
+        company = session.scalars(
+            select(Company).where(Company.id == site.company_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if company is None or company.is_inactive:
+            raise HTTPException(status_code=409, detail="Site's owning Company is missing or inactive.")
+        if session.scalar(
+            select(ProductionLine.id).where(ProductionLine.id == production_line_id)
+        ) is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="ProductionLine UUID already exists; resolve the original POST via canonical GET.",
+            )
+        # No Site+code uniqueness or automatic legacy matching: codes are
+        # compatibility labels, NOT physical identity, lineage, or GxP owners.
+        actor = self._get_or_create_app_user(session, user)
+        line = ProductionLine(
+            id=production_line_id, site_id=site.id, code=normalized_code,
+            effective_from=effective_from, effective_to=effective_to,
+        )
+        session.add(line)
+        session.flush()
+        audit = self._write_audit_event(
+            session, actor=actor, entity_type="production_line", entity_id=line.id,
+            action="production_line.create",
+            payload={
+                "site_id": site.id, "production_line_id": line.id, "code": line.code,
+                "effective_from": effective_from.isoformat(),
+                "effective_to": None if effective_to is None else effective_to.isoformat(),
+                "physical_identity_evidence_reference": reference,
+            },
+            after={
+                "id": line.id, "site_id": site.id, "code": line.code,
+                "effective_from": effective_from.isoformat(),
+                "effective_to": None if effective_to is None else effective_to.isoformat(),
+                "row_version": line.row_version,
+                "physical_identity_evidence_reference": reference,
+            },
+            reason=normalized_reason,
+        )
+        return {
+            "id": line.id, "site_id": line.site_id, "code": line.code,
+            "effective_from": line.effective_from, "effective_to": line.effective_to,
+            "row_version": line.row_version, "audit_event_id": audit.id,
+        }
+
     def get_create_change_request_action_readiness(
         self,
         session: Session,

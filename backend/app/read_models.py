@@ -282,6 +282,7 @@ class CaseWorkspaceInspectionRead(BaseModel):
     plan_end_on: date | None
     planning_sheet_name: str | None
     outcome_row_version: int | None = None
+    outcome_edit_readiness: "LifecycleActionReadinessRead | None" = None
     inspected_on: date | None
     inspected_to_on: date | None
     inspection_period_state: str | None = None

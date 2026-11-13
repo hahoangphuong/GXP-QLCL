@@ -157,3 +157,38 @@ def test_no_certificate_row_does_not_imply_nonissuance(scenario):
     with Session(engine) as db:
         assert db.scalar(select(func.count(Certificate.id))) == 0
         assert CaseWorkflowService().get_case_nonissuance_decision(db, case_id=case_id)["decision"] is None
+
+
+def test_explicit_decision_blocks_case_state_transition_and_workspace_action(scenario):
+    engine, (case_id, _, _) = scenario
+    from backend.app.services.catalog import CatalogReadService
+    from backend.app.read_models import CaseWorkspaceRead
+    actor = build_authenticated_user(
+        "decision-and-transition-reader", "manager",
+        permissions={"certificate.approve", "certificate.issue", "case.edit"},
+    )
+    with Session(engine) as db:
+        _record(db, case_id)
+        db.commit()
+    with Session(engine) as db:
+        workspace = CaseWorkspaceRead.model_validate(
+            CatalogReadService().get_case_workspace(db, case_id=case_id, user=actor)
+        )
+        assert workspace.nonissuance_decision is not None
+        assert workspace.nonissuance_decision.decision is not None
+        assert workspace.nonissuance_decision.decision.decision_reference == "DEC-001"
+        actions = {a.target_state: a for a in workspace.transition_actions}
+        for target in ("certified", "cancelled"):
+            assert actions[target].available is False
+            assert actions[target].reason_code == "nonissuance_decision_recorded"
+            with pytest.raises(HTTPException) as denied:
+                CaseWorkflowService().transition_case(
+                    db, case_id=case_id, target_state=target,
+                    expected_version=db.get(Case, case_id).row_version,
+                    reason="Must not misclassify a recorded non-issuance", user=actor,
+                )
+            assert denied.value.status_code == 409
+            db.rollback()
+    with Session(engine) as db:
+        assert db.get(Case, case_id).state == CaseState.AWAITING_CERTIFICATE_DECISION
+        assert db.scalar(select(func.count(AuditEvent.id))) == 1

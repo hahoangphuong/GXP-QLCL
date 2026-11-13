@@ -155,10 +155,13 @@ def case_transition_eligibility_reason(
     current_state: CaseState,
     target_state: CaseState,
     latest_capa_status: str | None,
+    nonissuance_decision_recorded: bool = False,
 ) -> str | None:
-    """Own the CAPA-dependent transition rule for projection and mutation."""
+    """Own canonical transition admission for CAPA and certificate decision."""
     if target_state == current_state:
         return "already_in_target_state"
+    if nonissuance_decision_recorded and current_state == CaseState.AWAITING_CERTIFICATE_DECISION:
+        return "nonissuance_decision_recorded"
     if target_state not in ALLOWED_CASE_TRANSITIONS.get(current_state, set()):
         return "transition_not_allowed"
     if (
@@ -2781,11 +2784,21 @@ class CaseWorkflowService:
             raise HTTPException(status_code=409, detail="Case is already in the requested state.")
 
         latest = self._latest_case_capa_cycle(session, row.id)
+        decision_recorded = session.scalar(
+            select(CaseCertificateNonissuanceDecision.id)
+            .where(CaseCertificateNonissuanceDecision.case_id == row.id)
+        ) is not None
         transition_reason = case_transition_eligibility_reason(
             current_state=previous_state,
             target_state=parsed_target_state,
             latest_capa_status=None if latest is None else latest.status,
+            nonissuance_decision_recorded=decision_recorded,
         )
+        if transition_reason == "nonissuance_decision_recorded":
+            raise HTTPException(
+                status_code=409,
+                detail="Case has an explicit non-issuance decision; terminal lifecycle is not yet defined.",
+            )
         if transition_reason == "transition_not_allowed":
             raise HTTPException(status_code=409, detail=f"Transition from {previous_state.value} to {parsed_target_state.value} is not allowed.")
         if transition_reason == "latest_capa_not_accepted":

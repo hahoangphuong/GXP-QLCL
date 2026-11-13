@@ -2791,6 +2791,11 @@ class CatalogReadService:
                     current_state=case.state,
                     target_state=target,
                     latest_capa_status=None if latest is None else latest.status,
+                    nonissuance_decision_recorded=(
+                        CaseWorkflowService().get_case_nonissuance_decision(
+                            session, case_id=case.id,
+                        )["decision"] is not None
+                    ),
                 )
             transition_actions.append({
                 "action_key": f"transition:{target.value}",

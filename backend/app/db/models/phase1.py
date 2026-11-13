@@ -182,7 +182,7 @@ class CaseCertificateNonissuanceDecision(UUIDPrimaryKeyMixin, TimestampMixin, Ba
     """
     __tablename__ = "case_certificate_nonissuance_decision"
 
-    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True, index=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True)
     decided_on: Mapped[date] = mapped_column(Date, nullable=False)
     decision_reference: Mapped[str] = mapped_column(String(255), nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)

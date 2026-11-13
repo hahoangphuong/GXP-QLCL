@@ -77,6 +77,11 @@ const apiMocks = vi.hoisted(() => ({
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     filename: "document.docx",
   }),
+  openApprovalSubmissionDocumentCurrentContent: vi.fn().mockResolvedValue({
+    blob: new Blob(["doc"]),
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    filename: "document.docx",
+  }),
   getGenerationRun: vi.fn().mockResolvedValue(null),
   listCases: vi.fn().mockResolvedValue([]),
   listCompanies: vi.fn().mockResolvedValue([]),
@@ -198,6 +203,7 @@ function resetApiMocks() {
   apiMocks.getDocumentDetail.mockReset();
   apiMocks.openCaseDocumentCurrentContent.mockReset();
   apiMocks.openCapaCycleDocumentCurrentContent.mockReset();
+  apiMocks.openApprovalSubmissionDocumentCurrentContent.mockReset();
   apiMocks.getGenerationRun.mockReset();
   apiMocks.listCases.mockReset();
   apiMocks.listCompanies.mockReset();
@@ -305,6 +311,11 @@ function resetApiMocks() {
     filename: "document.docx",
   });
   apiMocks.openCapaCycleDocumentCurrentContent.mockResolvedValue({
+    blob: new Blob(["doc"]),
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    filename: "document.docx",
+  });
+  apiMocks.openApprovalSubmissionDocumentCurrentContent.mockResolvedValue({
     blob: new Blob(["doc"]),
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     filename: "document.docx",
@@ -3514,6 +3525,69 @@ describe("App Slice A.4 search workspace", () => {
     await act(async () => release({ blob: new Blob(["late A"]) }));
     expect(window.open).not.toHaveBeenCalled(); expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: returnToA ? "Chọn Quyết định cấp CC" : "Chọn Second document" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("opens only the newest exact PCT binding when another round's binary arrives late", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const initial = buildCaseWorkspace({ inspection: {
+      ...buildCaseWorkspace().inspection,
+      approval_submissions: [
+        { approval_submission_id: "pct-1", case_id: "case-1", stage: "PCT", round_no: 1, row_version: 1, completed_on: null },
+        { approval_submission_id: "pct-2", case_id: "case-1", stage: "PCT", round_no: 2, row_version: 1, completed_on: null },
+      ],
+      approval_document_links: [
+        { approval_submission_id: "pct-1", document_id: "pct-doc-a", binding_id: "link-a", stage: "PCT", round_no: 1 },
+        { approval_submission_id: "pct-2", document_id: "pct-doc-b", binding_id: "link-b", stage: "PCT", round_no: 2 },
+      ],
+    } });
+    apiMocks.getCaseWorkspace.mockResolvedValue(initial);
+    let releaseFirst!: (value: { blob: Blob }) => void;
+    apiMocks.openApprovalSubmissionDocumentCurrentContent
+      .mockImplementationOnce(() => new Promise(resolve => { releaseFirst = resolve; }))
+      .mockResolvedValueOnce({ blob: new Blob(["newest"]) });
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    const openFirst = await screen.findByRole("button", { name: "Mở tài liệu pct-doc-a của PCT lần 1" });
+    fireEvent.click(openFirst);
+    fireEvent.click(screen.getByRole("button", { name: "Mở tài liệu pct-doc-b của PCT lần 2" }));
+    await waitFor(() => expect(window.open).toHaveBeenCalledTimes(1));
+    expect(apiMocks.openApprovalSubmissionDocumentCurrentContent.mock.calls.map((call: unknown[]) => call.slice(0, 2))).toEqual([
+      ["pct-1", "pct-doc-a"], ["pct-2", "pct-doc-b"],
+    ]);
+    await act(async () => releaseFirst({ blob: new Blob(["late"]) }));
+    expect(window.open).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open a replaced Case A round binary after Case A → B → A", async () => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "planned" }));
+    const approval = (caseId: string) => ({
+      ...buildCaseWorkspace().inspection,
+      approval_submissions: [{ approval_submission_id: `pct-${caseId}`, case_id: caseId, stage: "PCT", round_no: 1, row_version: 1, completed_on: null }],
+      approval_document_links: [{ approval_submission_id: `pct-${caseId}`, document_id: `doc-${caseId}`, binding_id: `link-${caseId}`, stage: "PCT", round_no: 1 }],
+    });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (caseId: string) => buildCaseWorkspace({
+      case_summary: { ...buildCaseWorkspace().case_summary, id: caseId }, inspection: approval(caseId),
+    }));
+    let release!: (value: { blob: Blob }) => void;
+    apiMocks.openApprovalSubmissionDocumentCurrentContent.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+
+    renderApp(["/search"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Mở tài liệu doc-case-A của PCT lần 1" }));
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await screen.findByRole("button", { name: "Mở tài liệu doc-case-B của PCT lần 1" });
+    fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
+    await screen.findByRole("button", { name: "Mở tài liệu doc-case-A của PCT lần 1" });
+    await act(async () => release({ blob: new Blob(["late Case A"]) }));
+    expect(window.open).not.toHaveBeenCalled();
+    expect(apiMocks.openApprovalSubmissionDocumentCurrentContent).toHaveBeenCalledTimes(1);
   });
 
   it.each([403, 404, 409])("owns one CAPA document workspace and rejects stale cycle detail/error %s", async status => {

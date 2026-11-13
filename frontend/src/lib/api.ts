@@ -1169,6 +1169,18 @@ export function openCaseDocumentCurrentContent(
   return requestBlob(`/cases/${caseId}/documents/${documentId}/content`, { auth, useStubAuth, bearerToken });
 }
 
+export function openApprovalSubmissionDocumentCurrentContent(
+  approvalSubmissionId: string,
+  documentId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<{ blob: Blob; contentType: string | null; filename: string | null }> {
+  return requestBlob(`/approval-submissions/${approvalSubmissionId}/documents/${documentId}/content`, {
+    auth, useStubAuth, bearerToken,
+  });
+}
+
 export function openCapaCycleDocumentCurrentContent(
   caseId: string,
   capaCycleId: string,

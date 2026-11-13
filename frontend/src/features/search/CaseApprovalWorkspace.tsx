@@ -68,6 +68,7 @@ function CaseApprovalEditor({
   onBindApprovalDocument,
   onReadApprovalDocuments,
   onApprovalDocumentsConfirmed,
+  onOpenApprovalDocument,
 }: {
   caseWorkspace: CaseWorkspace;
   onCreate: (stage: "PCT" | "CT", payload: InspectionApprovalSubmissionCreateRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
@@ -75,6 +76,7 @@ function CaseApprovalEditor({
   onBindApprovalDocument?: (id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>;
   onReadApprovalDocuments?: (id: string) => Promise<import("../../types").ApprovalDocumentReadback>;
   onApprovalDocumentsConfirmed?: (caseId: string) => Promise<void>;
+  onOpenApprovalDocument?: (submissionId: string, documentId: string) => Promise<void>;
 }) {
   const [reference, setReference] = useCaseDraftState("approval.create.reference", "");
   const [submittedOn, setSubmittedOn] = useCaseDraftState("approval.create.submittedOn", "");
@@ -251,7 +253,7 @@ function CaseApprovalEditor({
           </button>
         ) : null}
         {parent ? <button disabled={pending !== null || ownerPending || requiresReview} onClick={() => { if (requiresReview) return; setParentId(parent.approval_submission_id); parentSelect.current?.focus(); }} type="button">Chọn PCT lần {parent.round_no} cho trình CT</button> : null}
-        <ApprovalRoundDocuments workspace={caseWorkspace} submission={item} onBind={onBindApprovalDocument} onReadback={onReadApprovalDocuments} onConfirmed={onApprovalDocumentsConfirmed} />
+        <ApprovalRoundDocuments workspace={caseWorkspace} submission={item} onBind={onBindApprovalDocument} onReadback={onReadApprovalDocuments} onConfirmed={onApprovalDocumentsConfirmed} onOpenCurrentContent={onOpenApprovalDocument} />
         <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null || ownerPending} requiresReview={requiresReview} onComplete={complete} />
         {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{caseReadinessReason(readiness.reason_code)}</span> : null}
       </div>;

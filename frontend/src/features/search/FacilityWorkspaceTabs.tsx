@@ -106,6 +106,7 @@ export function FacilityWorkspaceTabs({
   onBindApprovalDocument,
   onReadApprovalDocuments,
   onApprovalDocumentsConfirmed,
+  onOpenApprovalDocument,
   onTransitionCase,
   onInspectionTeamSave,
   onLoadInspectionTeamIdentityOptions,
@@ -186,6 +187,7 @@ export function FacilityWorkspaceTabs({
   onBindApprovalDocument?: (id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>;
   onReadApprovalDocuments?: (id: string) => Promise<import("../../types").ApprovalDocumentReadback>;
   onApprovalDocumentsConfirmed?: (caseId: string) => Promise<void>;
+  onOpenApprovalDocument?: (submissionId: string, documentId: string) => Promise<void>;
   onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>;
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
@@ -331,6 +333,7 @@ export function FacilityWorkspaceTabs({
           onBindApprovalDocument={onBindApprovalDocument}
           onReadApprovalDocuments={onReadApprovalDocuments}
           onApprovalDocumentsConfirmed={onApprovalDocumentsConfirmed}
+          onOpenApprovalDocument={onOpenApprovalDocument}
           onTransitionCase={onTransitionCase}
           onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
           onInspectionTeamSave={onInspectionTeamSave}

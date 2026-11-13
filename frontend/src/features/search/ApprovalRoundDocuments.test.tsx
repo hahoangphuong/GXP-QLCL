@@ -44,10 +44,10 @@ function receipt(caseId = "case-a", documentId = "pct-doc-b"): ApprovalDocumentR
       binding_id: "link-b", stage: "PCT", round_no: 2 }],
   };
 }
-function view(workspace = fixture(), onBind = vi.fn(), onReadback = vi.fn(), onConfirmed = vi.fn()) {
+function view(workspace = fixture(), onBind = vi.fn(), onReadback = vi.fn(), onConfirmed = vi.fn(), onOpenCurrentContent = undefined as ((submissionId: string, documentId: string) => Promise<void>) | undefined) {
   return render(<CaseDraftSession identity={workspace.case_summary.id}>
     <ApprovalRoundDocuments workspace={workspace} submission={submission}
-      onBind={onBind} onReadback={onReadback} onConfirmed={onConfirmed} />
+      onBind={onBind} onReadback={onReadback} onConfirmed={onConfirmed} onOpenCurrentContent={onOpenCurrentContent} />
   </CaseDraftSession>);
 }
 
@@ -163,5 +163,34 @@ describe("ApprovalRoundDocuments", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Stale version"));
     expect(onReadback).not.toHaveBeenCalled();
     expect(screen.queryByText(/Đã xác minh liên kết canonical/)).not.toBeInTheDocument();
+  });
+
+  it("opens only the persisted UUID binding for this exact PCT round without writing", async () => {
+    const onBind = vi.fn();
+    const onOpen = vi.fn().mockResolvedValue(undefined);
+    view(fixture("case-a", { approval_document_links: [
+      { approval_submission_id: "pct-2", document_id: "pct-doc-b", binding_id: "link-b", stage: "PCT", round_no: 2 },
+      { approval_submission_id: "pct-1", document_id: "pct-doc-a", binding_id: "link-a", stage: "PCT", round_no: 1 },
+      { approval_submission_id: "ct-1", document_id: "ct-doc", binding_id: "link-c", stage: "CT", round_no: 1 },
+    ] }), onBind, vi.fn(), vi.fn(), onOpen);
+    expect(screen.getByRole("button", { name: "Mở tài liệu pct-doc-b của PCT lần 2" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /pct-doc-a/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mở tài liệu ct-doc của CT lần 1" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mở tài liệu pct-doc-b của PCT lần 2" }));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith("pct-2", "pct-doc-b"));
+    expect(onBind).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [403, "Bạn không có quyền đọc"], [404, "Không tìm thấy liên kết"],
+    [409, "chưa có binary hiện hành hợp lệ"], [503, "Kho lưu trữ tài liệu hiện không khả dụng"],
+  ])("keeps the canonical binding visible and reports open HTTP %s in Vietnamese", async (status, message) => {
+    const onOpen = vi.fn().mockRejectedValue(Object.assign(new Error("backend detail"), { status }));
+    view(fixture("case-a", { approval_document_links: [
+      { approval_submission_id: "pct-2", document_id: "pct-doc-b", binding_id: "link-b", stage: "PCT", round_no: 2 },
+    ] }), vi.fn(), vi.fn(), vi.fn(), onOpen);
+    fireEvent.click(screen.getByRole("button", { name: "Mở tài liệu pct-doc-b của PCT lần 2" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("button", { name: "Mở tài liệu pct-doc-b của PCT lần 2" })).toBeInTheDocument();
   });
 });

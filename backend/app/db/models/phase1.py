@@ -807,6 +807,19 @@ class InspectionApprovalSubmission(UUIDPrimaryKeyMixin, TimestampMixin, Versione
     )
 
 
+class InspectionApprovalDocumentLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Explicit append-only binding, not documentary issuance or completion."""
+
+    __tablename__ = "inspection_approval_document_link"
+
+    approval_submission_id: Mapped[str] = mapped_column(
+        ForeignKey("inspection_approval_submission.id"), nullable=False, index=True
+    )
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("document.id"), nullable=False, unique=True
+    )
+
+
 class Certificate(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     __tablename__ = "certificate"
 

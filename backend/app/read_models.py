@@ -271,6 +271,28 @@ class CaseWorkspaceApplicationRead(BaseModel):
     assigned_specialist_source: Literal["company_master"] | None
 
 
+class ApprovalDocumentBindingRead(BaseModel):
+    approval_submission_id: str
+    document_id: str
+    binding_id: str
+    created: bool
+    row_version: int
+
+
+class ApprovalDocumentLinkRead(BaseModel):
+    approval_submission_id: str
+    document_id: str
+    binding_id: str
+    stage: Literal["PCT", "CT"]
+    round_no: int
+
+
+class ApprovalDocumentBindRequest(BaseModel):
+    document_id: str
+    expected_version: int
+    reason: str | None = None
+
+
 class ApprovalStageDocumentEvidenceRead(BaseModel):
     # Document is owned by Case, not by any individual approval submission.
     stage: Literal["PCT", "CT"]
@@ -278,7 +300,7 @@ class ApprovalStageDocumentEvidenceRead(BaseModel):
     case_document_status: Literal["available", "missing"]
     selected_case_document_id: str | None
     selected_case_document_open_available: bool
-    round_document_binding_state: Literal["not_modelled"]
+    round_document_binding_state: Literal["unbound", "partially_bound", "bound"]
     submission_ids: list[str]
     completed_submission_ids: list[str]
 
@@ -311,6 +333,7 @@ class CaseWorkspaceInspectionRead(BaseModel):
     approval_actions: list["LifecycleActionReadinessRead"] = Field(default_factory=list)
     approval_submissions: list["InspectionApprovalSubmissionRead"] = Field(default_factory=list)
     approval_document_evidence: list["ApprovalStageDocumentEvidenceRead"] = Field(default_factory=list)
+    approval_document_links: list["ApprovalDocumentLinkRead"] = Field(default_factory=list)
     team_display_text: str | None
     team: "InspectionTeamWorkspaceRead | None" = None
     team_edit_readiness: "InspectionTeamEditReadinessRead"

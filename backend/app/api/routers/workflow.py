@@ -54,6 +54,8 @@ from backend.app.read_models import (
     InspectionApprovalSubmissionRead,
     InspectionApprovalSubmissionCreateRequest,
     InspectionApprovalSubmissionCompleteRequest,
+    ApprovalDocumentBindRequest,
+    ApprovalDocumentBindingRead,
 )
 from backend.app.services import CatalogReadService, CaseWorkflowService
 from backend.app.services.workflow import (
@@ -258,6 +260,24 @@ def register_workflow_routes(app, session_factory) -> None:
         result = service.complete_approval_submission(session, approval_submission_id=approval_submission_id, expected_version=payload.expected_version, completed_on=payload.completed_on, completed_time=payload.completed_time, reason=payload.reason, user=user)
         commit_or_409(session)
         return InspectionApprovalSubmissionRead(**result)
+
+    def bind_approval_document(
+        approval_submission_id: str,
+        payload: ApprovalDocumentBindRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit", "document.read"})
+        result = service.bind_approval_document(
+            session,
+            approval_submission_id=approval_submission_id,
+            document_id=payload.document_id,
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return ApprovalDocumentBindingRead(**result)
 
     def upsert_inspection_team(
         case_id: str,
@@ -733,6 +753,13 @@ def register_workflow_routes(app, session_factory) -> None:
     app.add_api_route("/cases/{case_id}/outcome/final-evaluation", finalize_inspection_outcome, methods=["POST"], response_model=InspectionOutcomeRead, tags=["workflow"])
     app.add_api_route("/cases/{case_id}/approval-submissions/{stage}", create_approval_submission, methods=["POST"], response_model=InspectionApprovalSubmissionRead, tags=["workflow"])
     app.add_api_route("/approval-submissions/{approval_submission_id}/complete", complete_approval_submission, methods=["POST"], response_model=InspectionApprovalSubmissionRead, tags=["workflow"])
+    app.add_api_route(
+        "/approval-submissions/{approval_submission_id}/documents",
+        bind_approval_document,
+        methods=["POST"],
+        response_model=ApprovalDocumentBindingRead,
+        tags=["workflow"],
+    )
     app.add_api_route(
         "/cases/{case_id}/team",
         upsert_inspection_team,

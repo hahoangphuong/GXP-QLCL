@@ -134,6 +134,12 @@ export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadba
     }
   }
 
+  // Older canonical projections do not advertise round-level association.
+  // Never show a guessed status or an enabled action in that case.
+  if (!workspace.inspection.approval_document_candidates
+      && !workspace.inspection.approval_document_links
+      && !workspace.inspection.approval_document_bind_readiness) return null;
+
   return <section className="workspace-section" aria-label={`Tài liệu ${label}`}>
     <h5>Tài liệu {label}</h5>
     <p className="workspace-note">Tài liệu cấp hồ sơ và liên kết từng lần trình là hai dữ kiện khác nhau. Liên kết không xác nhận tài liệu đã ký hoặc ban hành.</p>

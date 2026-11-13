@@ -86,7 +86,7 @@ def test_document_inventory_reports_case_family_without_binding_it_to_pct_ct_rou
                 assert pct.case_document_status == "available"
                 assert pct.selected_case_document_id == pct_doc_id
                 assert pct.selected_case_document_open_available is True
-                assert pct.round_document_binding_state == "not_modelled"
+                assert pct.round_document_binding_state == "unbound"
                 assert pct.submission_ids == [pct1_id, pct2_id]
                 assert pct.completed_submission_ids == [pct1_id]
 
@@ -94,7 +94,7 @@ def test_document_inventory_reports_case_family_without_binding_it_to_pct_ct_rou
                 assert ct.case_document_status == "missing"
                 assert ct.selected_case_document_id is None
                 assert ct.selected_case_document_open_available is False
-                assert ct.round_document_binding_state == "not_modelled"
+                assert ct.round_document_binding_state == "unbound"
                 assert ct.submission_ids == [ct_id]
                 assert ct.completed_submission_ids == [ct_id]
 
@@ -136,7 +136,7 @@ def test_document_inventory_reports_case_family_without_binding_it_to_pct_ct_rou
             assert ct.case_document_status == "available"
             assert ct.selected_case_document_id == ct_doc_id
             assert ct.selected_case_document_open_available is False
-            assert ct.round_document_binding_state == "not_modelled"
+            assert ct.round_document_binding_state == "unbound"
             assert ct.submission_ids == [ct_id]
     finally:
         engine.dispose()

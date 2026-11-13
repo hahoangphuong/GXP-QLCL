@@ -582,6 +582,11 @@ class CaseBusinessEvidenceRead(BaseModel):
     linked_certificate_count: int
     complete_certificate_record_count: int
     current_certificate_record_count: int
+    # Date validity is not legal effectiveness or current status.
+    date_valid_certificate_record_count: int
+    invalid_certificate_date_interval_count: int
+    current_invalid_certificate_date_interval_count: int
+    certified_case_without_date_valid_certificate_record: bool
     certificate_record_state: Literal["none", "incomplete", "recorded_not_current", "current"]
     certified_case_without_complete_certificate_record: bool
 

@@ -27,6 +27,8 @@ describe("Case next-action guidance", () => {
     expect(navigate).toHaveBeenLastCalledWith("approval", undefined);
     fireEvent.click(within(panel).getByRole("button", { name: "Đến: edit_case_application" }));
     expect(navigate).toHaveBeenLastCalledWith("application", undefined);
+    fireEvent.click(within(panel).getByRole("button", { name: "Đến: edit_inspection_plan" }));
+    expect(navigate).toHaveBeenLastCalledWith("plan", undefined);
     expect(within(panel).queryByRole("button", { name: /Cấp GCN/ })).not.toBeInTheDocument();
     fireEvent.click(within(panel).getByText(/Chưa đủ điều kiện/));
     expect(within(panel).getByText(/Cần hoàn tất một lần trình PCT/)).toBeVisible();

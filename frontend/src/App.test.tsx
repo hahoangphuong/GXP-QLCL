@@ -952,6 +952,18 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.finalizeInspectionOutcome).not.toHaveBeenCalled();
     await flushSearchUrlSync();
   });
+  it("focuses the existing plan editor region from backend stage readiness", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue({ ...buildCaseWorkspace(), stage_edit_actions: [{ action_key: "edit_inspection_plan", label: "Cập nhật kế hoạch kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: null }] });
+    renderApp(["/search"]);
+    const guidance = await screen.findByRole("region", { name: "Bước xử lý tiếp theo" });
+    fireEvent.click(within(guidance).getByRole("button", { name: "Đến: Cập nhật kế hoạch kiểm tra" }));
+    expect(await screen.findByRole("region", { name: "Khu vực kế hoạch kiểm tra" })).toHaveFocus();
+    expect(apiMocks.upsertInspectionPlan).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
+  });
   it("keeps the verified Case and marks master stale if canonical refresh fails", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValueOnce({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 }).mockRejectedValueOnce(new Error("search unavailable"));

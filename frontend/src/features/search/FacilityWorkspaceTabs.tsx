@@ -67,6 +67,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificatesError,
   selectedGxpCertificateId,
   onGxpCertificateSelect,
+  onNavigateCaseCertificate,
   onOpenGxpCertificateOwningCase,
   gxpCertificateDetail,
   gxpCertificateDetailLoading,
@@ -143,6 +144,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificatesError: string | null;
   selectedGxpCertificateId: string | null;
   onGxpCertificateSelect: (certificateId: string) => void;
+  onNavigateCaseCertificate?: (certificateId: string) => void;
   onOpenGxpCertificateOwningCase?: (caseId: string, certificateId: string, siteId: string) => void;
   gxpCertificateDetail: GxpCertificateDetail | null;
   gxpCertificateDetailLoading: boolean;
@@ -275,6 +277,23 @@ export function FacilityWorkspaceTabs({
     onFacilityTabChange("Giấy chứng nhận GxP");
   }
 
+  // Case-linked action readiness is keyed by the Certificate aggregate UUID.
+  // The destination loader revalidates that UUID against the selected facility
+  // list/detail; no list position, number, or version is used as identity.
+  const caseLinkedCertificateIds = selectedHistory?.source_type === "case"
+    && !caseWorkspaceLoading && !caseWorkspaceError
+    && caseWorkspace?.case_summary.id === selectedHistory.id
+    && caseWorkspace.case_summary.site_id === summary.site_id
+    ? (caseWorkspace.linked_gxp_certificates ?? [])
+      .filter((linked) => linked.case_id === selectedHistory.id && linked.site_id === summary.site_id)
+      .map((linked) => linked.certificate_id)
+    : [];
+
+  function navigateCaseCertificate(certificateId: string) {
+    if (!caseLinkedCertificateIds.includes(certificateId)) return;
+    onNavigateCaseCertificate?.(certificateId);
+  }
+
   const selectedTabContent = (
     <>
     {selectedFacilityTab === "Thông tin chung" ? (
@@ -314,6 +333,7 @@ export function FacilityWorkspaceTabs({
           onIssueCertificate={onIssueCertificate}
           openableCertificateIds={openableLinkedCertificateIds}
           onOpenLinkedCertificate={openLinkedCertificate}
+          onNavigateCaseCertificate={navigateCaseCertificate}
           onCreateDocument={onCreateDocument}
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={onOpenDocument}

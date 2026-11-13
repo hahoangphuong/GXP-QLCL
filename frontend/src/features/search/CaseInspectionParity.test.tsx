@@ -10,6 +10,7 @@ const workspace = {
     plan_decision_reference: "QD-01", plan_decision_date: "2026-08-01", decision_document_hint: null,
     inspected_on: "2026-07-01", executed_on: "2026-08-06", minutes_recorded_on: "2026-08-07",
     minutes_recorded_time: null, compliance_due_on: null, outcome_result: "C", team_display_text: "Inspector A",
+    outcome_edit_readiness: { action_key: "edit_inspection_outcome", label: "Sửa kết quả kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6 },
     team: null, inspection_period_segments: [{ id: "period-uuid", ordinal: 1, started_on: "2026-08-05", ended_on: "2026-08-06" }], final_evaluation: null },
 } as unknown as CaseWorkspace;
 

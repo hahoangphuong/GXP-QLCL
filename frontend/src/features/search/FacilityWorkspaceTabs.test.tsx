@@ -8,7 +8,7 @@ import { FACILITY_TABS as labels, FACILITY_TAB_LABELS, resolveFacilityTab, type 
 // Isolate the tab owner. Each stub marks a mounted business workspace; hidden
 // ARIA shells must never mount these children.
 vi.mock("./FacilitySummary", () => ({ FacilitySummary: () => <form aria-label="General form"><input aria-label="Nested input" /><button type="button">Nested button</button></form> }));
-vi.mock("./EventWorkspace", () => ({ EventWorkspace: ({ openableCertificateIds, onOpenLinkedCertificate }: { openableCertificateIds?: string[]; onOpenLinkedCertificate?: (id: string) => void }) => <div data-testid="event-child">Event workspace{openableCertificateIds?.map(id => <button key={id} type="button" onClick={() => onOpenLinkedCertificate?.(id)}>Mở {id}</button>)}</div> }));
+vi.mock("./EventWorkspace", () => ({ EventWorkspace: ({ openableCertificateIds, onOpenLinkedCertificate, onNavigateCaseCertificate }: { openableCertificateIds?: string[]; onOpenLinkedCertificate?: (id: string) => void; onNavigateCaseCertificate?: (id: string) => void }) => <div data-testid="event-child">Event workspace{openableCertificateIds?.map(id => <button key={id} type="button" onClick={() => onOpenLinkedCertificate?.(id)}>Mở {id}</button>)}<button type="button" onClick={() => onNavigateCaseCertificate?.("cert-A")}>Điều hướng cert-A</button></div> }));
 vi.mock("./GxpCertificateWorkspace", () => ({ GxpCertificateWorkspace: () => <div data-testid="gxp-child">GxP workspace</div> }));
 vi.mock("./BusinessEligibilityWorkspace", () => ({ BusinessEligibilityWorkspace: () => <div data-testid="eligibility-child">Eligibility workspace</div> }));
 
@@ -209,4 +209,20 @@ it("opens only a matching linked Certificate UUID from the selected Case", () =>
     view.rerender(<FacilityWorkspaceTabs {...({ ...valid, ...invalid } as unknown as Props)} />);
     expect(screen.queryByRole("button", { name: "Mở cert-B" })).not.toBeInTheDocument();
   }
+});
+
+it("navigates a canonical Case Certificate UUID before the facility list has loaded", () => {
+  const base = props("Các đợt kiểm tra & thay đổi");
+  const onNavigateCaseCertificate = vi.fn();
+  const valid = {
+    ...base,
+    selectedHistory: { id: "case-A", source_type: "case" },
+    caseWorkspace: { case_summary: { id: "case-A", site_id: "site-1" }, linked_gxp_certificates: [{ certificate_id: "cert-A", case_id: "case-A", site_id: "site-1", certificate_type: "GMP" }] },
+    caseWorkspaceLoading: false, caseWorkspaceError: null,
+    gxpCertificatesLoading: true, gxpCertificatesError: null, gxpCertificates: [],
+    onNavigateCaseCertificate,
+  } as unknown as Props;
+  render(<FacilityWorkspaceTabs {...valid} />);
+  fireEvent.click(screen.getByRole("button", { name: "Điều hướng cert-A" }));
+  expect(onNavigateCaseCertificate).toHaveBeenCalledExactlyOnceWith("cert-A");
 });

@@ -2840,6 +2840,12 @@ export function SearchPage({
                 setSelectedGxpCertificateOwner(gxpListOwner);
                 setSelectedGxpCertificateId(certificateId);
               }}
+              onNavigateCaseCertificate={(certificateId) => {
+                // Navigation only. The certificate list/detail requests verify
+                // the canonical UUID in this facility context before display.
+                setRequestedGxpCertificateId(certificateId);
+                setSelectedFacilityTab("Giấy chứng nhận GxP");
+              }}
               onOpenGxpCertificateOwningCase={(caseId, certificateId, siteId) => {
                 // Navigation only. CaseDirectOpen independently verifies canonical Certificate ↔ Site ↔ Case.
                 if (!caseId || !certificateId || !siteId) return;

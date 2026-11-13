@@ -528,6 +528,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       plan_end_on: null,
       planning_sheet_name: null,
       outcome_row_version: 6,
+      outcome_edit_readiness: { action_key: "edit_inspection_outcome", label: "Sửa kết quả kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6 },
       inspected_on: "2026-08-05",
       inspected_to_on: "2026-08-06",
       inspection_period_state: "KNOWN",

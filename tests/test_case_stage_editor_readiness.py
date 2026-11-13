@@ -90,7 +90,12 @@ def test_stage_edit_readiness_allows_initialization_and_reports_permission(case_
         for key in ("edit_case_application", "edit_case_assessment"):
             assert inspection_only[key]["reason_code"] == "missing_permission"
 
-        assert _stage_actions(session, case_id, _user()) == {
+        # An empty permission override on an admin identity resolves to its
+        # role defaults. Use an explicit read-only principal instead.
+        reader = build_authenticated_user(
+            "stage-readiness-reader", "reader", permissions=["document.read"],
+        )
+        assert _stage_actions(session, case_id, reader) == {
             key: {
                 **action, "available": False, "reason_code": "missing_permission",
             }

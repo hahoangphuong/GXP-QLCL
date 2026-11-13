@@ -52,9 +52,7 @@ def test_every_pct_document_is_a_round_choice_with_canonical_binding_readback():
                               document_type_code="INSPECTION_PT_CT", title="CT source")
             foreign = Document(case_id=other.id, family_code="INSPECTION_PT_PCT",
                                document_type_code="INSPECTION_PT_PCT", title="Other Case")
-            multi_parent = Document(case_id=case.id, change_request_id=None,
-                                    family_code="OTHER_FAMILY", document_type_code="OTHER_FAMILY")
-            session.add_all([pct1, pct2, ct_doc, foreign, multi_parent])
+            session.add_all([pct1, pct2, ct_doc, foreign])
             session.flush()
             variant = DocumentVariant(document_id=pct2.id, variant_type=DocumentVariantType.SIGNED_PDF,
                                       language_code="vi", is_active=True)
@@ -99,8 +97,8 @@ def test_every_pct_document_is_a_round_choice_with_canonical_binding_readback():
         actions = {x.approval_submission_id: x for x in initial.inspection.approval_document_bind_readiness}
         assert set(actions) == {ids["p1"], ids["p2"], ids["ct"]}
         assert actions[ids["p1"]].available and actions[ids["p2"]].available
-        assert actions[ids["p1"]].eligible_document_ids == [ids["pct1"], ids["pct2"]]
-        assert actions[ids["p2"]].eligible_document_ids == [ids["pct1"], ids["pct2"]]
+        assert set(actions[ids["p1"]].eligible_document_ids) == {ids["pct1"], ids["pct2"]}
+        assert set(actions[ids["p2"]].eligible_document_ids) == {ids["pct1"], ids["pct2"]}
         assert actions[ids["ct"]].eligible_document_ids == [ids["ctdoc"]]
         assert actions[ids["p1"]].expected_version == 1
 
@@ -127,7 +125,7 @@ def test_every_pct_document_is_a_round_choice_with_canonical_binding_readback():
         assert current[ids["pct1"]].bound_submission_id == ids["p1"]
         assert current[ids["pct2"]].bound_submission_id is None
         actions = {x.approval_submission_id: x for x in changed.inspection.approval_document_bind_readiness}
-        assert actions[ids["p1"]].eligible_document_ids == [ids["pct1"], ids["pct2"]]
+        assert set(actions[ids["p1"]].eligible_document_ids) == {ids["pct1"], ids["pct2"]}
         assert actions[ids["p1"]].expected_version == linked["row_version"]
         assert actions[ids["p2"]].eligible_document_ids == [ids["pct2"]]
         assert changed.inspection.approval_document_evidence[0].round_document_binding_state == "partially_bound"

@@ -287,6 +287,16 @@ class ApprovalDocumentLinkRead(BaseModel):
     round_no: int
 
 
+class ApprovalDocumentReadbackRead(BaseModel):
+    # A canonical, read-only recovery receipt for one approval submission.
+    approval_submission_id: str
+    case_id: str
+    stage: Literal["PCT", "CT"]
+    round_no: int
+    row_version: int
+    links: list[ApprovalDocumentLinkRead]
+
+
 class ApprovalDocumentBindRequest(BaseModel):
     document_id: str
     expected_version: int

@@ -74,8 +74,33 @@ $$
 
 
 def upgrade() -> None:
-    if op.get_bind().dialect.name != "postgresql":
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
         return
+    # Never silently grandfather inconsistent binding evidence into the new
+    # guarded scheme. An operator must reconcile it explicitly; do not guess
+    # source Case, stage or parent based on a filename/date/round.
+    existing_invalid = bind.execute(sa.text("""
+        SELECT l.id
+        FROM inspection_approval_document_link AS l
+        LEFT JOIN inspection_approval_submission AS s
+            ON s.id = l.approval_submission_id
+        LEFT JOIN document AS d ON d.id = l.document_id
+        WHERE s.id IS NULL OR d.id IS NULL
+            OR s.stage NOT IN ('PCT', 'CT')
+            OR d.case_id IS DISTINCT FROM s.case_id
+            OR d.family_code IS DISTINCT FROM
+                CASE WHEN s.stage = 'PCT' THEN 'INSPECTION_PT_PCT'
+                     WHEN s.stage = 'CT' THEN 'INSPECTION_PT_CT'
+                     ELSE NULL END
+            OR d.capa_cycle_id IS NOT NULL
+            OR d.certificate_id IS NOT NULL
+            OR d.business_eligibility_certificate_id IS NOT NULL
+            OR d.change_request_id IS NOT NULL
+        LIMIT 1
+    """)).first()
+    if existing_invalid is not None:
+        raise RuntimeError("APPROVAL_BOUND_SOURCE_INVALID_PREEXISTING_LINKS")
     for command in (DOCUMENT_GUARD, SUBMISSION_GUARD, LINK_GUARD):
         op.execute(sa.text(command))
     op.execute(sa.text("""

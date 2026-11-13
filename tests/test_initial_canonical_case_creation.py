@@ -128,7 +128,7 @@ def test_first_case_for_explicit_physical_line_not_legacy_code(blank):
 
 
 @pytest.mark.parametrize("kind", [
-    "same_uuid", "history_case", "history_certificate", "wrong_line",
+    "same_uuid", "history_case", "history_certificate", "history_nonlatest_certificate", "wrong_line",
     "unknown_site", "inactive_parent", "unsupported_gxp", "reassessment_type",
     "blank_reason", "blank_inspection_type",
 ])
@@ -152,6 +152,11 @@ def test_fail_closed_with_no_partial_writes(blank, kind):
                 site_id=site_id, certificate_type="GMP",
                 latest_flag=True,
             ))
+        if kind == "history_nonlatest_certificate":
+            db.add(Certificate(
+                site_id=site_id, certificate_type="GMP",
+                latest_flag=False,
+            ))
         db.commit()
     args = inputs(site_id, case_id=ident)
     if kind == "wrong_line": args["production_line_id"] = other_line
@@ -168,6 +173,19 @@ def test_fail_closed_with_no_partial_writes(blank, kind):
         assert err.value.status_code in (409, 404, 422)
         db.rollback()
         assert totals(db) == before
+
+
+def test_nonlatest_historical_certificate_blocks_first_case_readiness(blank):
+    engine, (site_id, _, _, _, _) = blank
+    with Session(engine) as db:
+        db.add(Certificate(site_id=site_id, certificate_type="GMP", latest_flag=False))
+        db.commit()
+    with Session(engine) as db:
+        ready = CaseWorkflowService().get_create_initial_case_action_readiness(
+            db, site_id=site_id, gxp_type="GMP", line_code=None,
+            production_line_id=None, user=editor(),
+        )
+        assert ready["readiness_status"] == "conflict"
 
 
 def test_unknown_post_replay_409_get_owner_then_compare(blank):

@@ -1370,6 +1370,47 @@ class CaseWorkflowService:
             )
         return normalized_gxp_type, (None if line is None else line.code), line
 
+    def _initial_case_context_occupied(
+        self, session: Session, *, site_id: str, gxp_type: str,
+        production_line_id: str | None,
+    ) -> bool:
+        """Any historical Case or GxP Certificate is prior context.
+
+        The reassessment projection deliberately uses *current* Certificate
+        rows; a genuinely first Case must additionally reject historical,
+        non-latest GCN rows. Canonical UUID identity takes precedence over
+        matching legacy code text.
+        """
+        case_identity = (
+            Case.production_line_id == production_line_id
+            if production_line_id is not None
+            else and_(
+                Case.production_line_id.is_(None),
+                func.nullif(func.trim(Case.scope_code), "").is_(None),
+            )
+        )
+        if session.scalar(
+            select(Case.id).where(
+                Case.site_id == site_id, Case.gxp_type == gxp_type, case_identity,
+            )
+        ) is not None:
+            return True
+        certificate_identity = (
+            Certificate.production_line_id == production_line_id
+            if production_line_id is not None
+            else and_(
+                Certificate.production_line_id.is_(None),
+                self._certificate_effective_line_sql().is_(None),
+            )
+        )
+        return session.scalar(
+            select(Certificate.id).where(
+                Certificate.site_id == site_id,
+                Certificate.certificate_type == gxp_type,
+                certificate_identity,
+            )
+        ) is not None
+
     def get_create_initial_case_action_readiness(
         self, session: Session, *, site_id: str, gxp_type: str | None,
         line_code: str | None, production_line_id: str | None,
@@ -1409,9 +1450,9 @@ class CaseWorkflowService:
                 return {**outcome, "readiness_status": "unavailable", "detail": "ProductionLine UUID không thuộc cơ sở đã chọn."}
             if self._normalize_line_code(line_code) not in (None, line.code):
                 return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền không khớp ProductionLine UUID."}
-        if self._site_has_gxp_context(
+        if self._initial_case_context_occupied(
             session, site_id=site.id, gxp_type=str(gxp_type).strip(),
-            line_code=None, production_line_id=production_line_id,
+            production_line_id=production_line_id,
         ):
             return {**outcome, "readiness_status": "conflict", "detail": "Đã có Case hoặc GCN trong ngữ cảnh này; không phải hồ sơ đầu tiên."}
         return {**outcome, "readiness_status": "available", "detail": "Có thể tạo Case nháp mới, không sao chép dữ liệu từ Case cũ hoặc KHKT."}
@@ -1440,6 +1481,9 @@ class CaseWorkflowService:
             applicable_standard, field="applicable_standard", limit=255,
         )
         site = self._lock_site(session, site_id)
+        # A Session may cache the Site before another writer changes its owner.
+        # Refresh after the Site lock; do not trust the cached company_id.
+        session.refresh(site)
         company = session.scalars(
             select(Company).where(Company.id == site.company_id)
             .execution_options(populate_existing=True)
@@ -1458,9 +1502,9 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=422, detail="Selected ProductionLine UUID is not owned by this Site.")
         if session.scalar(select(Case.id).where(Case.id == case_id)) is not None:
             raise HTTPException(status_code=409, detail="Case UUID already exists; resolve unknown POST via canonical GET.")
-        if self._site_has_gxp_context(
+        if self._initial_case_context_occupied(
             session, site_id=site.id, gxp_type=gxp_type,
-            line_code=None, production_line_id=production_line_id,
+            production_line_id=production_line_id,
         ):
             raise HTTPException(
                 status_code=409,

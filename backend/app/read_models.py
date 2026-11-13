@@ -1071,6 +1071,17 @@ class CaseTransitionRead(BaseModel):
     inspection_event_id: str | None
 
 
+class InitialInspectionCaseCreateRequest(BaseModel):
+    # The client prepares one UUID v4 before the first POST and preserves it
+    # through unknown-outcome recovery via GET /cases/{case_id}.
+    case_id: UUID4
+    gxp_type: Literal["GMP", "GLP", "GMPbb"]
+    production_line_id: UUID4 | None = None
+    inspection_type: str
+    applicable_standard: str | None = None
+    reason: str
+
+
 class InspectionCaseCreateRequest(BaseModel):
     gxp_type: str
     line_code: str | None = None

@@ -1370,6 +1370,175 @@ class CaseWorkflowService:
             )
         return normalized_gxp_type, (None if line is None else line.code), line
 
+    def _initial_case_context_occupied(
+        self, session: Session, *, site_id: str, gxp_type: str,
+        production_line_id: str | None,
+    ) -> bool:
+        """Any historical Case or GxP Certificate is prior context.
+
+        The reassessment projection deliberately uses *current* Certificate
+        rows; a genuinely first Case must additionally reject historical,
+        non-latest GCN rows. Canonical UUID identity takes precedence over
+        matching legacy code text.
+        """
+        case_identity = (
+            Case.production_line_id == production_line_id
+            if production_line_id is not None
+            else and_(
+                Case.production_line_id.is_(None),
+                func.nullif(func.trim(Case.scope_code), "").is_(None),
+            )
+        )
+        if session.scalar(
+            select(Case.id).where(
+                Case.site_id == site_id, Case.gxp_type == gxp_type, case_identity,
+            )
+        ) is not None:
+            return True
+        certificate_identity = (
+            Certificate.production_line_id == production_line_id
+            if production_line_id is not None
+            else and_(
+                Certificate.production_line_id.is_(None),
+                self._certificate_effective_line_sql().is_(None),
+            )
+        )
+        return session.scalar(
+            select(Certificate.id).where(
+                Certificate.site_id == site_id,
+                Certificate.certificate_type == gxp_type,
+                certificate_identity,
+            )
+        ) is not None
+
+    def get_create_initial_case_action_readiness(
+        self, session: Session, *, site_id: str, gxp_type: str | None,
+        line_code: str | None, production_line_id: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Projection for the first Case in one explicit Site/GxP/line context."""
+        permissions = [CREATE_INSPECTION_CASE_PERMISSION]
+        outcome = {
+            "action_key": "create_initial_case",
+            "label": "Hồ sơ mới",
+            "required_permissions": permissions,
+        }
+        if CREATE_INSPECTION_CASE_PERMISSION not in user.permissions:
+            return {**outcome, "readiness_status": "forbidden", "detail": "Không có quyền tạo hồ sơ mới."}
+        if gxp_type is None or str(gxp_type).strip() not in SUPPORTED_CASE_GXP_TYPES:
+            return {**outcome, "readiness_status": "unavailable", "detail": "Chọn loại GxP được hỗ trợ (GMP/GLP/GMPbb)."}
+        if self._normalize_line_code(line_code) is not None and production_line_id is None:
+            return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền legacy không phải định danh ProductionLine canonical."}
+        site = session.scalars(
+            select(Site).where(Site.id == site_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if site is None:
+            return {**outcome, "readiness_status": "unavailable", "detail": "Cơ sở không tồn tại."}
+        company = session.scalars(
+            select(Company).where(Company.id == site.company_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if company is None or company.is_inactive:
+            return {**outcome, "readiness_status": "unavailable", "detail": "Công ty sở hữu không tồn tại hoặc đã ngừng hoạt động."}
+        if production_line_id is not None:
+            line = session.scalars(
+                select(ProductionLine).where(ProductionLine.id == production_line_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if line is None or line.site_id != site.id:
+                return {**outcome, "readiness_status": "unavailable", "detail": "ProductionLine UUID không thuộc cơ sở đã chọn."}
+            if self._normalize_line_code(line_code) not in (None, line.code):
+                return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền không khớp ProductionLine UUID."}
+        if self._initial_case_context_occupied(
+            session, site_id=site.id, gxp_type=str(gxp_type).strip(),
+            production_line_id=production_line_id,
+        ):
+            return {**outcome, "readiness_status": "conflict", "detail": "Đã có Case hoặc GCN trong ngữ cảnh này; không phải hồ sơ đầu tiên."}
+        return {**outcome, "readiness_status": "available", "detail": "Có thể tạo Case nháp mới, không sao chép dữ liệu từ Case cũ hoặc KHKT."}
+
+    def create_initial_inspection_case(
+        self, session: Session, *, site_id: str, case_id: str,
+        gxp_type: str, production_line_id: str | None,
+        inspection_type: str, applicable_standard: str | None,
+        reason: str, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """First canonical Case in a new Site/GxP/physical-line context.
+
+        Does not copy a legacy Case, assessment, KHKT, evaluation scope,
+        Certificate or any unrelated Site/GxP context. UUID4 is supplied
+        before POST; a lost response is resolved via GET /cases/{case_id}.
+        """
+        if gxp_type not in SUPPORTED_CASE_GXP_TYPES:
+            raise HTTPException(status_code=422, detail="Unsupported GxP type for initial Case creation.")
+        normalized_type = self._facility_master_required_text(
+            inspection_type, field="inspection_type", limit=255,
+        )
+        if normalized_type.casefold() == REASSESSMENT_INSPECTION_TYPE.casefold():
+            raise HTTPException(status_code=422, detail="Use the reassessment Case workflow for inspection type Tái.")
+        normalized_reason = self._facility_master_required_text(reason, field="reason", limit=10000)
+        normalized_standard = self._facility_master_optional_text(
+            applicable_standard, field="applicable_standard", limit=255,
+        )
+        site = self._lock_site(session, site_id)
+        # A Session may cache the Site before another writer changes its owner.
+        # Refresh after the Site lock; do not trust the cached company_id.
+        session.refresh(site)
+        company = session.scalars(
+            select(Company).where(Company.id == site.company_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if company is None or company.is_inactive:
+            raise HTTPException(status_code=409, detail="Site owning Company is missing or inactive.")
+        # Refresh the physical line under lock before any new Case owner exists.
+        line = None
+        if production_line_id is not None:
+            line = session.scalars(
+                select(ProductionLine).where(ProductionLine.id == production_line_id)
+                .with_for_update(of=ProductionLine)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if line is None or line.site_id != site.id:
+                raise HTTPException(status_code=422, detail="Selected ProductionLine UUID is not owned by this Site.")
+        if session.scalar(select(Case.id).where(Case.id == case_id)) is not None:
+            raise HTTPException(status_code=409, detail="Case UUID already exists; resolve unknown POST via canonical GET.")
+        if self._initial_case_context_occupied(
+            session, site_id=site.id, gxp_type=gxp_type,
+            production_line_id=production_line_id,
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Existing Case or Certificate belongs to this Site/GxP/line context; use a separately admitted workflow.",
+            )
+        actor = self._get_or_create_app_user(session, user)
+        case = Case(
+            id=case_id, site_id=site.id, gxp_type=gxp_type,
+            production_line_id=None if line is None else line.id,
+            # Compatibility scope_code is varchar(32); physical code may be 64.
+            # The immutable UUID FK remains authoritative for longer codes.
+            scope_code=None if line is None or len(line.code) > 32 else line.code,
+            inspection_type=normalized_type, applicable_standard=normalized_standard,
+            state=CaseState.DRAFT, opened_year=None,
+            legacy_inspection_id=None, legacy_inspection_code=None,
+        )
+        session.add(case)
+        session.flush()
+        after = {
+            "case_id": case.id, "site_id": case.site_id,
+            "gxp_type": case.gxp_type, "production_line_id": case.production_line_id,
+            "line_code": None if line is None else line.code, "inspection_type": case.inspection_type,
+            "applicable_standard": case.applicable_standard, "state": case.state.value,
+            "row_version": case.row_version, "legacy_inspection_id": None,
+            "legacy_inspection_code": None,
+        }
+        audit = self._write_audit_event(
+            session, actor=actor, entity_type="case", entity_id=case.id,
+            action="case.create_initial_case",
+            payload={"site_id": site.id, "case_id": case.id, "gxp_type": gxp_type, "production_line_id": case.production_line_id},
+            after=after, reason=normalized_reason,
+        )
+        return {**after, "audit_event_id": audit.id}
+
     def get_create_reassessment_case_action_readiness(
         self,
         session: Session,

@@ -81,6 +81,10 @@ def test_certified_case_does_not_fabricate_certificate_evidence(case_db):
             "linked_certificate_count": 0,
             "complete_certificate_record_count": 0,
             "current_certificate_record_count": 0,
+            "date_valid_certificate_record_count": 0,
+            "invalid_certificate_date_interval_count": 0,
+            "current_invalid_certificate_date_interval_count": 0,
+            "certified_case_without_date_valid_certificate_record": True,
             "certificate_record_state": "none",
             "certified_case_without_complete_certificate_record": True,
         }
@@ -105,6 +109,9 @@ def test_certificate_record_is_distinct_from_current_and_from_case_state(case_db
         candidate = _evidence(session, case_id)
         assert candidate["certificate_record_state"] == "recorded_not_current"
         assert candidate["complete_certificate_record_count"] == 1
+        assert candidate["date_valid_certificate_record_count"] == 1
+        assert candidate["invalid_certificate_date_interval_count"] == 0
+        assert candidate["certified_case_without_date_valid_certificate_record"] is False
         assert candidate["current_certificate_record_count"] == 0
         assert candidate["certified_case_without_complete_certificate_record"] is False
 
@@ -113,6 +120,7 @@ def test_certificate_record_is_distinct_from_current_and_from_case_state(case_db
         current = _evidence(session, case_id)
         assert current["certificate_record_state"] == "current"
         assert current["current_certificate_record_count"] == 1
+        assert current["current_invalid_certificate_date_interval_count"] == 0
 
         row = session.get(Case, case_id)
         row.state = CaseState.CLOSED
@@ -181,3 +189,70 @@ def test_other_case_certificates_never_count_as_selected_case_evidence(case_db):
         row.state = CaseState.DRAFT
         session.commit()
         assert _evidence(session, case_id)["certified_case_without_complete_certificate_record"] is False
+
+
+def test_invalid_date_certificate_is_complete_but_not_date_valid_and_is_case_scoped(case_db):
+    engine, case_id, site_id = case_db
+    with Session(engine) as session:
+        other = Case(site_id=site_id, gxp_type="GMP", state=CaseState.CERTIFIED)
+        session.add(other)
+        session.flush()
+        other_id = other.id
+        root, version = _certificate(
+            session, case_id, site_id, number="LEGACY-INVALID",
+            issued_on=date(2028, 1, 2), expires_on=date(2028, 1, 1),
+        )
+        _certificate(
+            session, other_id, site_id, number="OTHER-VALID",
+            issued_on=date(2027, 1, 1), expires_on=date(2028, 1, 1),
+            current=True,
+        )
+        session.commit()
+        selected = _evidence(session, case_id)
+        assert selected["complete_certificate_record_count"] == 1
+        assert selected["date_valid_certificate_record_count"] == 0
+        assert selected["invalid_certificate_date_interval_count"] == 1
+        assert selected["current_invalid_certificate_date_interval_count"] == 0
+        assert selected["certified_case_without_complete_certificate_record"] is False
+        assert selected["certified_case_without_date_valid_certificate_record"] is True
+        other_evidence = _evidence(session, other_id)
+        assert other_evidence["date_valid_certificate_record_count"] == 1
+        assert other_evidence["invalid_certificate_date_interval_count"] == 0
+
+        # Historical Current flag with wrong dates remains untouched while the
+        # read-only discrepancy is explicitly shown to an operator.
+        root.latest_flag = True
+        session.commit()
+        historical = _evidence(session, case_id)
+        assert historical["certificate_record_state"] == "current"
+        assert historical["current_certificate_record_count"] == 1
+        assert historical["current_invalid_certificate_date_interval_count"] == 1
+        assert historical["certified_case_without_date_valid_certificate_record"] is True
+        assert session.scalar(select(func.count(AuditEvent.id))) == 0
+
+        # Correction of the same latest-version record must re-evaluate facts
+        # on the next GET; neither historical status nor identity is inferred.
+        version.expiry_date = date(2029, 1, 2)
+        session.commit()
+        repaired = _evidence(session, case_id)
+        assert repaired["date_valid_certificate_record_count"] == 1
+        assert repaired["invalid_certificate_date_interval_count"] == 0
+        assert repaired["current_invalid_certificate_date_interval_count"] == 0
+        assert repaired["certified_case_without_date_valid_certificate_record"] is False
+
+
+def test_date_integrity_distinguishes_missing_dates_from_invalid_intervals(case_db):
+    engine, case_id, site_id = case_db
+    with Session(engine) as session:
+        _certificate(
+            session, case_id, site_id, number="LEGACY-MISSING-DATE",
+            issued_on=date(2028, 1, 1), expires_on=None,
+        )
+        session.commit()
+        evidence = _evidence(session, case_id)
+        assert evidence["linked_certificate_count"] == 1
+        assert evidence["complete_certificate_record_count"] == 0
+        assert evidence["date_valid_certificate_record_count"] == 0
+        assert evidence["invalid_certificate_date_interval_count"] == 0
+        assert evidence["current_invalid_certificate_date_interval_count"] == 0
+        assert evidence["certified_case_without_date_valid_certificate_record"] is True

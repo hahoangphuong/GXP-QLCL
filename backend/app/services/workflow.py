@@ -4140,8 +4140,13 @@ class CaseWorkflowService:
         if submission.case_id != case.id:
             raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload.")
         self._assert_expected_version(submission, expected_version, label="approval_submission")
+        # Lock the exact source Document after the owning Case. A concurrent
+        # document-owner update must finish before we validate its Case/family;
+        # otherwise an uncommitted reparent could be missed and a newly
+        # persisted approval link would immediately become cross-Case.
         document = session.scalars(
             select(Document).where(Document.id == document_id)
+            .with_for_update()
             .execution_options(populate_existing=True)
         ).one_or_none()
         if document is None:

@@ -571,6 +571,20 @@ class CertificateIssueActionReadinessRead(BaseModel):
     issuance_basis: Literal["inspection_case"]
 
 
+class CaseBusinessEvidenceRead(BaseModel):
+    # Documentary facts are distinct from Case state and legal issuance.
+    final_evaluation_recorded: bool
+    latest_capa_status: str | None
+    completed_pct_count: int
+    completed_ct_count: int
+    completed_ct_with_pct_count: int
+    linked_certificate_count: int
+    complete_certificate_record_count: int
+    current_certificate_record_count: int
+    certificate_record_state: Literal["none", "incomplete", "recorded_not_current", "current"]
+    certified_case_without_complete_certificate_record: bool
+
+
 class CaseWorkspaceRead(BaseModel):
     case_summary: CaseWorkspaceSummaryRead
     application: CaseWorkspaceApplicationRead
@@ -581,8 +595,11 @@ class CaseWorkspaceRead(BaseModel):
     documents: DocumentChecklistRead
     contextual_document_actions: list[ContextualDocumentActionRead]
     certificate_issue_readiness: CertificateIssueActionReadinessRead
+    business_evidence: CaseBusinessEvidenceRead
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
+    # Canonical readiness for the existing application/assessment/plan editors.
+    stage_edit_actions: list[LifecycleActionReadinessRead] = Field(default_factory=list)
     transition_actions: list[LifecycleActionReadinessRead] = Field(default_factory=list)
 
 

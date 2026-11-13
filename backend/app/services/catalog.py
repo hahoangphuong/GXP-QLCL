@@ -2462,6 +2462,7 @@ class CatalogReadService:
             select(InspectionApprovalSubmission)
             .where(InspectionApprovalSubmission.case_id == case.id)
             .order_by(InspectionApprovalSubmission.stage.asc(), InspectionApprovalSubmission.round_no.asc())
+            .execution_options(populate_existing=True)
         ))
         events = list(
             session.scalars(
@@ -2486,6 +2487,28 @@ class CatalogReadService:
             inspection_period_edit_readiness,
             inspection_team_edit_readiness,
         )
+        # Read-only projection of the three existing Case stage editors.
+        # Their mutations share the Case owner lock and accept a nullable
+        # stage-specific expected_version. No state-based UI guesswork:
+        # only permission and terminal status block those service methods.
+        stage_edit_actions = [
+            {
+                "action_key": action_key,
+                "label": label,
+                "available": permission in permissions and not terminal_case,
+                "reason_code": (
+                    "missing_permission" if permission not in permissions
+                    else "terminal_case" if terminal_case else None
+                ),
+                "required_permissions": [permission],
+                "expected_version": None if stage is None else stage.row_version,
+            }
+            for action_key, label, permission, stage in (
+                ("edit_case_application", "Cập nhật hồ sơ đăng ký", "case.edit", application),
+                ("edit_case_assessment", "Cập nhật thẩm định hồ sơ", "case.edit", assessment),
+                ("edit_inspection_plan", "Cập nhật kế hoạch kiểm tra", "inspection.edit", plan),
+            )
+        ]
         period_edit_readiness = inspection_period_edit_readiness(outcome=outcome, terminal_case=terminal_case)
         if inspection_permission not in permissions:
             period_edit_readiness = {**period_edit_readiness, "available": False, "reason_code": "missing_permission"}
@@ -2617,6 +2640,7 @@ class CatalogReadService:
                     ),
                 )
                 .where(Certificate.case_id == case.id)
+                .execution_options(populate_existing=True)
             ).all()
         )
         certificate_ids = [certificate.id for certificate, _ in gxp_certificate_rows]
@@ -2668,6 +2692,47 @@ class CatalogReadService:
                 item["certificate_id"],
             )
         )
+
+        # Read-only facts; Case state alone does not prove issuance.
+        # A complete record has all promotion-required certificate fields.
+        complete_certificates = [
+            item for item in linked_gxp_certificates
+            if str(item["certificate_number"] or "").strip()
+            and item["issue_date"] is not None
+            and item["expiry_date"] is not None
+        ]
+        current_certificates = [
+            item for item in complete_certificates if item["latest_flag"] is True
+        ]
+        completed_pct_ids = {
+            item.id for item in approval_submissions
+            if item.stage == "PCT" and item.completed_on is not None
+        }
+        completed_cts = [
+            item for item in approval_submissions
+            if item.stage == "CT" and item.completed_on is not None
+        ]
+        case_business_evidence = {
+            "final_evaluation_recorded": outcome is not None and outcome.final_evaluation is not None,
+            "latest_capa_status": None if latest_capa is None else latest_capa.status,
+            "completed_pct_count": len(completed_pct_ids),
+            "completed_ct_count": len(completed_cts),
+            "completed_ct_with_pct_count": sum(
+                1 for item in completed_cts if item.pct_submission_id in completed_pct_ids
+            ),
+            "linked_certificate_count": len(linked_gxp_certificates),
+            "complete_certificate_record_count": len(complete_certificates),
+            "current_certificate_record_count": len(current_certificates),
+            "certificate_record_state": (
+                "current" if current_certificates
+                else "recorded_not_current" if complete_certificates
+                else "incomplete" if linked_gxp_certificates else "none"
+            ),
+            "certified_case_without_complete_certificate_record": (
+                case.state in {CaseState.CERTIFIED, CaseState.CLOSED}
+                and not complete_certificates
+            ),
+        }
 
         latest_version_sq = self._build_latest_business_eligibility_version_subquery()
         linked_business_eligibility_certificates: list[dict[str, object]] = []
@@ -2958,6 +3023,8 @@ class CatalogReadService:
             ),
             "linked_gxp_certificates": linked_gxp_certificates,
             "linked_business_eligibility_certificates": linked_business_eligibility_certificates,
+            "stage_edit_actions": stage_edit_actions,
+            "business_evidence": case_business_evidence,
             "transition_actions": transition_actions,
         }
 

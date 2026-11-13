@@ -192,3 +192,78 @@ def test_explicit_decision_blocks_case_state_transition_and_workspace_action(sce
     with Session(engine) as db:
         assert db.get(Case, case_id).state == CaseState.AWAITING_CERTIFICATE_DECISION
         assert db.scalar(select(func.count(AuditEvent.id))) == 1
+
+def test_explicit_nonissuance_readiness_permission_case_state_and_canonical_workspace(scenario):
+    from backend.app.read_models import CaseNonissuanceDecisionReadinessRead
+    from backend.app.services.catalog import CatalogReadService
+    engine, (case_id, other_id, _) = scenario
+    svc = CaseWorkflowService()
+    reader = build_authenticated_user("nonissuance-reader", "reader")
+    with Session(engine) as db:
+        eligible = svc.get_case_nonissuance_record_readiness(db, case_id=case_id, user=_actor())
+        assert eligible["action_key"] == "record_certificate_nonissuance_decision"
+        assert eligible["available"] is True and eligible["reason_code"] is None
+        assert eligible["expected_case_version"] == db.get(Case, case_id).row_version
+        assert eligible["required_permissions"] == ["certificate.approve"]
+        assert CaseNonissuanceDecisionReadinessRead(**eligible).available is True
+        denied = svc.get_case_nonissuance_record_readiness(db, case_id=case_id, user=reader)
+        assert denied["available"] is False and denied["reason_code"] == "missing_permission"
+        workspace = CatalogReadService().get_case_workspace(db, case_id=case_id, user=_actor())
+        assert workspace["nonissuance_record_readiness"]["available"] is True
+        assert workspace["nonissuance_decision"]["decision"] is None
+        assert not db.new and not db.dirty
+    with Session(engine) as db:
+        _record(db, case_id)
+        db.commit()
+    with Session(engine) as db:
+        recorded = svc.get_case_nonissuance_record_readiness(db, case_id=case_id, user=_actor())
+        assert recorded["available"] is False and recorded["reason_code"] == "nonissuance_already_recorded"
+        assert svc.get_case_nonissuance_record_readiness(db, case_id=other_id, user=_actor())["available"] is True
+
+
+@pytest.mark.parametrize("change,reason", [
+    ("wrong_state", "case_state_not_eligible"),
+    ("missing_final", "final_evaluation_missing"),
+    ("existing_certificate", "linked_certificate_exists"),
+])
+def test_readiness_matches_mutation_blocking_reason(scenario, change, reason):
+    engine, (case_id, _, site_id) = scenario
+    with Session(engine) as db:
+        if change == "wrong_state":
+            db.get(Case, case_id).state = CaseState.CERTIFIED
+        if change == "missing_final":
+            db.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id)).final_evaluation = None
+        if change == "existing_certificate":
+            db.add(Certificate(site_id=site_id, case_id=case_id, certificate_type="GMP", latest_flag=False))
+        db.commit()
+    with Session(engine) as db:
+        before = db.scalar(select(func.count(AuditEvent.id)))
+        state = CaseWorkflowService().get_case_nonissuance_record_readiness(db, case_id=case_id, user=_actor())
+        assert state["available"] is False and state["reason_code"] == reason
+        assert db.scalar(select(func.count(AuditEvent.id))) == before
+        with pytest.raises(HTTPException) as failed:
+            _record(db, case_id, expected=db.get(Case, case_id).row_version)
+        assert failed.value.status_code == 409
+        db.rollback()
+
+
+def test_readiness_http_route_read_role_and_nonexistent_case(scenario):
+    engine, (case_id, _, _) = scenario
+    app = FastAPI()
+    register_workflow_routes(app, lambda: None)
+    endpoint = next(
+        r.endpoint for r in app.routes if getattr(r, "path", "")
+        == "/cases/{case_id}/certificate-nonissuance-decision/readiness"
+    )
+    with Session(engine) as db:
+        row = endpoint(case_id=case_id, session=db, user=build_authenticated_user("reader", "reader"))
+        assert row.available is False and row.reason_code == "missing_permission"
+        assert row.case_id == case_id
+        assert row.expected_case_version == db.get(Case, case_id).row_version
+        with pytest.raises(HTTPException) as forbidden:
+            endpoint(case_id=case_id, session=db, user=build_authenticated_user("viewer", "viewer"))
+        assert forbidden.value.status_code == 403
+        with pytest.raises(HTTPException) as missing:
+            endpoint(case_id="00000000-0000-4000-8000-000000000001", session=db, user=_actor())
+        assert missing.value.status_code == 404
+

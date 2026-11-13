@@ -418,6 +418,69 @@ class CaseWorkflowService:
             },
         }
 
+    @staticmethod
+    def _nonissuance_blocker_detail(reason_code: str) -> str:
+        return {
+            "case_state_not_eligible": "Case is not awaiting a certificate decision.",
+            "nonissuance_already_recorded": "A non-issuance decision already exists; use canonical GET.",
+            "final_evaluation_missing": "Final inspection evaluation must be recorded first.",
+            "latest_capa_not_accepted": "Latest CAPA cycle must be accepted first.",
+            "linked_certificate_exists": "Case already has a linked certificate record.",
+        }[reason_code]
+
+    def _nonissuance_decision_blocker(self, session: Session, *, case: Case) -> str | None:
+        """One canonical business gate for readiness and locked POST.
+
+        Readiness is advisory and read-only. The mutation always calls the same
+        gate *after* locking the Case and verifying expected row_version.
+        """
+        if case.state != CaseState.AWAITING_CERTIFICATE_DECISION:
+            return "case_state_not_eligible"
+        if session.scalar(
+            select(CaseCertificateNonissuanceDecision.id)
+            .where(CaseCertificateNonissuanceDecision.case_id == case.id)
+        ) is not None:
+            return "nonissuance_already_recorded"
+        outcome = session.scalars(
+            select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if outcome is None or not str(outcome.final_evaluation or "").strip():
+            return "final_evaluation_missing"
+        latest = self._latest_case_capa_cycle(session, case.id)
+        if latest is not None and latest.status != CAPA_ACCEPTED_STATUS:
+            return "latest_capa_not_accepted"
+        if session.scalar(
+            select(Certificate.id).where(Certificate.case_id == case.id).limit(1)
+        ) is not None:
+            return "linked_certificate_exists"
+        return None
+
+    def get_case_nonissuance_record_readiness(
+        self, session: Session, *, case_id: str, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Advisory Case-specific readiness for recording an explicit decision.
+
+        Not certificate.issue readiness, not proof of legal issuance, and not
+        authority to close Case. POST independently rechecks under lock.
+        """
+        case = self._get_case(session, case_id)
+        session.refresh(case)
+        permission = "certificate.approve"
+        blocker = (
+            "missing_permission" if permission not in user.permissions
+            else self._nonissuance_decision_blocker(session, case=case)
+        )
+        return {
+            "action_key": "record_certificate_nonissuance_decision",
+            "label": "Ghi nhận quyết định không cấp GCN",
+            "case_id": case.id,
+            "expected_case_version": case.row_version,
+            "available": blocker is None,
+            "reason_code": blocker,
+            "required_permissions": [permission],
+        }
+
     def record_case_nonissuance_decision(
         self, session: Session, *, case_id: str, expected_case_version: int,
         decided_on: date, decision_reference: str, explanation: str,
@@ -430,29 +493,13 @@ class CaseWorkflowService:
         """
         case = self._lock_case(session, case_id)
         self._assert_expected_version(case, expected_case_version, label="case")
-        if case.state != CaseState.AWAITING_CERTIFICATE_DECISION:
-            raise HTTPException(status_code=409, detail="Case is not awaiting a certificate decision.")
         if not decision_reference or not decision_reference.strip() or len(decision_reference.strip()) > 255:
             raise HTTPException(status_code=422, detail="Decision reference is required (up to 255 characters).")
         if not explanation or not explanation.strip():
             raise HTTPException(status_code=422, detail="Decision explanation is required.")
-        existing = session.scalar(
-            select(CaseCertificateNonissuanceDecision.id)
-            .where(CaseCertificateNonissuanceDecision.case_id == case.id)
-        )
-        if existing is not None:
-            raise HTTPException(status_code=409, detail="A non-issuance decision already exists; use canonical GET.")
-        outcome = session.scalars(
-            select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if outcome is None or not str(outcome.final_evaluation or "").strip():
-            raise HTTPException(status_code=409, detail="Final inspection evaluation must be recorded first.")
-        self._assert_latest_capa_accepted_if_present(
-            session, case.id, blocked_detail="Latest CAPA cycle must be accepted first."
-        )
-        if session.scalar(select(Certificate.id).where(Certificate.case_id == case.id).limit(1)) is not None:
-            raise HTTPException(status_code=409, detail="Case already has a linked certificate record.")
+        blocker = self._nonissuance_decision_blocker(session, case=case)
+        if blocker is not None:
+            raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))
         actor = self._get_or_create_app_user(session, user)
         decision = CaseCertificateNonissuanceDecision(
             case_id=case.id, decided_on=decided_on,

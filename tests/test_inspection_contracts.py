@@ -84,6 +84,8 @@ def test_pct_completion_is_explicit_and_immutable_without_ct_requirement():
         validate_approval_completion(
             existing_completed_on=date(2026, 9, 12),
             existing_completed_time=None,
+            submitted_on=date(2026, 9, 12),
+            submitted_time=None,
             completed_on=date(2026, 9, 13),
             completed_time=None,
         )

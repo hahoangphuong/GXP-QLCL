@@ -770,7 +770,46 @@ class CatalogReadService:
                         parent_id=cycle.id,
                     )
                 )
-        return {"items": self._serialize_document_checklist_items(session, definitions=definitions)}
+            elif cycle.round_no > 2:
+                # No supported legacy template family exists for later CAPA
+                # rounds. Register the canonical parent only: the existing
+                # checklist serializer will discover persisted documents
+                # with their real family codes, never a fabricated CAPA_3.
+                definitions.append(
+                    DocumentChecklistDefinition(
+                        checklist_key=f"capa_cycle:{cycle.id}:unclassified",
+                        label=f"Tài liệu CAPA lần {cycle.round_no}",
+                        family_code=None,
+                        parent_scope="capa_cycle",
+                        parent_id=cycle.id,
+                    )
+                )
+        items = self._serialize_document_checklist_items(session, definitions=definitions)
+        later_rounds = {cycle.id: cycle.round_no for cycle in capa_cycles if cycle.round_no > 2}
+        if not later_rounds:
+            return {"items": items}
+        documented_rounds = {
+            item["parent_id"] for item in items
+            if item["parent_scope"] == "capa_cycle"
+            and item["parent_id"] in later_rounds
+            and item["family_code"] is not None
+            and item["status"] == "available"
+        }
+        result: list[dict[str, object]] = []
+        for item in items:
+            cycle_id = item["parent_id"]
+            if item["parent_scope"] == "capa_cycle" and cycle_id in later_rounds:
+                if item["family_code"] is None and cycle_id in documented_rounds:
+                    # The real persisted family rows replace this placeholder.
+                    continue
+                if item["family_code"] is not None:
+                    item = {
+                        **item,
+                        "label": f"CAPA lần {later_rounds[cycle_id]} — "
+                                 f"{item['title'] or item['family_code']}",
+                    }
+            result.append(item)
+        return {"items": result}
 
     @staticmethod
     def _build_approval_document_evidence(

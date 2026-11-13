@@ -2509,6 +2509,22 @@ class CatalogReadService:
                 ("edit_inspection_plan", "Cập nhật kế hoạch kiểm tra", "inspection.edit", plan),
             )
         ]
+        # The existing inspection-outcome mutation accepts a nullable child
+        # expected_version. It permits metadata-only edits on nonterminal Cases;
+        # period-specific writes still have their separate source-owned guard.
+        outcome_edit_reason = (
+            "missing_permission" if inspection_permission not in permissions
+            else "terminal_case" if terminal_case
+            else None
+        )
+        outcome_edit_readiness = {
+            "action_key": "edit_inspection_outcome",
+            "label": "Cập nhật kết quả kiểm tra",
+            "available": outcome_edit_reason is None,
+            "reason_code": outcome_edit_reason,
+            "required_permissions": [inspection_permission],
+            "expected_version": None if outcome is None else outcome.row_version,
+        }
         period_edit_readiness = inspection_period_edit_readiness(outcome=outcome, terminal_case=terminal_case)
         if inspection_permission not in permissions:
             period_edit_readiness = {**period_edit_readiness, "available": False, "reason_code": "missing_permission"}
@@ -2683,6 +2699,13 @@ class CatalogReadService:
                     **identity,
                     "line_code": identity["production_line_code"],
                 }
+            )
+            # Reuse Certificate aggregate owner readiness. A Case's GxP
+            # issuance action is not authority to promote any linked record.
+            # Each action below is bound to payload.certificate_id and the
+            # Certificate root row_version, never the Case/version UUID.
+            payload["action_readiness"] = CaseWorkflowService().get_certificate_action_readiness(
+                session, certificate_id=certificate.id, user=user,
             )
             linked_gxp_certificates.append(payload)
         linked_gxp_certificates.sort(
@@ -2912,6 +2935,7 @@ class CatalogReadService:
                 "plan_end_on": None if plan is None else plan.plan_end_on,
                 "planning_sheet_name": None if plan is None else plan.planning_sheet_name,
                 "outcome_row_version": None if outcome is None else outcome.row_version,
+                "outcome_edit_readiness": outcome_edit_readiness,
                 "inspected_on": None if outcome is None else outcome.inspected_on,
                 "inspected_to_on": None if outcome is None else outcome.inspected_to_on,
                 "inspection_period_state": None if outcome is None else outcome.inspection_period_state,

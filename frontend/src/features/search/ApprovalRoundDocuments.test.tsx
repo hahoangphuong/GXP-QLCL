@@ -119,6 +119,22 @@ describe("ApprovalRoundDocuments", () => {
     expect(screen.queryByRole("button", { name: "Đối chiếu liên kết canonical" })).not.toBeInTheDocument();
   });
 
+  it("retains authoritative GET confirmation when secondary Case refresh fails", async () => {
+    const onBind = vi.fn().mockResolvedValue({
+      approval_submission_id: "pct-2", document_id: "pct-doc-b",
+      binding_id: "link-b", row_version: 4, created: true,
+    });
+    const onReadback = vi.fn().mockResolvedValue(receipt());
+    const onConfirmed = vi.fn().mockRejectedValue(new Error("Workspace refresh offline"));
+    view(fixture(), onBind, onReadback, onConfirmed);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "pct-doc-b" } });
+    fireEvent.click(screen.getByRole("button", { name: "Liên kết tài liệu với PCT lần 2" }));
+    await waitFor(() => expect(screen.getByText(/Đã xác minh liên kết canonical/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Đối chiếu liên kết canonical" })).not.toBeInTheDocument());
+    expect(onBind).toHaveBeenCalledTimes(1);
+    expect(onReadback).toHaveBeenCalledTimes(1);
+  });
+
   it("retains unknown-outcome lock until the *correct* canonical binding exists", async () => {
     const onBind = vi.fn().mockRejectedValue(new Error("Lost POST result"));
     const onReadback = vi.fn().mockResolvedValueOnce(receipt("case-other"))

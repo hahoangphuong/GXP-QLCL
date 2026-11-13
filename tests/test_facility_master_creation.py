@@ -110,6 +110,20 @@ def test_create_company_and_site_canonical_get_and_no_inferred_gxp(seeded):
         canonical_site = CatalogReadService().get_site(db, site_id)
         assert canonical_site.company_id == company_id
         assert canonical_site.site_address == "6 Example Street"
+        # The newly created Site must remain discoverable before any Case,
+        # GxP registration, certificate or ProductionLine has been created.
+        found = CatalogReadService().search_facilities(db, site_id=site_id)
+        assert found["total_count"] == 1
+        assert len(found["items"]) == 1
+        item = found["items"][0]
+        assert item["site_id"] == site_id
+        assert item["result_grain"] == "facility"
+        assert item["gxp_type"] is None
+        assert item["production_line_id"] is None
+        assert item["production_line_identity_state"] == "facility_wide"
+        assert CatalogReadService().search_facilities(
+            db, site_id=site_id, gxp_type="GMP",
+        )["total_count"] == 0
         assert db.get(Company, legacy_company).legacy_company_id == 42
         assert db.get(Site, legacy_site).legacy_site_id == 77
         after = counts(db)

@@ -57,6 +57,8 @@ from backend.app.domain.inspection_contracts import (
     validate_time_requires_date,
     validate_ct_parent,
     validate_approval_completion,
+    validate_approval_stage,
+    next_approval_round,
 )
 
 
@@ -3943,9 +3945,10 @@ class CaseWorkflowService:
         return self._serialize_inspection_outcome(stage, audit_event_id=audit.id, inspection_event_id=None)
 
     def create_approval_submission(self, session: Session, *, case_id: str, stage: str, reference: str | None, submitted_on: date | None, submitted_time, pct_submission_id: str | None, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
-        normalized_stage = str(stage or "").upper()
-        if normalized_stage not in {"PCT", "CT"}:
-            raise HTTPException(status_code=422, detail="Approval submission stage must be PCT or CT.")
+        try:
+            normalized_stage = validate_approval_stage(stage)
+        except InspectionContractViolation as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
             validate_time_requires_date(value_date=submitted_on, value_time=submitted_time, label="Approval submission")
         except InspectionContractViolation as exc:
@@ -3974,7 +3977,10 @@ class CaseWorkflowService:
             except InspectionContractViolation as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
         rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
-        round_no = 1 if not rounds else max(rounds) + 1
+        try:
+            round_no = next_approval_round(rounds)
+        except InspectionContractViolation as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         submission = InspectionApprovalSubmission(case_id=row.id, stage=normalized_stage, round_no=round_no, reference=reference, submitted_on=submitted_on, submitted_time=submitted_time, pct_submission_id=pct_submission_id)
         session.add(submission)
         session.flush()

@@ -88,6 +88,14 @@ def _build_facility_action_readiness(
             ),
             "required_permissions": master_permission,
         },
+        workflow_service.get_create_initial_case_action_readiness(
+            session,
+            site_id=site_id,
+            gxp_type=selected_gxp_type,
+            line_code=selected_line_code,
+            production_line_id=selected_production_line_id,
+            user=user,
+        ),
         workflow_service.get_create_reassessment_case_action_readiness(
             session,
             site_id=site_id,

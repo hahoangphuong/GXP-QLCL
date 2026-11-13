@@ -2326,3 +2326,30 @@ In-session period, team, final-evaluation and Case-transition commands retain pe
 ## Change Request dialog and access-owner isolation — 2026-11-03
 
 A pending issued-certificate detail lookup now belongs to the committed access, Change Request/Site, readiness and tab generation. Old or mismatched detail cannot open an editor in a newer context, and a stale mutation completion cannot close or overwrite a newer editor. Certificate detail must match the reviewed Site, identity and readiness version. Dirty Change Request drafts retain their reviewed concurrency version through a same-owner refresh; a different access or resource owner clears them. In-session controls do not establish durable outcome after reload or reauthentication; native screen reader and authenticated Google A/B remain unverified.
+
+## Case inspection outcome and Certificate next actions — 2026-11-13
+
+The Case guidance panel now consumes the canonical `outcome_edit_readiness` and
+per-linked-Certificate `action_readiness` contracts. An unavailable inspection
+outcome editor is fail-closed: its existing field editors are not activatable and
+the backend reason is displayed. An available action navigates/focuses the
+existing inspection outcome region only; it does not write or alter the separate
+inspection-period source-owner rule.
+
+Certificate guidance is keyed exclusively by `certificate_id`. Labels include the
+canonical UUID so two linked certificates with the same displayed number remain
+distinct. Readiness for edit/latest-version and promote/current is shown per
+Certificate; blocked reasons are backend codes translated for operators. The
+panel only navigates to the existing Certificate workspace. That destination
+loads and revalidates the requested UUID in the selected Facility context before
+showing the editor; it never promotes or edits from guidance and never uses a
+Case UUID, list position, number, or CertificateVersion UUID as a substitute.
+
+UNIT_VERIFIED: outcome availability/permission gating, exact CAPA and Certificate
+UUID navigation, two certificates with the same number, stale Case replacement,
+and navigation before the Facility Certificate list is loaded. Existing editor
+draft, lock, 403/409/422, late-response and readback tests remain the mutation
+owner. EVIDENCE_MISSING: authenticated Google/OIDC browser UAT, native screen
+reader, original VBA runtime behavior for this post-legacy guidance panel, and
+real Certificate binary/Word/NAS output. This is not a claim of production UAT
+or a new backend workflow.

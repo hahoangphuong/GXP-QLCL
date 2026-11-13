@@ -1,4 +1,5 @@
 import { useCaseDraftState } from "./CaseDraftSession";
+import { ApprovalRoundDocuments } from "./ApprovalRoundDocuments";
 import { caseReadinessReason } from "./caseReadinessReason";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 
@@ -64,10 +65,16 @@ function CaseApprovalEditor({
   caseWorkspace,
   onCreate,
   onComplete,
+  onBindApprovalDocument,
+  onReadApprovalDocuments,
+  onApprovalDocumentsConfirmed,
 }: {
   caseWorkspace: CaseWorkspace;
   onCreate: (stage: "PCT" | "CT", payload: InspectionApprovalSubmissionCreateRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
   onComplete: (id: string, payload: InspectionApprovalSubmissionCompleteRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
+  onBindApprovalDocument?: (id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>;
+  onReadApprovalDocuments?: (id: string) => Promise<import("../../types").ApprovalDocumentReadback>;
+  onApprovalDocumentsConfirmed?: (caseId: string) => Promise<void>;
 }) {
   const [reference, setReference] = useCaseDraftState("approval.create.reference", "");
   const [submittedOn, setSubmittedOn] = useCaseDraftState("approval.create.submittedOn", "");
@@ -244,6 +251,7 @@ function CaseApprovalEditor({
           </button>
         ) : null}
         {parent ? <button disabled={pending !== null || ownerPending || requiresReview} onClick={() => { if (requiresReview) return; setParentId(parent.approval_submission_id); parentSelect.current?.focus(); }} type="button">Chọn PCT lần {parent.round_no} cho trình CT</button> : null}
+        <ApprovalRoundDocuments workspace={caseWorkspace} submission={item} onBind={onBindApprovalDocument} onReadback={onReadApprovalDocuments} onConfirmed={onApprovalDocumentsConfirmed} />
         <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null || ownerPending} requiresReview={requiresReview} onComplete={complete} />
         {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{caseReadinessReason(readiness.reason_code)}</span> : null}
       </div>;

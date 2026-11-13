@@ -75,6 +75,8 @@ def test_pct_completion_is_explicit_and_immutable_without_ct_requirement():
     validate_approval_completion(
         existing_completed_on=None,
         existing_completed_time=None,
+        submitted_on=None,
+        submitted_time=None,
         completed_on=date(2026, 9, 12),
         completed_time=None,
     )
@@ -85,6 +87,36 @@ def test_pct_completion_is_explicit_and_immutable_without_ct_requirement():
             completed_on=date(2026, 9, 13),
             completed_time=None,
         )
+
+
+@pytest.mark.parametrize(
+    ("submitted_on", "submitted_time", "completed_on", "completed_time", "rejected"),
+    [
+        (date(2026, 11, 13), None, date(2026, 11, 12), None, True),
+        (date(2026, 11, 13), time(16, 0), date(2026, 11, 13), time(15, 59), True),
+        (date(2026, 11, 13), time(16, 0), date(2026, 11, 13), time(16, 0), False),
+        (date(2026, 11, 13), time(16, 0), date(2026, 11, 13), None, False),
+        (date(2026, 11, 13), None, date(2026, 11, 13), time(9, 0), False),
+        (date(2026, 11, 13), time(16, 0), date(2026, 11, 14), time(8, 0), False),
+        (None, None, date(2026, 11, 12), None, False),
+    ],
+)
+def test_approval_completion_never_precedes_known_submission(
+    submitted_on, submitted_time, completed_on, completed_time, rejected
+):
+    kwargs = dict(
+        existing_completed_on=None,
+        existing_completed_time=None,
+        submitted_on=submitted_on,
+        submitted_time=submitted_time,
+        completed_on=completed_on,
+        completed_time=completed_time,
+    )
+    if rejected:
+        with pytest.raises(InspectionContractViolation, match="cannot precede"):
+            validate_approval_completion(**kwargs)
+    else:
+        validate_approval_completion(**kwargs)
 
 
 def test_approval_round_allocation_rejects_existing_collisions():

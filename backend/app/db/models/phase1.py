@@ -816,7 +816,10 @@ class InspectionApprovalDocumentLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("inspection_approval_submission.id"), nullable=False, index=True
     )
     document_id: Mapped[str] = mapped_column(
-        ForeignKey("document.id"), nullable=False, unique=True
+        ForeignKey("document.id"), nullable=False
+    )
+    __table_args__ = (
+        UniqueConstraint("document_id", name="uq_approval_doc_document"),
     )
 
 

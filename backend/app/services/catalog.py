@@ -1743,6 +1743,17 @@ class CatalogReadService:
             if not any(key[0] == change_request.site_id for key in set(cases_by_context) | set(certificates_by_context)):
                 cases_by_context[(change_request.site_id, None, "facility_wide", None)]
 
+        # A newly registered Site is a first-class facility even before the
+        # first Case, Change Request or Certificate. Keep it discoverable in a
+        # facility-wide, GxP-unclassified context; never invent a GxP type or
+        # canonical ProductionLine identity from Site master attributes.
+        known_contexts = set(cases_by_context) | set(certificates_by_context)
+        for site in sites:
+            if not any(key[0] == site.id for key in known_contexts):
+                fallback = (site.id, None, "facility_wide", None)
+                cases_by_context[fallback]
+                known_contexts.add(fallback)
+
         results: list[dict[str, object]] = []
         for site in sites:
             company = companies.get(site.company_id)

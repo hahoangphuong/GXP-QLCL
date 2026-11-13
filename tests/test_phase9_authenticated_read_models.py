@@ -2420,8 +2420,13 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessm
         "create_reassessment_case",
         "create_change_request",
     ]
-    assert action_readiness["create_company"].detail == "Chưa có canonical backend write contract để tạo công ty mới."
-    assert action_readiness["create_company"].readiness_status == "missing_contract"
+    assert action_readiness["create_company"].readiness_status == "forbidden"
+    assert action_readiness["create_company"].required_permissions == ["case.edit"]
+    assert action_readiness["create_company"].detail == "Không có quyền tạo công ty."
+    assert action_readiness["create_site"].readiness_status == "forbidden"
+    assert action_readiness["create_site"].required_permissions == ["case.edit"]
+    assert action_readiness["create_site"].detail == "Không có quyền tạo cơ sở."
+    assert action_readiness["create_production_line"].readiness_status == "missing_contract"
     assert action_readiness["create_reassessment_case"].readiness_status == "forbidden"
     assert action_readiness["create_reassessment_case"].required_permissions == ["case.edit"]
     assert action_readiness["create_reassessment_case"].detail == "Tài khoản hiện tại không có quyền tạo hồ sơ tái đánh giá."

@@ -4,8 +4,8 @@ from fastapi import Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from backend.app.db.models.phase1 import ProductionLine
 
-from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenticated_user, require_role
-from backend.app.api.session import get_session_from_request_factory
+from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenticated_user, require_role, require_permissions
+from backend.app.api.session import get_session_from_request_factory, commit_or_409
 from backend.app.read_models import (
     BusinessEligibilityDetailRead,
     BusinessEligibilityVersionHistoryRead,
@@ -19,6 +19,8 @@ from backend.app.read_models import (
     ChangeRequestReportPageRead,
     ChangeRequestWorkspaceRead,
     CompanyDetailRead,
+    CompanyMasterCreateRequest,
+    CompanyMasterCreateRead,
     CompanyRead,
     DashboardSummaryRead,
     FacilitySearchPageRead,
@@ -28,6 +30,8 @@ from backend.app.read_models import (
     GxpCertificateVersionHistoryRead,
     GxpCertificateListRead,
     SiteDetailRead,
+    SiteMasterCreateRequest,
+    SiteMasterCreateRead,
     SiteRead,
 )
 from backend.app.services import CatalogReadService, CaseWorkflowService
@@ -47,20 +51,29 @@ def _build_facility_action_readiness(
     selected_production_line_id: str | None,
     user: AuthenticatedUser,
 ) -> list[dict[str, object]]:
+    can_create_masters = "case.edit" in user.permissions
+    master_status = "available" if can_create_masters else "forbidden"
+    master_permission = ["case.edit"]
     return [
         {
             "action_key": "create_company",
             "label": "Công ty mới",
-            "readiness_status": "missing_contract",
-            "detail": "Chưa có canonical backend write contract để tạo công ty mới.",
-            "required_permissions": [],
+            "readiness_status": master_status,
+            "detail": (
+                "Có thể tạo công ty bằng UUID mới; đọc GET /companies/{company_id} để xác minh khi mất phản hồi."
+                if can_create_masters else "Không có quyền tạo công ty."
+            ),
+            "required_permissions": master_permission,
         },
         {
             "action_key": "create_site",
             "label": "Cơ sở mới",
-            "readiness_status": "missing_contract",
-            "detail": "Chưa có canonical backend write contract để tạo cơ sở mới.",
-            "required_permissions": [],
+            "readiness_status": master_status,
+            "detail": (
+                "Chọn Company UUID và tạo Site UUID mới; đọc GET /sites/{site_id} nếu mất phản hồi."
+                if can_create_masters else "Không có quyền tạo cơ sở."
+            ),
+            "required_permissions": master_permission,
         },
         {
             "action_key": "create_production_line",
@@ -89,6 +102,49 @@ def register_catalog_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = CatalogReadService()
     workflow_service = CaseWorkflowService()
+
+    def create_company_master(
+        payload: CompanyMasterCreateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = workflow_service.create_company_master(
+            session,
+            company_id=str(payload.company_id),
+            legal_name=payload.legal_name,
+            legal_address=payload.legal_address,
+            english_name=payload.english_name,
+            short_name=payload.short_name,
+            legal_address_en=payload.legal_address_en,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return CompanyMasterCreateRead(**result)
+
+    def create_site_master(
+        company_id: str,
+        payload: SiteMasterCreateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = workflow_service.create_site_master(
+            session,
+            company_id=company_id,
+            site_id=str(payload.site_id),
+            site_name=payload.site_name,
+            site_address=payload.site_address,
+            site_name_en=payload.site_name_en,
+            site_address_en=payload.site_address_en,
+            province_name=payload.province_name,
+            short_name=payload.short_name,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return SiteMasterCreateRead(**result)
 
     def list_companies(
         q: str | None = Query(default=None),
@@ -447,6 +503,8 @@ def register_catalog_routes(app, session_factory) -> None:
             )
         )
 
+    app.add_api_route("/companies", create_company_master, methods=["POST"], response_model=CompanyMasterCreateRead, tags=["catalog"])
+    app.add_api_route("/companies/{company_id}/sites", create_site_master, methods=["POST"], response_model=SiteMasterCreateRead, tags=["catalog"])
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])
     app.add_api_route("/sites", list_sites, methods=["GET"], response_model=list[SiteRead], tags=["catalog"])

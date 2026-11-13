@@ -167,7 +167,7 @@ def test_incomplete_certificate_never_advertises_promotion(case_db):
 
 
 def test_certificate_promotion_readiness_tracks_real_mutation_and_terminal_state(case_db):
-    engine, case_id, _, site_id = case_db
+    engine, case_id, other_case_id, site_id = case_db
     with Session(engine) as session:
         candidate, _, _ = _certificate(session, case_id, site_id, number="GMP-CURRENT")
         admin = _user("certificate.approve")
@@ -191,10 +191,10 @@ def test_certificate_promotion_readiness_tracks_real_mutation_and_terminal_state
     # A new, unpromoted Case certificate cannot be promoted if its parent
     # Case is closed: the service's case-state gate is not bypassed by the UI.
     with Session(engine) as session:
-        other_candidate, _, _ = _certificate(session, case_id, site_id, number="GMP-LATER")
-        session.get(Case, case_id).state = CaseState.CLOSED
+        other_candidate, _, _ = _certificate(session, other_case_id, site_id, number="GMP-LATER")
+        session.get(Case, other_case_id).state = CaseState.CLOSED
         session.commit()
     with Session(engine) as verify:
-        blocked = _actions(_workspace(verify, case_id, admin), other_candidate)["promote_current"]
+        blocked = _actions(_workspace(verify, other_case_id, admin), other_candidate)["promote_current"]
         assert blocked.available is False
         assert blocked.reason_code == "case_state_not_eligible"

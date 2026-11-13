@@ -29,11 +29,13 @@ from backend.app.document.inspection_qd_kt_case_readiness import inspect_qdkt_ca
 from backend.app.document.inspection_qd_kt_current_case_team import read_qdkt_current_case_team
 from backend.app.document.inspection_qd_kt_team_source import QdKtTeamSourceBlocked
 from backend.app.services.document_api import DocumentWorkflowService
+from backend.app.services.workflow import CaseWorkflowService
 from backend.app.storage.types import StorageOperationError
 
 def register_document_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = DocumentWorkflowService()
+    workflow_service = CaseWorkflowService()
 
     def prepare_document_generation(
         payload: DocumentGenerationPrepareRequest,
@@ -327,6 +329,41 @@ def register_document_routes(app, session_factory) -> None:
         )
         return _open_document_current_content(locator=locator, request=request)
 
+    def open_approval_submission_document_current_content(
+        approval_submission_id: str,
+        document_id: str,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        """Open only a document explicitly bound to the requested PCT/CT round.
+
+        A Case-level document, matching family or completed submission is not
+        evidence of a round binding. Reuse the canonical binding readback and
+        existing checksum-verified binary owner; neither read mutates state.
+        """
+        require_permissions(user, {"document.read"})
+        receipt = workflow_service.get_approval_document_bindings(
+            session,
+            approval_submission_id=approval_submission_id,
+        )
+        if not any(
+            link["document_id"] == document_id
+            and link["approval_submission_id"] == approval_submission_id
+            for link in receipt["links"]
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Document is not bound to the requested approval submission.",
+            )
+        locator = service.get_current_document_binary_locator_for_parent(
+            session,
+            document_id=document_id,
+            expected_parent_scope="case",
+            expected_parent_id=receipt["case_id"],
+        )
+        return _open_document_current_content(locator=locator, request=request)
+
     app.add_api_route(
         "/documents/prepare",
         prepare_document_generation,
@@ -400,6 +437,12 @@ def register_document_routes(app, session_factory) -> None:
     app.add_api_route(
         "/cases/{case_id}/documents/{document_id}/content",
         open_case_document_current_content,
+        methods=["GET"],
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/approval-submissions/{approval_submission_id}/documents/{document_id}/content",
+        open_approval_submission_document_current_content,
         methods=["GET"],
         tags=["documents"],
     )

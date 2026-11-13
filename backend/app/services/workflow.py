@@ -43,6 +43,8 @@ from backend.app.db.models.phase1 import (
     InspectionPeriodSegment,
     InspectionPlan,
     InspectionApprovalSubmission,
+    InspectionApprovalDocumentLink,
+    Document,
     Person,
     ProductionLine,
     Site,
@@ -4038,6 +4040,112 @@ class CaseWorkflowService:
         self._write_audit_event(session, actor=actor, entity_type="inspection_approval_submission", entity_id=row.id, action="inspection_approval_submission.complete", payload=self._build_stage_payload(completed_on=completed_on.isoformat(), completed_time=None if completed_time is None else completed_time.isoformat(), reason=reason), before=before, after=self._serialize_approval_submission(row), reason=reason)
         session.flush()
         return self._serialize_approval_submission(row)
+
+    def bind_approval_document(
+        self,
+        session: Session,
+        *,
+        approval_submission_id: str,
+        document_id: str,
+        expected_version: int,
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Bind one Case document to one canonical approval round, append-only.
+
+        Binding never marks a document as signed, issued, current or approved.
+        The owning Case lock fences concurrent CT/PCT and document-binding
+        mutations; the submission token fences stale UI selections.
+        """
+        identity = session.get(InspectionApprovalSubmission, approval_submission_id)
+        if identity is None:
+            raise HTTPException(status_code=404, detail="Approval submission not found.")
+        case = self._lock_case(session, identity.case_id)
+        self._assert_case_not_terminal(case, operation="approval document binding")
+        submission = session.scalars(
+            select(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.id == approval_submission_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Approval submission not found.")
+        if submission.case_id != case.id:
+            raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload.")
+        self._assert_expected_version(submission, expected_version, label="approval_submission")
+        document = session.scalars(
+            select(Document).where(Document.id == document_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if document is None:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        expected_family = "INSPECTION_PT_PCT" if submission.stage == "PCT" else "INSPECTION_PT_CT"
+        if submission.stage not in {"PCT", "CT"}:
+            raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
+        if document.case_id != case.id or any(
+            parent is not None
+            for parent in (
+                document.capa_cycle_id,
+                document.certificate_id,
+                document.business_eligibility_certificate_id,
+                document.change_request_id,
+            )
+        ):
+            raise HTTPException(status_code=422, detail="Document must belong exclusively to the approval Case.")
+        if document.family_code != expected_family:
+            raise HTTPException(status_code=422, detail="Document family does not match approval stage.")
+        bound = session.scalars(
+            select(InspectionApprovalDocumentLink)
+            .where(InspectionApprovalDocumentLink.document_id == document.id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if bound is not None:
+            if bound.approval_submission_id != submission.id:
+                raise HTTPException(status_code=409, detail="Document already bound to another approval submission.")
+            return {
+                "approval_submission_id": submission.id,
+                "document_id": document.id,
+                "binding_id": bound.id,
+                "created": False,
+                "row_version": submission.row_version,
+            }
+        binding = InspectionApprovalDocumentLink(
+            approval_submission_id=submission.id, document_id=document.id,
+        )
+        session.add(binding)
+        # Updating the versioned owner fences concurrent stale bindings.
+        submission.row_version += 1
+        session.flush()
+        actor = self._get_or_create_app_user(session, user)
+        self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="inspection_approval_document_link",
+            entity_id=binding.id,
+            action="inspection_approval_document_link.create",
+            payload=self._build_stage_payload(
+                case_id=case.id,
+                approval_submission_id=submission.id,
+                document_id=document.id,
+                stage=submission.stage,
+                round_no=submission.round_no,
+                reason=reason,
+            ),
+            before={},
+            after={
+                "approval_submission_id": submission.id,
+                "document_id": document.id,
+                "binding_id": binding.id,
+            },
+            reason=reason,
+        )
+        session.flush()
+        return {
+            "approval_submission_id": submission.id,
+            "document_id": document.id,
+            "binding_id": binding.id,
+            "created": True,
+            "row_version": submission.row_version,
+        }
 
     def upsert_inspection_team(
         self,

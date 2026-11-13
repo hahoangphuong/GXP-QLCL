@@ -1470,7 +1470,9 @@ class CaseWorkflowService:
         case = Case(
             id=case_id, site_id=site.id, gxp_type=gxp_type,
             production_line_id=None if line is None else line.id,
-            scope_code=None if line is None else line.code,
+            # Compatibility scope_code is varchar(32); physical code may be 64.
+            # The immutable UUID FK remains authoritative for longer codes.
+            scope_code=None if line is None or len(line.code) > 32 else line.code,
             inspection_type=normalized_type, applicable_standard=normalized_standard,
             state=CaseState.DRAFT, opened_year=None,
             legacy_inspection_id=None, legacy_inspection_code=None,
@@ -1480,7 +1482,7 @@ class CaseWorkflowService:
         after = {
             "case_id": case.id, "site_id": case.site_id,
             "gxp_type": case.gxp_type, "production_line_id": case.production_line_id,
-            "line_code": case.scope_code, "inspection_type": case.inspection_type,
+            "line_code": None if line is None else line.code, "inspection_type": case.inspection_type,
             "applicable_standard": case.applicable_standard, "state": case.state.value,
             "row_version": case.row_version, "legacy_inspection_id": None,
             "legacy_inspection_code": None,

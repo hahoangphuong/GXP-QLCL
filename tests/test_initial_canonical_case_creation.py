@@ -232,3 +232,28 @@ def test_auth_uuid_contract_and_workspace_readiness(blank):
             selected_production_line_id=line_id, user=readonly,
         )
         assert {row["action_key"]: row for row in readonly_actions}["create_initial_case"]["readiness_status"] == "forbidden"
+
+
+def test_long_canonical_line_code_does_not_overflow_case_legacy_scope_code(blank):
+    engine, (site_id, _, _, _, _) = blank
+    long_code = "LONG-PHYSICAL-LINE-CODE-" + ("Z" * 20)
+    assert len(long_code) > 32
+    with Session(engine) as db:
+        physical = ProductionLine(
+            site_id=site_id, code=long_code, effective_from=date(2026, 1, 1),
+        )
+        db.add(physical)
+        db.flush()
+        line_id = physical.id
+        db.commit()
+    with Session(engine) as db:
+        created = CaseWorkflowService().create_initial_inspection_case(
+            db, **inputs(site_id, production_line_id=line_id),
+        )
+        assert created["production_line_id"] == line_id
+        assert created["line_code"] == long_code
+        db.commit()
+    with Session(engine) as db:
+        row = db.get(Case, created["case_id"])
+        assert row.production_line_id == line_id
+        assert row.scope_code is None  # no invalid truncation or fake legacy code

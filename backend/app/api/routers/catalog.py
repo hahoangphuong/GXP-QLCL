@@ -370,6 +370,7 @@ def register_catalog_routes(app, session_factory) -> None:
         state: str | None = Query(default=None),
         q: str | None = Query(default=None),
         opened_year: int | None = Query(default=None, ge=1900, le=9999),
+        certificate_decision_status: str | None = Query(default=None),
         inspection_queue: bool = Query(default=False),
         export: bool = Query(default=False),
         offset: int = Query(default=0, ge=0),
@@ -382,6 +383,7 @@ def register_catalog_routes(app, session_factory) -> None:
             session, gxp_type=_optional_string_query(gxp_type), state=_optional_string_query(state),
             q=_optional_string_query(q), opened_year=opened_year, inspection_queue=inspection_queue,
             export=export, offset=offset, limit=limit,
+            certificate_decision_status=_optional_string_query(certificate_decision_status),
         ))
 
     def certificate_report(

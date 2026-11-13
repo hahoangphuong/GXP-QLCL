@@ -38,6 +38,7 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityGxpReferenceEvidence,
     BusinessEligibilityVersion,
     Case,
+    CaseCertificateNonissuanceDecision,
     CaseEvaluationScope,
     CaseEvaluationScopeBlock,
     CaseEvaluationScopeSelection,
@@ -1372,14 +1373,34 @@ class CatalogReadService:
 
     def get_case_report(self, session: Session, *, gxp_type: str | None, state: str | None,
                         q: str | None, opened_year: int | None, inspection_queue: bool,
-                        export: bool, offset: int, limit: int) -> dict[str, object]:
+                        export: bool, offset: int, limit: int,
+                        certificate_decision_status: str | None = None) -> dict[str, object]:
         states = WAITING_INSPECTION_CASE_STATES if inspection_queue else ACTIVE_CASE_STATES
         if state:
             allowed = {item.value: item for item in states}
             if state not in allowed:
                 raise HTTPException(status_code=422, detail="Invalid report case state.")
             states = [allowed[state]]
+        allowed_decision_filters = {
+            "awaiting_decision", "nonissuance_recorded", "not_at_decision_stage",
+        }
+        if certificate_decision_status is not None and certificate_decision_status not in allowed_decision_filters:
+            raise HTTPException(status_code=422, detail="Invalid certificate decision report filter.")
+        # Classification comes only from Case state plus the persisted decision,
+        # never missing GCN, free-text final evaluation, or an inferred outcome.
         conditions = [Case.state.in_(states)]
+        if certificate_decision_status == "nonissuance_recorded":
+            conditions.append(CaseCertificateNonissuanceDecision.id.is_not(None))
+        elif certificate_decision_status == "awaiting_decision":
+            conditions.extend((
+                Case.state == CaseState.AWAITING_CERTIFICATE_DECISION,
+                CaseCertificateNonissuanceDecision.id.is_(None),
+            ))
+        elif certificate_decision_status == "not_at_decision_stage":
+            conditions.extend((
+                Case.state != CaseState.AWAITING_CERTIFICATE_DECISION,
+                CaseCertificateNonissuanceDecision.id.is_(None),
+            ))
         if gxp_type:
             conditions.append(Case.gxp_type == gxp_type)
         if q:
@@ -1388,9 +1409,10 @@ class CatalogReadService:
                                   Case.legacy_inspection_code.ilike(pattern)))
         if opened_year is not None:
             conditions.append(Case.opened_year == opened_year)
-        base = (select(Case, Site, Company, ProductionLine)
+        base = (select(Case, Site, Company, ProductionLine, CaseCertificateNonissuanceDecision)
                 .join(Site, Site.id == Case.site_id).join(Company, Company.id == Site.company_id)
                 .outerjoin(ProductionLine, ProductionLine.id == Case.production_line_id)
+                .outerjoin(CaseCertificateNonissuanceDecision, CaseCertificateNonissuanceDecision.case_id == Case.id)
                 .where(*conditions))
         if export:
             if offset != 0:
@@ -1402,10 +1424,12 @@ class CatalogReadService:
             limit = 10000
         else:
             total = session.scalar(select(func.count()).select_from(Case).join(Site, Site.id == Case.site_id)
-                                   .join(Company, Company.id == Site.company_id).where(*conditions)) or 0
+                                   .join(Company, Company.id == Site.company_id)
+                                   .outerjoin(CaseCertificateNonissuanceDecision, CaseCertificateNonissuanceDecision.case_id == Case.id)
+                                   .where(*conditions)) or 0
             rows = session.execute(base.order_by(Case.id).offset(offset).limit(limit)).all()
         items = []
-        for case, site, company, line in rows:
+        for case, site, company, line, decision in rows:
             line_id, line_code, identity = self._line_identity(
                 site_id=case.site_id, production_line_id=case.production_line_id,
                 raw_line_code=case.scope_code, lines={} if line is None else {line.id: line},
@@ -1415,7 +1439,15 @@ class CatalogReadService:
                               identity_state=identity, production_line_id=line_id, line_code=line_code),
                           "facility_name": site.site_name, "company_name": company.legal_name,
                           "gxp_type": case.gxp_type, "state": case.state.value,
-                          "reference_code": case.legacy_inspection_code, "opened_year": case.opened_year})
+                          "reference_code": case.legacy_inspection_code, "opened_year": case.opened_year,
+                          "certificate_decision_status": (
+                              "nonissuance_recorded" if decision is not None
+                              else "awaiting_decision" if case.state == CaseState.AWAITING_CERTIFICATE_DECISION
+                              else "not_at_decision_stage"
+                          ),
+                          "nonissuance_decision_id": None if decision is None else decision.id,
+                          "nonissuance_decision_reference": None if decision is None else decision.decision_reference,
+                          "nonissuance_decided_on": None if decision is None else decision.decided_on})
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 
     def get_certificate_report(

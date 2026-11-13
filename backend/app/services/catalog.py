@@ -2727,6 +2727,19 @@ class CatalogReadService:
         current_certificates = [
             item for item in complete_certificates if item["latest_flag"] is True
         ]
+        # Date-interval integrity is separate from presence-based completeness.
+        # Historical Current rows are observed, never silently changed here.
+        invalid_interval_certificates = [
+            item for item in complete_certificates
+            if item["expiry_date"] < item["issue_date"]
+        ]
+        valid_interval_certificates = [
+            item for item in complete_certificates
+            if item["expiry_date"] >= item["issue_date"]
+        ]
+        current_invalid_interval_certificates = [
+            item for item in invalid_interval_certificates if item["latest_flag"] is True
+        ]
         completed_pct_ids = {
             item.id for item in approval_submissions
             if item.stage == "PCT" and item.completed_on is not None
@@ -2746,6 +2759,13 @@ class CatalogReadService:
             "linked_certificate_count": len(linked_gxp_certificates),
             "complete_certificate_record_count": len(complete_certificates),
             "current_certificate_record_count": len(current_certificates),
+            "date_valid_certificate_record_count": len(valid_interval_certificates),
+            "invalid_certificate_date_interval_count": len(invalid_interval_certificates),
+            "current_invalid_certificate_date_interval_count": len(current_invalid_interval_certificates),
+            "certified_case_without_date_valid_certificate_record": (
+                case.state in {CaseState.CERTIFIED, CaseState.CLOSED}
+                and not valid_interval_certificates
+            ),
             "certificate_record_state": (
                 "current" if current_certificates
                 else "recorded_not_current" if complete_certificates

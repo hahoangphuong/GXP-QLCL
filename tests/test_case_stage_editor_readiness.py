@@ -6,7 +6,7 @@ mutation endpoint is required.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
 
 import pytest
 from sqlalchemy import create_engine, select, func
@@ -120,7 +120,7 @@ def test_stage_readiness_versions_track_canonical_child_editors(case_db):
         # advertised by this read contract; no cross-stage Case version.
         updated = CaseWorkflowService().upsert_case_application(
             session, case_id=case_id, expected_version=actions["edit_case_application"]["expected_version"],
-            submitted_on=date(2026, 11, 13), dossier_code="REG-UPDATED",
+            submitted_on=datetime(2026, 11, 13, 9, 0), dossier_code="REG-UPDATED",
             dossier_reference=None, applicant_name="Synthetic", reason="Synthetic correction",
             user=_user("case.edit"), fields_set={"submitted_on", "dossier_code", "applicant_name"},
         )

@@ -2486,6 +2486,28 @@ class CatalogReadService:
             inspection_period_edit_readiness,
             inspection_team_edit_readiness,
         )
+        # Read-only projection of the three existing Case stage editors.
+        # Their mutations share the Case owner lock and accept a nullable
+        # stage-specific expected_version. No state-based UI guesswork:
+        # only permission and terminal status block those service methods.
+        stage_edit_actions = [
+            {
+                "action_key": action_key,
+                "label": label,
+                "available": permission in permissions and not terminal_case,
+                "reason_code": (
+                    "missing_permission" if permission not in permissions
+                    else "terminal_case" if terminal_case else None
+                ),
+                "required_permissions": [permission],
+                "expected_version": None if stage is None else stage.row_version,
+            }
+            for action_key, label, permission, stage in (
+                ("edit_case_application", "Cập nhật hồ sơ đăng ký", "case.edit", application),
+                ("edit_case_assessment", "Cập nhật thẩm định hồ sơ", "case.edit", assessment),
+                ("edit_inspection_plan", "Cập nhật kế hoạch kiểm tra", "inspection.edit", plan),
+            )
+        ]
         period_edit_readiness = inspection_period_edit_readiness(outcome=outcome, terminal_case=terminal_case)
         if inspection_permission not in permissions:
             period_edit_readiness = {**period_edit_readiness, "available": False, "reason_code": "missing_permission"}
@@ -2958,6 +2980,7 @@ class CatalogReadService:
             ),
             "linked_gxp_certificates": linked_gxp_certificates,
             "linked_business_eligibility_certificates": linked_business_eligibility_certificates,
+            "stage_edit_actions": stage_edit_actions,
             "transition_actions": transition_actions,
         }
 

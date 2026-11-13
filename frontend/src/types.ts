@@ -140,7 +140,14 @@ export type DashboardSummary = {
   queue: DashboardQueueItem[];
 };
 
-export type CaseReportItem = DashboardQueueItem & { production_line_id: string | null };
+export type CertificateDecisionStatus = string;
+export type CaseReportItem = DashboardQueueItem & {
+  production_line_id: string | null;
+  certificate_decision_status?: CertificateDecisionStatus;
+  nonissuance_decision_id?: string | null;
+  nonissuance_decision_reference?: string | null;
+  nonissuance_decided_on?: string | null;
+};
 export type CaseReportPage = { items: CaseReportItem[]; total_count: number; offset: number; limit: number };
 
 export type CertificateReportItem = {
@@ -1128,8 +1135,27 @@ export type CaseWorkspace = {
   documents: DocumentChecklist;
   contextual_document_actions: ContextualDocumentAction[];
   certificate_issue_readiness: CertificateIssueActionReadiness;
+  nonissuance_decision?: CaseNonissuanceDecisionDetail | null;
   linked_gxp_certificates: GxpCertificateDetail[];
   linked_business_eligibility_certificates: BusinessEligibilityDetail[];
+};
+
+export type CaseNonissuanceDecisionDetail = {
+  decision_id: string;
+  case_id: string;
+  decided_on: string;
+  decision_reference: string;
+  explanation: string;
+  recorded_by_user_id: string;
+};
+
+export type CaseNonissuanceDecisionRead = { case_id: string; decision: CaseNonissuanceDecisionDetail | null };
+export type CaseNonissuanceDecisionRecordRequest = {
+  expected_case_version: number;
+  decided_on: string;
+  decision_reference: string;
+  explanation: string;
+  reason: string | null;
 };
 
 export type ChangeRequestWorkspaceDetail = {

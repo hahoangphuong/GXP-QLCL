@@ -18,6 +18,8 @@ import type {
   CaseApplicationUpsertResponse,
   CaseAssessmentUpsertRequest,
   CaseAssessmentUpsertResponse,
+  CaseNonissuanceDecisionRead,
+  CaseNonissuanceDecisionRecordRequest,
   CaseDetail,
   CaseListItem,
   CaseReportPage,
@@ -283,16 +285,25 @@ export function listCases(auth: StubAuthState, useStubAuth: boolean, bearerToken
   return requestJson<CaseListItem[]>("/cases", { auth, useStubAuth, bearerToken });
 }
 
-export function getCaseReport(filters: { gxp_type: string; state: string; q: string; opened_year: string; inspection_queue: boolean; export?: boolean; offset?: number }, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseReportPage> {
+export function getCaseReport(filters: { gxp_type: string; state: string; q: string; opened_year: string; inspection_queue: boolean; certificate_decision_status?: string; export?: boolean; offset?: number }, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseReportPage> {
   const params = new URLSearchParams();
   if (filters.gxp_type) params.set("gxp_type", filters.gxp_type);
   if (filters.state) params.set("state", filters.state);
   if (filters.q) params.set("q", filters.q);
   if (filters.opened_year) params.set("opened_year", filters.opened_year);
   if (filters.inspection_queue) params.set("inspection_queue", "true");
+  if (filters.certificate_decision_status) params.set("certificate_decision_status", filters.certificate_decision_status);
   if (filters.export) params.set("export", "true");
   if (filters.offset) params.set("offset", String(filters.offset));
   return requestJson<CaseReportPage>(buildApiPath("/reports/cases", params), { auth, useStubAuth, bearerToken });
+}
+
+export function getCaseNonissuanceDecision(caseId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseNonissuanceDecisionRead> {
+  return requestJson<CaseNonissuanceDecisionRead>(`/cases/${encodeURIComponent(caseId)}/certificate-nonissuance-decision`, { auth, useStubAuth, bearerToken });
+}
+
+export function recordCaseNonissuanceDecision(caseId: string, payload: CaseNonissuanceDecisionRecordRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseNonissuanceDecisionRead> {
+  return requestJson<CaseNonissuanceDecisionRead>(`/cases/${encodeURIComponent(caseId)}/certificate-nonissuance-decision`, { method: "POST", body: JSON.stringify(payload), auth, useStubAuth, bearerToken });
 }
 
 export function getCertificateReport(

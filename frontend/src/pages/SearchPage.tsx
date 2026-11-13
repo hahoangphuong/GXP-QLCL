@@ -51,6 +51,8 @@ import {
   getFacilityWorkspace,
   getGxpCertificateDetail,
   issueGxpCertificate,
+  getCaseNonissuanceDecision,
+  recordCaseNonissuanceDecision,
   listSiteBusinessEligibilityCertificates,
   listSiteGxpCertificates,
   promoteGxpCertificateCurrent,
@@ -2417,6 +2419,30 @@ export function SearchPage({
     );
   }
 
+  async function handleRecordNonissuanceDecision(payload: import("../types").CaseNonissuanceDecisionRecordRequest) {
+    if (!selectedCaseWorkspace || selectedHistory?.source_type !== "case") throw new Error("Chưa chọn hồ sơ để ghi nhận quyết định.");
+    const caseId = selectedCaseWorkspace.case_summary.id;
+    const operationOwner = caseOperationOwner.current;
+    try {
+      const response = await recordCaseNonissuanceDecision(caseId, payload, auth, useStubAuth, bearerToken);
+      if (!isCurrentCaseOperation(operationOwner) || response.case_id !== caseId) return { case_id: caseId, decision: null };
+      return response;
+    } catch (postError) {
+      // A transport failure can follow a committed write. Read back the exact
+      // Case only; never replay the append-only decision POST.
+      try {
+        const readback = await getCaseNonissuanceDecision(caseId, auth, useStubAuth, bearerToken);
+        if (isCurrentCaseOperation(operationOwner) && readback.case_id === caseId
+            && readback.decision?.decided_on === payload.decided_on
+            && readback.decision.decision_reference === payload.decision_reference
+            && readback.decision.explanation === payload.explanation) return readback;
+      } catch {
+        // Preserve the original POST failure and command recovery lock.
+      }
+      throw postError;
+    }
+  }
+
   async function handleLoadDocumentDetail(documentId: string): Promise<DocumentDetail> {
     return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
@@ -2885,6 +2911,7 @@ export function SearchPage({
               onGxpCertificatePromote={handleGxpCertificatePromote}
               onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
               onIssueCertificate={handleIssueGxpCertificate}
+              onRecordNonissuanceDecision={handleRecordNonissuanceDecision}
               onCaseApplicationSave={handleCaseApplicationSave}
               onCaseAssessmentSave={handleCaseAssessmentSave}
               onAssessCapaCycle={handleAssessCapaCycle}

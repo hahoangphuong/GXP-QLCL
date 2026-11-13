@@ -9,6 +9,12 @@ import { csvCell } from "./facilityReportExport";
 import type { CaseWorkflowQueue } from "../search/caseNavigation";
 import { caseReportParams, parseCaseReportUrl, caseStates as states, inspectionStates, type CaseReportFilters as Filters } from "./caseReportUrl";
 
+function certificateDecisionLabel(value: CaseReportItem["certificate_decision_status"]) {
+  if (value === "nonissuance_recorded") return "Đã ghi nhận không cấp";
+  if (value === "awaiting_decision") return "Chờ quyết định";
+  if (value === "not_at_decision_stage") return "Chưa đến bước quyết định";
+  return "Không xác định";
+}
 
 function target(item: CaseReportItem, queue?: CaseWorkflowQueue) {
   // Resolve this canonical Case through the guarded CaseDirectOpen owner.
@@ -59,7 +65,7 @@ export function CaseReport({ access, inspectionQueue, initialState = "", showDoc
   const owner = useMemo(() => ({}), [auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration, inspectionQueue]);
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const initial: Filters = { gxp_type: "", state: initialState, q: "", opened_year: "", inspection_queue: inspectionQueue };
+  const initial: Filters = { gxp_type: "", state: initialState, q: "", opened_year: "", inspection_queue: inspectionQueue, certificate_decision_status: "" };
   const [draft, setDraft] = useState(urlState && parsed.valid ? urlFilters : initial);
   const [localActive, setActive] = useState(initial);
   const [localOffset, setOffset] = useState(0);
@@ -121,8 +127,8 @@ export function CaseReport({ access, inspectionQueue, initialState = "", showDoc
       const page = await getCaseReport({ ...active, export: true }, auth, useStubAuth, bearerToken);
       if (ownerRef.current !== owner || requestOwnerRef.current !== requestOwner || guard.current !== token) return;
       validatedCaseReportPage(page, 0, active, true);
-      const fields = [(item: CaseReportItem) => item.reference_code ?? item.case_id, (item: CaseReportItem) => item.facility_name, (item: CaseReportItem) => item.company_name, (item: CaseReportItem) => item.gxp_type, (item: CaseReportItem) => formatStatusLabel(item.state), (item: CaseReportItem) => item.opened_year?.toString() ?? ""];
-      const lines = [["Hồ sơ", "Cơ sở", "Công ty", "GxP", "Trạng thái", "Năm"].map(csvCell).join(","), ...page.items.map(item => fields.map(field => csvCell(field(item))).join(","))];
+      const fields = [(item: CaseReportItem) => item.reference_code ?? item.case_id, (item: CaseReportItem) => item.facility_name, (item: CaseReportItem) => item.company_name, (item: CaseReportItem) => item.gxp_type, (item: CaseReportItem) => formatStatusLabel(item.state), (item: CaseReportItem) => certificateDecisionLabel(item.certificate_decision_status), (item: CaseReportItem) => item.nonissuance_decision_reference ?? "", (item: CaseReportItem) => item.nonissuance_decided_on ?? "", (item: CaseReportItem) => item.opened_year?.toString() ?? ""];
+      const lines = [["Hồ sơ", "Cơ sở", "Công ty", "GxP", "Trạng thái", "Quyết định GCN", "Số tham chiếu", "Ngày quyết định", "Năm"].map(csvCell).join(","), ...page.items.map(item => fields.map(field => csvCell(field(item))).join(","))];
       const url = URL.createObjectURL(new Blob(["\uFEFF" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" }));
       try { const a = document.createElement("a"); a.href = url; a.download = "bao-cao-ho-so.csv"; document.body.appendChild(a); a.click(); a.remove(); } finally { URL.revokeObjectURL(url); }
     } catch (error) { if (ownerRef.current === owner && requestOwnerRef.current === requestOwner && guard.current === token) setExportError(error instanceof Error ? error.message : "Không thể xuất báo cáo."); }
@@ -139,11 +145,12 @@ export function CaseReport({ access, inspectionQueue, initialState = "", showDoc
         <label>Trạng thái hồ sơ<select value={draft.state} disabled={exporting} onChange={e => setDraft({ ...draft, state: e.target.value })}><option value="">Tất cả</option>{(inspectionQueue ? inspectionStates : states).map(state => <option key={state} value={state}>{formatStatusLabel(state)}</option>)}</select></label>
         <label>Cơ sở, công ty hoặc mã hồ sơ<input value={draft.q} disabled={exporting} onChange={e => setDraft({ ...draft, q: e.target.value })} /></label>
         <label>Năm hồ sơ<input type="number" min="1900" max="9999" value={draft.opened_year} disabled={exporting} onChange={e => setDraft({ ...draft, opened_year: e.target.value })} /></label>
+        <label>Quyết định GCN<select value={draft.certificate_decision_status} disabled={exporting} onChange={e => setDraft({ ...draft, certificate_decision_status: e.target.value })}><option value="">Tất cả</option><option value="nonissuance_recorded">Đã ghi nhận không cấp</option><option value="awaiting_decision">Chờ quyết định</option><option value="not_at_decision_stage">Chưa đến bước quyết định</option></select></label>
       </div>
       <div className="report-actions"><button disabled={exporting}>Áp dụng bộ lọc</button><button type="button" className="secondary" disabled={exporting || !current || !!current.error} onClick={() => void exportCsv()}>{exporting ? "Đang xuất..." : "Xuất CSV (Excel)"}</button></div>
     </form>{exportError && <p role="alert">{exportError}</p>}<p className="muted-copy">CSV UTF-8 xuất toàn bộ kết quả hiện hành, tối đa 10.000 hồ sơ; vượt giới hạn sẽ không tạo tệp.</p></section>
     <section className="panel"><div className="panel-header"><h3>{inspectionQueue ? "Hồ sơ chuẩn bị và đang kiểm tra" : "Hồ sơ đang xử lý"}</h3>{current?.data && <span aria-live="polite">{total} hồ sơ</span>}</div>
-      {!current ? <p role="status">Đang tải dữ liệu...</p> : current.error ? <p role="alert">{current.error}</p> : !rows.length ? <p>Không có hồ sơ phù hợp.</p> : <div className="table-scroll"><table className="dense-table"><thead><tr><th>Hồ sơ</th><th>Cơ sở</th><th>Công ty</th><th>GxP</th><th>Trạng thái</th><th>Năm</th>{showDocumentsLink && <th>Tài liệu</th>}</tr></thead><tbody>{rows.map(item => <tr key={item.case_id}><td><Link className="text-link" state={urlState ? { caseReportReturn: `${returnQueue ? "/workflow" : "/reports"}?${caseReportParams(active, offset, returnQueue)}` } : undefined} to={target(item, returnQueue)}>{item.reference_code ?? item.case_id}</Link></td><td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td><td><StatusBadge value={item.state} /></td><td>{item.opened_year ?? "—"}</td>{showDocumentsLink && <td><Link className="text-link" state={urlState ? { caseReportReturn: `${returnQueue ? "/workflow" : "/reports"}?${caseReportParams(active, offset, returnQueue)}` } : undefined} to={`/documents/cases/${encodeURIComponent(item.case_id)}`}>Xem tài liệu</Link></td>}</tr>)}</tbody></table></div>}
+      {!current ? <p role="status">Đang tải dữ liệu...</p> : current.error ? <p role="alert">{current.error}</p> : !rows.length ? <p>Không có hồ sơ phù hợp.</p> : <div className="table-scroll"><table className="dense-table"><thead><tr><th>Hồ sơ</th><th>Cơ sở</th><th>Công ty</th><th>GxP</th><th>Trạng thái</th><th>Quyết định GCN</th><th>Tham chiếu / ngày</th><th>Năm</th>{showDocumentsLink && <th>Tài liệu</th>}</tr></thead><tbody>{rows.map(item => <tr key={item.case_id}><td><Link className="text-link" state={urlState ? { caseReportReturn: `${returnQueue ? "/workflow" : "/reports"}?${caseReportParams(active, offset, returnQueue)}` } : undefined} to={target(item, returnQueue)}>{item.reference_code ?? item.case_id}</Link></td><td>{item.facility_name}</td><td>{item.company_name}</td><td>{item.gxp_type}</td><td><StatusBadge value={item.state} /></td><td>{certificateDecisionLabel(item.certificate_decision_status)}</td><td>{item.nonissuance_decision_reference ? `${item.nonissuance_decision_reference}${item.nonissuance_decided_on ? ` — ${item.nonissuance_decided_on}` : ""}` : "—"}</td><td>{item.opened_year ?? "—"}</td>{showDocumentsLink && <td><Link className="text-link" state={urlState ? { caseReportReturn: `${returnQueue ? "/workflow" : "/reports"}?${caseReportParams(active, offset, returnQueue)}` } : undefined} to={`/documents/cases/${encodeURIComponent(item.case_id)}`}>Xem tài liệu</Link></td>}</tr>)}</tbody></table></div>}
       {current?.data && total > 0 && <nav className="report-pagination" aria-label="Phân trang báo cáo"><button type="button" className="secondary" disabled={!offset || exporting} onClick={() => urlState ? setParams(caseReportParams(active, Math.max(0, offset - 100), returnQueue)) : setOffset(Math.max(0, offset - 100))}>Trang trước</button><span>Trang {Math.floor(offset / 100) + 1} / {Math.ceil(total / 100)}</span><button type="button" className="secondary" disabled={offset + rows.length >= total || exporting} onClick={() => urlState ? setParams(caseReportParams(active, offset + 100, returnQueue)) : setOffset(offset + 100)}>Trang sau</button></nav>}
     </section>
   </>;

@@ -3500,6 +3500,16 @@ class CaseWorkflowService:
             raise HTTPException(status_code=409, detail="Inspection plan already exists; expected_version is required.")
         else:
             self._assert_expected_version(stage, expected_version, label="inspection_plan")
+        # Validate the effective schedule, including untouched canonical
+        # values during a partial PATCH. Historical inconsistent schedules
+        # remain readable and metadata-only edits are not silently rewritten.
+        if {"plan_start_on", "plan_end_on"} & provided:
+            effective_start = plan_start_on if "plan_start_on" in provided else (None if stage is None else stage.plan_start_on)
+            effective_end = plan_end_on if "plan_end_on" in provided else (None if stage is None else stage.plan_end_on)
+            if effective_end is not None and effective_start is None:
+                raise HTTPException(status_code=422, detail="Inspection plan end date requires a start date.")
+            if effective_start is not None and effective_end is not None and effective_start > effective_end:
+                raise HTTPException(status_code=422, detail="Inspection plan start date must not be after its end date.")
         actor = self._get_or_create_app_user(session, user)
         if stage is None:
             stage = InspectionPlan(case_id=row.id)

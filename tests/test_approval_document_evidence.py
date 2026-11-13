@@ -98,7 +98,10 @@ def test_document_inventory_reports_case_family_without_binding_it_to_pct_ct_rou
                 assert ct.submission_ids == [ct_id]
                 assert ct.completed_submission_ids == [ct_id]
 
-                assert workspace.inspection.approval_submissions[2].pct_submission_id == pct1_id
+                assert next(
+                    row for row in workspace.inspection.approval_submissions
+                    if row.approval_submission_id == ct_id
+                ).pct_submission_id == pct1_id
                 assert session.scalar(select(func.count(AuditEvent.id))) == initial_audit == 0
                 assert not session.new and not session.dirty
 
@@ -114,21 +117,26 @@ def test_document_inventory_reports_case_family_without_binding_it_to_pct_ct_rou
             assert other_ct.selected_case_document_open_available is False
             assert other_ct.submission_ids == []
 
-        # Changing the Case's document inventory does not change any round binding.
+        # A newly indexed Case-level CT document still cannot be assigned
+        # to the already completed CT round without a canonical foreign key.
         with Session(engine) as session:
-            session.query(Document).filter(Document.id == pct_doc_id).delete()
-            # Document is not a parent of approvals; this synthetic test only
-            # checks that removing inventory cannot manufacture round proof.
+            new_ct_doc = Document(
+                case_id=case_id, family_code="INSPECTION_PT_CT",
+                document_type_code="INSPECTION_PT_CT", title="Case-level CT form",
+            )
+            session.add(new_ct_doc)
             session.commit()
+            ct_doc_id = new_ct_doc.id
 
         with Session(engine) as session:
             workspace = CaseWorkspaceRead.model_validate(
                 catalog.get_case_workspace(session, case_id=case_id, user=user)
             )
-            pct = workspace.inspection.approval_document_evidence[0]
-            assert pct.case_document_status == "missing"
-            assert pct.selected_case_document_id is None
-            assert pct.round_document_binding_state == "not_modelled"
-            assert pct.submission_ids == [pct1_id, pct2_id]
+            ct = workspace.inspection.approval_document_evidence[1]
+            assert ct.case_document_status == "available"
+            assert ct.selected_case_document_id == ct_doc_id
+            assert ct.selected_case_document_open_available is False
+            assert ct.round_document_binding_state == "not_modelled"
+            assert ct.submission_ids == [ct_id]
     finally:
         engine.dispose()

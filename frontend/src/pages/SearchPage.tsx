@@ -64,6 +64,8 @@ import {
   upsertInspectionPeriodSegments,
   createInspectionApprovalSubmission,
   completeInspectionApprovalSubmission,
+  bindApprovalSubmissionDocument,
+  readApprovalSubmissionDocuments,
   transitionCase,
   finalizeInspectionOutcome,
   upsertInspectionPlan,
@@ -1979,6 +1981,33 @@ export function SearchPage({
     }, () => completeInspectionApprovalSubmission(submissionId, payload, auth, useStubAuth, bearerToken));
   }
 
+  async function handleBindApprovalDocument(submissionId: string, payload: import("../types").ApprovalDocumentBindRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để liên kết tài liệu PCT/CT.");
+    const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
+    // A binding POST may commit even if its HTTP response is lost. The caller
+    // uses the scoped readback GET to prove the result; never replay POST here.
+    const result = await bindApprovalSubmissionDocument(submissionId, payload, auth, useStubAuth, bearerToken);
+    if (caseOperationOwner.current !== operationOwner || selectedHistory?.id !== caseId) {
+      throw new Error("Case owner changed before approval document binding response.");
+    }
+    return result;
+  }
+
+  async function handleReadApprovalDocuments(submissionId: string) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để đọc liên kết tài liệu.");
+    return readApprovalSubmissionDocuments(submissionId, auth, useStubAuth, bearerToken);
+  }
+
+  async function handleApprovalDocumentsConfirmed(caseId: string) {
+    const operationOwner = caseOperationOwner.current;
+    // An old async callback may retain selectedHistory from Case A after the
+    // active owner moved to B. The live operation-owner ref is authoritative.
+    if (!selectedHistory || selectedHistory.source_type !== "case"
+        || selectedHistory.id !== caseId || operationOwner.historyId !== caseId) return;
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+  }
+
   async function handleCaseTransition(payload: import("../types").CaseTransitionRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để chuyển trạng thái.");
     const caseId = selectedHistory.id;
@@ -2864,6 +2893,9 @@ export function SearchPage({
               onInspectionPeriodSegmentsSave={handleInspectionPeriodSegmentsSave}
               onCreateApprovalSubmission={handleCreateApprovalSubmission}
               onCompleteApprovalSubmission={handleCompleteApprovalSubmission}
+              onBindApprovalDocument={handleBindApprovalDocument}
+              onReadApprovalDocuments={handleReadApprovalDocuments}
+              onApprovalDocumentsConfirmed={handleApprovalDocumentsConfirmed}
               onTransitionCase={handleCaseTransition}
               onFinalizeInspectionOutcome={handleFinalizeInspectionOutcome}
               onInspectionTeamSave={handleInspectionTeamSave}

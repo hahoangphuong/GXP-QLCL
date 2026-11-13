@@ -48,6 +48,11 @@ function createCommandRegistry() {
       commands.set(key, "review"); notify();
     },
     commandPayload: (key: string) => commands.has(key) ? commandPayloads.get(key) : undefined,
+    clearVerifiedReview: (key: string) => {
+      if (commands.get(key) !== "review") return;
+      commands.delete(key); commandPayloads.delete(key); notify();
+    },
+
     release: (key: string, token: object) => {
       if (commands.get(key) !== token) return;
       commands.delete(key); commandPayloads.delete(key); notify();
@@ -138,7 +143,8 @@ export function useCaseCommandLock(scope: string) {
   const release = useCallback((token: object) => registry.release(key, token), [registry, key]);
   const requireReview = useCallback((token: object, payload?: unknown) => registry.requireReview(key, token, payload), [registry, key]);
   const commandPayload = useCallback(<T,>(): T | undefined => registry.commandPayload(key) as T | undefined, [registry, key]);
-  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview, commandPayload };
+  const clearVerifiedReview = useCallback(() => registry.clearVerifiedReview(key), [registry, key]);
+  return { pending: state === "pending", requiresReview: state === "review", acquire, release, requireReview, commandPayload, clearVerifiedReview };
 }
 
 // Facility commands are bound to access and Site, independently of selected history.

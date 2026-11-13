@@ -325,6 +325,9 @@ export type CaseWorkspaceInspection = {
   final_evaluation_readiness: LifecycleActionReadiness;
   approval_actions: LifecycleActionReadiness[];
   approval_submissions: InspectionApprovalSubmission[];
+  approval_document_candidates?: ApprovalDocumentCandidate[];
+  approval_document_links?: ApprovalDocumentLink[];
+  approval_document_bind_readiness?: ApprovalDocumentBindReadiness[];
   team_display_text: string | null;
   team: InspectionTeamWorkspace | null;
   team_edit_readiness: InspectionTeamEditReadiness;
@@ -394,6 +397,58 @@ export type LifecycleActionReadiness = {
   issued_artifact_link_id?: string | null;
   target_artifact_kind?: "certificate" | "business_eligibility_certificate" | null;
   target_artifact_id?: string | null;
+};
+
+export type ApprovalDocumentCandidate = {
+  document_id: string;
+  stage: "PCT" | "CT";
+  family_code: "INSPECTION_PT_PCT" | "INSPECTION_PT_CT";
+  title: string | null;
+  open_available: boolean;
+  bound_submission_id: string | null;
+};
+
+export type ApprovalDocumentLink = {
+  approval_submission_id: string;
+  document_id: string;
+  binding_id: string;
+  stage: "PCT" | "CT";
+  round_no: number;
+};
+
+export type ApprovalDocumentBindReadiness = {
+  action_key: "bind_approval_document";
+  approval_submission_id: string;
+  stage: "PCT" | "CT";
+  round_no: number;
+  expected_version: number;
+  available: boolean;
+  reason_code: "missing_permission" | "terminal_case" | "no_eligible_documents" | null;
+  required_permissions: string[];
+  eligible_document_ids: string[];
+};
+
+export type ApprovalDocumentBindRequest = {
+  document_id: string;
+  expected_version: number;
+  reason?: string | null;
+};
+
+export type ApprovalDocumentBindingResponse = {
+  approval_submission_id: string;
+  document_id: string;
+  binding_id: string;
+  created: boolean;
+  row_version: number;
+};
+
+export type ApprovalDocumentReadback = {
+  approval_submission_id: string;
+  case_id: string;
+  stage: "PCT" | "CT";
+  round_no: number;
+  row_version: number;
+  links: ApprovalDocumentLink[];
 };
 
 export type InspectionApprovalSubmission = {

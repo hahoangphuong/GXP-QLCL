@@ -332,6 +332,9 @@ function renderCaseStepContent(
   onInspectionPeriodSegmentsSave: (payload: import("../../types").InspectionPeriodSegmentsUpsertRequest) => Promise<void>,
   onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: import("../../types").InspectionApprovalSubmissionCreateRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>,
   onCompleteApprovalSubmission: (submissionId: string, payload: import("../../types").InspectionApprovalSubmissionCompleteRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>,
+  onBindApprovalDocument: ((id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>) | undefined,
+  onReadApprovalDocuments: ((id: string) => Promise<import("../../types").ApprovalDocumentReadback>) | undefined,
+  onApprovalDocumentsConfirmed: ((caseId: string) => Promise<void>) | undefined,
   onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>,
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>,
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>,
@@ -404,6 +407,9 @@ function renderCaseStepContent(
           onInspectionPeriodSegmentsSave={onInspectionPeriodSegmentsSave}
           onCreateApprovalSubmission={onCreateApprovalSubmission}
           onCompleteApprovalSubmission={onCompleteApprovalSubmission}
+          onBindApprovalDocument={onBindApprovalDocument}
+          onReadApprovalDocuments={onReadApprovalDocuments}
+          onApprovalDocumentsConfirmed={onApprovalDocumentsConfirmed}
           onTransitionCase={onTransitionCase}
           onInspectionPlanSave={onInspectionPlanSave}
           onInspectionTeamSave={onInspectionTeamSave}
@@ -555,6 +561,9 @@ export function EventWorkspace({
   onInspectionPeriodSegmentsSave,
   onCreateApprovalSubmission,
   onCompleteApprovalSubmission,
+  onBindApprovalDocument,
+  onReadApprovalDocuments,
+  onApprovalDocumentsConfirmed,
   onTransitionCase,
   onInspectionTeamSave,
   onLoadInspectionTeamIdentityOptions,
@@ -596,6 +605,9 @@ export function EventWorkspace({
   onInspectionPeriodSegmentsSave: (payload: import("../../types").InspectionPeriodSegmentsUpsertRequest) => Promise<void>;
   onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: import("../../types").InspectionApprovalSubmissionCreateRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
   onCompleteApprovalSubmission: (submissionId: string, payload: import("../../types").InspectionApprovalSubmissionCompleteRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
+  onBindApprovalDocument?: (id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>;
+  onReadApprovalDocuments?: (id: string) => Promise<import("../../types").ApprovalDocumentReadback>;
+  onApprovalDocumentsConfirmed?: (caseId: string) => Promise<void>;
   onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>;
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
@@ -736,6 +748,9 @@ export function EventWorkspace({
             onInspectionPeriodSegmentsSave,
             onCreateApprovalSubmission,
             onCompleteApprovalSubmission,
+            onBindApprovalDocument,
+            onReadApprovalDocuments,
+            onApprovalDocumentsConfirmed,
             onTransitionCase,
             onInspectionTeamSave,
             onLoadInspectionTeamIdentityOptions,

@@ -580,6 +580,11 @@ class CaseWorkflowService:
                 return "latest_capa_not_accepted"
         if not version.certificate_number or version.issue_date is None or version.expiry_date is None:
             return "certificate_data_incomplete"
+        # Keep incomplete/historical candidate editing available, but never
+        # make an internally impossible validity interval current. Both the
+        # readiness GET and the locked promotion mutation use this predicate.
+        if version.expiry_date < version.issue_date:
+            return "certificate_expiry_precedes_issue"
         current_peers = list(session.scalars(
             select(Certificate).where(
                 self._certificate_context_clause(session, certificate),
@@ -4459,6 +4464,7 @@ class CaseWorkflowService:
                 "case_state_not_eligible": "Current-certificate promotion is blocked until the case reaches certificate decision.",
                 "latest_capa_not_accepted": "Current-certificate promotion is blocked until the latest CAPA cycle is accepted.",
                 "certificate_data_incomplete": "Certificate promotion requires certificate number, issue date, and expiry date.",
+                "certificate_expiry_precedes_issue": "Certificate promotion requires expiry date on or after issue date.",
                 "candidate_issue_date_precedes_current": "Certificate promotion requires a candidate issue date that is not older than the current active certificate.",
                 "already_current": "Certificate is already current for this context.",
             }

@@ -29,7 +29,7 @@ if not DATABASE_URL.startswith("postgresql"):
     pytest.skip("requires disposable PostgreSQL", allow_module_level=True)
 
 
-@pytest.mark.parametrize("kind", ["gxp", "business_eligibility"])
+@pytest.mark.parametrize("kind", ["gxp", "gxp_invalid_date_interval", "business_eligibility"])
 def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind):
     if make_url(DATABASE_URL).database != "gxp_qlcl_test":
         pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted.")
@@ -53,7 +53,7 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
             site = Site(company_id=company.id, site_name="Synthetic promotion site")
             seed.add(site)
             seed.flush()
-            if kind == "gxp":
+            if kind in {"gxp", "gxp_invalid_date_interval"}:
                 aggregate = Certificate(
                     site_id=site.id, certificate_type="GLP", latest_flag=False,
                 )
@@ -87,16 +87,17 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
         actor = build_authenticated_user("synthetic-version-refresh", "manager")
         contender = factory()
         cached = contender.get(
-            CertificateVersion if kind == "gxp" else BusinessEligibilityVersion,
+            CertificateVersion if kind in {"gxp", "gxp_invalid_date_interval"} else BusinessEligibilityVersion,
             version_id,
         )
         assert cached.certificate_number.startswith("VALID-")
 
         editor = factory()
-        if kind == "gxp":
+        if kind in {"gxp", "gxp_invalid_date_interval"}:
             edit_result = service.upsert_certificate_latest_version(
                 editor, certificate_id=agg_id, expected_version=original_token,
-                certificate_number=None, issue_date=date(2026, 9, 1),
+                certificate_number="VALID-GXP" if kind == "gxp_invalid_date_interval" else None,
+                issue_date=date(2028, 9, 1) if kind == "gxp_invalid_date_interval" else date(2026, 9, 1),
                 expiry_date=date(2027, 9, 1), scopes=[],
                 reason="synthetic invalidate candidate", user=actor,
             )
@@ -113,7 +114,7 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
         assert edit_result["row_version"] != original_token
 
         with pytest.raises(HTTPException) as denied:
-            if kind == "gxp":
+            if kind in {"gxp", "gxp_invalid_date_interval"}:
                 service.promote_certificate_current(
                     contender, certificate_id=agg_id,
                     expected_version=edit_result["row_version"],
@@ -126,18 +127,26 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
                     reason="reject stale cached version", user=actor,
                 )
         assert denied.value.status_code == 409
-        assert "requires certificate number" in str(denied.value.detail).lower()
+        assert (
+            "expiry date on or after issue date" if kind == "gxp_invalid_date_interval"
+            else "requires certificate number"
+        ) in str(denied.value.detail).lower()
         contender.rollback()
 
         with factory() as verify:
-            if kind == "gxp":
+            if kind in {"gxp", "gxp_invalid_date_interval"}:
                 stored = verify.get(Certificate, agg_id)
                 stored_version = verify.get(CertificateVersion, version_id)
             else:
                 stored = verify.get(BusinessEligibilityCertificate, agg_id)
                 stored_version = verify.get(BusinessEligibilityVersion, version_id)
             assert stored.latest_flag is False
-            assert stored_version.certificate_number is None
+            assert stored_version.certificate_number == (
+                "VALID-GXP" if kind == "gxp_invalid_date_interval" else None
+            )
+            if kind == "gxp_invalid_date_interval":
+                assert stored_version.issue_date == date(2028, 9, 1)
+                assert stored_version.expiry_date == date(2027, 9, 1)
             assert verify.scalar(select(func.count(AuditEvent.id))) == 1
     finally:
         for session in (contender, editor):

@@ -55,6 +55,7 @@ describe("ApprovalRoundDocuments", () => {
     const onBind = vi.fn();
     view(fixture(), onBind);
     const selector = screen.getByRole("combobox", { name: "Chọn tài liệu cho PCT lần 2" });
+    expect(selector).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /PCT1/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /CT1/ })).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: /PCT2/ })).toHaveValue("pct-doc-b");

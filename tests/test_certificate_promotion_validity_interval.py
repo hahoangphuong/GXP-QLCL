@@ -18,7 +18,7 @@ from backend.app.db.models.phase1 import AuditEvent, Certificate, CertificateVer
 from backend.app.services.workflow import CaseWorkflowService
 
 WORKFLOW = CaseWorkflowService()
-USER = build_authenticated_user("certificate-validity-actor", "manager")
+USER = build_authenticated_user("certificate-validity-actor", "admin")
 
 
 @pytest.fixture

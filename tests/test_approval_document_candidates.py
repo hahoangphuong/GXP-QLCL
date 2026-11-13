@@ -41,8 +41,11 @@ def test_every_pct_document_is_a_round_choice_with_canonical_binding_readback():
             session.flush()
             p1 = InspectionApprovalSubmission(case_id=case.id, stage="PCT", round_no=1)
             p2 = InspectionApprovalSubmission(case_id=case.id, stage="PCT", round_no=2)
+            session.add_all([p1, p2])
+            session.flush()
+            # Canonical CT FK must reference an already-persisted PCT UUID.
             ct = InspectionApprovalSubmission(case_id=case.id, stage="CT", round_no=1, pct_submission_id=p1.id)
-            session.add_all([p1, p2, ct])
+            session.add(ct)
             session.flush()
             pct1 = Document(case_id=case.id, family_code="INSPECTION_PT_PCT",
                             document_type_code="INSPECTION_PT_PCT", title="PCT first source")

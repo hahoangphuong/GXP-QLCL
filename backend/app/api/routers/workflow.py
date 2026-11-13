@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.api.session import commit_or_409, get_session_from_request_factory
-from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions
+from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenticated_user, require_permissions, require_role
 from backend.app.db.enums import ChangeRequestState
 from backend.app.db.models.phase1 import Case
 from backend.app.read_models import (
@@ -30,6 +30,8 @@ from backend.app.read_models import (
     EvaluationScopeMutationRead,
     EvaluationScopeUpsertRequest,
     CaseTransitionRead,
+    CaseNonissuanceDecisionRead,
+    CaseNonissuanceDecisionRecordRequest,
     CaseTransitionRequest,
     ChangeApprovalUpsertRequest,
     ChangeRequestBusinessEligibilitySuccessorIssueRequest,
@@ -108,6 +110,31 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return CaseTransitionRead(**result)
+
+    def read_case_nonissuance_decision(
+        case_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return CaseNonissuanceDecisionRead(
+            **service.get_case_nonissuance_decision(session, case_id=case_id)
+        )
+
+    def record_case_nonissuance_decision(
+        case_id: str,
+        payload: CaseNonissuanceDecisionRecordRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"certificate.approve"})
+        result = service.record_case_nonissuance_decision(
+            session, case_id=case_id, expected_case_version=payload.expected_case_version,
+            decided_on=payload.decided_on, decision_reference=payload.decision_reference,
+            explanation=payload.explanation, reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return CaseNonissuanceDecisionRead(**result)
 
     def upsert_case_application(
         case_id: str,
@@ -719,6 +746,20 @@ def register_workflow_routes(app, session_factory) -> None:
         transition_case,
         methods=["POST"],
         response_model=CaseTransitionRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/certificate-nonissuance-decision",
+        read_case_nonissuance_decision,
+        methods=["GET"],
+        response_model=CaseNonissuanceDecisionRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/certificate-nonissuance-decision",
+        record_case_nonissuance_decision,
+        methods=["POST"],
+        response_model=CaseNonissuanceDecisionRead,
         tags=["workflow"],
     )
     app.add_api_route(

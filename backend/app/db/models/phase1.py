@@ -175,6 +175,24 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     opened_year: Mapped[int | None] = mapped_column(Integer)
 
 
+class CaseCertificateNonissuanceDecision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Explicit, immutable no-certificate decision; never inferred from missing GCN.
+
+    Case lifecycle closure is intentionally a separate owner decision.
+    """
+    __tablename__ = "case_certificate_nonissuance_decision"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True)
+    decided_on: Mapped[date] = mapped_column(Date, nullable=False)
+    decision_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_by_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), nullable=False)
+    __table_args__ = (
+        CheckConstraint("TRIM(decision_reference) <> ''", name="case_nonissuance_reference_nonblank"),
+        CheckConstraint("TRIM(explanation) <> ''", name="case_nonissuance_explanation_nonblank"),
+    )
+
+
 class ProductionLine(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     """First-class line identity; lifecycle operations remain service-owned."""
 

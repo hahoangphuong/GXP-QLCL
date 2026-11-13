@@ -87,7 +87,7 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
         actor = build_authenticated_user("synthetic-version-refresh", "manager")
         contender = factory()
         cached = contender.get(
-            CertificateVersion if kind == "gxp" else BusinessEligibilityVersion,
+            CertificateVersion if kind in {"gxp", "gxp_invalid_date_interval"} else BusinessEligibilityVersion,
             version_id,
         )
         assert cached.certificate_number.startswith("VALID-")

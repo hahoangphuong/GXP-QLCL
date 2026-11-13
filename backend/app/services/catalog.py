@@ -3321,6 +3321,9 @@ class CatalogReadService:
                 capa_cycles=capa_cycles,
                 user=user,
             ),
+            "nonissuance_decision": CaseWorkflowService().get_case_nonissuance_decision(
+                session, case_id=case.id,
+            ),
             "certificate_issue_readiness": CaseWorkflowService().get_case_certificate_issue_readiness(
                 session,
                 case_id=case.id,

@@ -19,6 +19,7 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityVersion,
     CapaCycle,
     Case,
+    CaseCertificateNonissuanceDecision,
     CaseEvaluationScope,
     CaseEvaluationScopeBlock,
     CaseEvaluationScopeSelection,
@@ -394,6 +395,87 @@ class CaseWorkflowService:
             .limit(1)
         ) is not None
 
+    def get_case_nonissuance_decision(self, session: Session, *, case_id: str) -> dict[str, Any]:
+        """Canonical readback for uncertain POST; never retries or synthesizes."""
+        self._get_case(session, case_id)
+        decision = session.scalars(
+            select(CaseCertificateNonissuanceDecision)
+            .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        return {
+            "case_id": case_id,
+            "decision": None if decision is None else {
+                "decision_id": decision.id,
+                "case_id": decision.case_id,
+                "decided_on": decision.decided_on,
+                "decision_reference": decision.decision_reference,
+                "explanation": decision.explanation,
+                "recorded_by_user_id": decision.recorded_by_user_id,
+            },
+        }
+
+    def record_case_nonissuance_decision(
+        self, session: Session, *, case_id: str, expected_case_version: int,
+        decided_on: date, decision_reference: str, explanation: str,
+        reason: str | None, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Record the owner's explicit decision, not a Case lifecycle transition.
+
+        No certificate, legal document or guessed historical refusal is created.
+        Case lock serializes this against Case-backed certificate issuance.
+        """
+        case = self._lock_case(session, case_id)
+        self._assert_expected_version(case, expected_case_version, label="case")
+        if case.state != CaseState.AWAITING_CERTIFICATE_DECISION:
+            raise HTTPException(status_code=409, detail="Case is not awaiting a certificate decision.")
+        if not decision_reference or not decision_reference.strip() or len(decision_reference.strip()) > 255:
+            raise HTTPException(status_code=422, detail="Decision reference is required (up to 255 characters).")
+        if not explanation or not explanation.strip():
+            raise HTTPException(status_code=422, detail="Decision explanation is required.")
+        existing = session.scalar(
+            select(CaseCertificateNonissuanceDecision.id)
+            .where(CaseCertificateNonissuanceDecision.case_id == case.id)
+        )
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="A non-issuance decision already exists; use canonical GET.")
+        outcome = session.scalars(
+            select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if outcome is None or not str(outcome.final_evaluation or "").strip():
+            raise HTTPException(status_code=409, detail="Final inspection evaluation must be recorded first.")
+        self._assert_latest_capa_accepted_if_present(
+            session, case.id, blocked_detail="Latest CAPA cycle must be accepted first."
+        )
+        if session.scalar(select(Certificate.id).where(Certificate.case_id == case.id).limit(1)) is not None:
+            raise HTTPException(status_code=409, detail="Case already has a linked certificate record.")
+        actor = self._get_or_create_app_user(session, user)
+        decision = CaseCertificateNonissuanceDecision(
+            case_id=case.id, decided_on=decided_on,
+            decision_reference=decision_reference.strip(),
+            explanation=explanation.strip(), recorded_by_user_id=actor.id,
+        )
+        session.add(decision)
+        session.flush()
+        self._write_audit_event(
+            session, actor=actor, entity_type="case_certificate_nonissuance_decision",
+            entity_id=decision.id, action="case_certificate_nonissuance_decision.record",
+            payload=self._build_stage_payload(
+                case_id=case.id, decided_on=decided_on.isoformat(),
+                decision_reference=decision.decision_reference,
+                explanation=decision.explanation, reason=reason,
+            ),
+            after={
+                "case_id": case.id, "decided_on": decided_on.isoformat(),
+                "decision_reference": decision.decision_reference,
+                "explanation": decision.explanation,
+            },
+            reason=reason,
+        )
+        session.flush()
+        return self.get_case_nonissuance_decision(session, case_id=case.id)
+
     def get_case_certificate_issue_readiness(
         self,
         session: Session,
@@ -408,6 +490,11 @@ class CaseWorkflowService:
         session.refresh(case)
         permission = "certificate.issue"
         reason = None if permission in user.permissions else "missing_permission"
+        if reason is None and session.scalar(
+            select(CaseCertificateNonissuanceDecision.id)
+            .where(CaseCertificateNonissuanceDecision.case_id == case.id)
+        ) is not None:
+            reason = "case_nonissuance_decision_recorded"
         if reason is None and case.gxp_type == "GMP" and self._gmp_case_already_issued(session, case.id):
             reason = "gmp_case_already_issued"
         if reason is None:
@@ -946,6 +1033,11 @@ class CaseWorkflowService:
                 status_code=409,
                 detail=f"Case must be in one of [{allowed_values}] before certificate workflow can continue.",
             )
+        if session.scalar(
+            select(CaseCertificateNonissuanceDecision.id)
+            .where(CaseCertificateNonissuanceDecision.case_id == case.id)
+        ) is not None:
+            raise HTTPException(status_code=409, detail="Case has an explicit non-issuance decision.")
         self._assert_latest_capa_accepted_if_present(session, case.id, blocked_detail=blocked_detail)
 
     def _assert_latest_capa_accepted_if_present(self, session: Session, case_id: str, *, blocked_detail: str) -> None:

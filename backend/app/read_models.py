@@ -671,6 +671,7 @@ class CaseWorkspaceRead(BaseModel):
     documents: DocumentChecklistRead
     contextual_document_actions: list[ContextualDocumentActionRead]
     certificate_issue_readiness: CertificateIssueActionReadinessRead
+    nonissuance_decision: CaseNonissuanceDecisionRead | None = None
     business_evidence: CaseBusinessEvidenceRead
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
@@ -974,6 +975,28 @@ class BusinessEligibilityDetailRead(BaseModel):
     replaced_by_certificate_number: str | None
     linked_gxp_certificates: list[BusinessEligibilityBasisCertificateRead]
     action_readiness: list[BusinessEligibilityActionReadinessRead] = Field(default_factory=list)
+
+
+class CaseNonissuanceDecisionDetailRead(BaseModel):
+    decision_id: str
+    case_id: str
+    decided_on: date
+    decision_reference: str
+    explanation: str
+    recorded_by_user_id: str
+
+
+class CaseNonissuanceDecisionRead(BaseModel):
+    case_id: str
+    decision: CaseNonissuanceDecisionDetailRead | None
+
+
+class CaseNonissuanceDecisionRecordRequest(BaseModel):
+    expected_case_version: int
+    decided_on: date
+    decision_reference: str
+    explanation: str
+    reason: str | None = None
 
 
 class CaseTransitionRequest(BaseModel):

@@ -19,6 +19,7 @@ function workspace(version = 2, caseId = "case-A"): CaseWorkspace {
     plan_row_version: version, plan_start_on: null, plan_end_on: null, planning_sheet_name: null,
     plan_decision_reference: `Plan ${caseId} v${version}`, plan_decision_date: null,
     outcome_row_version: version, outcome_result: `Outcome ${caseId} v${version}`, minutes_recorded_on: null, minutes_recorded_time: null, compliance_due_on: null,
+    outcome_edit_readiness: { ...readiness, action_key: "edit_inspection_outcome", label: "Sửa kết quả kiểm tra" },
     final_evaluation: null, final_evaluation_readiness: { ...readiness, action_key: "finalize_inspection_outcome", label: "Chốt đánh giá cuối cùng" },
     inspection_period_segments: [{ id: "segment", ordinal: 1, started_on: "2026-10-01", ended_on: "2026-10-02" }],
     inspection_period_edit_readiness: { ...readiness, action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", mode: "replace" },

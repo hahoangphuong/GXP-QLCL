@@ -307,6 +307,9 @@ export type CaseWorkspaceInspection = {
   plan_end_on: string | null;
   planning_sheet_name: string | null;
   outcome_row_version: number | null;
+  // Backend owns whether an existing inspection outcome field may be edited.
+  // Older payloads are treated as unavailable by the editor rather than guessed.
+  outcome_edit_readiness?: LifecycleActionReadiness | null;
   inspected_on: string | null;
   inspected_to_on: string | null;
   inspection_period_state: string | null;

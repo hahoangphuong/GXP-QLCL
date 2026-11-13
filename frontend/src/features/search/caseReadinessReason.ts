@@ -13,6 +13,9 @@ const REASONS: Record<string, string> = {
   latest_cycle_not_rejected: "Chỉ mở thêm vòng khắc phục khi vòng gần nhất bị từ chối.",
   historical_cycle: "Đây là vòng khắc phục lịch sử; chỉ vòng hiện tại được xử lý.",
   invalid_cycle_state: "Trạng thái vòng khắc phục chưa cho phép thao tác này.",
+  certificate_data_incomplete: "Chứng nhận còn thiếu thông tin bắt buộc để đưa vào trạng thái hiện hành.",
+  already_current: "Chứng nhận này đã là bản hiện hành.",
+  candidate_issue_date_precedes_current: "Ngày cấp của chứng nhận dự kiến không được sớm hơn chứng nhận hiện hành.",
 };
 
 export function caseReadinessReason(code: string): string {

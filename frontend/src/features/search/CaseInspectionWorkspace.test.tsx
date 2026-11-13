@@ -14,6 +14,7 @@ function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWo
     inspection: {
       plan_row_version: null, plan_decision_reference: null, plan_decision_date: null, decision_document_hint: null, plan_start_on: null, plan_end_on: null, planning_sheet_name: null,
       outcome_row_version: null, inspected_on: null, inspected_to_on: null, executed_on: null, bbkt_reference: null, outcome_result: null,
+      outcome_edit_readiness: { action_key: "edit_inspection_outcome", label: "Cập nhật kết quả kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: null },
       inspection_period_edit_readiness: { action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6, mode: "replace" },
       team_display_text: "Legacy: do not parse this text",
       team: { team_id: "team-1", row_version: 7, display_text: "Legacy: do not parse this text", round_trip_safe: true, blocked_reason_code: null, members: [
@@ -68,6 +69,27 @@ describe("CaseInspectionWorkspace inspection team editor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Lưu đoàn kiểm tra" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("đã bị thay đổi");
     expect(screen.queryByLabelText("Định danh thành viên 1")).not.toBeInTheDocument();
+  });
+});
+
+describe("CaseInspectionWorkspace inspection outcome readiness", () => {
+  it("fails closed for an unavailable canonical outcome editor without sending a write", () => {
+    const onSave = vi.fn();
+    render(<CaseInspectionWorkspace caseWorkspace={workspace({
+      outcome_edit_readiness: { action_key: "edit_inspection_outcome", label: "Cập nhật kết quả kiểm tra", available: false, reason_code: "missing_permission", required_permissions: ["inspection.edit"], expected_version: 6 },
+    })} onInspectionOutcomeSave={onSave} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
+    expect(screen.getByText(/Tài khoản không có quyền thực hiện thao tác này/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Sửa Kết quả kiểm tra" })).not.toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("uses the canonical outcome readiness version and opens only the existing editor", () => {
+    render(<CaseInspectionWorkspace caseWorkspace={workspace({
+      outcome_row_version: 6,
+      outcome_edit_readiness: { action_key: "edit_inspection_outcome", label: "Cập nhật kết quả kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6 },
+    })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" }), { key: "F2" });
+    expect(screen.getByRole("textbox", { name: "Kết quả kiểm tra" })).toBeInTheDocument();
   });
 });
 

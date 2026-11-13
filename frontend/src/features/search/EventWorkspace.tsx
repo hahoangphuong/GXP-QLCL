@@ -50,11 +50,11 @@ export const CASE_EVENT_LABELS: Record<string, string> = {
 const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
 const GUIDANCE_SELECTORS: Record<CaseGuidanceTarget, string> = {
   application: "[data-case-application]", assessment: "[data-case-assessment]", inspection: "[data-case-inspection]",
-  plan: "[data-case-plan]", team: "[data-case-team]", period: "[data-case-period]", capa: "[data-case-capa]",
-  final: "[data-case-final-evaluation]", approval: "[data-case-approval-history]", certificate: "[data-case-certificate-issue]", lifecycle: "[data-case-lifecycle]",
+  plan: "[data-case-plan]", team: "[data-case-team]", period: "[data-case-period]", outcome: "[data-case-outcome]", capa: "[data-case-capa]",
+  final: "[data-case-final-evaluation]", approval: "[data-case-approval-history]", certificate: "[data-case-certificate-issue]", certificate_edit: "[data-case-certificate-actions]", certificate_promote: "[data-case-certificate-actions]", lifecycle: "[data-case-lifecycle]",
 };
 function guidanceTab(target: CaseGuidanceTarget): string {
-  return target === "certificate" ? "Chứng nhận GxP" : target === "capa" ? "Khắc phục" : target === "application" || target === "assessment" ? "Hồ sơ" : "Kiểm tra";
+  return target === "certificate" || target === "certificate_edit" || target === "certificate_promote" ? "Chứng nhận GxP" : target === "capa" ? "Khắc phục" : target === "application" || target === "assessment" ? "Hồ sơ" : "Kiểm tra";
 }
 
 /** Read-only CT-to-issuance navigation; backend readiness remains authoritative. */
@@ -354,6 +354,7 @@ function renderCaseStepContent(
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>,
   openableCertificateIds: string[],
   onOpenLinkedCertificate?: (certificateId: string) => void,
+  onNavigateCaseCertificate?: (certificateId: string) => void,
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>,
 ) {
   const documentItems = caseWorkspace.contextual_document_actions.filter((item) => {
@@ -566,6 +567,7 @@ export function EventWorkspace({
   onIssueCertificate,
   openableCertificateIds = [],
   onOpenLinkedCertificate,
+  onNavigateCaseCertificate,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
   onCreateCapaCycle,
@@ -610,6 +612,7 @@ export function EventWorkspace({
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
   openableCertificateIds?: string[];
   onOpenLinkedCertificate?: (certificateId: string) => void;
+  onNavigateCaseCertificate?: (certificateId: string) => void;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>;
@@ -673,8 +676,13 @@ export function EventWorkspace({
       </nav>
       <div className={selectedHistory.source_type === "case" && caseWorkspace ? "workspace-body event-workspace-body has-scope-context" : "workspace-body event-workspace-body"}>
         <div className="event-step-content">
-        {selectedHistory.source_type === "case" && caseWorkspace && !caseWorkspaceLoading && !caseWorkspaceError ? <CaseNextActions workspace={caseWorkspace} onNavigate={(target, cycleId) => {
-          if (cycleId) onSelectedRemediationCycleChange(cycleId);
+        {selectedHistory.source_type === "case" && caseWorkspace && !caseWorkspaceLoading && !caseWorkspaceError ? <CaseNextActions workspace={caseWorkspace} onNavigate={(target, relatedId) => {
+          if (target === "certificate_edit" || target === "certificate_promote") {
+            pendingLifecycleFocus.current = null;
+            if (relatedId) onNavigateCaseCertificate?.(relatedId);
+            return;
+          }
+          if (target === "capa" && relatedId) onSelectedRemediationCycleChange(relatedId);
           pendingLifecycleFocus.current = { caseId: selectedHistory.id, target };
           const tab = guidanceTab(target);
           if (effectiveActiveTab === tab) {
@@ -746,6 +754,7 @@ export function EventWorkspace({
             onIssueCertificate,
             openableCertificateIds,
             onOpenLinkedCertificate,
+            onNavigateCaseCertificate,
             onFinalizeInspectionOutcome,
           )
         ) : (

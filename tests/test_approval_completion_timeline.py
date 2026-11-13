@@ -45,6 +45,18 @@ def test_approval_completion_owner_prevents_backdated_mutation_without_audit(
             case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.INSPECTION_COMPLETED)
             setup.add(case)
             setup.flush()
+            pct_parent_id = None
+            if stage == "CT":
+                pct_parent = InspectionApprovalSubmission(
+                    case_id=case.id,
+                    stage="PCT",
+                    round_no=1,
+                    reference="PCT parent",
+                    completed_on=date(2026, 11, 12),
+                )
+                setup.add(pct_parent)
+                setup.flush()
+                pct_parent_id = pct_parent.id
             submission = InspectionApprovalSubmission(
                 case_id=case.id,
                 stage=stage,
@@ -52,6 +64,7 @@ def test_approval_completion_owner_prevents_backdated_mutation_without_audit(
                 reference="SYNTHETIC",
                 submitted_on=submitted_on,
                 submitted_time=submitted_time,
+                pct_submission_id=pct_parent_id,
             )
             setup.add(submission)
             setup.commit()

@@ -60,6 +60,7 @@ from backend.app.db.models.phase1 import (
     InspectionEvent,
     InspectionPlan,
     InspectionApprovalSubmission,
+    InspectionApprovalDocumentLink,
     InspectionOutcome,
     InspectionPeriodSegment,
     InspectionTeam,
@@ -816,11 +817,11 @@ class CatalogReadService:
         *,
         approval_submissions: list[InspectionApprovalSubmission],
         document_checklist: dict[str, object],
+        linked_submission_ids: set[str],
     ) -> list[dict[str, object]]:
-        """Expose Case-level PCT/CT documents without falsely binding them to rounds.
+        """Expose Case-level inventory separately from explicit round binding.
 
-        Document has no approval_submission_id FK. A Case-level family match
-        proves neither a particular PCT/CT round nor legal issuance.
+        Family evidence alone never proves a submission binding or issuance.
         """
         case_documents = {
             item["family_code"]: item
@@ -846,7 +847,13 @@ class CatalogReadService:
                 "selected_case_document_open_available": (
                     False if case_document is None else bool(case_document["open_available"])
                 ),
-                "round_document_binding_state": "not_modelled",
+                "round_document_binding_state": (
+                    "bound"
+                    if stage_submissions and all(item.id in linked_submission_ids for item in stage_submissions)
+                    else "partially_bound"
+                    if any(item.id in linked_submission_ids for item in stage_submissions)
+                    else "unbound"
+                ),
                 "submission_ids": [item.id for item in stage_submissions],
                 "completed_submission_ids": [
                     item.id for item in stage_submissions if item.completed_on is not None
@@ -3001,9 +3008,52 @@ class CatalogReadService:
         case_document_checklist = self._build_case_document_checklist(
             session, case_id=case.id, capa_cycles=capa_cycles,
         )
+        # Explicit link facts are resolved through both canonical parents.
+        # An orphan/cross-Case/mis-staged link is a data-integrity conflict,
+        # never proof that the document belongs to the viewed submission.
+        linked_rows = list(session.execute(
+            select(InspectionApprovalDocumentLink, InspectionApprovalSubmission, Document)
+            .join(
+                InspectionApprovalSubmission,
+                InspectionApprovalSubmission.id == InspectionApprovalDocumentLink.approval_submission_id,
+            )
+            .join(Document, Document.id == InspectionApprovalDocumentLink.document_id)
+            .where(InspectionApprovalSubmission.case_id == case.id)
+            .order_by(
+                InspectionApprovalSubmission.stage.asc(),
+                InspectionApprovalSubmission.round_no.asc(),
+                InspectionApprovalDocumentLink.created_at.asc(),
+                InspectionApprovalDocumentLink.id.asc(),
+            )
+            .execution_options(populate_existing=True)
+        ).all())
+        approval_document_links = []
+        for link, submission, document in linked_rows:
+            expected_family = "INSPECTION_PT_PCT" if submission.stage == "PCT" else "INSPECTION_PT_CT"
+            if (
+                submission.stage not in {"PCT", "CT"}
+                or document.case_id != case.id
+                or document.family_code != expected_family
+                or any(parent is not None for parent in (
+                    document.capa_cycle_id, document.certificate_id,
+                    document.business_eligibility_certificate_id, document.change_request_id,
+                ))
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Approval document link violates canonical Case/stage ownership.",
+                )
+            approval_document_links.append({
+                "approval_submission_id": submission.id,
+                "document_id": document.id,
+                "binding_id": link.id,
+                "stage": submission.stage,
+                "round_no": submission.round_no,
+            })
         approval_document_evidence = self._build_approval_document_evidence(
             approval_submissions=approval_submissions,
             document_checklist=case_document_checklist,
+            linked_submission_ids={item["approval_submission_id"] for item in approval_document_links},
         )
         return {
             "case_summary": {
@@ -3077,6 +3127,7 @@ class CatalogReadService:
                 "final_evaluation_readiness": final_evaluation_readiness,
                 "approval_actions": approval_actions,
                 "approval_document_evidence": approval_document_evidence,
+                "approval_document_links": approval_document_links,
                 "approval_submissions": [
                     {"approval_submission_id": item.id, "case_id": item.case_id, "stage": item.stage, "round_no": item.round_no,
                      "reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time,

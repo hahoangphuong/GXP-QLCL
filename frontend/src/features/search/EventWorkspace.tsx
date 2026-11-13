@@ -48,6 +48,14 @@ export const CASE_EVENT_LABELS: Record<string, string> = {
   "Xử lý": "Xử lý tiếp", "Chứng nhận GxP": "Cấp chứng nhận GPs", "Chứng nhận ĐĐK": "Cấp chứng nhận ĐĐK",
 };
 const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
+const GUIDANCE_SELECTORS: Record<CaseGuidanceTarget, string> = {
+  application: "[data-case-application]", assessment: "[data-case-assessment]", inspection: "[data-case-inspection]",
+  plan: "[data-case-plan]", team: "[data-case-team]", period: "[data-case-period]", capa: "[data-case-capa]",
+  final: "[data-case-final-evaluation]", approval: "[data-case-approval-history]", certificate: "[data-case-certificate-issue]", lifecycle: "[data-case-lifecycle]",
+};
+function guidanceTab(target: CaseGuidanceTarget): string {
+  return target === "certificate" ? "Chứng nhận GxP" : target === "capa" ? "Khắc phục" : target === "application" || target === "assessment" ? "Hồ sơ" : "Kiểm tra";
+}
 
 /** Read-only CT-to-issuance navigation; backend readiness remains authoritative. */
 export function CaseApprovalCertificateHandoff({ workspace, activeTab, onNavigate }: {
@@ -621,13 +629,9 @@ export function EventWorkspace({
       pendingLifecycleFocus.current = null;
       return;
     }
-    const targetTab = targetName === "certificate" ? "Chứng nhận GxP" : targetName === "capa" ? "Khắc phục" : targetName === "application" ? "Hồ sơ" : "Kiểm tra";
+    const targetTab = guidanceTab(targetName);
     if (activeTab === targetTab && !caseWorkspaceLoading && !caseWorkspaceError && caseWorkspace?.case_summary.id === caseId) {
-      const selector = targetName === "final" ? "[data-case-final-evaluation]"
-        : targetName === "lifecycle" ? "[data-case-lifecycle]"
-        : targetName === "approval" ? "[data-case-approval-history]" : targetName === "certificate" ? "[data-case-certificate-issue]"
-        : targetName === "capa" ? "[data-case-capa]" : targetName === "application" ? "[data-case-application]" : "[data-case-inspection]";
-      const target = rootRef.current?.querySelector<HTMLElement>(selector);
+      const target = rootRef.current?.querySelector<HTMLElement>(GUIDANCE_SELECTORS[targetName]);
       if (target) { pendingLifecycleFocus.current = null; target.focus(); }
     }
   }, [activeTab, caseWorkspace, caseWorkspaceError, caseWorkspaceLoading, selectedHistory]);
@@ -672,11 +676,10 @@ export function EventWorkspace({
         {selectedHistory.source_type === "case" && caseWorkspace && !caseWorkspaceLoading && !caseWorkspaceError ? <CaseNextActions workspace={caseWorkspace} onNavigate={(target, cycleId) => {
           if (cycleId) onSelectedRemediationCycleChange(cycleId);
           pendingLifecycleFocus.current = { caseId: selectedHistory.id, target };
-          const tab = target === "certificate" ? "Chứng nhận GxP" : target === "capa" ? "Khắc phục" : target === "application" ? "Hồ sơ" : "Kiểm tra";
+          const tab = guidanceTab(target);
           if (effectiveActiveTab === tab) {
-            const selector = target === "capa" ? "[data-case-capa]" : target === "final" ? "[data-case-final-evaluation]" : target === "approval" ? "[data-case-approval-history]" : target === "certificate" ? "[data-case-certificate-issue]" : target === "lifecycle" ? "[data-case-lifecycle]" : target === "application" ? "[data-case-application]" : "[data-case-inspection]";
             pendingLifecycleFocus.current = null;
-            rootRef.current?.querySelector<HTMLElement>(selector)?.focus();
+            rootRef.current?.querySelector<HTMLElement>(GUIDANCE_SELECTORS[target])?.focus();
           } else onTabChange(tab);
         }} /> : null}
         {selectedHistory.source_type === "case" && caseWorkspace && !caseWorkspaceLoading && !caseWorkspaceError && effectiveActiveTab !== "Kiểm tra" ? (

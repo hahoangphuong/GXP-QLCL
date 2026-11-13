@@ -270,7 +270,7 @@ export function CaseProcessingWorkspace({
   return (
     <div className={`event-step-stack${view === "assessment" ? " case-assessment-stack" : view === "timeline" ? " processing-timeline" : ""}`}>
       {requiresReview ? <p className="form-error" role="alert">Chưa xác minh kết quả lưu. Không gửi lại; sao chép bản nháp rồi tải lại hồ sơ.</p> : null}
-      {view !== "timeline" ? <section className="workspace-section case-assessment-section">
+      {view !== "timeline" ? <section className="workspace-section case-assessment-section" data-case-assessment tabIndex={-1} aria-label="Khu vực thẩm định hồ sơ">
         <h4 className={view === "assessment" ? "sr-only" : undefined}>{view === "assessment" ? "Thẩm định hồ sơ" : "Thông tin xử lý"}</h4>
         <div className="case-assessment-grid">
         <div className="detail-grid compact-grid detail-form-matrix case-assessment-metadata">

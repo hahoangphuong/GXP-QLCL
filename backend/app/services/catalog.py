@@ -812,6 +812,112 @@ class CatalogReadService:
             result.append(item)
         return {"items": result}
 
+    def _build_approval_document_candidates(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        approval_submissions: list[InspectionApprovalSubmission],
+        approval_document_links: list[dict[str, object]],
+        permissions: set[str],
+        terminal_case: bool,
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        """Return every canonical Case document and permission-aware bind actions.
+
+        The ordinary checklist selects only one best Document for each family.
+        A multi-round PCT/CT operator needs all exact Case-owned Documents,
+        including metadata-only rows. Neither filenames nor submission dates
+        establish a link; only the persisted UUID link does.
+        """
+        family_stage = {"INSPECTION_PT_PCT": "PCT", "INSPECTION_PT_CT": "CT"}
+        documents = list(session.scalars(
+            select(Document)
+            .where(
+                Document.case_id == case_id,
+                Document.family_code.in_(tuple(family_stage)),
+                Document.capa_cycle_id.is_(None),
+                Document.certificate_id.is_(None),
+                Document.business_eligibility_certificate_id.is_(None),
+                Document.change_request_id.is_(None),
+            )
+            .order_by(Document.family_code.asc(), Document.created_at.asc(), Document.id.asc())
+            .execution_options(populate_existing=True)
+        ))
+        ids = [row.id for row in documents]
+        variants = (
+            list(session.scalars(
+                select(DocumentVariant).where(DocumentVariant.document_id.in_(ids))
+                .execution_options(populate_existing=True)
+            ))
+            if ids else []
+        )
+        variants_by_document: dict[str, list[DocumentVariant]] = defaultdict(list)
+        for variant in variants:
+            variants_by_document[variant.document_id].append(variant)
+        variant_ids = [variant.id for variant in variants]
+        versions = (
+            list(session.scalars(
+                select(DocumentVersion)
+                .where(DocumentVersion.document_variant_id.in_(variant_ids))
+                .execution_options(populate_existing=True)
+            ))
+            if variant_ids else []
+        )
+        versions_by_variant: dict[str, list[DocumentVersion]] = defaultdict(list)
+        for version in versions:
+            versions_by_variant[version.document_variant_id].append(version)
+        bound_by_document = {
+            item["document_id"]: item["approval_submission_id"]
+            for item in approval_document_links
+        }
+        candidates: list[dict[str, object]] = []
+        for document in documents:
+            document_versions = [
+                version
+                for variant in variants_by_document.get(document.id, ())
+                for version in versions_by_variant.get(variant.id, ())
+            ]
+            chosen = self._pick_document_version(document_versions)
+            candidates.append({
+                "document_id": document.id,
+                "stage": family_stage[document.family_code],
+                "family_code": document.family_code,
+                "title": document.title,
+                "open_available": self._document_version_open_available(chosen),
+                "bound_submission_id": bound_by_document.get(document.id),
+            })
+
+        permission_set = {"inspection.edit", "document.read"}
+        readiness: list[dict[str, object]] = []
+        for submission in approval_submissions:
+            if submission.stage not in {"PCT", "CT"}:
+                # Invalid legacy stages must never become enabled binding actions.
+                continue
+            eligible = [
+                item["document_id"]
+                for item in candidates
+                if item["stage"] == submission.stage
+                and item["bound_submission_id"] in (None, submission.id)
+            ]
+            reason = (
+                "missing_permission" if not permission_set.issubset(permissions)
+                else "terminal_case" if terminal_case
+                else "no_eligible_documents" if not eligible
+                else None
+            )
+            readiness.append({
+                "action_key": "bind_approval_document",
+                "approval_submission_id": submission.id,
+                "stage": submission.stage,
+                "round_no": submission.round_no,
+                "expected_version": submission.row_version,
+                "available": reason is None,
+                "reason_code": reason,
+                "required_permissions": ["inspection.edit", "document.read"],
+                "eligible_document_ids": eligible if reason is None else [],
+            })
+        return candidates, readiness
+
     @staticmethod
     def _build_approval_document_evidence(
         *,
@@ -3055,6 +3161,16 @@ class CatalogReadService:
             document_checklist=case_document_checklist,
             linked_submission_ids={item["approval_submission_id"] for item in approval_document_links},
         )
+        approval_document_candidates, approval_document_bind_readiness = (
+            self._build_approval_document_candidates(
+                session,
+                case_id=case.id,
+                approval_submissions=approval_submissions,
+                approval_document_links=approval_document_links,
+                permissions=permissions,
+                terminal_case=terminal_case,
+            )
+        )
         return {
             "case_summary": {
                 "id": case.id,
@@ -3128,6 +3244,8 @@ class CatalogReadService:
                 "approval_actions": approval_actions,
                 "approval_document_evidence": approval_document_evidence,
                 "approval_document_links": approval_document_links,
+                "approval_document_candidates": approval_document_candidates,
+                "approval_document_bind_readiness": approval_document_bind_readiness,
                 "approval_submissions": [
                     {"approval_submission_id": item.id, "case_id": item.case_id, "stage": item.stage, "round_no": item.round_no,
                      "reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time,

@@ -264,6 +264,6 @@ def test_readiness_http_route_read_role_and_nonexistent_case(scenario):
             endpoint(case_id=case_id, session=db, user=build_authenticated_user("viewer", "viewer"))
         assert forbidden.value.status_code == 403
         with pytest.raises(HTTPException) as missing:
-            endpoint(case_id="00000000-0000-4000-8000-000000000001", session=db, user=_actor())
+            endpoint(case_id="00000000-0000-4000-8000-000000000001", session=db, user=build_authenticated_user("reader", "reader"))
         assert missing.value.status_code == 404
 

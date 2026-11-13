@@ -772,6 +772,49 @@ class CatalogReadService:
                 )
         return {"items": self._serialize_document_checklist_items(session, definitions=definitions)}
 
+    @staticmethod
+    def _build_approval_document_evidence(
+        *,
+        approval_submissions: list[InspectionApprovalSubmission],
+        document_checklist: dict[str, object],
+    ) -> list[dict[str, object]]:
+        """Expose Case-level PCT/CT documents without falsely binding them to rounds.
+
+        Document has no approval_submission_id FK. A Case-level family match
+        proves neither a particular PCT/CT round nor legal issuance.
+        """
+        case_documents = {
+            item["family_code"]: item
+            for item in document_checklist["items"]
+            if item["parent_scope"] == "case"
+            and item["family_code"] in {"INSPECTION_PT_PCT", "INSPECTION_PT_CT"}
+        }
+        result: list[dict[str, object]] = []
+        for stage, family in (("PCT", "INSPECTION_PT_PCT"), ("CT", "INSPECTION_PT_CT")):
+            stage_submissions = [item for item in approval_submissions if item.stage == stage]
+            case_document = case_documents.get(family)
+            result.append({
+                "stage": stage,
+                "family_code": family,
+                "case_document_status": (
+                    "available"
+                    if case_document is not None and case_document["status"] == "available"
+                    else "missing"
+                ),
+                "selected_case_document_id": (
+                    None if case_document is None else case_document["document_id"]
+                ),
+                "selected_case_document_open_available": (
+                    False if case_document is None else bool(case_document["open_available"])
+                ),
+                "round_document_binding_state": "not_modelled",
+                "submission_ids": [item.id for item in stage_submissions],
+                "completed_submission_ids": [
+                    item.id for item in stage_submissions if item.completed_on is not None
+                ],
+            })
+        return result
+
     def _build_case_contextual_document_actions(
         self,
         session: Session,
@@ -2914,6 +2957,15 @@ class CatalogReadService:
                 )
             )
 
+        # Reuse the canonical Case checklist once for both the document panel
+        # and per-stage documentary visibility. Never infer a round binding.
+        case_document_checklist = self._build_case_document_checklist(
+            session, case_id=case.id, capa_cycles=capa_cycles,
+        )
+        approval_document_evidence = self._build_approval_document_evidence(
+            approval_submissions=approval_submissions,
+            document_checklist=case_document_checklist,
+        )
         return {
             "case_summary": {
                 "id": case.id,
@@ -2985,6 +3037,7 @@ class CatalogReadService:
                 "compliance_due_on": None if outcome is None else outcome.compliance_due_on,
                 "final_evaluation_readiness": final_evaluation_readiness,
                 "approval_actions": approval_actions,
+                "approval_document_evidence": approval_document_evidence,
                 "approval_submissions": [
                     {"approval_submission_id": item.id, "case_id": item.case_id, "stage": item.stage, "round_no": item.round_no,
                      "reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time,
@@ -3053,7 +3106,7 @@ class CatalogReadService:
                 ],
             },
             "evaluation_scope": self._serialize_evaluation_scope(session, case=case),
-            "documents": self._build_case_document_checklist(session, case_id=case.id, capa_cycles=capa_cycles),
+            "documents": case_document_checklist,
             "contextual_document_actions": self._build_case_contextual_document_actions(
                 session,
                 case_id=case.id,

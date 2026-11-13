@@ -2001,7 +2001,10 @@ export function SearchPage({
 
   async function handleApprovalDocumentsConfirmed(caseId: string) {
     const operationOwner = caseOperationOwner.current;
-    if (!selectedHistory || selectedHistory.source_type !== "case" || selectedHistory.id !== caseId) return;
+    // An old async callback may retain selectedHistory from Case A after the
+    // active owner moved to B. The live operation-owner ref is authoritative.
+    if (!selectedHistory || selectedHistory.source_type !== "case"
+        || selectedHistory.id !== caseId || operationOwner.historyId !== caseId) return;
     await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
   }
 

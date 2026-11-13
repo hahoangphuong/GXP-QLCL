@@ -70,7 +70,7 @@ not an acceptance blocker for this business slice.
 | 3. Inspection plan, periods, team, outcome, final evaluation and approval chain | `IMPLEMENTED` | Canonical editors/actions exist with Case/team/outcome tokens. Legacy composite strings remain projections rather than mutation identities. |
 | 4. Quyết định kiểm tra, biên bản thẩm định/kiểm tra creation | `BLOCKED_BY_BACKEND` | Legacy families and placement are proven; contextual rows exist, but typed input/render contracts remain `BUSINESS_INPUT_CONTRACT_MISSING`. |
 | 5. CAPA cycles and assessment | `PARTIAL` | Multi-cycle create/update/submit/assess is implemented. CAPA 1/2 document creation remains `BLOCKED_BY_BACKEND`; no typed create contract is advertised. |
-| 6. Xử lý tiếp and approval documents | `PARTIAL` | Canonical timeline plus PCT/CT submission workflows are implemented. Legacy risk/PCT/CT/certificate-decision document generation remains `BLOCKED_BY_BACKEND`. |
+| 6. Xử lý tiếp and approval documents | `PARTIAL` | Canonical timeline plus PCT/CT submission workflows and persisted round-bound document open are implemented. Legacy risk/PCT/CT/certificate-decision document generation remains `BLOCKED_BY_BACKEND`. |
 | 7. GxP certificate issue/edit/promote, scope and persisted history | `IMPLEMENTED` | Case and Facility owners, version UUIDs, scopes, readiness and concurrency are present. Binary/legal attestation remains separate from metadata. |
 | 8. ĐĐK issue/edit/promote, basis links, source provenance and persisted history | `PARTIAL` | Canonical Facility/Case views and mutations are implemented. The five legacy DDKD generated-document slots and preparatory forms remain `BLOCKED_BY_BACKEND`. |
 | 9. Facility search, exact line identity, history and change workflow | `IMPLEMENTED` | Search/history/deep-link and ChangeRequest create/detail/approval/successor flows are canonical. Full persisted FilterForm queries are omitted by explicit user decision and unsupported API semantics. |
@@ -2353,3 +2353,27 @@ owner. EVIDENCE_MISSING: authenticated Google/OIDC browser UAT, native screen
 reader, original VBA runtime behavior for this post-legacy guidance panel, and
 real Certificate binary/Word/NAS output. This is not a claim of production UAT
 or a new backend workflow.
+
+## PCT/CT round-bound document opening — 2026-11-13
+
+Each persisted `approval_document_links` row now exposes a read-only **Mở tài
+liệu** action. The action supplies only its canonical
+`approval_submission_id` and `document_id` to the approved content endpoint;
+it neither binds a document nor derives an owner from filename, document family,
+candidate list, round number, or display text. This makes same-name documents
+and multiple PCT/CT rounds independent even when they appear together in one
+Case workspace.
+
+The open intent is owned by the committed Case operation generation and a latest
+open-intent token. A late binary or 403/404/409/503 result from PCT1 after PCT2,
+or from a replaced Case A, is suppressed rather than opening or reporting into
+the current context. This read-only path does not take a mutation lock, change a
+draft, retry, refresh the Case, or alter approval completion/binding semantics.
+Visible current-context failures are rendered in Vietnamese: access denied,
+missing canonical link, unavailable current binary, and storage unavailable.
+
+UNIT_VERIFIED: exact PCT binding filtering, CT/PCT isolation, no bind write,
+canonical endpoint path, all four error classes, and a deferred PCT1 → PCT2
+binary response that opens only PCT2. `EVIDENCE_MISSING`: authenticated Google
+OIDC browser verification, actual NAS/Word binary rendering, native screen
+reader output, and legacy VBA runtime behavior for this web-only round action.

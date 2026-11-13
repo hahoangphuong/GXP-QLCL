@@ -47,6 +47,7 @@ import {
   getCaseInspectionPlanRuntimeReadiness,
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
+  openApprovalSubmissionDocumentCurrentContent,
   renderCaseInspectionPlan,
   getFacilityWorkspace,
   getGxpCertificateDetail,
@@ -639,6 +640,7 @@ export function SearchPage({
   const eventContext = ownedWorkspace ?? (ownedRequest && ownedRequest.status !== "ready" ? ownedRequest.previous : null);
   const selectedHistory = deepLinkError ? null : eventContext?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const caseOperationOwner = useRef({ context: selectedContext, historyId: selectedHistory?.id ?? null });
+  const approvalDocumentOpenIntent = useRef<object | null>(null);
   const createChangeRequestWrites = useRef(new Map<string, object>());
   const [createChangeRequestPhases, setCreateChangeRequestPhases] = useState<Record<string, "pending" | "review">>({});
   const createChangeRequestOwnerKey = selectedResult && selectedContext
@@ -2008,6 +2010,38 @@ export function SearchPage({
     await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
   }
 
+  async function handleOpenApprovalDocument(submissionId: string, documentId: string) {
+    if (!selectedHistory || selectedHistory.source_type !== "case" || !selectedCaseWorkspace) {
+      throw new Error("Chưa chọn hồ sơ để mở tài liệu lần trình.");
+    }
+    const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
+    const submission = selectedCaseWorkspace.inspection.approval_submissions.find(value =>
+      value.approval_submission_id === submissionId && value.case_id === caseId);
+    const link = selectedCaseWorkspace.inspection.approval_document_links?.find(value =>
+      value.approval_submission_id === submissionId && value.document_id === documentId
+      && value.stage === submission?.stage && value.round_no === submission?.round_no);
+    if (!submission || !link) throw new Error("Tài liệu không có liên kết canonical với lần trình đang chọn.");
+    const intent = {};
+    approvalDocumentOpenIntent.current = intent;
+    try {
+      const response = await openApprovalSubmissionDocumentCurrentContent(
+        submissionId, documentId, auth, useStubAuth, bearerToken,
+      );
+      if (approvalDocumentOpenIntent.current !== intent || !isCurrentCaseOperation(operationOwner)) return;
+      const objectUrl = URL.createObjectURL(response.blob);
+      window.open(objectUrl, "_blank", "noopener");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      // A later round/document or Case has superseded this read. Its failure
+      // belongs to the stale owner too, so it must not replace the live UI.
+      if (approvalDocumentOpenIntent.current !== intent || !isCurrentCaseOperation(operationOwner)) return;
+      throw error;
+    } finally {
+      if (approvalDocumentOpenIntent.current === intent) approvalDocumentOpenIntent.current = null;
+    }
+  }
+
   async function handleCaseTransition(payload: import("../types").CaseTransitionRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để chuyển trạng thái.");
     const caseId = selectedHistory.id;
@@ -2896,6 +2930,7 @@ export function SearchPage({
               onBindApprovalDocument={handleBindApprovalDocument}
               onReadApprovalDocuments={handleReadApprovalDocuments}
               onApprovalDocumentsConfirmed={handleApprovalDocumentsConfirmed}
+              onOpenApprovalDocument={handleOpenApprovalDocument}
               onTransitionCase={handleCaseTransition}
               onFinalizeInspectionOutcome={handleFinalizeInspectionOutcome}
               onInspectionTeamSave={handleInspectionTeamSave}

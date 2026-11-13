@@ -12,6 +12,7 @@ type Props = {
   onBind?: (id: string, payload: ApprovalDocumentBindRequest) => Promise<ApprovalDocumentBindingResponse>;
   onReadback?: (id: string) => Promise<ApprovalDocumentReadback>;
   onConfirmed?: (caseId: string) => Promise<void>;
+  onOpenCurrentContent?: (submissionId: string, documentId: string) => Promise<void>;
 };
 
 type PendingBinding = {
@@ -42,7 +43,16 @@ function verifiedBinding(readback: ApprovalDocumentReadback, command: PendingBin
       && Boolean(link.binding_id));
 }
 
-export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadback, onConfirmed }: Props) {
+function openErrorMessage(error: unknown): string {
+  const status = (error as Error & { status?: unknown }).status;
+  if (status === 403) return "Bạn không có quyền đọc tài liệu đã liên kết với lần trình này.";
+  if (status === 404) return "Không tìm thấy liên kết tài liệu canonical của lần trình này.";
+  if (status === 409) return "Tài liệu đã liên kết chưa có binary hiện hành hợp lệ để mở.";
+  if (status === 503) return "Kho lưu trữ tài liệu hiện không khả dụng. Hãy thử lại sau.";
+  return error instanceof Error ? error.message : "Không thể mở nội dung tài liệu đã liên kết.";
+}
+
+export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadback, onConfirmed, onOpenCurrentContent }: Props) {
   const caseId = workspace.case_summary.id;
   const id = submission.approval_submission_id;
   const label = `${submission.stage} lần ${submission.round_no}`;
@@ -52,6 +62,8 @@ export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadba
   const [error, setError] = useCaseDraftState<string | null>(`approval.document-bind.${id}.error`, null);
   const [result, setResult] = useCaseDraftState<string | null>(`approval.document-bind.${id}.result`, null);
   const [checking, setChecking] = useState(false);
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
   const readiness = (workspace.inspection.approval_document_bind_readiness ?? []).find(item =>
     item.approval_submission_id === id && item.stage === submission.stage
     && item.round_no === submission.round_no);
@@ -140,6 +152,19 @@ export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadba
     }
   }
 
+  async function open(link: typeof links[number]) {
+    if (!onOpenCurrentContent || openingDocumentId !== null) return;
+    setOpeningDocumentId(link.document_id);
+    setOpenError(null);
+    try {
+      await onOpenCurrentContent(id, link.document_id);
+    } catch (error) {
+      setOpenError(openErrorMessage(error));
+    } finally {
+      setOpeningDocumentId(current => current === link.document_id ? null : current);
+    }
+  }
+
   // Older canonical projections do not advertise round-level association.
   // Never show a guessed status or an enabled action in that case.
   if (!workspace.inspection.approval_document_candidates
@@ -155,6 +180,9 @@ export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadba
         {source?.title || link.document_id} — UUID: {link.document_id}
         {source && !source.open_available ? " (chưa có bản hiện hành mở được)" : ""}
         {!source ? " (không còn metadata tài liệu trong Case; cần xác minh)" : ""}
+        {onOpenCurrentContent ? <button type="button" className="secondary" disabled={openingDocumentId !== null}
+          aria-label={`Mở tài liệu ${link.document_id} của ${label}`}
+          onClick={() => void open(link)}>{openingDocumentId === link.document_id ? "Đang mở…" : "Mở tài liệu"}</button> : null}
       </li>;
     })}</ul> : <p className="workspace-note">Chưa có tài liệu được xác minh liên kết tới lần trình này.</p>}
     <p className="workspace-note">Tài liệu {submission.stage} cấp hồ sơ: {candidates.length}; có thể mở theo metadata: {candidates.filter(item => item.open_available).length}.</p>
@@ -181,5 +209,6 @@ export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadba
     </div> : null}
     {result ? <p role="status">{result}</p> : null}
     {error ? <p role="alert" className="form-error">{error}</p> : null}
+    {openError ? <p role="alert" className="form-error">{openError}</p> : null}
   </section>;
 }

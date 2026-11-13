@@ -1493,6 +1493,106 @@ class CaseWorkflowService:
             "change_approval_id": change_approval_id,
         }
 
+    @staticmethod
+    def _facility_master_required_text(value: str | None, *, field: str, limit: int) -> str:
+        normalized = str(value or "").strip()
+        if not normalized or len(normalized) > limit:
+            raise HTTPException(
+                status_code=422, detail=f"{field} must contain 1 to {limit} characters."
+            )
+        return normalized
+
+    @staticmethod
+    def _facility_master_optional_text(value: str | None, *, field: str, limit: int) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if len(normalized) > limit:
+            raise HTTPException(status_code=422, detail=f"{field} exceeds {limit} characters.")
+        return normalized
+
+    def create_company_master(
+        self, session: Session, *, company_id: str, legal_name: str,
+        legal_address: str, english_name: str | None, short_name: str | None,
+        legal_address_en: str | None, reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Explicit new Company identity; no name-based deduplication.
+
+        UUID v4 is client-generated before the first POST. If response delivery
+        fails, the operator reads canonical GET /companies/{id}; do not replay.
+        """
+        normalized = {
+            "legal_name": self._facility_master_required_text(legal_name, field="legal_name", limit=512),
+            "legal_address": self._facility_master_required_text(legal_address, field="legal_address", limit=10000),
+            "english_name": self._facility_master_optional_text(english_name, field="english_name", limit=512),
+            "short_name": self._facility_master_optional_text(short_name, field="short_name", limit=128),
+            "legal_address_en": self._facility_master_optional_text(legal_address_en, field="legal_address_en", limit=10000),
+        }
+        if session.scalar(select(Company.id).where(Company.id == company_id)) is not None:
+            raise HTTPException(status_code=409, detail="Company UUID already exists; resolve the original POST with canonical GET.")
+        actor = self._get_or_create_app_user(session, user)
+        company = Company(id=company_id, **normalized, is_inactive=False)
+        session.add(company)
+        session.flush()
+        audit = self._write_audit_event(
+            session, actor=actor, entity_type="company", entity_id=company.id,
+            action="company.create", payload={"company_id": company.id, **normalized},
+            after={"company_id": company.id, **normalized, "legacy_company_id": None, "is_inactive": False},
+            reason=reason,
+        )
+        return {
+            "id": company.id, "legacy_company_id": None, **normalized,
+            "is_inactive": company.is_inactive, "audit_event_id": audit.id,
+        }
+
+    def create_site_master(
+        self, session: Session, *, company_id: str, site_id: str,
+        site_name: str, site_address: str, site_name_en: str | None,
+        site_address_en: str | None, province_name: str | None,
+        short_name: str | None, reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Create a Site under an explicitly selected active Company owner.
+
+        Does not fabricate GxP registration, ProductionLine or inspection Case.
+        """
+        normalized = {
+            "site_name": self._facility_master_required_text(site_name, field="site_name", limit=512),
+            "site_address": self._facility_master_required_text(site_address, field="site_address", limit=10000),
+            "site_name_en": self._facility_master_optional_text(site_name_en, field="site_name_en", limit=512),
+            "site_address_en": self._facility_master_optional_text(site_address_en, field="site_address_en", limit=10000),
+            "province_name": self._facility_master_optional_text(province_name, field="province_name", limit=255),
+            "short_name": self._facility_master_optional_text(short_name, field="short_name", limit=255),
+        }
+        company = session.scalars(
+            select(Company).where(Company.id == company_id)
+            .with_for_update(of=Company).execution_options(populate_existing=True)
+        ).one_or_none()
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found.")
+        if company.is_inactive:
+            raise HTTPException(status_code=409, detail="Cannot create a Site under an inactive Company.")
+        if session.scalar(select(Site.id).where(Site.id == site_id)) is not None:
+            raise HTTPException(status_code=409, detail="Site UUID already exists; resolve the original POST with canonical GET.")
+        actor = self._get_or_create_app_user(session, user)
+        site = Site(id=site_id, company_id=company.id, **normalized)
+        session.add(site)
+        session.flush()
+        audit = self._write_audit_event(
+            session, actor=actor, entity_type="site", entity_id=site.id,
+            action="site.create",
+            payload={"site_id": site.id, "company_id": company.id, **normalized},
+            after={"site_id": site.id, "company_id": company.id, **normalized, "legacy_site_id": None},
+            reason=reason,
+        )
+        return {
+            "id": site.id, "legacy_site_id": None,
+            "company_id": company.id, **normalized, "audit_event_id": audit.id,
+        }
+
     def get_create_change_request_action_readiness(
         self,
         session: Session,

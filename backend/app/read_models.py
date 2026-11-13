@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, UUID4
 from typing import Literal
 
 
@@ -51,6 +51,39 @@ class SiteDetailRead(BaseModel):
     site_address_en: str | None
     province_name: str | None
     short_name: str | None
+
+
+class CompanyMasterCreateRequest(BaseModel):
+    # The caller allocates an RFC 4122 UUID v4 before POST. A lost response
+    # is resolved with GET /companies/{company_id}, never a second POST.
+    company_id: UUID4
+    legal_name: str
+    legal_address: str
+    english_name: str | None = None
+    short_name: str | None = None
+    legal_address_en: str | None = None
+    reason: str | None = None
+
+
+class SiteMasterCreateRequest(BaseModel):
+    # The owning Company UUID is supplied by the route; never inferred
+    # from a company name or from a legacy GxP source.
+    site_id: UUID4
+    site_name: str
+    site_address: str
+    site_name_en: str | None = None
+    site_address_en: str | None = None
+    province_name: str | None = None
+    short_name: str | None = None
+    reason: str | None = None
+
+
+class CompanyMasterCreateRead(CompanyDetailRead):
+    audit_event_id: str
+
+
+class SiteMasterCreateRead(SiteDetailRead):
+    audit_event_id: str
 
 
 class CaseDetailRead(BaseModel):

@@ -244,7 +244,26 @@ def test_downgrade_removes_only_protective_triggers_without_rewriting_links(boun
         assert verify.get(Document, ids["document"]).case_id == ids["other"]
         assert verify.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 1
         assert verify.scalar(select(func.count(AuditEvent.id))) == 1
+    # The upgraded version must reject pre-existing corrupt associations;
+    # it must not invent a Case owner or silently relabel the document.
+    with pytest.raises(RuntimeError, match="APPROVAL_BOUND_SOURCE_INVALID_PREEXISTING_LINKS"):
+        with engine.begin() as connection:
+            _apply_migration(connection, "upgrade")
+    with factory() as repair:
+        # Synthetic teardown of intentional corruption only; production data
+        # must be reviewed and repaired by an authorized data owner.
+        repair.execute(
+            update(Document).where(Document.id == ids["document"])
+            .values(case_id=ids["case"])
+        )
+        repair.commit()
     with engine.begin() as connection:
         _apply_migration(connection, "upgrade")
     with factory() as verify:
         assert verify.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 1
+        with pytest.raises(IntegrityError, match="APPROVAL_BOUND_DOCUMENT_SOURCE_IMMUTABLE"):
+            verify.execute(
+                update(Document).where(Document.id == ids["document"])
+                .values(case_id=ids["other"])
+            )
+        verify.rollback()

@@ -79,7 +79,13 @@ export function ApprovalRoundDocuments({ workspace, submission, onBind, onReadba
       setError(null);
       // Readback is authoritative; a separate workspace refresh may fail
       // without changing its verified outcome.
-      if (onConfirmed) await onConfirmed(caseId).catch(() => undefined);
+      if (onConfirmed) {
+        try {
+          await onConfirmed(caseId);
+        } catch {
+          // Workspace refresh is secondary to verified targeted GET evidence.
+        }
+      }
       return true;
     } catch {
       return false;

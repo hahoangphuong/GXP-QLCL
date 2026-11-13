@@ -56,6 +56,7 @@ from backend.app.read_models import (
     InspectionApprovalSubmissionCompleteRequest,
     ApprovalDocumentBindRequest,
     ApprovalDocumentBindingRead,
+    ApprovalDocumentReadbackRead,
 )
 from backend.app.services import CatalogReadService, CaseWorkflowService
 from backend.app.services.workflow import (
@@ -260,6 +261,18 @@ def register_workflow_routes(app, session_factory) -> None:
         result = service.complete_approval_submission(session, approval_submission_id=approval_submission_id, expected_version=payload.expected_version, completed_on=payload.completed_on, completed_time=payload.completed_time, reason=payload.reason, user=user)
         commit_or_409(session)
         return InspectionApprovalSubmissionRead(**result)
+
+    def get_approval_document_bindings(
+        approval_submission_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        # Recovery requires the same privileges as the original binding POST.
+        # It reads one canonical submission and cannot commit or retry a write.
+        require_permissions(user, {"inspection.edit", "document.read"})
+        return ApprovalDocumentReadbackRead(**service.get_approval_document_bindings(
+            session, approval_submission_id=approval_submission_id,
+        ))
 
     def bind_approval_document(
         approval_submission_id: str,
@@ -758,6 +771,13 @@ def register_workflow_routes(app, session_factory) -> None:
         bind_approval_document,
         methods=["POST"],
         response_model=ApprovalDocumentBindingRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/approval-submissions/{approval_submission_id}/documents",
+        get_approval_document_bindings,
+        methods=["GET"],
+        response_model=ApprovalDocumentReadbackRead,
         tags=["workflow"],
     )
     app.add_api_route(

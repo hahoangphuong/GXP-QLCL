@@ -4041,6 +4041,74 @@ class CaseWorkflowService:
         session.flush()
         return self._serialize_approval_submission(row)
 
+    def get_approval_document_bindings(
+        self,
+        session: Session,
+        *,
+        approval_submission_id: str,
+    ) -> dict[str, Any]:
+        """Canonical, scoped recovery GET; never infers whether a POST succeeded.
+
+        This readback is independent of unrelated Case/Certificate workspace
+        projections. A persisted link is evidence of association only, not
+        evidence of document issuance or binary integrity.
+        """
+        submission = session.scalars(
+            select(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.id == approval_submission_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Approval submission not found.")
+        if submission.stage not in {"PCT", "CT"}:
+            raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
+        expected_family = (
+            "INSPECTION_PT_PCT" if submission.stage == "PCT" else "INSPECTION_PT_CT"
+        )
+        links = list(session.execute(
+            select(InspectionApprovalDocumentLink, Document)
+            .outerjoin(
+                Document, Document.id == InspectionApprovalDocumentLink.document_id,
+            )
+            .where(InspectionApprovalDocumentLink.approval_submission_id == submission.id)
+            .order_by(
+                InspectionApprovalDocumentLink.created_at.asc(),
+                InspectionApprovalDocumentLink.id.asc(),
+            )
+            .execution_options(populate_existing=True)
+        ).all())
+        result_links: list[dict[str, Any]] = []
+        for link, document in links:
+            if (
+                document is None
+                or document.case_id != submission.case_id
+                or document.family_code != expected_family
+                or any(parent is not None for parent in (
+                    document.capa_cycle_id, document.certificate_id,
+                    document.business_eligibility_certificate_id,
+                    document.change_request_id,
+                ))
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Approval document link violates canonical Case/stage ownership.",
+                )
+            result_links.append({
+                "approval_submission_id": submission.id,
+                "document_id": document.id,
+                "binding_id": link.id,
+                "stage": submission.stage,
+                "round_no": submission.round_no,
+            })
+        return {
+            "approval_submission_id": submission.id,
+            "case_id": submission.case_id,
+            "stage": submission.stage,
+            "round_no": submission.round_no,
+            "row_version": submission.row_version,
+            "links": result_links,
+        }
+
     def bind_approval_document(
         self,
         session: Session,

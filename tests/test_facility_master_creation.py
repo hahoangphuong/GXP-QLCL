@@ -34,6 +34,7 @@ def seeded():
         db.flush()
         legacy = Site(company_id=previous.id, site_name="Legacy site", legacy_site_id=77)
         db.add(legacy)
+        db.flush()  # Primary keys are generated on flush, not at ORM construction.
         ids = (previous.id, legacy.id)
         db.commit()
     try:

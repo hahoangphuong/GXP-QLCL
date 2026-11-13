@@ -147,7 +147,7 @@ def test_http_permissions_and_canonical_get(scenario):
         with pytest.raises(HTTPException) as error:
             post(case_id=case_id, payload=payload, session=db, user=denied)
         assert error.value.status_code == 403
-        reader = build_authenticated_user("reader", "viewer")
+        reader = build_authenticated_user("reader", "reader")
         result = get(case_id=case_id, session=db, user=reader)
         assert result.decision is None
 

@@ -26,6 +26,7 @@ from backend.app.read_models import (
     CertificateMutationRead,
     CertificatePromoteCurrentRequest,
     InspectionCaseCreateRead,
+    InitialInspectionCaseCreateRequest,
     InspectionCaseCreateRequest,
     EvaluationScopeMutationRead,
     EvaluationScopeUpsertRequest,
@@ -71,6 +72,24 @@ def register_workflow_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = CaseWorkflowService()
     catalog_service = CatalogReadService()
+
+    def create_initial_inspection_case(
+        site_id: str,
+        payload: InitialInspectionCaseCreateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = service.create_initial_inspection_case(
+            session, site_id=site_id, case_id=str(payload.case_id),
+            gxp_type=payload.gxp_type,
+            production_line_id=None if payload.production_line_id is None else str(payload.production_line_id),
+            inspection_type=payload.inspection_type,
+            applicable_standard=payload.applicable_standard,
+            reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return InspectionCaseCreateRead(**result)
 
     def create_inspection_case(
         site_id: str,
@@ -734,6 +753,13 @@ def register_workflow_routes(app, session_factory) -> None:
         commit_or_409(session)
         return BusinessEligibilityMutationRead(**result)
 
+    app.add_api_route(
+        "/sites/{site_id}/inspection-cases/initial",
+        create_initial_inspection_case,
+        methods=["POST"],
+        response_model=InspectionCaseCreateRead,
+        tags=["workflow"],
+    )
     app.add_api_route(
         "/sites/{site_id}/inspection-cases",
         create_inspection_case,

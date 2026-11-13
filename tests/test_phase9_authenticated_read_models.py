@@ -2417,6 +2417,7 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessm
         "create_company",
         "create_site",
         "create_production_line",
+        "create_initial_case",
         "create_reassessment_case",
         "create_change_request",
     ]
@@ -2426,7 +2427,10 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessm
     assert action_readiness["create_site"].readiness_status == "forbidden"
     assert action_readiness["create_site"].required_permissions == ["case.edit"]
     assert action_readiness["create_site"].detail == "Không có quyền tạo cơ sở."
-    assert action_readiness["create_production_line"].readiness_status == "missing_contract"
+    assert action_readiness["create_production_line"].readiness_status == "forbidden"
+    assert action_readiness["create_production_line"].required_permissions == ["case.edit"]
+    assert action_readiness["create_initial_case"].readiness_status == "forbidden"
+    assert action_readiness["create_initial_case"].required_permissions == ["case.edit"]
     assert action_readiness["create_reassessment_case"].readiness_status == "forbidden"
     assert action_readiness["create_reassessment_case"].required_permissions == ["case.edit"]
     assert action_readiness["create_reassessment_case"].detail == "Tài khoản hiện tại không có quyền tạo hồ sơ tái đánh giá."

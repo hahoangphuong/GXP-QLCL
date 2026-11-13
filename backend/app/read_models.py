@@ -86,6 +86,30 @@ class SiteMasterCreateRead(SiteDetailRead):
     audit_event_id: str
 
 
+class ProductionLineMasterCreateRequest(BaseModel):
+    # Client allocates an RFC 4122 v4 UUID *before* first POST, never on retry.
+    production_line_id: UUID4
+    code: str
+    effective_from: date
+    effective_to: date | None = None
+    # Explicit review/source reference is mandatory; no legacy text inference.
+    physical_identity_evidence_reference: str
+    reason: str
+
+
+class ProductionLineMasterRead(BaseModel):
+    id: str
+    site_id: str
+    code: str
+    effective_from: date
+    effective_to: date | None
+    row_version: int
+
+
+class ProductionLineMasterCreateRead(ProductionLineMasterRead):
+    audit_event_id: str
+
+
 class CaseDetailRead(BaseModel):
     id: str
     legacy_inspection_id: int | None
@@ -117,6 +141,11 @@ class DashboardQueueItemRead(BaseModel):
 
 class CaseReportItemRead(DashboardQueueItemRead):
     production_line_id: str | None
+    # Report classifications describe a persisted decision, not Case closure.
+    certificate_decision_status: Literal["not_at_decision_stage", "awaiting_decision", "nonissuance_recorded"]
+    nonissuance_decision_id: str | None
+    nonissuance_decision_reference: str | None
+    nonissuance_decided_on: date | None
 
 
 class CaseReportPageRead(BaseModel):
@@ -1045,6 +1074,17 @@ class CaseTransitionRead(BaseModel):
     row_version: int
     audit_event_id: str
     inspection_event_id: str | None
+
+
+class InitialInspectionCaseCreateRequest(BaseModel):
+    # The client prepares one UUID v4 before the first POST and preserves it
+    # through unknown-outcome recovery via GET /cases/{case_id}.
+    case_id: UUID4
+    gxp_type: Literal["GMP", "GLP", "GMPbb"]
+    production_line_id: UUID4 | None = None
+    inspection_type: str
+    applicable_standard: str | None = None
+    reason: str
 
 
 class InspectionCaseCreateRequest(BaseModel):

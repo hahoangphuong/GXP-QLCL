@@ -583,6 +583,8 @@ class CaseWorkspaceRead(BaseModel):
     certificate_issue_readiness: CertificateIssueActionReadinessRead
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
+    # Canonical readiness for the existing application/assessment/plan editors.
+    stage_edit_actions: list[LifecycleActionReadinessRead] = Field(default_factory=list)
     transition_actions: list[LifecycleActionReadinessRead] = Field(default_factory=list)
 
 

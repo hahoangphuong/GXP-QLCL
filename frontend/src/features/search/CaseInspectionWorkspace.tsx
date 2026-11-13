@@ -602,6 +602,9 @@ function CaseInspectionEditor({
   onFinalizeInspectionOutcome,
   onCreateApprovalSubmission,
   onCompleteApprovalSubmission,
+  onBindApprovalDocument,
+  onReadApprovalDocuments,
+  onApprovalDocumentsConfirmed,
   onTransitionCase,
 }: {
   caseWorkspace: CaseWorkspace;
@@ -613,6 +616,9 @@ function CaseInspectionEditor({
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
   onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: InspectionApprovalSubmissionCreateRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
   onCompleteApprovalSubmission: (submissionId: string, payload: InspectionApprovalSubmissionCompleteRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
+  onBindApprovalDocument?: (id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>;
+  onReadApprovalDocuments?: (id: string) => Promise<import("../../types").ApprovalDocumentReadback>;
+  onApprovalDocumentsConfirmed?: (caseId: string) => Promise<void>;
   onTransitionCase: (payload: CaseTransitionRequest) => Promise<void>;
 }) {
   const [finalEvaluation, setFinalEvaluation] = useCaseDraftState("inspection.finalEvaluation", "");
@@ -668,7 +674,7 @@ function CaseInspectionEditor({
         <InspectionTeamSection key={caseWorkspace.inspection.team?.team_id ?? "new-team"} caseWorkspace={caseWorkspace} onLoadIdentityOptions={onLoadInspectionTeamIdentityOptions} onSave={onInspectionTeamSave} />
         <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
         <InspectionPeriodSection caseWorkspace={caseWorkspace} onSave={onInspectionPeriodSegmentsSave} />
-        <CaseApprovalWorkspace caseWorkspace={caseWorkspace} onComplete={onCompleteApprovalSubmission} onCreate={onCreateApprovalSubmission} />
+        <CaseApprovalWorkspace caseWorkspace={caseWorkspace} onComplete={onCompleteApprovalSubmission} onCreate={onCreateApprovalSubmission} onBindApprovalDocument={onBindApprovalDocument} onReadApprovalDocuments={onReadApprovalDocuments} onApprovalDocumentsConfirmed={onApprovalDocumentsConfirmed} />
         <CaseLifecycleActions caseWorkspace={caseWorkspace} onTransition={onTransitionCase} />
         <section className="workspace-section" data-case-final-evaluation tabIndex={-1} aria-label="Khu vực đánh giá cuối cùng">
           <h4>Đánh giá cuối cùng</h4>

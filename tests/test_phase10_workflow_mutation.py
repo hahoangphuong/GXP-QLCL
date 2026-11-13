@@ -3200,7 +3200,10 @@ def test_certificate_promotion_keeps_canonical_legacy_and_facility_contexts_isol
         def certificate(line_id, raw, current, number, issued):
             row = Certificate(site_id=site.id, certificate_type="GMP", production_line_id=line_id, line_code=raw, latest_flag=current)
             session.add(row); session.flush()
-            session.add(CertificateVersion(certificate_id=row.id, version_no=1, certificate_number=number, issue_date=issued, expiry_date=date(2027, 1, 1), is_latest_version=True))
+            # Keep each context's candidate date-valid; this test owns
+            # canonical-vs-legacy-vs-facility identity, not invalid validity.
+            expires = max(date(2027, 1, 1), issued)
+            session.add(CertificateVersion(certificate_id=row.id, version_no=1, certificate_number=number, issue_date=issued, expiry_date=expires, is_latest_version=True))
             return row
         canonical_current = certificate(line.id, "A", True, "C0", date(2026, 10, 1))
         canonical_candidate = certificate(line.id, "A", False, "C1", date(2026, 10, 2))

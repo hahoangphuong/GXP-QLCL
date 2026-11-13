@@ -6,6 +6,9 @@ Never connect this test to rehearsal, go-live, or external PostgreSQL.
 from __future__ import annotations
 
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from uuid import uuid4
 
 import pytest
@@ -214,6 +217,104 @@ def test_approval_document_lost_response_is_resolvable_by_canonical_readback(own
             assert verify.scalar(select(func.count(AuditEvent.id))) == 1
     finally:
         for session in (contender, writer):
+            if session is not None:
+                session.rollback()
+                session.close()
+
+
+@pytest.mark.parametrize("source_change", ["reparent", "restage"])
+def test_document_binding_waits_for_concurrent_document_owner_transaction(
+    owner_db, source_change,
+):
+    """No association may be committed based on another transaction's old Document.
+
+    The concurrent writer holds an uncommitted row update while binder owns the
+    Case and tries to validate Document. pg_blocking_pids proves binder reaches
+    the row-lock boundary before the writer is allowed to commit.
+    """
+    factory, ids = owner_db
+    writer = observer = None
+    started = Event()
+    user = build_authenticated_user("synthetic-document-lock", "manager")
+
+    def attempt_bind():
+        with factory() as binder:
+            pid = binder.scalar(text("SELECT pg_backend_pid()"))
+            started.set()
+            try:
+                result = CaseWorkflowService().bind_approval_document(
+                    binder,
+                    approval_submission_id=ids["pct"],
+                    document_id=ids["document"],
+                    expected_version=1,
+                    reason="Must wait for committed source owner",
+                    user=user,
+                )
+            except HTTPException as exc:
+                binder.rollback()
+                return pid, exc.status_code, None
+            else:
+                binder.commit()
+                return pid, None, result
+
+    try:
+        writer = factory()
+        writer_pid = writer.scalar(text("SELECT pg_backend_pid()"))
+        document = writer.get(Document, ids["document"])
+        if source_change == "reparent":
+            document.case_id = ids["other"]
+        else:
+            document.family_code = "INSPECTION_PT_CT"
+        writer.flush()  # Holds the Document row lock but is not committed.
+
+        observer = factory()
+        # Distinct connections; do not let a scoped Session leak across threads.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(attempt_bind)
+            assert started.wait(8), "Binder did not start."
+            # The worker has its own backend PID. Identify its wait through
+            # pg_stat_activity while it is blocked on Document FOR UPDATE.
+            deadline = time.monotonic() + 8
+            blocked = False
+            while time.monotonic() < deadline:
+                contenders = list(observer.execute(text(
+                    "SELECT pid FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND pid <> pg_backend_pid() "
+                    "AND pid <> :writer_pid AND query LIKE :query_hint "
+                    "AND :writer_pid = ANY(pg_blocking_pids(pid))"
+                ), {
+                    "writer_pid": writer_pid,
+                    "query_hint": "%document%",
+                }).scalars())
+                if contenders:
+                    blocked = True
+                    break
+                if future.done():
+                    break
+                time.sleep(0.05)
+
+            # Release the writer before retrieving the worker result, even on
+            # assertion failure, to prevent test hangs.
+            writer.commit()
+            pid, denied, result = future.result(timeout=8)
+            assert blocked, (
+                "Binder never waited on concurrent Document source update; "
+                "it may have used uncommitted/stale Document ownership."
+            )
+            assert denied == 422
+            assert result is None
+
+        with factory() as verify:
+            assert verify.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 0
+            assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+            stored = verify.get(Document, ids["document"])
+            assert (
+                stored.case_id == ids["other"]
+                if source_change == "reparent"
+                else stored.family_code == "INSPECTION_PT_CT"
+            )
+    finally:
+        for session in (observer, writer):
             if session is not None:
                 session.rollback()
                 session.close()

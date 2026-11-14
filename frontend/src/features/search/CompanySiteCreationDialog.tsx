@@ -85,8 +85,10 @@ export function CompanySiteCreationDialog({
     ? companyIntent.persisted : selectedCompanyDetail;
   const companyOpen = openAction === "create_company";
   const siteOpen = openAction === "create_site" || (companyOpen && companyIntent?.phase === "verified");
-  const companyLocked = companyIntent?.phase === "pending" || companyIntent?.phase === "unverified";
-  const siteLocked = siteIntent?.phase === "pending" || siteIntent?.phase === "unverified";
+  // A verified intent is terminal in this dialog: creating a second record
+  // needs an explicit new operator intent, never a second submit by accident.
+  const companyLocked = companyIntent?.phase === "pending" || companyIntent?.phase === "unverified" || companyIntent?.phase === "verified";
+  const siteLocked = siteIntent?.phase === "pending" || siteIntent?.phase === "unverified" || siteIntent?.phase === "verified";
 
   useEffect(() => {
     if (!siteOpen) return;

@@ -190,7 +190,7 @@ export function InitialCaseCreationDialog({
 
   if (!open) return null;
   return <div className="dialog-backdrop" role="presentation">
-    <section className="panel reassessment-dialog" aria-labelledby="initial-case-title" aria-modal="true" role="dialog">
+    <section className="panel reassessment-dialog catalog-create-scroll-dialog" aria-labelledby="initial-case-title" aria-modal="true" role="dialog">
       <header className="panel-header reassessment-dialog-header">
         <h2 id="initial-case-title">Hồ sơ kiểm tra đầu tiên</h2>
       </header>

@@ -153,7 +153,7 @@ export function PhysicalLineCreationDialog({
 
   if (!open) return null;
   return <div className="dialog-backdrop" role="presentation">
-    <section aria-labelledby="physical-line-title" aria-modal="true" role="dialog" className="panel reassessment-dialog">
+    <section aria-labelledby="physical-line-title" aria-modal="true" role="dialog" className="panel reassessment-dialog catalog-create-scroll-dialog">
       <header className="panel-header reassessment-dialog-header">
         <div>
           <h2 id="physical-line-title">Dây chuyền sản xuất vật lý mới</h2>

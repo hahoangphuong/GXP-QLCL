@@ -240,7 +240,7 @@ export function CompanySiteCreationDialog({
 
   if (!openAction) return null;
   return <div className="dialog-backdrop" role="presentation">
-    <section aria-labelledby="master-create-dialog-title" aria-modal="true" className="panel reassessment-dialog" role="dialog">
+    <section aria-labelledby="master-create-dialog-title" aria-modal="true" className="panel reassessment-dialog catalog-create-scroll-dialog" role="dialog">
       <header className="panel-header reassessment-dialog-header"><div><h2 id="master-create-dialog-title">{companyOpen ? "Công ty mới" : "Cơ sở mới"}</h2><p>{companyOpen ? companyAction?.detail : siteAction?.detail}</p></div></header>
       {companyOpen ? <form className="stack-form reassessment-form" onSubmit={(event) => void submitCompany(event)}>
         <label><span>Tên pháp nhân *</span><input aria-label="Tên pháp nhân" disabled={companyLocked || !actionAvailable(companyAction)} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, legal_name: event.target.value }))} required value={companyDraft.legal_name} /></label>

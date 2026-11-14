@@ -140,6 +140,24 @@ describe("PhysicalLineCreationDialog owner and recovery", () => {
       .toEqual(["A", "A"]);
   });
 
+  it("never paints Site A's late verified line into Site B's visible list", async () => {
+    let finishReadback!: (value: typeof record) => void;
+    api.getProductionLine.mockImplementationOnce(() => new Promise((resolve) => { finishReadback = resolve; }));
+    api.getSite.mockImplementation((id: string) => Promise.resolve(id === "site-A" ? site : { ...site, id: "site-B" }));
+    const rendered = view();
+    await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dây chuyền vật lý" }));
+    await waitFor(() => expect(api.getProductionLine).toHaveBeenCalledTimes(1));
+    rendered.rerender(<CatalogCreateSessionRoot><PhysicalLineCreationDialog {...props} siteId="site-B" /></CatalogCreateSessionRoot>);
+    await screen.findByText("site-B");
+    await act(async () => { finishReadback(record); });
+    expect(screen.queryByText(/Đã xác minh dây chuyền UUID/)).toBeNull();
+    expect(screen.queryByText(/Hiện có 1 dây chuyền/)).toBeNull();
+    expect(api.createProductionLine).toHaveBeenCalledTimes(1);
+    rendered.rerender(<CatalogCreateSessionRoot><PhysicalLineCreationDialog {...props} siteId="site-A" /></CatalogCreateSessionRoot>);
+    await screen.findByText(/Đã xác minh dây chuyền UUID/);
+  });
+
   it("retains uncertain intent over Site A → B → A without another POST", async () => {
     api.getProductionLine.mockRejectedValue(new Error("offline"));
     const rendered = view();

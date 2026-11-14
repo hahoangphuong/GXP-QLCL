@@ -348,3 +348,56 @@ def test_company_committed_lost_response_survives_browser_reload_without_repost(
         for model in (Site, ProductionLine, Case, Certificate):
             assert _rows(db, model) == before[model]
         assert _rows(db, AuditEvent) == before[AuditEvent] + 1
+
+
+@pytest.mark.parametrize("journal_failure", ("corrupt", "empty", "unwritable"))
+def test_corrupt_or_unwritable_catalog_journal_blocks_post(pg_engine, live_backend, journal_failure):
+    """Untrusted journal may never silently become a fresh owner after reload."""
+    from playwright.sync_api import sync_playwright
+
+    with Session(pg_engine) as db:
+        before = {m: _rows(db, m) for m in (Company, Site, ProductionLine, Case, Certificate, AuditEvent)}
+    posts = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        page.set_default_timeout(15000)
+        if journal_failure in ("corrupt", "empty"):
+            journal_value = "{ invalid-json-and-unresolved-post" if journal_failure == "corrupt" else ""
+            page.add_init_script(
+                "sessionStorage.setItem(" +
+                json.dumps("gxp-catalog-recovery-v1:synthetic-catalog-company-site") +
+                "," + json.dumps(journal_value) + ");"
+            )
+        else:
+            page.add_init_script("""
+              const original = Storage.prototype.setItem;
+              Storage.prototype.setItem = function(key, value) {
+                if (String(key).startsWith('gxp-catalog-recovery-v1:')) {
+                  throw new DOMException('Simulated quota limit', 'QuotaExceededError');
+                }
+                return original.call(this, key, value);
+              };
+            """)
+        page.on("request", lambda req: posts.append(req.url)
+                if req.method == "POST" and urlsplit(req.url).path.startswith("/api/") else None)
+        try:
+            page.goto(VITE_URL, wait_until="domcontentloaded")
+            if journal_failure == "unwritable":
+                page.get_by_label("Tên pháp nhân").fill("Must not commit")
+                page.get_by_label("Địa chỉ pháp lý").fill("No durable journal")
+                page.get_by_role("button", name="Tạo Công ty").click()
+            page.get_by_text("recovery journal", exact=False).wait_for()
+            assert not posts, posts
+            assert page.get_by_role("button", name="Tạo Công ty").is_disabled()
+        except BaseException:
+            out = Path("browser-evidence")
+            out.mkdir(exist_ok=True)
+            page.screenshot(path=str(out / ("journal-" + journal_failure + ".png")))
+            raise
+        finally:
+            context.close()
+            browser.close()
+    with Session(pg_engine) as db:
+        assert all(_rows(db, model) == before[model] for model in before)

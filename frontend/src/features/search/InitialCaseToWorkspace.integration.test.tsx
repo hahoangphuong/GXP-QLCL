@@ -67,6 +67,8 @@ async function createDraft(selectedLine: string | null) {
 }
 
 beforeEach(() => {
+  // Each Vitest scenario gets an independent tab journal, as a new browser tab would.
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
   vi.stubGlobal("crypto", { randomUUID: vi.fn(() => caseId) });
   api.getSite.mockResolvedValue(site);

@@ -80,7 +80,7 @@ export function InitialCaseCreationDialog({
   const trimType = draft.inspection_type.trim();
   const trimStandard = draft.applicable_standard.trim();
   const trimReason = draft.reason.trim();
-  const valid = ready && validOwner && lineValid && !locked && draft.acknowledged
+  const valid = ready && validOwner && lineValid && !locked && !state.recoveryJournalError && !selection.recoveryJournalError && draft.acknowledged
     && Boolean(trimType) && trimType.length <= 255 && trimType.toLocaleLowerCase() !== "tái"
     && trimStandard.length <= 255
     && Boolean(trimReason) && trimReason.length <= 10000;
@@ -197,6 +197,7 @@ export function InitialCaseCreationDialog({
       <p>Chỉ tạo Case ở trạng thái Draft. Không tiếp nhận hồ sơ, không thực hiện kiểm tra, không cấp GMP/GLP hoặc GCN.</p>
       <p>Site UUID: <code>{siteId ?? "Chưa chọn Site"}</code></p>
       {site && company ? <p>Cơ sở: <strong>{site.site_name}</strong>; công ty: <strong>{company.legal_name}</strong>{company.is_inactive ? " (ngừng hoạt động)" : ""}.</p> : null}
+      {state.recoveryJournalError || selection.recoveryJournalError ? <p role="alert" className="form-error">{state.recoveryJournalError || selection.recoveryJournalError}</p> : null}
       {ownerError ? <p role="alert" className="form-error">{ownerError}</p> : null}
       <div className="stack-form">
         <label><span>Loại GxP *</span><select aria-label="Loại GxP cho hồ sơ mới" value={gxp} onChange={(e) => setGxp(e.target.value as Gxp | "")}>

@@ -30,6 +30,8 @@ async function fill() {
 }
 
 beforeEach(() => {
+  // Each Vitest scenario gets an independent tab journal, as a new browser tab would.
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
   vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "intent-uuid") });
   api.getSite.mockResolvedValue(site);

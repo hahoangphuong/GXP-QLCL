@@ -325,7 +325,7 @@ export function getCaseNonissuanceDecision(caseId: string, auth: StubAuthState, 
 }
 
 export function recordCaseNonissuanceDecision(caseId: string, payload: CaseNonissuanceDecisionRecordRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseNonissuanceDecisionRead> {
-  return requestJson<CaseNonissuanceDecisionRead>(`/cases/${encodeURIComponent(caseId)}/certificate-nonissuance-decision`, { method: "POST", body: JSON.stringify(payload), auth, useStubAuth, bearerToken });
+  return requestJson<CaseNonissuanceDecisionRead>(`/cases/${encodeURIComponent(caseId)}/certificate-nonissuance-decision`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
 }
 
 export function getCertificateReport(

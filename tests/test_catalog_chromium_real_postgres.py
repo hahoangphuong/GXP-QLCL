@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.request import urlopen
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -25,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import AuditEvent, Case, Certificate, Company, ProductionLine, Site
 from test_canonical_workflow_postgres import pg_engine
+from test_canonical_http_workflow_postgres import api, ok
 
 
 VITE_URL = "http://127.0.0.1:4173/catalog-journey-browser-fixture.html"
@@ -401,3 +403,115 @@ def test_corrupt_or_unwritable_catalog_journal_blocks_post(pg_engine, live_backe
             browser.close()
     with Session(pg_engine) as db:
         assert all(_rows(db, model) == before[model] for model in before)
+
+
+def test_initial_case_selection_and_exact_intent_survive_real_browser_reload(pg_engine, live_backend, api):
+    """Actual committed Case POST, lost response, reload and same UUID GET.
+
+    Synthetic prerequisite catalog rows use canonical ASGI HTTP and the same
+    disposable migrated schema. The browser calls actual Vite/FastAPI routes.
+    """
+    from playwright.sync_api import sync_playwright
+
+    company_id, site_id, line_id = (str(uuid4()) for _ in range(3))
+    ok(api, "POST", "/companies", {
+        "company_id": company_id, "legal_name": "Synthetic Case Reload Company",
+        "legal_address": "Synthetic address", "reason": "Browser prerequisite",
+    })
+    ok(api, "POST", f"/companies/{company_id}/sites", {
+        "site_id": site_id, "site_name": "Synthetic Case Reload Site",
+        "site_address": "Synthetic address", "reason": "Browser prerequisite",
+    })
+    ok(api, "POST", f"/sites/{site_id}/production-lines", {
+        "production_line_id": line_id, "code": "L1", "effective_from": "2026-01-01",
+        "physical_identity_evidence_reference": "SYNTHETIC-BROWSER-RELOAD",
+        "reason": "Browser prerequisite",
+    })
+    with Session(pg_engine) as db:
+        before = {m: _rows(db, m) for m in (Company, Site, ProductionLine, Case, Certificate, AuditEvent)}
+    writes, readbacks = [], []
+    injected = {"post": 0, "get": 0}
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context(viewport={"width": 390, "height": 700})
+        page = context.new_page()
+        page.set_default_timeout(15000)
+
+        def record(request):
+            path = urlsplit(request.url).path
+            if request.method == "POST" and path.endswith("/inspection-cases/initial"):
+                writes.append(request.post_data_json)
+            if request.method == "GET" and path.startswith("/api/cases/"):
+                readbacks.append(path)
+
+        def lost_after_commit(route):
+            req = route.request
+            path = urlsplit(req.url).path
+            if req.method == "POST" and path == f"/api/sites/{site_id}/inspection-cases/initial":
+                assert injected["post"] == 0, "No replay of ambiguous Case POST"
+                response = route.fetch()
+                assert response.status == 200, (response.status, response.text())
+                injected["post"] += 1
+                route.fulfill(status=503, json={"detail": "Synthetic lost Case response after real commit"})
+                return
+            if (req.method == "GET" and writes
+                    and path == "/api/cases/" + writes[0]["case_id"]
+                    and injected["get"] == 0):
+                injected["get"] += 1
+                route.fulfill(status=503, json={"detail": "Synthetic first Case readback unavailable"})
+                return
+            route.continue_()
+
+        page.on("request", record)
+        page.route("**/api/**", lost_after_commit)
+        try:
+            page.goto(
+                "http://127.0.0.1:4173/initial-case-browser-fixture.html?site_id=" + site_id,
+                wait_until="domcontentloaded",
+            )
+            page.get_by_label("Loại GxP cho hồ sơ mới").select_option("GMP")
+            page.get_by_label("ProductionLine UUID").select_option(line_id)
+            page.get_by_label("Loại kiểm tra hồ sơ đầu tiên").fill("Mới")
+            page.get_by_label("Tiêu chuẩn áp dụng").fill("WHO-GMP")
+            page.get_by_label("Lý do tạo hồ sơ đầu tiên").fill("Synthetic recovered Case")
+            page.get_by_label("Xác nhận chỉ tạo Case Draft").check()
+            page.get_by_role("button", name="Tạo hồ sơ Draft").click()
+            page.get_by_text("Chưa xác minh:", exact=False).wait_for()
+            assert len(writes) == 1 and injected == {"post": 1, "get": 1}
+            case_id = writes[0]["case_id"]
+            assert writes[0]["production_line_id"] == line_id
+
+            page.reload(wait_until="domcontentloaded")
+            page.get_by_label("Loại GxP cho hồ sơ mới").wait_for()
+            assert page.get_by_label("Loại GxP cho hồ sơ mới").input_value() == "GMP"
+            assert page.get_by_label("ProductionLine UUID").input_value() == line_id
+            page.get_by_text("Chưa xác minh:", exact=False).wait_for()
+            assert page.get_by_role("button", name="Đã khóa intent").is_disabled()
+            assert len(writes) == 1
+            page.get_by_role("button", name="Đọc lại Case canonical").click()
+            page.get_by_text("Case nháp canonical đã xác minh:", exact=False).wait_for()
+            assert len(writes) == 1 and injected == {"post": 1, "get": 1}
+            assert readbacks.count("/api/cases/" + case_id) >= 2
+            assert page.get_by_role("button", name="Mở Case workspace").is_enabled()
+        except BaseException:
+            out = Path("browser-evidence")
+            out.mkdir(exist_ok=True)
+            page.screenshot(path=str(out / "initial-case-reload-owner.png"), full_page=True)
+            (out / "initial-case-reload-owner.json").write_text(json.dumps(
+                {"writes": writes, "readbacks": readbacks, "injected": injected}, indent=2,
+            ), encoding="utf-8")
+            raise
+        finally:
+            context.close()
+            browser.close()
+
+    with Session(pg_engine) as db:
+        row = db.get(Case, case_id)
+        assert row is not None
+        assert row.site_id == site_id and row.production_line_id == line_id
+        assert row.gxp_type == "GMP" and row.state == "draft" and row.row_version == 1
+        assert _rows(db, Case) == before[Case] + 1
+        assert _rows(db, AuditEvent) == before[AuditEvent] + 1
+        for model in (Company, Site, ProductionLine, Certificate):
+            assert _rows(db, model) == before[model]

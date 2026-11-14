@@ -1961,6 +1961,16 @@ tr:focus-visible {
   box-shadow: 0 24px 48px rgba(17, 41, 50, 0.22);
 }
 
+/* Long catalog create forms must remain fully keyboard/mouse accessible
+   in an actual browser, including short viewports and browser zoom. Scope
+   this to new-master forms; do not change unrelated reassessment dialogs. */
+.catalog-create-scroll-dialog {
+  max-height: min(44rem, calc(100dvh - 2rem));
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .reassessment-dialog-header {
   margin-bottom: 0.75rem;
 }

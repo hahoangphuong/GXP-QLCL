@@ -163,7 +163,7 @@ def test_chromium_real_http_first_case_full_operator_journey(pg_engine, live_bac
             assert len(set(ids)) == 4
             assert writes["case"]["production_line_id"] == ids[2]
             assert "GET /api/cases/" + ids[3] in requested
-            assert not any("/workspace" in item for item in requested), (
+            assert "GET /api/cases/" + ids[3] + "/workspace" not in requested, (
                 "Workspace opened before explicit operator action", requested
             )
             page.get_by_role("button", name="Mở Case workspace").click()

@@ -41,8 +41,18 @@ export function InitialCaseCreationDialog({
   onClose: () => void;
   onVerifiedOpen: (caseId: string) => void;
 }) {
-  const [gxp, setGxp] = useState<Gxp | "">("");
-  const [lineId, setLineId] = useState<string>("");
+  // Selection must survive dialog unmount/navigation inside one App session.
+  // Keep it under the Site owner, separate from the per-GxP/line create intent.
+  const selectionOwner = JSON.stringify(["initial-case-selection", accessGeneration, useStubAuth, siteId]);
+  const { state: selection, update: updateSelection } = useCatalogCreateSession(selectionOwner);
+  const gxp = selection.initialCaseSelectedGxp;
+  const lineId = selection.initialCaseSelectedLineId;
+  const setGxp = (value: Gxp | "") => updateSelection((current) => ({
+    ...current, initialCaseSelectedGxp: value, initialCaseSelectedLineId: "",
+  }));
+  const setLineId = (value: string) => updateSelection((current) => ({
+    ...current, initialCaseSelectedLineId: value,
+  }));
   const owner = JSON.stringify(["initial-case-create", accessGeneration, useStubAuth, siteId, gxp, lineId || null]);
   const { state, update } = useCatalogCreateSession(owner);
   const { initialCaseDraft: draft, initialCaseIntent: intent } = state;
@@ -189,7 +199,7 @@ export function InitialCaseCreationDialog({
       {site && company ? <p>Cơ sở: <strong>{site.site_name}</strong>; công ty: <strong>{company.legal_name}</strong>{company.is_inactive ? " (ngừng hoạt động)" : ""}.</p> : null}
       {ownerError ? <p role="alert" className="form-error">{ownerError}</p> : null}
       <div className="stack-form">
-        <label><span>Loại GxP *</span><select aria-label="Loại GxP cho hồ sơ mới" value={gxp} onChange={(e) => { setGxp(e.target.value as Gxp); setLineId(""); }}>
+        <label><span>Loại GxP *</span><select aria-label="Loại GxP cho hồ sơ mới" value={gxp} onChange={(e) => setGxp(e.target.value as Gxp | "")}>
           <option value="">Chọn loại GxP</option>
           {supported.map((value) => <option key={value} value={value}>{value}</option>)}
         </select></label>

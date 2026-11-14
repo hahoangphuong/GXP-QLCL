@@ -188,6 +188,38 @@ describe("InitialCaseCreationDialog", () => {
     expect(api.createInitialCase).toHaveBeenCalledTimes(1);
   });
 
+  it("restores Site-scoped GxP/line selection after actual dialog unmount within the same App session", async () => {
+    const rendered = view();
+    await screen.findByText(/Cơ sở:/);
+    fireEvent.change(screen.getByLabelText("Loại GxP cho hồ sơ mới"), { target: { value: "GLP" } });
+    fireEvent.change(screen.getByLabelText("ProductionLine UUID"), { target: { value: "line-A" } });
+    await waitFor(() => expect(api.getFacilityWorkspace).toHaveBeenCalledWith(
+      "site-A", auth, true, "GLP", null, undefined, "line-A",
+    ));
+    rendered.rerender(<CatalogCreateSessionRoot><div>Trang khác</div></CatalogCreateSessionRoot>);
+    expect(screen.queryByLabelText("Loại GxP cho hồ sơ mới")).toBeNull();
+    rendered.rerender(<CatalogCreateSessionRoot><InitialCaseCreationDialog {...props} /></CatalogCreateSessionRoot>);
+    expect((screen.getByLabelText("Loại GxP cho hồ sơ mới") as HTMLSelectElement).value).toBe("GLP");
+    await waitFor(() => expect((screen.getByLabelText("ProductionLine UUID") as HTMLSelectElement).value).toBe("line-A"));
+    // Selecting a context does not persist a Case or auto-run a mutation.
+    expect(api.createInitialCase).not.toHaveBeenCalled();
+  });
+
+  it("recovers a previously unverified Case after dialog unmount without allocating a new UUID", async () => {
+    api.getCaseDetail.mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce(caseRow);
+    const rendered = view(); await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ Draft" }));
+    await screen.findByText(/Chưa xác minh:/);
+    rendered.rerender(<CatalogCreateSessionRoot><div>Đang ở trang khác</div></CatalogCreateSessionRoot>);
+    rendered.rerender(<CatalogCreateSessionRoot><InitialCaseCreationDialog {...props} /></CatalogCreateSessionRoot>);
+    expect((screen.getByLabelText("Loại GxP cho hồ sơ mới") as HTMLSelectElement).value).toBe("GMP");
+    expect((screen.getByRole("button", { name: "Đã khóa intent" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Đọc lại Case canonical" }));
+    await screen.findByText(/Case nháp canonical đã xác minh/);
+    expect(api.createInitialCase).toHaveBeenCalledTimes(1);
+    expect(api.getCaseDetail.mock.calls.every((args: unknown[]) => args[0] === "case-uuid")).toBe(true);
+  });
+
   it("keeps late Site A verification from displaying or opening Case on Site B", async () => {
     let release!: (row: CaseDetail) => void;
     api.getCaseDetail.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));

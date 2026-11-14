@@ -47,11 +47,13 @@ export type CatalogCreateState = {
   physicalLineIntent: PhysicalLineCreateIntent | null;
   initialCaseDraft: InitialCaseDraft;
   initialCaseIntent: InitialCaseIntent | null;
+  initialCaseSelectedGxp: "" | "GMP" | "GLP" | "GMPbb";
+  initialCaseSelectedLineId: string;
 };
 
 export const emptyCompanyDraft = (): CatalogCreateState["companyDraft"] => ({ legal_name: "", legal_address: "", english_name: "", short_name: "", legal_address_en: "", reason: "" });
 export const emptySiteDraft = (): CatalogCreateState["siteDraft"] => ({ site_name: "", site_address: "", site_name_en: "", site_address_en: "", province_name: "", short_name: "", reason: "" });
-const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), siteDraft: emptySiteDraft(), companyIntent: null, siteIntent: null, selectedCompanyId: null, physicalLineDraft: emptyPhysicalLineDraft(), physicalLineIntent: null, initialCaseDraft: emptyInitialCaseDraft(), initialCaseIntent: null });
+const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), siteDraft: emptySiteDraft(), companyIntent: null, siteIntent: null, selectedCompanyId: null, physicalLineDraft: emptyPhysicalLineDraft(), physicalLineIntent: null, initialCaseDraft: emptyInitialCaseDraft(), initialCaseIntent: null, initialCaseSelectedGxp: "", initialCaseSelectedLineId: "" });
 
 function createStore() {
   const values = new Map<string, CatalogCreateState>();

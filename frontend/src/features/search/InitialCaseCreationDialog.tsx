@@ -191,7 +191,7 @@ export function InitialCaseCreationDialog({
       <div className="stack-form">
         <label><span>Loại GxP *</span><select aria-label="Loại GxP cho hồ sơ mới" value={gxp} onChange={(e) => { setGxp(e.target.value as Gxp); setLineId(""); }}>
           <option value="">Chọn loại GxP</option>
-          {supported.map((value) => <option key={value} value={value}>{value}</option>}
+          {supported.map((value) => <option key={value} value={value}>{value}</option>)}
         </select></label>
         <label><span>Dây chuyền vật lý theo UUID (tùy chọn)</span><select aria-label="ProductionLine UUID" value={lineId} onChange={(e) => setLineId(e.target.value)}>
           <option value="">Toàn cơ sở (không có ProductionLine UUID)</option>

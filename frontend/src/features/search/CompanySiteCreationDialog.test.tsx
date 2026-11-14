@@ -228,6 +228,36 @@ describe("catalog create in-session lifecycle regressions", () => {
       ]);
   });
 
+  it("does not restore a superseded Company's selection after the next explicit intent", async () => {
+    let resolveFirst!: (value: typeof company) => void;
+    let resolveLate!: (value: typeof company) => void;
+    vi.stubGlobal("crypto", { randomUUID: vi.fn().mockReturnValueOnce("old-uuid").mockReturnValueOnce("new-uuid") });
+    api.getCompany
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveLate = resolve; }))
+      .mockResolvedValueOnce({ ...company, id: "new-uuid" });
+    view();
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+    await screen.findByRole("alert");
+    const recover = screen.getByRole("button", { name: "Đọc lại canonical" });
+    fireEvent.click(recover);
+    fireEvent.click(recover);
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledTimes(3));
+    await act(async () => { resolveFirst({ ...company, id: "old-uuid" }); });
+    await screen.findByRole("status");
+    fireEvent.click(screen.getByRole("button", { name: "Tạo công ty khác" }));
+    await act(async () => { resolveLate({ ...company, id: "old-uuid" }); });
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+    await screen.findByRole("status");
+    expect(screen.getByText(/Company đã chọn:/).textContent).toContain("new-uuid");
+    expect(api.createCompany).toHaveBeenCalledTimes(2);
+  });
+
   it("retains an uncertain Company intent across dialog remount under one session root", async () => {
     let finishReadback!: (value: typeof company) => void;
     api.getCompany.mockImplementationOnce(() => new Promise((resolve) => { finishReadback = resolve; }));

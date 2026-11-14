@@ -51,6 +51,8 @@ export function InitialCaseCreationDialog({
   const [lines, setLines] = useState<ProductionLineMasterRead[]>([]);
   const [ownerError, setOwnerError] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<WorkspaceActionReadiness | null>(null);
+  const [readinessContext, setReadinessContext] = useState<string | null>(null);
+  const [readinessRevision, setReadinessRevision] = useState(0);
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const ownerEpoch = useRef(0);
   const readinessEpoch = useRef(0);
@@ -61,7 +63,9 @@ export function InitialCaseCreationDialog({
 
   const validOwner = Boolean(siteId && site?.id === siteId && company?.id === site?.company_id && !company?.is_inactive);
   const lineValid = !lineId || lines.some((line) => line.id === lineId && line.site_id === siteId);
-  const ready = readiness?.readiness_status === "available";
+  const context = JSON.stringify([accessGeneration, useStubAuth, siteId, gxp, lineId || null]);
+  // A previous context's available signal cannot authorize a new POST.
+  const ready = readinessContext === context && readiness?.readiness_status === "available";
   const locked = Boolean(intent);
   const trimType = draft.inspection_type.trim();
   const trimStandard = draft.applicable_standard.trim();
@@ -73,6 +77,7 @@ export function InitialCaseCreationDialog({
 
   useEffect(() => {
     const epoch = ++ownerEpoch.current;
+    activeRef.current = open;
     setSite(null); setCompany(null); setLines([]); setOwnerError(null);
     if (!open || !siteId) return () => { ++ownerEpoch.current; activeRef.current = false; };
     void Promise.all([
@@ -94,7 +99,7 @@ export function InitialCaseCreationDialog({
 
   useEffect(() => {
     const epoch = ++readinessEpoch.current;
-    setReadiness(null); setReadinessError(null);
+    setReadiness(null); setReadinessContext(null); setReadinessError(null);
     if (!open || !siteId || !validOwner || !lineValid) return () => { ++readinessEpoch.current; };
     void getFacilityWorkspace(siteId, auth, useStubAuth, gxp, null, bearerToken, lineId || null)
       .then((workspace) => {
@@ -105,10 +110,11 @@ export function InitialCaseCreationDialog({
           throw new Error("Backend trả readiness không đúng Site/GxP/ProductionLine UUID.");
         }
         setReadiness(workspace.action_readiness.find((item) => item.action_key === "create_initial_case") ?? null);
+        setReadinessContext(context);
       })
       .catch((error) => { if (readinessEpoch.current === epoch) setReadinessError(errText(error)); });
     return () => { ++readinessEpoch.current; };
-  }, [open, siteId, validOwner, lineValid, gxp, lineId, auth.username, auth.role, useStubAuth, bearerToken, accessGeneration]);
+  }, [open, siteId, validOwner, lineValid, gxp, lineId, auth.username, auth.role, useStubAuth, bearerToken, accessGeneration, readinessRevision]);
 
   const change = (patch: Partial<typeof draft>) => update((current) => ({
     ...current, initialCaseDraft: { ...current.initialCaseDraft, ...patch },
@@ -166,8 +172,10 @@ export function InitialCaseCreationDialog({
       ...current, initialCaseIntent: null, initialCaseDraft: emptyInitialCaseDraft(),
     });
     setReadiness(null);
-    // The prior successful creation may have occupied this exact context.
-    // Re-read backend readiness; never assume that another initial Case is allowed.
+    setReadinessContext(null);
+    // The prior successful creation occupies this context; the backend must
+    // confirm readiness again before the next separately admitted intent.
+    setReadinessRevision((revision) => revision + 1);
   }
 
   if (!open) return null;

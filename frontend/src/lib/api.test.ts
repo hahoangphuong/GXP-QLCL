@@ -50,6 +50,7 @@ import {
   createInspectionApprovalSubmission,
   completeInspectionApprovalSubmission,
   transitionCase,
+  recordCaseNonissuanceDecision,
 } from "./api";
 
 type MockJsonResponse = {
@@ -946,5 +947,39 @@ describe("frontend API routing contract", () => {
         }),
       }),
     );
+  });
+});
+
+
+describe("nonissuance decision HTTP JSON body", () => {
+  it("sends an object, not double-serialized JSON, to the canonical Case POST", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { case_id: "case-1", decision: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const payload = {
+      expected_case_version: 7,
+      decided_on: "2026-11-14",
+      decision_reference: "KCGCN-01",
+      explanation: "Không đáp ứng",
+      reason: "Operator decision",
+    };
+
+    await recordCaseNonissuanceDecision(
+      "case-1", payload,
+      { username: "operator.local", role: "manager" }, false, "oidc-token",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cases/case-1/certificate-nonissuance-decision",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer oidc-token" }),
+        body: JSON.stringify(payload),
+      }),
+    );
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(typeof sent).toBe("object");
+    expect(sent).not.toBeNull();
+    expect(sent.expected_case_version).toBe(7);
   });
 });

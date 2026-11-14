@@ -1,0 +1,59 @@
+name: Initial Case synthetic Chromium smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - frontend/initial-case-browser-fixture.html
+      - frontend/src/qa/initialCaseBrowserFixture.tsx
+      - tools/run_initial_case_chromium_synthetic.py
+      - .github/workflows/initial-case-chromium-synthetic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated Chromium test runner
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Launch development-only Vite fixture
+        run: |
+          cd frontend
+          pnpm dev --host 127.0.0.1 > /tmp/initial-case-vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/initial-case-browser-fixture.html >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/initial-case-vite.log
+          exit 1
+      - name: Verify real Chromium synthetic Case creation/recovery/navigation
+        run: python tools/run_initial_case_chromium_synthetic.py
+      - name: Save browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: initial-case-chromium-synthetic-failure
+          path: |
+            browser-evidence/
+            /tmp/initial-case-vite.log
+          if-no-files-found: ignore

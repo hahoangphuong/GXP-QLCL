@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -40,7 +41,7 @@ function CaseIntent() {
   </div>;
 }
 
-const mount = (node: React.ReactNode) => render(<CatalogCreateSessionRoot>{node}</CatalogCreateSessionRoot>);
+const mount = (node: ReactNode) => render(<CatalogCreateSessionRoot>{node}</CatalogCreateSessionRoot>);
 const journalKey = (owner: string) => "gxp-catalog-recovery-v1:" + owner;
 
 beforeEach(() => { cleanup(); window.sessionStorage.clear(); });

@@ -45,7 +45,9 @@ export function PhysicalLineCreationDialog({
   const [listError, setListError] = useState<string | null>(null);
   const fetchEpoch = useRef(0);
   const activeRef = useRef(false);
+  const visibleOwnerRef = useRef(owner);
   activeRef.current = open;
+  visibleOwnerRef.current = owner;
 
   const ready = action?.readiness_status === "available";
   const canonicalOwner = Boolean(siteId && site?.id === siteId && company?.id === site?.company_id && !company?.is_inactive);
@@ -85,7 +87,7 @@ export function PhysicalLineCreationDialog({
     }).catch((error) => {
       if (fetchEpoch.current === epoch) setListError(message(error));
     });
-    return () => { ++fetchEpoch.current; };
+    return () => { ++fetchEpoch.current; activeRef.current = false; };
   }, [open, siteId, auth.username, auth.role, useStubAuth, bearerToken, accessGeneration]);
 
   async function verify(original: PhysicalLineCreateIntent) {
@@ -100,7 +102,7 @@ export function PhysicalLineCreationDialog({
           ...current.physicalLineIntent, phase: "verified", persisted: row, error: null,
         } };
       });
-      if (accepted && activeRef.current && siteId === original.siteId) {
+      if (accepted && activeRef.current && visibleOwnerRef.current === JSON.stringify(["physical-line-create", accessGeneration, useStubAuth, original.siteId])) {
         // Display only the verified identity. Never infer GxP, Case or Certificate.
         setLines((current) => [row, ...current.filter((item) => item.id !== row.id)]);
       }

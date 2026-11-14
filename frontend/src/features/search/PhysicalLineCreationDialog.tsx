@@ -96,7 +96,7 @@ export function PhysicalLineCreationDialog({
       if (!exactReadback(original, row)) throw new Error("Canonical GET không khớp UUID/Site/mã/khoảng hiệu lực của intent.");
       let accepted = false;
       update((current) => {
-        if (current.physicalLineIntent?.token !== original.token) return current;
+        if (current.physicalLineIntent?.token !== original.token || current.physicalLineIntent.phase === "verified") return current;
         accepted = true;
         return { ...current, physicalLineIntent: {
           ...current.physicalLineIntent, phase: "verified", persisted: row, error: null,
@@ -107,7 +107,7 @@ export function PhysicalLineCreationDialog({
         setLines((current) => [row, ...current.filter((item) => item.id !== row.id)]);
       }
     } catch (error) {
-      update((current) => current.physicalLineIntent?.token !== original.token ? current : {
+      update((current) => current.physicalLineIntent?.token !== original.token || current.physicalLineIntent.phase === "verified" ? current : {
         ...current, physicalLineIntent: { ...current.physicalLineIntent, phase: "unverified", error: message(error) },
       });
     }

@@ -38,6 +38,62 @@ describe("CompanySiteCreationDialog", () => {
     expect(api.createCompany.mock.calls[0][0]).toMatchObject({ company_id: "uuid-intent", legal_name: "Công ty A", legal_address: "Hà Nội" });
   });
 
+  it("does not regress a verified Company on a later failed canonical GET", async () => {
+    let succeed!: (row: typeof company) => void;
+    let fail!: (error: Error) => void;
+    api.getCompany.mockRejectedValueOnce(new Error("initial GET offline"))
+      .mockImplementationOnce(() => new Promise((resolve) => { succeed = resolve; }))
+      .mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }))
+      .mockResolvedValue({ ...company, id: "uuid-intent" });
+    view();
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+    await screen.findByText(/Chưa xác minh:/);
+    const retry = screen.getByRole("button", { name: "Đọc lại canonical" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledTimes(3));
+    await act(async () => { succeed({ ...company, id: "uuid-intent" }); });
+    await screen.findByText(/Đã xác minh Công ty canonical/);
+    await act(async () => { fail(new Error("older verification failed")); });
+    expect(screen.getByText(/Đã xác minh Công ty canonical/)).toBeDefined();
+    expect(screen.queryByText(/Chưa xác minh:/)).toBeNull();
+    expect(api.createCompany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not regress a verified Site or navigate twice on a late failed GET", async () => {
+    let succeed!: (row: typeof site) => void;
+    let fail!: (error: Error) => void;
+    const onSiteVerified = vi.fn();
+    api.getSite.mockRejectedValueOnce(new Error("initial GET offline"))
+      .mockImplementationOnce(() => new Promise((resolve) => { succeed = resolve; }))
+      .mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+    render(<CatalogCreateSessionRoot><CompanySiteCreationDialog auth={auth}
+      companyAction={available} onClose={vi.fn()} onSiteVerified={onSiteVerified}
+      openAction="create_site" ownerIdentity="access-A" siteAction={siteAvailable} useStubAuth
+    /></CatalogCreateSessionRoot>);
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Công ty" } });
+    await screen.findByRole("option", { name: /Công ty A/ });
+    fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-A" } });
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledWith("company-A", auth, true, undefined));
+    fireEvent.change(screen.getByLabelText("Tên cơ sở"), { target: { value: "Cơ sở A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ cơ sở"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Cơ sở" }));
+    await screen.findByText(/Chưa xác minh:/);
+    const retry = screen.getByRole("button", { name: "Đọc lại canonical" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await waitFor(() => expect(api.getSite).toHaveBeenCalledTimes(3));
+    await act(async () => { succeed(site); });
+    await screen.findByText(/Đã xác minh Cơ sở canonical/);
+    await act(async () => { fail(new Error("stale GET offline")); });
+    expect(screen.getByText(/Đã xác minh Cơ sở canonical/)).toBeDefined();
+    expect(screen.queryByText(/Chưa xác minh:/)).toBeNull();
+    expect(api.createSite).toHaveBeenCalledTimes(1);
+    expect(onSiteVerified).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the same intent locked when timeout readback cannot verify it", async () => {
     api.createCompany.mockRejectedValueOnce(new Error("network"));
     api.getCompany.mockRejectedValue(new Error("offline"));

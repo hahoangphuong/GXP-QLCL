@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { createCompany, createSite, getCompany, getSite, listCompanies } from "../../lib/api";
 import type { Company, CompanyDetail, CompanyMasterCreateRequest, SiteDetail, StubAuthState, WorkspaceActionReadiness } from "../../types";
-import { useCatalogCreateSession, type CompanyCreateIntent, type SiteCreateIntent } from "./CatalogCreateSession";
+import { emptyCompanyDraft, emptySiteDraft, useCatalogCreateSession, type CompanyCreateIntent, type SiteCreateIntent } from "./CatalogCreateSession";
 
 function newCanonicalId(): string {
   return crypto.randomUUID();
@@ -92,12 +92,21 @@ export function CompanySiteCreationDialog({
 
   useEffect(() => {
     dialogEpoch.current += 1;
+    return () => {
+      // A route unmount must revoke this dialog’s navigation authority.
+      // The in-session intent still lives in CatalogCreateSessionRoot.
+      dialogEpoch.current += 1;
+      visibleActionRef.current = null;
+    };
   }, [openAction, ownerIdentity]);
 
   useEffect(() => {
     if (!siteOpen || !companyQuery.trim()) {
+      // Invalidate a prior in-flight query even when this branch has no fetch.
+      ++listSequence.current;
       setCompanies([]);
       setCompaniesLoading(false);
+      setCompaniesError(null);
       return;
     }
     const sequence = ++listSequence.current;
@@ -110,6 +119,9 @@ export function CompanySiteCreationDialog({
     }).finally(() => {
       if (listSequence.current === sequence) setCompaniesLoading(false);
     });
+    return () => {
+      if (listSequence.current === sequence) ++listSequence.current;
+    };
   }, [auth, bearerToken, companyQuery, siteOpen, useStubAuth]);
 
   useEffect(() => {
@@ -159,6 +171,18 @@ export function CompanySiteCreationDialog({
     }
   }
 
+  function startAnotherCompany() {
+    update((current) => current.companyIntent?.phase !== "verified" ? current : {
+      ...current, companyIntent: null, companyDraft: emptyCompanyDraft(), selectedCompanyId: null,
+    });
+  }
+
+  function startAnotherSite() {
+    update((current) => current.siteIntent?.phase !== "verified" ? current : {
+      ...current, siteIntent: null, siteDraft: emptySiteDraft(),
+    });
+  }
+
   async function submitCompany(event: FormEvent) {
     event.preventDefault();
     if (!actionAvailable(companyAction) || companyLocked || !companyDraft.legal_name.trim() || !companyDraft.legal_address.trim()) return;
@@ -189,7 +213,7 @@ export function CompanySiteCreationDialog({
     let intent: SiteCreateIntent | null = null;
     let admitted = false;
     update((current) => {
-      if (current.siteIntent) return current;
+      if (current.siteIntent || current.selectedCompanyId !== selectedCompany.id) return current;
       admitted = true;
       intent = { token: {}, companyId: selectedCompany.id, phase: "pending", error: null, persisted: null, payload: {
         site_id: newCanonicalId(), site_name: siteDraft.site_name.trim(), site_address: siteDraft.site_address.trim(),
@@ -220,7 +244,7 @@ export function CompanySiteCreationDialog({
         <label><span>Lý do</span><input aria-label="Lý do tạo công ty" disabled={companyLocked} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, reason: event.target.value }))} value={companyDraft.reason ?? ""} /></label>
         {companyIntent?.phase === "unverified" ? <p className="form-error" role="alert">Chưa xác minh: {companyIntent.error}. UUID và intent đã bị khóa; chỉ có thể đọc lại canonical.</p> : null}
         {companyIntent?.phase === "verified" ? <p role="status">Đã xác minh Công ty canonical. Có thể chọn để tạo Cơ sở.</p> : null}
-        <div className="panel-actions reassessment-dialog-actions"><button disabled={companyLocked || !actionAvailable(companyAction)} type="submit">{companyLocked ? "Đang xác minh..." : "Tạo Công ty"}</button>{companyIntent?.phase === "unverified" ? <button onClick={() => void verifyCompany(companyIntent)} type="button">Đọc lại canonical</button> : null}<button disabled={companyIntent?.phase === "pending" || companyIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
+        <div className="panel-actions reassessment-dialog-actions"><button disabled={companyLocked || !actionAvailable(companyAction)} type="submit">{companyLocked ? "Đang xác minh..." : "Tạo Công ty"}</button>{companyIntent?.phase === "unverified" ? <button onClick={() => void verifyCompany(companyIntent)} type="button">Đọc lại canonical</button> : null}{companyIntent?.phase === "verified" ? <button onClick={startAnotherCompany} type="button">Tạo công ty khác</button> : null}<button disabled={companyIntent?.phase === "pending" || companyIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
       </form> : null}
       {siteOpen ? <form className="stack-form reassessment-form" onSubmit={(event) => void submitSite(event)}>
         <label><span>Tìm Company theo tên</span><input aria-label="Tìm Company theo tên" disabled={siteLocked} onChange={(event) => setCompanyQuery(event.target.value)} value={companyQuery} /></label>
@@ -237,7 +261,7 @@ export function CompanySiteCreationDialog({
         <label><span>Lý do</span><input aria-label="Lý do tạo cơ sở" disabled={siteLocked || !selectedCompany} onChange={(event) => setSiteDraft((draft) => ({ ...draft, reason: event.target.value }))} value={siteDraft.reason ?? ""} /></label>
         {siteIntent?.phase === "unverified" ? <p className="form-error" role="alert">Chưa xác minh: {siteIntent.error}. UUID và intent đã bị khóa; không tạo successor.</p> : null}
         {siteIntent?.phase === "verified" ? <p role="status">Đã xác minh Cơ sở canonical; không có GxP, ProductionLine, Case hoặc Certificate nào được tạo.</p> : null}
-        <div className="panel-actions reassessment-dialog-actions"><button disabled={siteLocked || !selectedCompany || selectedCompany.is_inactive || !actionAvailable(siteAction)} type="submit">{siteLocked ? "Đang xác minh..." : "Tạo Cơ sở"}</button>{siteIntent?.phase === "unverified" ? <button onClick={() => void verifySite(siteIntent, dialogEpoch.current)} type="button">Đọc lại canonical</button> : null}<button disabled={siteIntent?.phase === "pending" || siteIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
+        <div className="panel-actions reassessment-dialog-actions"><button disabled={siteLocked || !selectedCompany || selectedCompany.is_inactive || !actionAvailable(siteAction)} type="submit">{siteLocked ? "Đang xác minh..." : "Tạo Cơ sở"}</button>{siteIntent?.phase === "unverified" ? <button onClick={() => void verifySite(siteIntent, dialogEpoch.current)} type="button">Đọc lại canonical</button> : null}{siteIntent?.phase === "verified" ? <button onClick={startAnotherSite} type="button">Tạo cơ sở khác</button> : null}<button disabled={siteIntent?.phase === "pending" || siteIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
       </form> : null}
     </section>
   </div>;

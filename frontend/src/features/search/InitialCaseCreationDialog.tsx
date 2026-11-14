@@ -140,7 +140,7 @@ export function InitialCaseCreationDialog({
         ...current, initialCaseIntent: { ...current.initialCaseIntent, phase: "verified", persisted: row, error: null },
       });
     } catch (error) {
-      update((current) => current.initialCaseIntent?.token !== original.token ? current : {
+      update((current) => current.initialCaseIntent?.token !== original.token || current.initialCaseIntent.phase === "verified" ? current : {
         ...current, initialCaseIntent: { ...current.initialCaseIntent, phase: "unverified", error: errText(error) },
       });
     }

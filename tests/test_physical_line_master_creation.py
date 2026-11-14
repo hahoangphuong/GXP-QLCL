@@ -199,3 +199,33 @@ def test_workspace_readiness_uses_permission_and_line_identity_not_gxp(setup_db)
             assert actions["create_production_line"]["readiness_status"] == expected
             assert actions["create_production_line"]["required_permissions"] == ["case.edit"]
             assert actions["create_reassessment_case"]["readiness_status"] == "unavailable"
+
+
+def test_readiness_matches_inactive_company_post_admission(setup_db):
+    """Never advertise line creation if the canonical Company owner is inactive."""
+    engine, (active_site_id, inactive_site_id) = setup_db
+    workflow = CaseWorkflowService()
+    with Session(engine) as db:
+        for site_id, identity, expected in (
+            (active_site_id, actor(), "available"),
+            (inactive_site_id, actor(), "unavailable"),
+            (inactive_site_id, build_authenticated_user("reader", "reader"), "forbidden"),
+            (str(uuid4()), actor(), "unavailable"),
+        ):
+            action = {item["action_key"]: item for item in _build_facility_action_readiness(
+                workflow_service=workflow, session=db, site_id=site_id,
+                selected_gxp_type=None, selected_line_code=None,
+                selected_production_line_id=None, user=identity,
+            )}["create_production_line"]
+            assert action["readiness_status"] == expected
+            assert action["required_permissions"] == ["case.edit"]
+            if expected == "unavailable":
+                assert "Company canonical" in action["detail"]
+
+    with Session(engine) as db:
+        before = totals(db)
+        with pytest.raises(HTTPException) as exc:
+            workflow.create_production_line_master(db, **params(inactive_site_id))
+        assert exc.value.status_code == 409
+        db.rollback()
+        assert totals(db) == before

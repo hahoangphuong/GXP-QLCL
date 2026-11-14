@@ -19,6 +19,7 @@ import { ReportRecordDetail } from "./features/reports/ReportRecordDetail";
 import { ChangeRequestReadWorkspace } from "./features/reports/ChangeRequestReadWorkspace";
 import { ReportsPage } from "./pages/ReportsPage";
 import { CaseCommandRegistryRoot, FacilityCommandRegistryRoot } from "./features/search/CaseDraftSession";
+import { CatalogCreateSessionRoot } from "./features/search/CatalogCreateSession";
 import { TermsPage } from "./pages/TermsPage";
 import type { AppStatus, AuthenticatedIdentity, OidcSession, StubAuthState } from "./types";
 
@@ -271,7 +272,7 @@ export function App() {
   const isAuthenticated = useStubAuth || Boolean(oidcSession);
 
   return (
-    <CaseCommandRegistryRoot><FacilityCommandRegistryRoot><AppShell
+    <CaseCommandRegistryRoot><FacilityCommandRegistryRoot><CatalogCreateSessionRoot><AppShell
       showPublicLegalNav={!isAuthenticated}
       header={
         <AppHeader
@@ -304,6 +305,6 @@ export function App() {
         <Route path="/cases" element={<Navigate to="/search" replace />} />
         <Route path="/cases/:caseId" element={<CaseDirectOpen access={apiAccess} />} />
       </Routes>
-    </AppShell></FacilityCommandRegistryRoot></CaseCommandRegistryRoot>
+    </AppShell></CatalogCreateSessionRoot></FacilityCommandRegistryRoot></CaseCommandRegistryRoot>
   );
 }

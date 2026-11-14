@@ -43,12 +43,49 @@ export type Company = {
   short_name: string | null;
 };
 
+/** Canonical company projection used to verify a create intent. */
+export type CompanyDetail = Company & {
+  legal_address: string;
+  english_name: string | null;
+  legal_address_en: string | null;
+  is_inactive: boolean;
+};
+
+export type CompanyMasterCreateRequest = {
+  company_id: string;
+  legal_name: string;
+  legal_address: string;
+  english_name?: string | null;
+  short_name?: string | null;
+  legal_address_en?: string | null;
+  reason?: string | null;
+};
+
 export type Site = {
   id: string;
   legacy_site_id: number | null;
   company_id: string;
   site_name: string;
   province_name: string | null;
+};
+
+/** Canonical site projection used to verify a create intent. */
+export type SiteDetail = Site & {
+  site_address: string;
+  site_name_en: string | null;
+  site_address_en: string | null;
+  short_name: string | null;
+};
+
+export type SiteMasterCreateRequest = {
+  site_id: string;
+  site_name: string;
+  site_address: string;
+  site_name_en?: string | null;
+  site_address_en?: string | null;
+  province_name?: string | null;
+  short_name?: string | null;
+  reason?: string | null;
 };
 
 export type CaseListItem = {

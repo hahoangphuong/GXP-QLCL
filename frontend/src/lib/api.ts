@@ -43,6 +43,8 @@ import type {
   ChangeRequestTransitionRequest,
   ChangeRequestUpdateRequest,
   Company,
+  CompanyDetail,
+  CompanyMasterCreateRequest,
   DashboardSummary,
   DocumentDetail,
   DocumentOwnerMetadataInventory,
@@ -78,6 +80,8 @@ import type {
   ApprovalDocumentBindingResponse,
   ApprovalDocumentReadback,
   Site,
+  SiteDetail,
+  SiteMasterCreateRequest,
   StubAuthState,
 } from "../types";
 
@@ -262,12 +266,30 @@ export function getDashboardSummary(
   return requestJson<DashboardSummary>("/dashboard/summary", { auth, useStubAuth, bearerToken });
 }
 
-export function listCompanies(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<Company[]> {
-  return requestJson<Company[]>("/companies", { auth, useStubAuth, bearerToken });
+export function listCompanies(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null, query?: string): Promise<Company[]> {
+  if (!query?.trim()) return requestJson<Company[]>("/companies", { auth, useStubAuth, bearerToken });
+  const params = new URLSearchParams({ q: query.trim(), limit: "50" });
+  return requestJson<Company[]>(buildApiPath("/companies", params), { auth, useStubAuth, bearerToken });
+}
+
+export function getCompany(companyId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CompanyDetail> {
+  return requestJson<CompanyDetail>(`/companies/${encodeURIComponent(companyId)}`, { auth, useStubAuth, bearerToken });
+}
+
+export function createCompany(payload: CompanyMasterCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CompanyDetail> {
+  return requestJson<CompanyDetail>("/companies", { method: "POST", body: payload, auth, useStubAuth, bearerToken });
 }
 
 export function listSites(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<Site[]> {
   return requestJson<Site[]>("/sites", { auth, useStubAuth, bearerToken });
+}
+
+export function getSite(siteId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<SiteDetail> {
+  return requestJson<SiteDetail>(`/sites/${encodeURIComponent(siteId)}`, { auth, useStubAuth, bearerToken });
+}
+
+export function createSite(companyId: string, payload: SiteMasterCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<SiteDetail> {
+  return requestJson<SiteDetail>(`/companies/${encodeURIComponent(companyId)}/sites`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
 }
 
 /** Authorized, bounded name search; returns canonical Site identities, never legacy-ID selection. */

@@ -12,6 +12,7 @@ import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
+import { CompanySiteCreationDialog } from "../features/search/CompanySiteCreationDialog";
 import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPanel";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { caseWorkflowQueue } from "../features/search/caseNavigation";
@@ -471,9 +472,14 @@ export function SearchPage({
   const explicitTargetPending = resultResolution === "pending" && hasExplicitResultIdentity(pendingDeepLink);
   const pendingTargetGxpConstraint = targetGxpConstraint(pendingDeepLink);
   const pendingTargetGxpHintsInvalid = hasInvalidOrContradictoryTargetGxpHints(pendingDeepLink);
+  // A newly created Site is a facility-wide, unclassified canonical result.
+  // Do not turn the rail's visual GMP default into a false GxP constraint.
+  const resolvedUnclassifiedTarget = resultResolution === "resolved"
+    && resolvedDeepLinkResult?.accessGeneration === accessGeneration
+    && resolvedDeepLinkResult.result.gxp_type === null;
   const searchGxpType = (explicitTargetPending || resultResolution === "not_found")
     ? pendingTargetGxpConstraint
-    : gxpType;
+    : resolvedUnclassifiedTarget ? null : gxpType;
   const searchContext = JSON.stringify([
     accessGeneration,
     useStubAuth,
@@ -856,7 +862,7 @@ export function SearchPage({
       if (pendingDeepLink.requestedGxpType !== null) {
         nextParams.set("gxp_type", pendingDeepLink.requestedGxpType);
       }
-    } else {
+    } else if (!resolvedUnclassifiedTarget) {
       nextParams.set("gxp_type", gxpType);
     }
     if (province.trim()) {
@@ -1055,10 +1061,10 @@ export function SearchPage({
           ? nextResults.find((item) => item.result_key === pendingDeepLink.resultKey && matchesDeclaredTargetHints(item, pendingDeepLink)) ?? null
           : null;
         const resolveExplicitTarget = (target: FacilitySearchResult) => {
-          const resolvedGxpType = normalizeGxpSelection(target.gxp_type);
+          const resolvedGxpType = target.gxp_type === null ? null : normalizeGxpSelection(target.gxp_type);
           setResolvedDeepLinkResult({ accessGeneration, result: target });
           setSelectedResultKey(target.result_key);
-          setGxpType(resolvedGxpType);
+          if (resolvedGxpType !== null) setGxpType(resolvedGxpType);
           setResultResolution("resolved");
           setDeepLinkError(null);
 
@@ -2801,7 +2807,12 @@ export function SearchPage({
             actions={workspaceLoading || workspaceError || deepLinkError || !selectedResult
               || (workspace && workspace.history.length > 0 && !selectedHistory) ? undefined : workspace?.action_readiness}
             onActionSelect={(actionKey) => {
-              if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
+              if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request"
+                && actionKey !== "create_company" && actionKey !== "create_site") {
+                return;
+              }
+              if (actionKey === "create_company" || actionKey === "create_site") {
+                setSelectedActionKey((current) => current === actionKey ? null : actionKey);
                 return;
               }
               if (actionKey === "create_reassessment_case") {
@@ -2827,6 +2838,17 @@ export function SearchPage({
               }
             }}
             selectedActionKey={selectedActionKey}
+          />
+          <CompanySiteCreationDialog
+            auth={auth}
+            bearerToken={bearerToken}
+            companyAction={workspace?.action_readiness.find((item) => item.action_key === "create_company") ?? null}
+            onClose={() => setSelectedActionKey(null)}
+            onSiteVerified={(siteId) => navigate(`/search?site_id=${encodeURIComponent(siteId)}`, { replace: false })}
+            ownerIdentity={JSON.stringify(["catalog-create", accessGeneration, useStubAuth])}
+            openAction={selectedActionKey === "create_company" || selectedActionKey === "create_site" ? selectedActionKey : null}
+            siteAction={workspace?.action_readiness.find((item) => item.action_key === "create_site") ?? null}
+            useStubAuth={useStubAuth}
           />
         </div>
         {!resultsLoading && resultsTotalCount === 0 ? (

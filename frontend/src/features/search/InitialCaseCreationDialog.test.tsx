@@ -124,6 +124,28 @@ describe("InitialCaseCreationDialog", () => {
     await screen.findByText(/Case nháp canonical đã xác minh/);
   });
 
+  it("never downgrades verified Draft Case after an older concurrent GET fails", async () => {
+    let succeed!: (row: CaseDetail) => void;
+    let fail!: (error: Error) => void;
+    api.getCaseDetail.mockRejectedValueOnce(new Error("initial readback unreachable"))
+      .mockImplementationOnce(() => new Promise((resolve) => { succeed = resolve; }))
+      .mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+    view(); await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ Draft" }));
+    await screen.findByText(/Chưa xác minh:/);
+    const retry = screen.getByRole("button", { name: "Đọc lại Case canonical" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await waitFor(() => expect(api.getCaseDetail).toHaveBeenCalledTimes(3));
+    await act(async () => { succeed(caseRow); });
+    await screen.findByText(/Case nháp canonical đã xác minh/);
+    await act(async () => { fail(new Error("late readback failure")); });
+    expect(screen.getByText(/Case nháp canonical đã xác minh/).textContent).toContain("case-uuid");
+    expect(screen.queryByText(/Chưa xác minh:/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Mở Case workspace" })).toBeDefined();
+    expect(api.createInitialCase).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps UUID locked after unknown POST and only retries canonical GET", async () => {
     api.createInitialCase.mockRejectedValueOnce(new Error("offline"));
     api.getCaseDetail.mockRejectedValueOnce(new Error("GET timeout")).mockResolvedValueOnce(caseRow);

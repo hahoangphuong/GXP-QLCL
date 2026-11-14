@@ -68,6 +68,28 @@ describe("PhysicalLineCreationDialog owner and recovery", () => {
     await screen.findByText(/Đã xác minh dây chuyền UUID/);
   });
 
+  it("keeps a verified physical line verified when a second canonical GET fails late", async () => {
+    let succeed!: (row: typeof record) => void;
+    let fail!: (error: Error) => void;
+    api.getProductionLine.mockRejectedValueOnce(new Error("initial GET unavailable"))
+      .mockImplementationOnce(() => new Promise((resolve) => { succeed = resolve; }))
+      .mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+    view();
+    await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dây chuyền vật lý" }));
+    await screen.findByText(/Chưa xác minh được kết quả/);
+    const retry = screen.getByRole("button", { name: "Đọc lại canonical" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await waitFor(() => expect(api.getProductionLine).toHaveBeenCalledTimes(3));
+    await act(async () => { succeed(record); });
+    await screen.findByText(/Đã xác minh dây chuyền UUID/);
+    await act(async () => { fail(new Error("out-of-order network failure")); });
+    expect(screen.getByText(/Đã xác minh dây chuyền UUID/).textContent).toContain("intent-uuid");
+    expect(screen.queryByText(/Chưa xác minh được kết quả/)).toBeNull();
+    expect(api.createProductionLine).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves unknown-outcome UUID and payload, never retries POST", async () => {
     api.createProductionLine.mockRejectedValueOnce(new Error("network timeout"));
     api.getProductionLine.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(record);

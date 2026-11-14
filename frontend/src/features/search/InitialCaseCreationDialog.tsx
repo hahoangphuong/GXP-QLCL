@@ -136,11 +136,11 @@ export function InitialCaseCreationDialog({
       if (!exactInitialCaseReadback(original, row)) {
         throw new Error("Canonical Case GET sai UUID/Site/GxP/ProductionLine/type/standard/trạng thái Draft.");
       }
-      update((current) => current.initialCaseIntent?.token !== original.token ? current : {
+      update((current) => current.initialCaseIntent?.token !== original.token || current.initialCaseIntent.phase === "verified" ? current : {
         ...current, initialCaseIntent: { ...current.initialCaseIntent, phase: "verified", persisted: row, error: null },
       });
     } catch (error) {
-      update((current) => current.initialCaseIntent?.token !== original.token ? current : {
+      update((current) => current.initialCaseIntent?.token !== original.token || current.initialCaseIntent.phase === "verified" ? current : {
         ...current, initialCaseIntent: { ...current.initialCaseIntent, phase: "unverified", error: errText(error) },
       });
     }

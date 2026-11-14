@@ -146,7 +146,7 @@ export function CompanySiteCreationDialog({
       if (!companyMatches(intent.payload, persisted)) throw new Error("Bản ghi canonical cùng UUID không khớp payload intent.");
       let currentOwner = false;
       update((current) => {
-        if (current.companyIntent?.token !== intent.token) return current;
+        if (current.companyIntent?.token !== intent.token || current.companyIntent.phase === "verified") return current;
         currentOwner = true;
         return { ...current, companyIntent: { ...current.companyIntent, phase: "verified", persisted, error: null } };
       });
@@ -155,7 +155,7 @@ export function CompanySiteCreationDialog({
       if (currentOwner) setSelectedCompanyId((current) => current ?? persisted.id);
       return currentOwner;
     } catch (error) {
-      update((current) => current.companyIntent?.token === intent.token ? { ...current, companyIntent: { ...current.companyIntent, phase: "unverified", error: errorMessage(error) } } : current);
+      update((current) => current.companyIntent?.token === intent.token && current.companyIntent.phase !== "verified" ? { ...current, companyIntent: { ...current.companyIntent, phase: "unverified", error: errorMessage(error) } } : current);
       return false;
     }
   }
@@ -166,14 +166,14 @@ export function CompanySiteCreationDialog({
       if (!siteMatches(intent, persisted)) throw new Error("Bản ghi canonical không khớp Site UUID, Company UUID hoặc payload intent.");
       let currentOwner = false;
       update((current) => {
-        if (current.siteIntent?.token !== intent.token) return current;
+        if (current.siteIntent?.token !== intent.token || current.siteIntent.phase === "verified") return current;
         currentOwner = true;
         return { ...current, siteIntent: { ...current.siteIntent, phase: "verified", persisted, error: null } };
       });
       if (currentOwner && dialogEpoch.current === submittedDialogEpoch && visibleActionRef.current !== null) onSiteVerified(persisted.id);
       return true;
     } catch (error) {
-      update((current) => current.siteIntent?.token === intent.token ? { ...current, siteIntent: { ...current.siteIntent, phase: "unverified", error: errorMessage(error) } } : current);
+      update((current) => current.siteIntent?.token === intent.token && current.siteIntent.phase !== "verified" ? { ...current, siteIntent: { ...current.siteIntent, phase: "unverified", error: errorMessage(error) } } : current);
       return false;
     }
   }

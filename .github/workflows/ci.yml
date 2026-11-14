@@ -150,7 +150,7 @@ jobs:
       - name: Verify canonical workflow on isolated PostgreSQL schema
         env:
           GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
-        run: python -m pytest tests/test_canonical_workflow_postgres.py tests/test_canonical_http_workflow_postgres.py -q -p no:cacheprovider
+        run: python -m pytest tests/test_canonical_workflow_postgres.py tests/test_canonical_http_workflow_postgres.py tests/test_catalog_first_case_http_postgres.py -q -p no:cacheprovider
 
 
   backend-pytest-shard:

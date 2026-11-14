@@ -13,6 +13,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { CompanySiteCreationDialog } from "../features/search/CompanySiteCreationDialog";
+import { PhysicalLineCreationDialog } from "../features/search/PhysicalLineCreationDialog";
 import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPanel";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { caseWorkflowQueue } from "../features/search/caseNavigation";
@@ -2808,10 +2809,10 @@ export function SearchPage({
               || (workspace && workspace.history.length > 0 && !selectedHistory) ? undefined : workspace?.action_readiness}
             onActionSelect={(actionKey) => {
               if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request"
-                && actionKey !== "create_company" && actionKey !== "create_site") {
+                && actionKey !== "create_company" && actionKey !== "create_site" && actionKey !== "create_production_line") {
                 return;
               }
-              if (actionKey === "create_company" || actionKey === "create_site") {
+              if (actionKey === "create_company" || actionKey === "create_site" || actionKey === "create_production_line") {
                 setSelectedActionKey((current) => current === actionKey ? null : actionKey);
                 return;
               }
@@ -2838,6 +2839,16 @@ export function SearchPage({
               }
             }}
             selectedActionKey={selectedActionKey}
+          />
+          <PhysicalLineCreationDialog
+            open={selectedActionKey === "create_production_line"}
+            siteId={selectedResult?.site_id ?? null}
+            action={workspace?.action_readiness.find((item) => item.action_key === "create_production_line") ?? null}
+            auth={auth}
+            useStubAuth={useStubAuth}
+            bearerToken={bearerToken}
+            accessGeneration={accessGeneration}
+            onClose={() => setSelectedActionKey(null)}
           />
           <CompanySiteCreationDialog
             auth={auth}

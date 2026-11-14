@@ -158,7 +158,7 @@ def run(browser) -> None:
         page.get_by_text("Đã xác minh Công ty canonical", exact=False).wait_for()
         assert "company" in creates and readbacks.count("company") >= 1
         page.get_by_label("Tên cơ sở", exact=True).fill("Synthetic New Site")
-        page.get_by_label("Địa chỉ cơ sở").fill("Synthetic Site Address")
+        page.get_by_label("Địa chỉ cơ sở", exact=True).fill("Synthetic Site Address")
         page.get_by_role("button", name="Tạo Cơ sở").click()
         page.get_by_role("heading", name="Dây chuyền sản xuất vật lý mới").wait_for()
         assert "site" in creates and readbacks.count("site") >= 1

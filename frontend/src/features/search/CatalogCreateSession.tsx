@@ -109,7 +109,7 @@ function restore(owner: string): CatalogCreateState {
     const raw = store.getItem(JOURNAL_PREFIX + owner);
     if (!raw) return fallback;
     const value: unknown = JSON.parse(raw);
-    if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return blocked(CORRUPT_JOURNAL);
     const prior = value as Partial<CatalogCreateState>;
     // The journal is an untrusted hint, never a source of authorization or
     // readiness. Reject malformed data rather than admitting a new write.

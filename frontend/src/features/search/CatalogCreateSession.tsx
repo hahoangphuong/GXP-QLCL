@@ -62,6 +62,25 @@ const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), 
 // No bearer tokens, passwords or OIDC claims are written. Owners MUST include
 // the current authenticated username, access generation and auth mode.
 const JOURNAL_PREFIX = "gxp-catalog-recovery-v1:";
+const SELECTION_OWNER_PREFIX = '["initial-case-selection",';
+const VALID_GXP = new Set(["GMP", "GLP", "GMPbb"]);
+
+function isSelectionOwner(owner: string): boolean {
+  return owner.startsWith(SELECTION_OWNER_PREFIX);
+}
+
+function hasSelection(value: CatalogCreateState): boolean {
+  return Boolean(value.initialCaseSelectedGxp || value.initialCaseSelectedLineId);
+}
+
+function validSelection(value: Partial<CatalogCreateState>): boolean {
+  const gxp = value.initialCaseSelectedGxp;
+  const line = value.initialCaseSelectedLineId;
+  return (gxp === "" || (typeof gxp === "string" && VALID_GXP.has(gxp)))
+    && typeof line === "string"
+    && (line === "" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(line))
+    && (line === "" || Boolean(gxp));
+}
 
 function hasIntent(value: CatalogCreateState): boolean {
   return Boolean(value.companyIntent || value.siteIntent
@@ -111,6 +130,15 @@ function restore(owner: string): CatalogCreateState {
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== "object" || Array.isArray(value)) return blocked(CORRUPT_JOURNAL);
     const prior = value as Partial<CatalogCreateState>;
+    // The selection is routing context only, NEVER a persisted readiness
+    // grant. Without it the per-GxP/per-line Case intent is unreachable after
+    // reload, so recover it before resolving that exact owner.
+    if (isSelectionOwner(owner) && !hasIntent({ ...fallback, ...prior })
+      && validSelection(prior)) {
+      return { ...fallback,
+        initialCaseSelectedGxp: prior.initialCaseSelectedGxp ?? "",
+        initialCaseSelectedLineId: prior.initialCaseSelectedLineId ?? "" };
+    }
     // The journal is an untrusted hint, never a source of authorization or
     // readiness. Reject malformed data rather than admitting a new write.
     if (!hasIntent({ ...fallback, ...prior })
@@ -133,13 +161,22 @@ function restore(owner: string): CatalogCreateState {
 }
 
 function persist(owner: string, current: CatalogCreateState, next: CatalogCreateState) {
-  if (!hasIntent(current) && !hasIntent(next)) return;
+  const selectionOwner = isSelectionOwner(owner);
+  if (!hasIntent(current) && !hasIntent(next)
+      && !(selectionOwner && (hasSelection(current) || hasSelection(next)))) return;
   const storage = journalStorage();
   if (!storage) throw new Error("Không thể lưu recovery lock trong tab; không thực hiện mutation.");
   // A failed write must abort admission *before* the caller executes POST.
   // Preserve verified data for UI continuity, but never trust it on hydration.
   if (hasIntent(next)) storage.setItem(JOURNAL_PREFIX + owner, JSON.stringify(next));
-  else storage.removeItem(JOURNAL_PREFIX + owner);
+  else if (selectionOwner && hasSelection(next)) {
+    // Persist minimal navigation context; no backend evidence, readiness, or
+    // authenticated claims. The Case intent itself remains under its UUID owner.
+    storage.setItem(JOURNAL_PREFIX + owner, JSON.stringify({
+      initialCaseSelectedGxp: next.initialCaseSelectedGxp,
+      initialCaseSelectedLineId: next.initialCaseSelectedLineId,
+    }));
+  } else storage.removeItem(JOURNAL_PREFIX + owner);
 }
 
 function createStore() {

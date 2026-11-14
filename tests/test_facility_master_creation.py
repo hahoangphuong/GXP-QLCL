@@ -268,3 +268,30 @@ def test_facility_readiness_only_opens_implemented_master_actions(seeded):
             assert actions["create_site"]["readiness_status"] == expected
             assert actions["create_company"]["required_permissions"] == ["case.edit"]
             assert actions["create_production_line"]["readiness_status"] == expected
+
+
+def test_master_discovery_orders_null_legacy_ids_last_with_stable_ties(seeded):
+    """New Company/Site masters must not change the legacy-first list order.
+
+    SQLite sorts ASC NULL before non-NULL, while PostgreSQL sorts it after.
+    The explicit SQL order must provide the same predictable API output.
+    """
+    engine, (legacy_company_id, legacy_site_id) = seeded
+    with Session(engine) as db:
+        created_company_ids = [str(uuid4()), str(uuid4())]
+        created_site_ids = [str(uuid4()), str(uuid4())]
+        for company_id in created_company_ids:
+            CaseWorkflowService().create_company_master(db, **company_params(company_id))
+        for site_id in created_site_ids:
+            CaseWorkflowService().create_site_master(db, **site_params(legacy_company_id, site_id))
+        db.commit()
+    with Session(engine) as db:
+        catalog = CatalogReadService()
+        companies = catalog.list_companies(db, q=None, limit=10)
+        sites = catalog.list_sites(db, q=None, limit=10)
+        assert [row.id for row in companies] == [legacy_company_id, *sorted(created_company_ids)]
+        assert [row.id for row in sites] == [legacy_site_id, *sorted(created_site_ids)]
+        assert catalog.list_companies(db, q=None, limit=1)[0].id == legacy_company_id
+        assert catalog.list_sites(db, q=None, limit=1)[0].id == legacy_site_id
+        assert {row.id for row in catalog.list_companies(db, q="Synthetic Pharmaceutical", limit=10)} == set(created_company_ids)
+        assert {row.id for row in catalog.list_sites(db, q="Synthetic manufacturing", limit=10)} == set(created_site_ids)

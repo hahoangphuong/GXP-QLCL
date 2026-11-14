@@ -266,8 +266,10 @@ export function getDashboardSummary(
   return requestJson<DashboardSummary>("/dashboard/summary", { auth, useStubAuth, bearerToken });
 }
 
-export function listCompanies(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<Company[]> {
-  return requestJson<Company[]>("/companies", { auth, useStubAuth, bearerToken });
+export function listCompanies(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null, query?: string): Promise<Company[]> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (query?.trim()) params.set("q", query.trim());
+  return requestJson<Company[]>(buildApiPath("/companies", params), { auth, useStubAuth, bearerToken });
 }
 
 export function getCompany(companyId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CompanyDetail> {

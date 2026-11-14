@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ createCompany: vi.fn(), createSite: vi.fn(), getCompany: vi.fn(), getSite: vi.fn(), listCompanies: vi.fn() }));
 vi.mock("../../lib/api", () => api);
 
 import { CompanySiteCreationDialog } from "./CompanySiteCreationDialog";
+import { CatalogCreateSessionRoot } from "./CatalogCreateSession";
 
 const auth = { username: "operator", role: "admin" as const };
 const available = { action_key: "create_company", label: "Công ty mới", readiness_status: "available", detail: "ready", required_permissions: ["case.edit"] };
@@ -13,7 +14,7 @@ const company = { id: "company-A", legacy_company_id: null, legal_name: "Công t
 const site = { id: "uuid-intent", legacy_site_id: null, company_id: "company-A", site_name: "Cơ sở A", site_address: "Hà Nội", site_name_en: null, site_address_en: null, province_name: null, short_name: null };
 
 function view(openAction: "create_company" | "create_site" = "create_company") {
-  return render(<CompanySiteCreationDialog auth={auth} companyAction={available} onClose={vi.fn()} onSiteVerified={vi.fn()} openAction={openAction} siteAction={siteAvailable} useStubAuth />);
+  return render(<CatalogCreateSessionRoot><CompanySiteCreationDialog auth={auth} companyAction={available} onClose={vi.fn()} onSiteVerified={vi.fn()} openAction={openAction} ownerIdentity="access-A" siteAction={siteAvailable} useStubAuth /></CatalogCreateSessionRoot>);
 }
 
 beforeEach(() => {
@@ -62,7 +63,8 @@ describe("CompanySiteCreationDialog", () => {
 
   it("creates Site only below the selected canonical Company and verifies its owner", async () => {
     const onSiteVerified = vi.fn();
-    render(<CompanySiteCreationDialog auth={auth} companyAction={available} onClose={vi.fn()} onSiteVerified={onSiteVerified} openAction="create_site" siteAction={siteAvailable} useStubAuth />);
+    render(<CatalogCreateSessionRoot><CompanySiteCreationDialog auth={auth} companyAction={available} onClose={vi.fn()} onSiteVerified={onSiteVerified} openAction="create_site" ownerIdentity="access-A" siteAction={siteAvailable} useStubAuth /></CatalogCreateSessionRoot>);
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Công ty" } });
     await screen.findByRole("option", { name: /Công ty A/ });
     fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-A" } });
     await waitFor(() => expect(api.getCompany).toHaveBeenCalledWith("company-A", auth, true, undefined));
@@ -73,11 +75,20 @@ describe("CompanySiteCreationDialog", () => {
     await waitFor(() => expect(onSiteVerified).toHaveBeenCalledWith("uuid-intent"));
   });
 
+  it("uses bounded server-side Company discovery instead of a legacy first-page list", async () => {
+    api.listCompanies.mockResolvedValue(Array.from({ length: 50 }, (_, index) => ({ id: `company-${index + 21}`, legacy_company_id: null, legal_name: `Trùng tên ${index + 21}`, short_name: null })));
+    view("create_site");
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Trùng tên" } });
+    await screen.findByRole("option", { name: /Trùng tên 70/ });
+    expect(api.listCompanies).toHaveBeenCalledWith(auth, true, undefined, "Trùng tên");
+  });
+
   it("does not let a late Company A detail replace current Company B", async () => {
     let resolveA!: (value: typeof company) => void;
     api.listCompanies.mockResolvedValue([{ id: "company-A", legacy_company_id: null, legal_name: "A", short_name: null }, { id: "company-B", legacy_company_id: null, legal_name: "B", short_name: null }]);
     api.getCompany.mockImplementation((id: string) => id === "company-A" ? new Promise((resolve) => { resolveA = resolve; }) : Promise.resolve({ ...company, id: "company-B", legal_name: "B" }));
     view("create_site");
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "A" } });
     await screen.findByRole("option", { name: /A/ });
     fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-A" } });
     fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-B" } });
@@ -88,7 +99,51 @@ describe("CompanySiteCreationDialog", () => {
 
   it("does not expose create when case.edit readiness is forbidden", () => {
     const disabled = { ...available, readiness_status: "forbidden", detail: "missing_permission" };
-    render(<CompanySiteCreationDialog auth={auth} companyAction={disabled} onClose={vi.fn()} onSiteVerified={vi.fn()} openAction="create_company" siteAction={siteAvailable} useStubAuth />);
+    render(<CatalogCreateSessionRoot><CompanySiteCreationDialog auth={auth} companyAction={disabled} onClose={vi.fn()} onSiteVerified={vi.fn()} openAction="create_company" ownerIdentity="access-A" siteAction={siteAvailable} useStubAuth /></CatalogCreateSessionRoot>);
     expect((screen.getByRole("button", { name: "Tạo Công ty" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("admits two immediate Company submits as one UUID and one POST", async () => {
+    let resolvePost!: () => void;
+    api.createCompany.mockImplementationOnce(() => new Promise<void>((resolve) => { resolvePost = resolve; }));
+    view();
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+    const form = screen.getByLabelText("Tên pháp nhân").closest("form")!;
+    fireEvent.submit(form); fireEvent.submit(form);
+    expect(api.createCompany).toHaveBeenCalledTimes(1);
+    resolvePost();
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledWith("uuid-intent", auth, true, undefined));
+  });
+
+  it("allows closing a verified Company without requiring Site creation", async () => {
+    const onClose = vi.fn();
+    api.getCompany.mockResolvedValueOnce({ ...company, id: "uuid-intent" });
+    render(<CatalogCreateSessionRoot><CompanySiteCreationDialog auth={auth} companyAction={available} onClose={onClose} onSiteVerified={vi.fn()} openAction="create_company" ownerIdentity="access-A" siteAction={siteAvailable} useStubAuth /></CatalogCreateSessionRoot>);
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+    await screen.findByRole("status");
+    fireEvent.click(screen.getAllByRole("button", { name: "Đóng" })[0]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not navigate on a late Site verification after the dialog closes", async () => {
+    let resolveRead!: (value: typeof site) => void;
+    api.getSite.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const onSiteVerified = vi.fn();
+    const props = { auth, companyAction: available, onClose: vi.fn(), onSiteVerified, ownerIdentity: "access-A", siteAction: siteAvailable, useStubAuth: true };
+    const rendered = render(<CatalogCreateSessionRoot><CompanySiteCreationDialog {...props} openAction="create_site" /></CatalogCreateSessionRoot>);
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Công ty" } });
+    await screen.findByRole("option", { name: /Công ty A/ });
+    fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-A" } });
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Tên cơ sở"), { target: { value: "Cơ sở A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ cơ sở"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Cơ sở" }));
+    await waitFor(() => expect(api.getSite).toHaveBeenCalled());
+    rendered.rerender(<CatalogCreateSessionRoot><CompanySiteCreationDialog {...props} openAction={null} /></CatalogCreateSessionRoot>);
+    await act(async () => { resolveRead(site); });
+    expect(onSiteVerified).not.toHaveBeenCalled();
   });
 });

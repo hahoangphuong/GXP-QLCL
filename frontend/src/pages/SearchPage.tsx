@@ -2845,6 +2845,7 @@ export function SearchPage({
             companyAction={workspace?.action_readiness.find((item) => item.action_key === "create_company") ?? null}
             onClose={() => setSelectedActionKey(null)}
             onSiteVerified={(siteId) => navigate(`/search?site_id=${encodeURIComponent(siteId)}`, { replace: false })}
+            ownerIdentity={JSON.stringify(["catalog-create", accessGeneration, useStubAuth])}
             openAction={selectedActionKey === "create_company" || selectedActionKey === "create_site" ? selectedActionKey : null}
             siteAction={workspace?.action_readiness.find((item) => item.action_key === "create_site") ?? null}
             useStubAuth={useStubAuth}

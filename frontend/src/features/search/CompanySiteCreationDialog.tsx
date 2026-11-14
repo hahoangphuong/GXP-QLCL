@@ -2,13 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { createCompany, createSite, getCompany, getSite, listCompanies } from "../../lib/api";
 import type { Company, CompanyDetail, CompanyMasterCreateRequest, SiteDetail, SiteMasterCreateRequest, StubAuthState, WorkspaceActionReadiness } from "../../types";
-
-type CreatePhase = "idle" | "pending" | "unverified" | "verified";
-type CompanyIntent = { payload: CompanyMasterCreateRequest; phase: CreatePhase; error: string | null; persisted: CompanyDetail | null };
-type SiteIntent = { companyId: string; payload: SiteMasterCreateRequest; phase: CreatePhase; error: string | null; persisted: SiteDetail | null };
-
-const emptyCompany = (): Omit<CompanyMasterCreateRequest, "company_id"> => ({ legal_name: "", legal_address: "", english_name: "", short_name: "", legal_address_en: "", reason: "" });
-const emptySite = (): Omit<SiteMasterCreateRequest, "site_id"> => ({ site_name: "", site_address: "", site_name_en: "", site_address_en: "", province_name: "", short_name: "", reason: "" });
+import { emptyCompanyDraft, emptySiteDraft, useCatalogCreateSession, type CompanyCreateIntent, type SiteCreateIntent } from "./CatalogCreateSession";
 
 function newCanonicalId(): string {
   return crypto.randomUUID();
@@ -35,7 +29,7 @@ function companyMatches(intent: CompanyMasterCreateRequest, value: CompanyDetail
     && (value.legal_address_en ?? null) === (intent.legal_address_en ?? null);
 }
 
-function siteMatches(intent: SiteIntent, value: SiteDetail): boolean {
+function siteMatches(intent: SiteCreateIntent, value: SiteDetail): boolean {
   const payload = intent.payload;
   return value.id === payload.site_id && value.company_id === intent.companyId && value.site_name === payload.site_name
     && value.site_address === payload.site_address && (value.site_name_en ?? null) === (payload.site_name_en ?? null)
@@ -54,6 +48,7 @@ export function CompanySiteCreationDialog({
   auth,
   useStubAuth,
   bearerToken,
+  ownerIdentity,
   onClose,
   onSiteVerified,
 }: {
@@ -63,26 +58,31 @@ export function CompanySiteCreationDialog({
   auth: StubAuthState;
   useStubAuth: boolean;
   bearerToken?: string | null;
+  ownerIdentity: string;
   onClose: () => void;
   onSiteVerified: (siteId: string) => void;
 }) {
-  const [companyDraft, setCompanyDraft] = useState(emptyCompany);
-  const [siteDraft, setSiteDraft] = useState(emptySite);
-  const [companyIntent, setCompanyIntent] = useState<CompanyIntent | null>(null);
-  const [siteIntent, setSiteIntent] = useState<SiteIntent | null>(null);
+  const { state: session, update } = useCatalogCreateSession(ownerIdentity);
+  const { companyDraft, siteDraft, companyIntent, siteIntent, selectedCompanyId } = session;
+  const setCompanyDraft = (change: (draft: typeof companyDraft) => typeof companyDraft) => update((current) => ({ ...current, companyDraft: change(current.companyDraft) }));
+  const setSiteDraft = (change: (draft: typeof siteDraft) => typeof siteDraft) => update((current) => ({ ...current, siteDraft: change(current.siteDraft) }));
+  const setSelectedCompanyId = (change: string | null | ((current: string | null) => string | null)) => update((current) => ({ ...current, selectedCompanyId: typeof change === "function" ? change(current.selectedCompanyId) : change }));
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyQuery, setCompanyQuery] = useState("");
   const [companiesError, setCompaniesError] = useState<string | null>(null);
   const [companiesLoading, setCompaniesLoading] = useState(false);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedCompanyDetail, setSelectedCompanyDetail] = useState<CompanyDetail | null>(null);
   const [selectedCompanyError, setSelectedCompanyError] = useState<string | null>(null);
   const listSequence = useRef(0);
   const companyReadSequence = useRef(0);
   const selectedCompanyRef = useRef<string | null>(null);
+  const dialogEpoch = useRef(0);
+  const visibleActionRef = useRef(openAction);
   selectedCompanyRef.current = selectedCompanyId;
+  visibleActionRef.current = openAction;
 
   const selectedCompany = companyIntent?.phase === "verified" && companyIntent.persisted && companyIntent.persisted.id === selectedCompanyId
-    ? companyIntent.persisted : selectedCompanyDetail;
+    ? companyIntent.persisted : selectedCompanyDetail?.id === selectedCompanyId ? selectedCompanyDetail : null;
   const companyOpen = openAction === "create_company";
   const siteOpen = openAction === "create_site" || (companyOpen && companyIntent?.phase === "verified");
   // A verified intent is terminal in this dialog: creating a second record
@@ -91,18 +91,26 @@ export function CompanySiteCreationDialog({
   const siteLocked = siteIntent?.phase === "pending" || siteIntent?.phase === "unverified" || siteIntent?.phase === "verified";
 
   useEffect(() => {
-    if (!siteOpen) return;
+    dialogEpoch.current += 1;
+  }, [openAction, ownerIdentity]);
+
+  useEffect(() => {
+    if (!siteOpen || !companyQuery.trim()) {
+      setCompanies([]);
+      setCompaniesLoading(false);
+      return;
+    }
     const sequence = ++listSequence.current;
     setCompaniesLoading(true);
     setCompaniesError(null);
-    void listCompanies(auth, useStubAuth, bearerToken).then((value) => {
+    void listCompanies(auth, useStubAuth, bearerToken, companyQuery).then((value) => {
       if (listSequence.current === sequence) setCompanies(value);
     }).catch((error) => {
       if (listSequence.current === sequence) setCompaniesError(errorMessage(error));
     }).finally(() => {
       if (listSequence.current === sequence) setCompaniesLoading(false);
     });
-  }, [auth, bearerToken, siteOpen, useStubAuth]);
+  }, [auth, bearerToken, companyQuery, siteOpen, useStubAuth]);
 
   useEffect(() => {
     if (!selectedCompanyId || (companyIntent?.phase === "verified" && companyIntent.persisted?.id === selectedCompanyId)) {
@@ -116,32 +124,37 @@ export function CompanySiteCreationDialog({
     void getCompany(selectedCompanyId, auth, useStubAuth, bearerToken).then((value) => {
       if (companyReadSequence.current === sequence && selectedCompanyRef.current === value.id) setSelectedCompanyDetail(value);
     }).catch((error) => {
-      if (companyReadSequence.current === sequence) setSelectedCompanyError(errorMessage(error));
+      if (companyReadSequence.current === sequence && selectedCompanyRef.current === selectedCompanyId) setSelectedCompanyError(errorMessage(error));
     });
   }, [auth, bearerToken, companyIntent?.persisted?.id, companyIntent?.phase, selectedCompanyId, useStubAuth]);
 
-  async function verifyCompany(intent: CompanyIntent): Promise<boolean> {
+  async function verifyCompany(intent: CompanyCreateIntent): Promise<boolean> {
     try {
       const persisted = await getCompany(intent.payload.company_id, auth, useStubAuth, bearerToken);
       if (!companyMatches(intent.payload, persisted)) throw new Error("Bản ghi canonical cùng UUID không khớp payload intent.");
-      setCompanyIntent((current) => current === intent ? { ...current, phase: "verified", persisted, error: null } : current);
+      update((current) => current.companyIntent?.token === intent.token ? { ...current, companyIntent: { ...current.companyIntent, phase: "verified", persisted, error: null } } : current);
       setSelectedCompanyId((current) => current ?? persisted.id);
       return true;
     } catch (error) {
-      setCompanyIntent((current) => current === intent ? { ...current, phase: "unverified", error: errorMessage(error) } : current);
+      update((current) => current.companyIntent?.token === intent.token ? { ...current, companyIntent: { ...current.companyIntent, phase: "unverified", error: errorMessage(error) } } : current);
       return false;
     }
   }
 
-  async function verifySite(intent: SiteIntent): Promise<boolean> {
+  async function verifySite(intent: SiteCreateIntent, submittedDialogEpoch: number): Promise<boolean> {
     try {
       const persisted = await getSite(intent.payload.site_id, auth, useStubAuth, bearerToken);
       if (!siteMatches(intent, persisted)) throw new Error("Bản ghi canonical không khớp Site UUID, Company UUID hoặc payload intent.");
-      setSiteIntent((current) => current === intent ? { ...current, phase: "verified", persisted, error: null } : current);
-      onSiteVerified(persisted.id);
+      let currentOwner = false;
+      update((current) => {
+        if (current.siteIntent?.token !== intent.token) return current;
+        currentOwner = true;
+        return { ...current, siteIntent: { ...current.siteIntent, phase: "verified", persisted, error: null } };
+      });
+      if (currentOwner && dialogEpoch.current === submittedDialogEpoch && visibleActionRef.current !== null) onSiteVerified(persisted.id);
       return true;
     } catch (error) {
-      setSiteIntent((current) => current === intent ? { ...current, phase: "unverified", error: errorMessage(error) } : current);
+      update((current) => current.siteIntent?.token === intent.token ? { ...current, siteIntent: { ...current.siteIntent, phase: "unverified", error: errorMessage(error) } } : current);
       return false;
     }
   }
@@ -149,33 +162,49 @@ export function CompanySiteCreationDialog({
   async function submitCompany(event: FormEvent) {
     event.preventDefault();
     if (!actionAvailable(companyAction) || companyLocked || !companyDraft.legal_name.trim() || !companyDraft.legal_address.trim()) return;
-    const intent: CompanyIntent = { phase: "pending", error: null, persisted: null, payload: {
-      company_id: newCanonicalId(), legal_name: companyDraft.legal_name.trim(), legal_address: companyDraft.legal_address.trim(),
-      english_name: optional(companyDraft.english_name), short_name: optional(companyDraft.short_name), legal_address_en: optional(companyDraft.legal_address_en), reason: optional(companyDraft.reason),
-    } };
-    setCompanyIntent(intent);
+    let intent: CompanyCreateIntent | null = null;
+    let admitted = false;
+    update((current) => {
+      if (current.companyIntent) return current;
+      admitted = true;
+      intent = { token: {}, phase: "pending", error: null, persisted: null, payload: {
+        company_id: newCanonicalId(), legal_name: companyDraft.legal_name.trim(), legal_address: companyDraft.legal_address.trim(),
+        english_name: optional(companyDraft.english_name), short_name: optional(companyDraft.short_name), legal_address_en: optional(companyDraft.legal_address_en), reason: optional(companyDraft.reason),
+      } };
+      return { ...current, companyIntent: intent };
+    });
+    if (!admitted || !intent) return;
+    const admittedIntent = intent as CompanyCreateIntent;
     try {
-      await createCompany(intent.payload, auth, useStubAuth, bearerToken);
+      await createCompany(admittedIntent.payload, auth, useStubAuth, bearerToken);
     } catch {
       // A transport failure has an unknown mutation outcome. The sole recovery is canonical GET by this UUID.
     }
-    await verifyCompany(intent);
+    await verifyCompany(admittedIntent);
   }
 
   async function submitSite(event: FormEvent) {
     event.preventDefault();
     if (!actionAvailable(siteAction) || siteLocked || !selectedCompany || selectedCompany.is_inactive || !siteDraft.site_name.trim() || !siteDraft.site_address.trim()) return;
-    const intent: SiteIntent = { companyId: selectedCompany.id, phase: "pending", error: null, persisted: null, payload: {
-      site_id: newCanonicalId(), site_name: siteDraft.site_name.trim(), site_address: siteDraft.site_address.trim(),
-      site_name_en: optional(siteDraft.site_name_en), site_address_en: optional(siteDraft.site_address_en), province_name: optional(siteDraft.province_name), short_name: optional(siteDraft.short_name), reason: optional(siteDraft.reason),
-    } };
-    setSiteIntent(intent);
+    let intent: SiteCreateIntent | null = null;
+    let admitted = false;
+    update((current) => {
+      if (current.siteIntent) return current;
+      admitted = true;
+      intent = { token: {}, companyId: selectedCompany.id, phase: "pending", error: null, persisted: null, payload: {
+        site_id: newCanonicalId(), site_name: siteDraft.site_name.trim(), site_address: siteDraft.site_address.trim(),
+        site_name_en: optional(siteDraft.site_name_en), site_address_en: optional(siteDraft.site_address_en), province_name: optional(siteDraft.province_name), short_name: optional(siteDraft.short_name), reason: optional(siteDraft.reason),
+      } };
+      return { ...current, siteIntent: intent };
+    });
+    if (!admitted || !intent) return;
+    const admittedIntent = intent as SiteCreateIntent;
     try {
-      await createSite(intent.companyId, intent.payload, auth, useStubAuth, bearerToken);
+      await createSite(admittedIntent.companyId, admittedIntent.payload, auth, useStubAuth, bearerToken);
     } catch {
       // Same UUID is read back; we intentionally never retry POST after an uncertain outcome.
     }
-    await verifySite(intent);
+    await verifySite(admittedIntent, dialogEpoch.current);
   }
 
   if (!openAction) return null;
@@ -191,10 +220,11 @@ export function CompanySiteCreationDialog({
         <label><span>Lý do</span><input aria-label="Lý do tạo công ty" disabled={companyLocked} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, reason: event.target.value }))} value={companyDraft.reason ?? ""} /></label>
         {companyIntent?.phase === "unverified" ? <p className="form-error" role="alert">Chưa xác minh: {companyIntent.error}. UUID và intent đã bị khóa; chỉ có thể đọc lại canonical.</p> : null}
         {companyIntent?.phase === "verified" ? <p role="status">Đã xác minh Công ty canonical. Có thể chọn để tạo Cơ sở.</p> : null}
-        <div className="panel-actions reassessment-dialog-actions"><button disabled={companyLocked || !actionAvailable(companyAction)} type="submit">{companyLocked ? "Đang xác minh..." : "Tạo Công ty"}</button>{companyIntent?.phase === "unverified" ? <button onClick={() => void verifyCompany(companyIntent)} type="button">Đọc lại canonical</button> : null}<button disabled={companyLocked} onClick={onClose} type="button">Đóng</button></div>
+        <div className="panel-actions reassessment-dialog-actions"><button disabled={companyLocked || !actionAvailable(companyAction)} type="submit">{companyLocked ? "Đang xác minh..." : "Tạo Công ty"}</button>{companyIntent?.phase === "unverified" ? <button onClick={() => void verifyCompany(companyIntent)} type="button">Đọc lại canonical</button> : null}<button disabled={companyIntent?.phase === "pending" || companyIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
       </form> : null}
       {siteOpen ? <form className="stack-form reassessment-form" onSubmit={(event) => void submitSite(event)}>
-        <label><span>Chọn Công ty *</span><select aria-label="Company canonical" disabled={siteLocked || companiesLoading || !actionAvailable(siteAction)} onChange={(event) => setSelectedCompanyId(event.target.value || null)} value={selectedCompanyId ?? ""}><option value="">-- Chọn Company canonical --</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.legal_name} — {company.id}</option>)}</select></label>
+        <label><span>Tìm Company theo tên</span><input aria-label="Tìm Company theo tên" disabled={siteLocked} onChange={(event) => setCompanyQuery(event.target.value)} value={companyQuery} /></label>
+        <label><span>Chọn Công ty *</span><select aria-label="Company canonical" disabled={siteLocked || companiesLoading || !actionAvailable(siteAction)} onChange={(event) => setSelectedCompanyId(event.target.value || null)} value={selectedCompanyId ?? ""}><option value="">{companiesLoading ? "Đang tìm Company..." : "-- Tìm theo tên rồi chọn Company canonical --"}</option>{companyIntent?.persisted ? <option value={companyIntent.persisted.id}>{companyIntent.persisted.legal_name} — {companyIntent.persisted.id}</option> : null}{companies.filter((company) => company.id !== companyIntent?.persisted?.id).map((company) => <option key={company.id} value={company.id}>{company.legal_name} — {company.id}</option>)}</select></label>
         {selectedCompany ? <p>Company đã chọn: <strong>{selectedCompany.legal_name}</strong> ({selectedCompany.id}){selectedCompany.is_inactive ? " — không còn hoạt động" : ""}</p> : null}
         {selectedCompanyError ? <p className="form-error" role="alert">{selectedCompanyError}</p> : null}
         {companiesError ? <p className="form-error" role="alert">{companiesError}</p> : null}
@@ -207,7 +237,7 @@ export function CompanySiteCreationDialog({
         <label><span>Lý do</span><input aria-label="Lý do tạo cơ sở" disabled={siteLocked || !selectedCompany} onChange={(event) => setSiteDraft((draft) => ({ ...draft, reason: event.target.value }))} value={siteDraft.reason ?? ""} /></label>
         {siteIntent?.phase === "unverified" ? <p className="form-error" role="alert">Chưa xác minh: {siteIntent.error}. UUID và intent đã bị khóa; không tạo successor.</p> : null}
         {siteIntent?.phase === "verified" ? <p role="status">Đã xác minh Cơ sở canonical; không có GxP, ProductionLine, Case hoặc Certificate nào được tạo.</p> : null}
-        <div className="panel-actions reassessment-dialog-actions"><button disabled={siteLocked || !selectedCompany || selectedCompany.is_inactive || !actionAvailable(siteAction)} type="submit">{siteLocked ? "Đang xác minh..." : "Tạo Cơ sở"}</button>{siteIntent?.phase === "unverified" ? <button onClick={() => void verifySite(siteIntent)} type="button">Đọc lại canonical</button> : null}<button disabled={siteLocked} onClick={onClose} type="button">Đóng</button></div>
+        <div className="panel-actions reassessment-dialog-actions"><button disabled={siteLocked || !selectedCompany || selectedCompany.is_inactive || !actionAvailable(siteAction)} type="submit">{siteLocked ? "Đang xác minh..." : "Tạo Cơ sở"}</button>{siteIntent?.phase === "unverified" ? <button onClick={() => void verifySite(siteIntent, dialogEpoch.current)} type="button">Đọc lại canonical</button> : null}<button disabled={siteIntent?.phase === "pending" || siteIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
       </form> : null}
     </section>
   </div>;

@@ -49,11 +49,12 @@ export type CatalogCreateState = {
   initialCaseIntent: InitialCaseIntent | null;
   initialCaseSelectedGxp: "" | "GMP" | "GLP" | "GMPbb";
   initialCaseSelectedLineId: string;
+  recoveryJournalError: string | null;
 };
 
 export const emptyCompanyDraft = (): CatalogCreateState["companyDraft"] => ({ legal_name: "", legal_address: "", english_name: "", short_name: "", legal_address_en: "", reason: "" });
 export const emptySiteDraft = (): CatalogCreateState["siteDraft"] => ({ site_name: "", site_address: "", site_name_en: "", site_address_en: "", province_name: "", short_name: "", reason: "" });
-const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), siteDraft: emptySiteDraft(), companyIntent: null, siteIntent: null, selectedCompanyId: null, physicalLineDraft: emptyPhysicalLineDraft(), physicalLineIntent: null, initialCaseDraft: emptyInitialCaseDraft(), initialCaseIntent: null, initialCaseSelectedGxp: "", initialCaseSelectedLineId: "" });
+const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), siteDraft: emptySiteDraft(), companyIntent: null, siteIntent: null, selectedCompanyId: null, physicalLineDraft: emptyPhysicalLineDraft(), physicalLineIntent: null, initialCaseDraft: emptyInitialCaseDraft(), initialCaseIntent: null, initialCaseSelectedGxp: "", initialCaseSelectedLineId: "", recoveryJournalError: null });
 
 // A tab-scoped recovery journal, never an authority to replay a mutation.
 // Persist only after the intent UUID/payload is admitted; restore every intent
@@ -81,10 +82,29 @@ function hydrateIntent<T extends { phase: CatalogCreatePhase; persisted: unknown
   } : null;
 }
 
+const CORRUPT_JOURNAL = "Recovery journal không hợp lệ. Khóa tạo mới để đối soát mutation chưa rõ kết quả.";
+const UNAVAILABLE_JOURNAL = "Không lưu/đọc được recovery journal trong tab; POST bị chặn.";
+
+function blocked(error: string): CatalogCreateState {
+  return { ...initial(), recoveryJournalError: error };
+}
+
+function validIntentShape(value: unknown, idField: string, ownerField?: string): boolean {
+  if (value == null) return true;
+  if (typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  const payload = row.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const uuid = (payload as Record<string, unknown>)[idField];
+  if (typeof uuid !== "string"
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)) return false;
+  return !ownerField || typeof row[ownerField] === "string";
+}
+
 function restore(owner: string): CatalogCreateState {
   const fallback = initial();
   const store = journalStorage();
-  if (!store) return fallback;
+  if (!store) return blocked(UNAVAILABLE_JOURNAL);
   try {
     const raw = store.getItem(JOURNAL_PREFIX + owner);
     if (!raw) return fallback;
@@ -93,23 +113,23 @@ function restore(owner: string): CatalogCreateState {
     const prior = value as Partial<CatalogCreateState>;
     // The journal is an untrusted hint, never a source of authorization or
     // readiness. Reject malformed data rather than admitting a new write.
-    if (!hasIntent({ ...fallback, ...prior }) || !Object.values({
-      company: prior.companyIntent?.payload?.company_id,
-      site: prior.siteIntent?.payload?.site_id,
-      line: prior.physicalLineIntent?.payload?.production_line_id,
-      case: prior.initialCaseIntent?.payload?.case_id,
-    }).every((id) => id === undefined || (typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)))) {
-      return fallback;
+    if (!hasIntent({ ...fallback, ...prior })
+      || !validIntentShape(prior.companyIntent, "company_id")
+      || !validIntentShape(prior.siteIntent, "site_id", "companyId")
+      || !validIntentShape(prior.physicalLineIntent, "production_line_id", "siteId")
+      || !validIntentShape(prior.initialCaseIntent, "case_id", "siteId")) {
+      return blocked(CORRUPT_JOURNAL);
     }
     return {
       ...fallback,
       ...prior,
+      recoveryJournalError: null,
       companyIntent: hydrateIntent(prior.companyIntent ?? null),
       siteIntent: hydrateIntent(prior.siteIntent ?? null),
       physicalLineIntent: hydrateIntent(prior.physicalLineIntent ?? null),
       initialCaseIntent: hydrateIntent(prior.initialCaseIntent ?? null),
     };
-  } catch { return fallback; }
+  } catch { return blocked(CORRUPT_JOURNAL); }
 }
 
 function persist(owner: string, current: CatalogCreateState, next: CatalogCreateState) {
@@ -134,9 +154,17 @@ function createStore() {
     get,
     update(owner: string, update: (current: CatalogCreateState) => CatalogCreateState) {
       const current = get(owner);
+      if (current.recoveryJournalError) return current;
       const next = update(current);
       if (next === current) return current;
-      persist(owner, current, next);
+      try {
+        persist(owner, current, next);
+      } catch {
+        values.set(owner, { ...current, recoveryJournalError: UNAVAILABLE_JOURNAL });
+        notify(owner);
+        // Must abort submit before POST even if its callback already captured intent.
+        throw new Error(UNAVAILABLE_JOURNAL);
+      }
       values.set(owner, next); notify(owner);
       return next;
     },

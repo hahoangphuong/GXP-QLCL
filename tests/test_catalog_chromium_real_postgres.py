@@ -1,7 +1,8 @@
 """Chromium + real FastAPI + isolated migrated PostgreSQL catalog journey.
 
-No Playwright API mocking or browser route interception. Vite forwards /api
-to the real localhost FastAPI application. Only the development header-stub
+Normal requests reach real FastAPI via Vite /api. Negative scenarios only
+fault-inject browser-visible responses *after* real POST commits, and the
+first exact UUID GET response; no business API or DB operation is mocked. Only the development header-stub
 identity is used. Shared pg_engine refuses non-disposable remote databases.
 This gate is opt-in; CI installs Chromium and turns it on explicitly.
 """
@@ -84,8 +85,8 @@ def _rows(db, model):
     return db.scalar(select(func.count()).select_from(model))
 
 
-@pytest.mark.parametrize("ambiguous_stage", (None, "company", "site", "line"),
-                         ids=("normal", "ambiguous-company", "ambiguous-site", "ambiguous-line"))
+@pytest.mark.parametrize("ambiguous_stage", (None, "company", "site", "line", "case"),
+                         ids=("normal", "ambiguous-company", "ambiguous-site", "ambiguous-line", "ambiguous-case"))
 def test_chromium_real_http_first_case_full_operator_journey(pg_engine, live_backend, ambiguous_stage):
     # Playwright is installed only by the path-scoped browser job. Import at
     # execution time so normal backend pytest shards can still collect this file.
@@ -135,14 +136,16 @@ def test_chromium_real_http_first_case_full_operator_journey(pg_engine, live_bac
                 "company": "/api/companies",
                 "site": "/api/companies/" + writes.get("company", {}).get("company_id", "") + "/sites",
                 "line": "/api/sites/" + writes.get("site", {}).get("site_id", "") + "/production-lines",
+                "case": "/api/sites/" + writes.get("site", {}).get("site_id", "") + "/inspection-cases/initial",
             }
             ids_by_stage = {
                 "company": writes.get("company", {}).get("company_id"),
                 "site": writes.get("site", {}).get("site_id"),
                 "line": writes.get("line", {}).get("production_line_id"),
+                "case": writes.get("case", {}).get("case_id"),
             }
             stage_get = {"company": "/api/companies/", "site": "/api/sites/",
-                         "line": "/api/production-lines/"}
+                         "line": "/api/production-lines/", "case": "/api/cases/"}
             if ambiguous_stage and req.method == "POST" and path == stage_post[ambiguous_stage]:
                 assert injected["post"] == 0, "Duplicate POST is forbidden"
                 response = route.fetch()
@@ -200,6 +203,9 @@ def test_chromium_real_http_first_case_full_operator_journey(pg_engine, live_bac
             page.get_by_label("Lý do tạo hồ sơ đầu tiên").fill("Synthetic live HTTP first Case")
             page.get_by_label("Xác nhận chỉ tạo Case Draft").check()
             page.get_by_role("button", name="Tạo hồ sơ Draft").click()
+            if ambiguous_stage == "case":
+                page.get_by_text("Chưa xác minh:", exact=False).wait_for()
+                page.get_by_role("button", name="Đọc lại Case canonical").click()
             page.get_by_text("Case nháp canonical đã xác minh:", exact=False).wait_for()
 
             assert len(writes) == 4 and not errors, (writes, errors)

@@ -29,7 +29,9 @@ function view(overrides: Partial<typeof props> = {}) {
 async function fill() {
   fireEvent.change(screen.getByLabelText("Loại GxP cho hồ sơ mới"), { target: { value: "GMP" } });
   await waitFor(() => expect(api.getFacilityWorkspace).toHaveBeenCalled());
-  await waitFor(() => expect((screen.getByRole("button", { name: "Tạo hồ sơ Draft" }) as HTMLButtonElement).disabled).toBe(true));
+  await fillDraft();
+}
+async function fillDraft() {
   fireEvent.change(screen.getByLabelText("Loại kiểm tra hồ sơ đầu tiên"), { target: { value: "Mới" } });
   fireEvent.change(screen.getByLabelText("Tiêu chuẩn áp dụng"), { target: { value: "WHO-GMP" } });
   fireEvent.change(screen.getByLabelText("Lý do tạo hồ sơ đầu tiên"), { target: { value: "Hồ sơ GMP đầu tiên" } });
@@ -142,6 +144,8 @@ describe("InitialCaseCreationDialog", () => {
     await fill();
     fireEvent.change(screen.getByLabelText("ProductionLine UUID"), { target: { value: "line-A" } });
     await waitFor(() => expect(api.getFacilityWorkspace).toHaveBeenCalledWith("site-A", auth, true, "GMP", null, undefined, "line-A"));
+    // A physical-line UUID is a distinct canonical owner, with its own draft.
+    await fillDraft();
     fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ Draft" }));
     await screen.findByText(/Case nháp canonical đã xác minh/);
     expect(api.createInitialCase.mock.calls[0][1].production_line_id).toBe("line-A");
@@ -165,7 +169,9 @@ describe("InitialCaseCreationDialog", () => {
 
   it("rejects blocked backend readiness, inactive Company and Tái without POST", async () => {
     api.getFacilityWorkspace.mockResolvedValue({ summary: { site_id: "site-A", selected_gxp_type: "GMP", selected_production_line_id: null }, history: [], action_readiness: [{ ...ready, readiness_status: "conflict", detail: "Đã có GCN" }] });
-    view(); await screen.findByText(/Đã có GCN/);
+    view();
+    fireEvent.change(screen.getByLabelText("Loại GxP cho hồ sơ mới"), { target: { value: "GMP" } });
+    await screen.findByText(/Đã có GCN/);
     fireEvent.change(screen.getByLabelText("Loại kiểm tra hồ sơ đầu tiên"), { target: { value: "Tái" } });
     expect((screen.getByRole("button", { name: "Tạo hồ sơ Draft" }) as HTMLButtonElement).disabled).toBe(true);
     expect(api.createInitialCase).not.toHaveBeenCalled();

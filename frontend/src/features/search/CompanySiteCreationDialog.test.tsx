@@ -18,6 +18,8 @@ function view(openAction: "create_company" | "create_site" = "create_company") {
 }
 
 beforeEach(() => {
+  // Each Vitest scenario gets an independent tab journal, as a new browser tab would.
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
   vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "uuid-intent") });
   api.listCompanies.mockResolvedValue([{ id: "company-A", legacy_company_id: null, legal_name: "Công ty A", short_name: null }]);

@@ -27,6 +27,7 @@ import {
   getDocumentDetail,
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
+  openApprovalSubmissionDocumentCurrentContent,
   getGenerationRun,
   getCaseInspectionPlanRuntimeReadiness,
   listCases,
@@ -303,6 +304,7 @@ describe("frontend API routing contract", () => {
     await getGenerationRun("run-123", { username: "operator.local", role: "manager" }, true);
     await getDocumentDetail("doc-123", { username: "operator.local", role: "manager" }, true);
     await openCaseDocumentCurrentContent("case-123", "doc-123", { username: "operator.local", role: "manager" }, true);
+    await openApprovalSubmissionDocumentCurrentContent("approval-456", "doc-round-456", { username: "operator.local", role: "manager" }, true);
     await openCapaCycleDocumentCurrentContent(
       "case-123",
       "capa-123",
@@ -321,6 +323,7 @@ describe("frontend API routing contract", () => {
       "/api/document-generation-runs/run-123",
       "/api/documents/doc-123",
       "/api/cases/case-123/documents/doc-123/content",
+      "/api/approval-submissions/approval-456/documents/doc-round-456/content",
       "/api/cases/case-123/capa-cycles/capa-123/documents/doc-456/content",
     ]);
     for (const url of urls) {

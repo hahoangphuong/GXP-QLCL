@@ -336,6 +336,7 @@ function renderCaseStepContent(
   onBindApprovalDocument: ((id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>) | undefined,
   onReadApprovalDocuments: ((id: string) => Promise<import("../../types").ApprovalDocumentReadback>) | undefined,
   onApprovalDocumentsConfirmed: ((caseId: string) => Promise<void>) | undefined,
+  onOpenApprovalDocument: ((submissionId: string, documentId: string) => Promise<void>) | undefined,
   onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>,
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>,
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>,
@@ -412,6 +413,7 @@ function renderCaseStepContent(
           onBindApprovalDocument={onBindApprovalDocument}
           onReadApprovalDocuments={onReadApprovalDocuments}
           onApprovalDocumentsConfirmed={onApprovalDocumentsConfirmed}
+          onOpenApprovalDocument={onOpenApprovalDocument}
           onTransitionCase={onTransitionCase}
           onInspectionPlanSave={onInspectionPlanSave}
           onInspectionTeamSave={onInspectionTeamSave}
@@ -567,6 +569,7 @@ export function EventWorkspace({
   onBindApprovalDocument,
   onReadApprovalDocuments,
   onApprovalDocumentsConfirmed,
+  onOpenApprovalDocument,
   onTransitionCase,
   onInspectionTeamSave,
   onLoadInspectionTeamIdentityOptions,
@@ -612,6 +615,7 @@ export function EventWorkspace({
   onBindApprovalDocument?: (id: string, payload: import("../../types").ApprovalDocumentBindRequest) => Promise<import("../../types").ApprovalDocumentBindingResponse>;
   onReadApprovalDocuments?: (id: string) => Promise<import("../../types").ApprovalDocumentReadback>;
   onApprovalDocumentsConfirmed?: (caseId: string) => Promise<void>;
+  onOpenApprovalDocument?: (submissionId: string, documentId: string) => Promise<void>;
   onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>;
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
@@ -756,6 +760,7 @@ export function EventWorkspace({
             onBindApprovalDocument,
             onReadApprovalDocuments,
             onApprovalDocumentsConfirmed,
+            onOpenApprovalDocument,
             onTransitionCase,
             onInspectionTeamSave,
             onLoadInspectionTeamIdentityOptions,

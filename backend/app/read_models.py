@@ -694,6 +694,20 @@ class ContextualDocumentActionRead(BaseModel):
     actions: list[ContextualDocumentActionAvailabilityRead]
 
 
+class CaseNonissuanceDecisionReadinessRead(BaseModel):
+    action_key: Literal["record_certificate_nonissuance_decision"]
+    label: str
+    case_id: str
+    expected_case_version: int
+    available: bool
+    reason_code: Literal[
+        "missing_permission", "case_state_not_eligible",
+        "nonissuance_already_recorded", "final_evaluation_missing",
+        "latest_capa_not_accepted", "linked_certificate_exists",
+    ] | None = None
+    required_permissions: list[str]
+
+
 class CertificateIssueActionReadinessRead(BaseModel):
     action_key: Literal["issue_certificate"]
     label: str
@@ -734,6 +748,7 @@ class CaseWorkspaceRead(BaseModel):
     contextual_document_actions: list[ContextualDocumentActionRead]
     certificate_issue_readiness: CertificateIssueActionReadinessRead
     nonissuance_decision: CaseNonissuanceDecisionRead | None = None
+    nonissuance_record_readiness: CaseNonissuanceDecisionReadinessRead | None = None
     business_evidence: CaseBusinessEvidenceRead
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]

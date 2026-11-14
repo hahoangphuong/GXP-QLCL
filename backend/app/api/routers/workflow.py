@@ -32,6 +32,7 @@ from backend.app.read_models import (
     EvaluationScopeUpsertRequest,
     CaseTransitionRead,
     CaseNonissuanceDecisionRead,
+    CaseNonissuanceDecisionReadinessRead,
     CaseNonissuanceDecisionRecordRequest,
     CaseTransitionRequest,
     ChangeApprovalUpsertRequest,
@@ -138,6 +139,18 @@ def register_workflow_routes(app, session_factory) -> None:
         require_role(user, ALLOWED_READ_ROLES)
         return CaseNonissuanceDecisionRead(
             **service.get_case_nonissuance_decision(session, case_id=case_id)
+        )
+
+    def read_case_nonissuance_record_readiness(
+        case_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return CaseNonissuanceDecisionReadinessRead(
+            **service.get_case_nonissuance_record_readiness(
+                session, case_id=case_id, user=user,
+            )
         )
 
     def record_case_nonissuance_decision(
@@ -779,6 +792,13 @@ def register_workflow_routes(app, session_factory) -> None:
         read_case_nonissuance_decision,
         methods=["GET"],
         response_model=CaseNonissuanceDecisionRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/certificate-nonissuance-decision/readiness",
+        read_case_nonissuance_record_readiness,
+        methods=["GET"],
+        response_model=CaseNonissuanceDecisionReadinessRead,
         tags=["workflow"],
     )
     app.add_api_route(

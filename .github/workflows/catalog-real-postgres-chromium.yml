@@ -8,6 +8,7 @@ on:
       - tests/test_catalog_first_case_http_postgres.py
       - frontend/catalog-journey-browser-fixture.html
       - frontend/src/qa/initialCaseBrowserFixture.tsx
+      - frontend/src/features/search/CatalogCreateSession.tsx
       - frontend/src/features/search/CompanySiteCreationDialog.tsx
       - frontend/src/features/search/PhysicalLineCreationDialog.tsx
       - frontend/src/features/search/InitialCaseCreationDialog.tsx

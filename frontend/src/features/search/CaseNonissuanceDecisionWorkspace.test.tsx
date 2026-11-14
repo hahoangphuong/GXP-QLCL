@@ -7,7 +7,12 @@ import { CaseNonissuanceDecisionWorkspace } from "./CaseNonissuanceDecisionWorks
 
 const workspace = (overrides: Record<string, unknown> = {}) => ({
   case_summary: { id: "case-a", row_version: 7, state: "awaiting_certificate_decision" },
-  nonissuance_decision: null,
+  nonissuance_decision: { case_id: "case-a", decision: null },
+  nonissuance_record_readiness: {
+    action_key: "record_certificate_nonissuance_decision", label: "Ghi nhận không cấp",
+    case_id: "case-a", expected_case_version: 7, available: true,
+    reason_code: null, required_permissions: ["certificate.approve"],
+  },
   ...overrides,
 }) as never;
 
@@ -29,8 +34,44 @@ describe("CaseNonissuanceDecisionWorkspace", () => {
   });
 
   it("does not offer a second append-only write after canonical record exists", () => {
-    view(workspace({ nonissuance_decision: { decision_id: "decision-a", case_id: "case-a", decided_on: "2026-11-13", decision_reference: "KCGCN-01", explanation: "Không đáp ứng", recorded_by_user_id: "user-a" } }));
+    view(workspace({ nonissuance_decision: { case_id: "case-a", decision: { decision_id: "decision-a", case_id: "case-a", decided_on: "2026-11-13", decision_reference: "KCGCN-01", explanation: "Không đáp ứng", recorded_by_user_id: "user-a" } } }));
     expect(screen.queryByRole("button", { name: "Ghi nhận quyết định không cấp" })).not.toBeInTheDocument();
     expect(screen.getByText("KCGCN-01")).toBeInTheDocument();
   });
+  it.each([
+    ["missing_permission", "không có quyền"],
+    ["final_evaluation_missing", "chưa có đánh giá cuối cùng"],
+    ["latest_capa_not_accepted", "CAPA mới nhất chưa được chấp nhận"],
+    ["linked_certificate_exists", "đã liên kết với một giấy chứng nhận"],
+    ["nonissuance_already_recorded", "đã có quyết định"],
+    ["case_state_not_eligible", "chưa ở trạng thái"],
+  ])("does not offer write when backend readiness reports %s", (reason, expected) => {
+    const onRecord = vi.fn();
+    view(workspace({ nonissuance_record_readiness: {
+      action_key: "record_certificate_nonissuance_decision", label: "Ghi nhận không cấp",
+      case_id: "case-a", expected_case_version: 7, available: false,
+      reason_code: reason, required_permissions: ["certificate.approve"],
+    } }), onRecord);
+    expect(screen.getByRole("status")).toHaveTextContent(expected);
+    expect(screen.queryByRole("button", { name: "Ghi nhận quyết định không cấp" })).not.toBeInTheDocument();
+    expect(onRecord).not.toHaveBeenCalled();
+  });
+
+  it("blocks stale or wrong Case readiness without a POST", () => {
+    const onRecord = vi.fn();
+    view(workspace({ nonissuance_record_readiness: {
+      action_key: "record_certificate_nonissuance_decision", label: "Ghi nhận không cấp",
+      case_id: "case-b", expected_case_version: 7, available: true,
+      reason_code: null, required_permissions: ["certificate.approve"],
+    } }), onRecord);
+    expect(screen.queryByRole("button", { name: "Ghi nhận quyết định không cấp" })).not.toBeInTheDocument();
+    expect(onRecord).not.toHaveBeenCalled();
+  });
+
+  it("blocks mismatched decision envelope owner", () => {
+    view(workspace({ nonissuance_decision: { case_id: "case-b", decision: null } }));
+    expect(screen.getByRole("status")).toHaveTextContent("không thuộc hồ sơ hiện tại");
+    expect(screen.queryByRole("button", { name: "Ghi nhận quyết định không cấp" })).not.toBeInTheDocument();
+  });
+
 });

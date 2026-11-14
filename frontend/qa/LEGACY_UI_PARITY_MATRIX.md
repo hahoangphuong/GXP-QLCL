@@ -2370,8 +2370,8 @@ a distinct column and CSV fields. It does not infer nonissuance from missing GCN
 final evaluation, or text. URL, applied/draft filter and export ownership remain
 the existing report owners.
 
-`EVIDENCE_MISSING`: backend exposes no separate nonissuance readiness projection
-before POST, so the UI does not fabricate CAPA/final-evaluation/certificate
-eligibility. These canonical guards remain server-owned and may reject the
-attempt with 403/409/422. Authenticated OIDC, legal issuance, Word/NAS and
+`EVIDENCE_MISSING`: backend exposes canonical `nonissuance_record_readiness` with Case UUID,
+Case version, permission and reason code. The UI displays these exact blockers
+before enabling POST; backend independently rechecks them under the Case lock
+and can still return 403/409/422. Authenticated OIDC, legal issuance, Word/NAS and
 production UAT remain unverified.

@@ -1135,7 +1135,8 @@ export type CaseWorkspace = {
   documents: DocumentChecklist;
   contextual_document_actions: ContextualDocumentAction[];
   certificate_issue_readiness: CertificateIssueActionReadiness;
-  nonissuance_decision?: CaseNonissuanceDecisionDetail | null;
+  nonissuance_decision?: CaseNonissuanceDecisionRead | null;
+  nonissuance_record_readiness?: CaseNonissuanceRecordReadiness | null;
   linked_gxp_certificates: GxpCertificateDetail[];
   linked_business_eligibility_certificates: BusinessEligibilityDetail[];
 };
@@ -1150,6 +1151,15 @@ export type CaseNonissuanceDecisionDetail = {
 };
 
 export type CaseNonissuanceDecisionRead = { case_id: string; decision: CaseNonissuanceDecisionDetail | null };
+export type CaseNonissuanceRecordReadiness = {
+  action_key: "record_certificate_nonissuance_decision";
+  label: string;
+  case_id: string;
+  expected_case_version: number;
+  available: boolean;
+  reason_code: "missing_permission" | "case_state_not_eligible" | "nonissuance_already_recorded" | "final_evaluation_missing" | "latest_capa_not_accepted" | "linked_certificate_exists" | null;
+  required_permissions: string[];
+};
 export type CaseNonissuanceDecisionRecordRequest = {
   expected_case_version: number;
   decided_on: string;

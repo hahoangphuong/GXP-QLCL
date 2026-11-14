@@ -75,6 +75,7 @@ export function FacilityWorkspaceTabs({
   onGxpCertificatePromote,
   onGxpCertificateEditLatestVersion,
   onIssueCertificate,
+  onRecordNonissuanceDecision,
   gxpCertificatePromotionError,
   gxpCertificatePromotionPending,
   eligibilityCertificates,
@@ -156,6 +157,7 @@ export function FacilityWorkspaceTabs({
   onGxpCertificatePromote: (expectedVersion: number) => Promise<void>;
   onGxpCertificateEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
+  onRecordNonissuanceDecision?: (payload: import("../../types").CaseNonissuanceDecisionRecordRequest) => Promise<import("../../types").CaseNonissuanceDecisionRead>;
   gxpCertificatePromotionError: string | null;
   gxpCertificatePromotionPending: boolean;
   eligibilityCertificates: BusinessEligibilityListItem[];
@@ -343,6 +345,7 @@ export function FacilityWorkspaceTabs({
           inspectionPlanReadiness={inspectionPlanReadiness}
           onRetryInspectionPlanReadiness={onRetryInspectionPlanReadiness}
           onIssueCertificate={onIssueCertificate}
+          onRecordNonissuanceDecision={onRecordNonissuanceDecision}
           openableCertificateIds={openableLinkedCertificateIds}
           onOpenLinkedCertificate={openLinkedCertificate}
           onNavigateCaseCertificate={navigateCaseCertificate}

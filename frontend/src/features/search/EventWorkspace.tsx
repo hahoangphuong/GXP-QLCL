@@ -35,6 +35,7 @@ import { CaseApplicationWorkspace } from "./CaseApplicationWorkspace";
 import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
 import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
 import { CaseCertificateIssueWorkspace } from "./CaseCertificateIssueWorkspace";
+import { CaseNonissuanceDecisionWorkspace } from "./CaseNonissuanceDecisionWorkspace";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { CaseNextActions, type CaseGuidanceTarget } from "./CaseNextActions";
 import { ChangeRequestMutationWorkspace, type ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
@@ -356,6 +357,7 @@ function renderCaseStepContent(
   inspectionPlanReadiness: CaseInspectionPlanReadinessState | null,
   onRetryInspectionPlanReadiness: () => void,
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>,
+  onRecordNonissuanceDecision: ((payload: import("../../types").CaseNonissuanceDecisionRecordRequest) => Promise<import("../../types").CaseNonissuanceDecisionRead>) | undefined,
   openableCertificateIds: string[],
   onOpenLinkedCertificate?: (certificateId: string) => void,
   onNavigateCaseCertificate?: (certificateId: string) => void,
@@ -498,6 +500,7 @@ function renderCaseStepContent(
             onIssue={onIssueCertificate}
             readiness={caseWorkspace.certificate_issue_readiness}
           />
+          {onRecordNonissuanceDecision ? <CaseNonissuanceDecisionWorkspace caseWorkspace={caseWorkspace} onRecord={onRecordNonissuanceDecision} /> : null}
         </div>
         <div className="case-gxp-document-column">
           <ContextualDocumentSection
@@ -577,6 +580,7 @@ export function EventWorkspace({
   inspectionPlanReadiness,
   onRetryInspectionPlanReadiness,
   onIssueCertificate,
+  onRecordNonissuanceDecision,
   openableCertificateIds = [],
   onOpenLinkedCertificate,
   onNavigateCaseCertificate,
@@ -626,6 +630,7 @@ export function EventWorkspace({
   inspectionPlanReadiness: CaseInspectionPlanReadinessState | null;
   onRetryInspectionPlanReadiness: () => void;
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
+  onRecordNonissuanceDecision?: (payload: import("../../types").CaseNonissuanceDecisionRecordRequest) => Promise<import("../../types").CaseNonissuanceDecisionRead>;
   openableCertificateIds?: string[];
   onOpenLinkedCertificate?: (certificateId: string) => void;
   onNavigateCaseCertificate?: (certificateId: string) => void;
@@ -772,6 +777,7 @@ export function EventWorkspace({
             inspectionPlanReadiness,
             onRetryInspectionPlanReadiness,
             onIssueCertificate,
+            onRecordNonissuanceDecision,
             openableCertificateIds,
             onOpenLinkedCertificate,
             onNavigateCaseCertificate,

@@ -2354,6 +2354,28 @@ reader, original VBA runtime behavior for this post-legacy guidance panel, and
 real Certificate binary/Word/NAS output. This is not a claim of production UAT
 or a new backend workflow.
 
+## Explicit Case nonissuance decision — 2026-11-13
+
+The Case certificate workspace now renders the canonical nonissuance decision
+separately from Case lifecycle state and certificate issuance. A persisted record
+is read-only and states explicitly that it is neither a legal document nor a
+Case-state transition. The record form uses the current canonical Case row
+version, requires explicit operator confirmation, and has a synchronous command
+lock. On a transport failure it performs one exact Case GET readback and never
+replays the POST. A response from a replaced Case owner is ignored.
+
+The operator Case report now accepts the persisted
+`certificate_decision_status` filter and shows the nonissuance reference/date in
+a distinct column and CSV fields. It does not infer nonissuance from missing GCN,
+final evaluation, or text. URL, applied/draft filter and export ownership remain
+the existing report owners.
+
+`EVIDENCE_MISSING`: backend exposes canonical `nonissuance_record_readiness` with Case UUID,
+Case version, permission and reason code. The UI displays these exact blockers
+before enabling POST; backend independently rechecks them under the Case lock
+and can still return 403/409/422. Authenticated OIDC, legal issuance, Word/NAS and
+production UAT remain unverified.
+
 ## PCT/CT round-bound document opening — 2026-11-13
 
 Each persisted `approval_document_links` row now exposes a read-only **Mở tài

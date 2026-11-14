@@ -9,10 +9,19 @@ import { caseReportReturn } from "./caseReportUrl";
 
 vi.mock("../../lib/api", () => ({ getCaseReport: vi.fn() }));
 const access: ApiAccess = { auth: { username: "test", role: "reader" }, useStubAuth: true, bearerToken: null, canLoadSecureApi: true, accessGeneration: 1 };
-const row = { case_id: "case-a", site_id: "site-a", result_key: "site-a:GMP:canonical:line-a", production_line_id: "line-a", facility_name: "Cơ sở A", company_name: "Công ty A", gxp_type: "GMP", state: "planned", reference_code: "KT-01", opened_year: 2026 };
+const row = { case_id: "case-a", site_id: "site-a", result_key: "site-a:GMP:canonical:line-a", production_line_id: "line-a", facility_name: "Cơ sở A", company_name: "Công ty A", gxp_type: "GMP", state: "planned", reference_code: "KT-01", opened_year: 2026, certificate_decision_status: "nonissuance_recorded", nonissuance_decision_id: "decision-a", nonissuance_decision_reference: "KCGCN-01", nonissuance_decided_on: "2026-11-13" };
 
 beforeEach(() => { vi.mocked(getCaseReport).mockReset(); });
 describe("case report", () => {
+  it("filters and displays explicit nonissuance separately from Case state", async () => {
+    vi.mocked(getCaseReport).mockResolvedValue({ items: [row], total_count: 1, offset: 0, limit: 100 });
+    render(<MemoryRouter><CaseReport access={access} inspectionQueue={false} /></MemoryRouter>);
+    await screen.findByText("Đã ghi nhận không cấp");
+    expect(screen.getByText("KCGCN-01 — 2026-11-13")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Quyết định GCN"), { target: { value: "nonissuance_recorded" } });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
+    await waitFor(() => expect(getCaseReport).toHaveBeenLastCalledWith(expect.objectContaining({ certificate_decision_status: "nonissuance_recorded" }), access.auth, true, null));
+  });
   it("opens Case documents with the exact applied report filters and page as a validated return hint", async () => {
     vi.mocked(getCaseReport).mockResolvedValue({ items: [row], total_count: 1, offset: 0, limit: 100 });
     function Destination() {

@@ -144,9 +144,16 @@ export function CompanySiteCreationDialog({
     try {
       const persisted = await getCompany(intent.payload.company_id, auth, useStubAuth, bearerToken);
       if (!companyMatches(intent.payload, persisted)) throw new Error("Bản ghi canonical cùng UUID không khớp payload intent.");
-      update((current) => current.companyIntent?.token === intent.token ? { ...current, companyIntent: { ...current.companyIntent, phase: "verified", persisted, error: null } } : current);
-      setSelectedCompanyId((current) => current ?? persisted.id);
-      return true;
+      let currentOwner = false;
+      update((current) => {
+        if (current.companyIntent?.token !== intent.token) return current;
+        currentOwner = true;
+        return { ...current, companyIntent: { ...current.companyIntent, phase: "verified", persisted, error: null } };
+      });
+      // A superseded readback may verify only its own historic intent; it
+      // must never select an old Company in a newly admitted create workflow.
+      if (currentOwner) setSelectedCompanyId((current) => current ?? persisted.id);
+      return currentOwner;
     } catch (error) {
       update((current) => current.companyIntent?.token === intent.token ? { ...current, companyIntent: { ...current.companyIntent, phase: "unverified", error: errorMessage(error) } } : current);
       return false;

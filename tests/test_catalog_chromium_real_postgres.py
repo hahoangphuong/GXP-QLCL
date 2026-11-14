@@ -241,8 +241,8 @@ def test_chromium_real_http_first_case_full_operator_journey(pg_engine, live_bac
         except BaseException:
             out = Path("browser-evidence")
             out.mkdir(exist_ok=True)
-            page.screenshot(path=str(out / "catalog-real-http-postgres-" + (ambiguous_stage or "normal") + ".png"), full_page=True)
-            (out / "catalog-real-http-postgres-" + (ambiguous_stage or "normal") + ".json").write_text(
+            page.screenshot(path=str(out / ("catalog-real-http-postgres-" + (ambiguous_stage or "normal") + ".png")), full_page=True)
+            (out / ("catalog-real-http-postgres-" + (ambiguous_stage or "normal") + ".json")).write_text(
                 json.dumps({"scenario": ambiguous_stage or "normal", "requests": requested, "writes": writes, "errors": errors, "faults": injected, "readbacks": verified_readbacks}, indent=2),
                 encoding="utf-8",
             )

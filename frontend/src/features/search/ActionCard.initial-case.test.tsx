@@ -17,10 +17,17 @@ describe("Initial Case first-registration entrypoint", () => {
     const button = screen.getByRole("button", { name: "Hồ sơ mới" });
     expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(button);
-    expect(select).toHaveBeenCalledExactlyOnceWith("create_initial_case");
+    expect(select).toHaveBeenCalledTimes(1);\n    expect(select).toHaveBeenCalledWith("create_initial_case");
   });
 
-  it.each(["forbidden", "conflict", "loading"] as const)(
+  it("permits choosing another exact GxP/line context when current context is occupied", () => {
+    const select = vi.fn();
+    render(<ActionCard actions={[action("conflict")]} onActionSelect={select} />);
+    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ mới" }));
+    expect(select).toHaveBeenCalledWith("create_initial_case");
+  });
+
+  it.each(["forbidden", "loading"] as const)(
     "does not admit opening initial Case from %s backend action", (status) => {
       const select = vi.fn();
       render(<ActionCard actions={[action(status)]} onActionSelect={select} />);

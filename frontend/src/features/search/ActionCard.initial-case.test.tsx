@@ -17,7 +17,8 @@ describe("Initial Case first-registration entrypoint", () => {
     const button = screen.getByRole("button", { name: "Hồ sơ mới" });
     expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(button);
-    expect(select).toHaveBeenCalledTimes(1);\n    expect(select).toHaveBeenCalledWith("create_initial_case");
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(select).toHaveBeenCalledWith("create_initial_case");
   });
 
   it("permits choosing another exact GxP/line context when current context is occupied", () => {

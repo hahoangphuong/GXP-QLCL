@@ -27,6 +27,7 @@ function view(overrides: Partial<typeof props> = {}) {
   return render(<CatalogCreateSessionRoot><InitialCaseCreationDialog {...props} {...overrides} /></CatalogCreateSessionRoot>);
 }
 async function fill() {
+  fireEvent.change(screen.getByLabelText("Loại GxP cho hồ sơ mới"), { target: { value: "GMP" } });
   await waitFor(() => expect(api.getFacilityWorkspace).toHaveBeenCalled());
   await waitFor(() => expect((screen.getByRole("button", { name: "Tạo hồ sơ Draft" }) as HTMLButtonElement).disabled).toBe(true));
   fireEvent.change(screen.getByLabelText("Loại kiểm tra hồ sơ đầu tiên"), { target: { value: "Mới" } });
@@ -67,6 +68,44 @@ describe("InitialCaseCreationDialog", () => {
     expect(onVerifiedOpen).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Mở Case workspace" }));
     expect(onVerifiedOpen).toHaveBeenCalledWith("case-uuid");
+  });
+
+  it("does not reuse readiness from GMP when operator selects GLP before its GET resolves", async () => {
+    let releaseGlp!: (value: unknown) => void;
+    api.getFacilityWorkspace.mockImplementation((_site: string, _a: unknown, _stub: unknown, gxpType: string) => {
+      if (gxpType === "GLP") return new Promise((resolve) => { releaseGlp = resolve; });
+      return Promise.resolve({
+        summary: { site_id: "site-A", selected_gxp_type: "GMP", selected_production_line_id: null },
+        action_readiness: [ready], history: [],
+      });
+    });
+    view();
+    await fill();
+    fireEvent.change(screen.getByLabelText("Loại GxP cho hồ sơ mới"), { target: { value: "GLP" } });
+    const submit = screen.getByRole("button", { name: "Tạo hồ sơ Draft" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.submit(screen.getByLabelText("Loại kiểm tra hồ sơ đầu tiên").closest("form")!);
+    expect(api.createInitialCase).not.toHaveBeenCalled();
+    await act(async () => { releaseGlp({
+      summary: { site_id: "site-A", selected_gxp_type: "GLP", selected_production_line_id: null },
+      action_readiness: [{ ...ready, readiness_status: "conflict" }], history: [],
+    }); });
+    expect(submit.disabled).toBe(true);
+    expect(api.createInitialCase).not.toHaveBeenCalled();
+  });
+
+  it("rechecks server readiness before admitting a successor in an occupied Site/GxP context", async () => {
+    view(); await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ Draft" }));
+    await screen.findByText(/Case nháp canonical đã xác minh/);
+    api.getFacilityWorkspace.mockResolvedValue({
+      summary: { site_id: "site-A", selected_gxp_type: "GMP", selected_production_line_id: null },
+      action_readiness: [{ ...ready, readiness_status: "conflict", detail: "Case đã tồn tại" }], history: [],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo intent mới" }));
+    await screen.findByText(/Case đã tồn tại/);
+    expect((screen.getByRole("button", { name: "Tạo hồ sơ Draft" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.createInitialCase).toHaveBeenCalledTimes(1);
   });
 
   it("admits synchronous duplicate submit only once", async () => {

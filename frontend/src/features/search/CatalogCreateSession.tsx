@@ -107,7 +107,7 @@ function restore(owner: string): CatalogCreateState {
   if (!store) return blocked(UNAVAILABLE_JOURNAL);
   try {
     const raw = store.getItem(JOURNAL_PREFIX + owner);
-    if (!raw) return fallback;
+    if (raw === null) return fallback;
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== "object" || Array.isArray(value)) return blocked(CORRUPT_JOURNAL);
     const prior = value as Partial<CatalogCreateState>;

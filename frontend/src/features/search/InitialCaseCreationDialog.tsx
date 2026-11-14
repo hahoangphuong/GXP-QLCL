@@ -43,7 +43,7 @@ export function InitialCaseCreationDialog({
 }) {
   // Selection must survive dialog unmount/navigation inside one App session.
   // Keep it under the Site owner, separate from the per-GxP/line create intent.
-  const selectionOwner = JSON.stringify(["initial-case-selection", accessGeneration, useStubAuth, siteId]);
+  const selectionOwner = JSON.stringify(["initial-case-selection", auth.username, auth.role, accessGeneration, useStubAuth, siteId]);
   const { state: selection, update: updateSelection } = useCatalogCreateSession(selectionOwner);
   const gxp = selection.initialCaseSelectedGxp;
   const lineId = selection.initialCaseSelectedLineId;

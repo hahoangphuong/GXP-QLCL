@@ -55,15 +55,19 @@ def run_scenario(browser, *, line: bool, uncertain: bool = False, foreign: bool 
         if req.method == "GET" and path == f"/sites/{SITE}/workspace":
             selected = query.get("production_line_id", [None])[0]
             gxp = query.get("gxp_type", [None])[0]
-            if gxp != "GMP" or selected != (LINE if line else None):
+            if gxp != "GMP" or selected not in (None, LINE):
                 api_errors.append("Incorrect readiness context: " + str(query))
                 return okay({"detail": "wrong context"}, 409)
+            # GxP can be selected before the operator selects a physical line.
+            # This is a valid intermediate GET, not admission authority for
+            # the intended physical-line Case. Only its exact UUID gets ready.
+            status = "available" if selected == (LINE if line else None) else "unavailable"
             return okay({"summary": {"site_id": SITE, "selected_gxp_type": "GMP",
                                      "selected_production_line_id": selected},
                          "action_readiness": [{"action_key": "create_initial_case",
                                                "label": "Hồ sơ mới",
-                                               "readiness_status": "available",
-                                               "detail": "Synthetic canonical ready",
+                                               "readiness_status": status,
+                                               "detail": "Synthetic canonical ready" if status == "available" else "Select physical UUID",
                                                "required_permissions": ["case.edit"]}]})
         if req.method == "POST" and path == f"/sites/{SITE}/inspection-cases/initial":
             p = req.post_data_json

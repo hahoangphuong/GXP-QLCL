@@ -1,7 +1,8 @@
 /**
  * Development-server-only browser fixture. Not referenced from index.html,
  * Vite's production build, or any authenticated operator route.
- * All API calls are intercepted by the isolated Chromium smoke runner.
+ * Runs only in an isolated development fixture. Smoke tests may intercept
+ * synthetic calls; real-browser gates use the existing Vite /api proxy.
  */
 import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -24,7 +25,7 @@ const access: ApiAccess = {
 function InitialCreate() {
   const navigate = useNavigate();
   return <InitialCaseCreationDialog
-    open siteId={siteId} auth={auth} useStubAuth bearerToken={null} accessGeneration={1}
+    open siteId={new URLSearchParams(window.location.search).get("site_id") ?? siteId} auth={auth} useStubAuth bearerToken={null} accessGeneration={1}
     onClose={() => {}} onVerifiedOpen={(id) => navigate(`/cases/${encodeURIComponent(id)}`)}
   />;
 }

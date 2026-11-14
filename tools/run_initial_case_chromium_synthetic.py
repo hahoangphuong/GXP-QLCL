@@ -23,7 +23,7 @@ FIXTURE = BASE + "/initial-case-browser-fixture.html"
 
 
 def run_scenario(browser, *, line: bool, uncertain: bool = False, foreign: bool = False):
-    ctx = browser.new_context(viewport={"width": 1280, "height": 900})
+    ctx = browser.new_context(viewport={"width": 390 if line else 1280, "height": 700 if line else 900})
     page = ctx.new_page()
     payloads: list[dict] = []
     requests: list[str] = []

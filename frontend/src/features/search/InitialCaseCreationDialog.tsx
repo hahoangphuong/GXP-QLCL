@@ -53,7 +53,7 @@ export function InitialCaseCreationDialog({
   const setLineId = (value: string) => updateSelection((current) => ({
     ...current, initialCaseSelectedLineId: value,
   }));
-  const owner = JSON.stringify(["initial-case-create", accessGeneration, useStubAuth, siteId, gxp, lineId || null]);
+  const owner = JSON.stringify(["initial-case-create", auth.username, auth.role, accessGeneration, useStubAuth, siteId, gxp, lineId || null]);
   const { state, update } = useCatalogCreateSession(owner);
   const { initialCaseDraft: draft, initialCaseIntent: intent } = state;
   const [site, setSite] = useState<SiteDetail | null>(null);

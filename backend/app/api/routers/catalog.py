@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from backend.app.db.models.phase1 import ProductionLine
+from sqlalchemy import select
+from backend.app.db.models.phase1 import Company, ProductionLine, Site
 
 from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenticated_user, require_role, require_permissions
 from backend.app.api.session import get_session_from_request_factory, commit_or_409
@@ -57,6 +58,19 @@ def _build_facility_action_readiness(
     can_create_masters = "case.edit" in user.permissions
     master_status = "available" if can_create_masters else "forbidden"
     master_permission = ["case.edit"]
+    # Physical-line creation requires an active canonical Site/Company owner.
+    # Mirror the POST's owner admission before advertising this action.
+    line_owner_ready = False
+    if can_create_masters:
+        owner = session.execute(
+            select(Site.id, Company.is_inactive)
+            .join(Company, Site.company_id == Company.id)
+            .where(Site.id == site_id)
+        ).one_or_none()
+        line_owner_ready = owner is not None and not owner.is_inactive
+    line_status = "forbidden" if not can_create_masters else (
+        "available" if line_owner_ready else "unavailable"
+    )
     return [
         {
             "action_key": "create_company",
@@ -81,10 +95,13 @@ def _build_facility_action_readiness(
         {
             "action_key": "create_production_line",
             "label": "Dây chuyền mới",
-            "readiness_status": master_status,
+            "readiness_status": line_status,
             "detail": (
+                "Không có quyền tạo dây chuyền sản xuất."
+                if not can_create_masters else
+                "Cơ sở không có Company canonical đang hoạt động; không thể tạo dây chuyền vật lý."
+                if not line_owner_ready else
                 "Tạo định danh vật lý UUID mới khi có bằng chứng nhận diện và ngày hiệu lực; không tự nối GxP hay dữ liệu legacy."
-                if can_create_masters else "Không có quyền tạo dây chuyền sản xuất."
             ),
             "required_permissions": master_permission,
         },

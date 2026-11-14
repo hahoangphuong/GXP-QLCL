@@ -364,12 +364,12 @@ def test_corrupt_or_unwritable_catalog_journal_blocks_post(pg_engine, live_backe
         page = context.new_page()
         page.set_default_timeout(15000)
         if journal_failure in ("corrupt", "empty"):
-            page.add_init_script("""
-              sessionStorage.setItem(
-                'gxp-catalog-recovery-v1:synthetic-catalog-company-site',
-                '{ invalid-json-and-unresolved-post' if journal_failure == 'corrupt' else ''
-              );
-            """)
+            journal_value = "{ invalid-json-and-unresolved-post" if journal_failure == "corrupt" else ""
+            page.add_init_script(
+                "sessionStorage.setItem(" +
+                json.dumps("gxp-catalog-recovery-v1:synthetic-catalog-company-site") +
+                "," + json.dumps(journal_value) + ");"
+            )
         else:
             page.add_init_script("""
               const original = Storage.prototype.setItem;

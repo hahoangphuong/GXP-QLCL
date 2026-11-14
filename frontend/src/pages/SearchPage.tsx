@@ -14,6 +14,7 @@ import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { CompanySiteCreationDialog } from "../features/search/CompanySiteCreationDialog";
 import { PhysicalLineCreationDialog } from "../features/search/PhysicalLineCreationDialog";
+import { InitialCaseCreationDialog } from "../features/search/InitialCaseCreationDialog";
 import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPanel";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { caseWorkflowQueue } from "../features/search/caseNavigation";
@@ -2809,10 +2810,10 @@ export function SearchPage({
               || (workspace && workspace.history.length > 0 && !selectedHistory) ? undefined : workspace?.action_readiness}
             onActionSelect={(actionKey) => {
               if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request"
-                && actionKey !== "create_company" && actionKey !== "create_site" && actionKey !== "create_production_line") {
+                && actionKey !== "create_company" && actionKey !== "create_site" && actionKey !== "create_production_line" && actionKey !== "create_initial_case") {
                 return;
               }
-              if (actionKey === "create_company" || actionKey === "create_site" || actionKey === "create_production_line") {
+              if (actionKey === "create_company" || actionKey === "create_site" || actionKey === "create_production_line" || actionKey === "create_initial_case") {
                 setSelectedActionKey((current) => current === actionKey ? null : actionKey);
                 return;
               }
@@ -2839,6 +2840,16 @@ export function SearchPage({
               }
             }}
             selectedActionKey={selectedActionKey}
+          />
+          <InitialCaseCreationDialog
+            open={selectedActionKey === "create_initial_case"}
+            siteId={selectedResult?.site_id ?? null}
+            auth={auth}
+            useStubAuth={useStubAuth}
+            bearerToken={bearerToken}
+            accessGeneration={accessGeneration}
+            onClose={() => setSelectedActionKey(null)}
+            onVerifiedOpen={(caseId) => navigate(`/cases/${encodeURIComponent(caseId)}`, { replace: false })}
           />
           <PhysicalLineCreationDialog
             open={selectedActionKey === "create_production_line"}

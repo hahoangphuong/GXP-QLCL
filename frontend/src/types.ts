@@ -123,10 +123,23 @@ export type CaseDetail = {
   site_id: string;
   gxp_type: string;
   scope_code: string | null;
+  production_line_id?: string | null;
+  production_line_code?: string | null;
+  production_line_identity_state?: "canonical" | "legacy_unlinked" | "facility_wide";
   applicable_standard: string | null;
   inspection_type: string | null;
   state: string;
   opened_year: number | null;
+  row_version?: number;
+};
+
+export type InitialCaseCreateRequest = {
+  case_id: string;
+  gxp_type: "GMP" | "GLP" | "GMPbb";
+  production_line_id: string | null;
+  inspection_type: string;
+  applicable_standard: string | null;
+  reason: string;
 };
 
 export type InspectionCaseCreateRequest = {

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useRef, useSyncExternalStore, type ReactNode } from "react";
 
-import type { CompanyDetail, CompanyMasterCreateRequest, SiteDetail, SiteMasterCreateRequest, ProductionLineMasterRead, ProductionLineMasterCreateRequest } from "../../types";
+import type { CompanyDetail, CompanyMasterCreateRequest, SiteDetail, SiteMasterCreateRequest, ProductionLineMasterRead, ProductionLineMasterCreateRequest, CaseDetail, InitialCaseCreateRequest } from "../../types";
 
 export type CatalogCreatePhase = "idle" | "pending" | "unverified" | "verified";
 export type CompanyCreateIntent = { payload: CompanyMasterCreateRequest; phase: CatalogCreatePhase; error: string | null; persisted: CompanyDetail | null; token: object };
@@ -19,6 +19,24 @@ export const emptyPhysicalLineDraft = (): PhysicalLineDraft => ({
   reason: "", confirmedDistinct: false,
 });
 
+export type InitialCaseIntent = {
+  siteId: string;
+  payload: InitialCaseCreateRequest;
+  phase: CatalogCreatePhase;
+  error: string | null;
+  persisted: CaseDetail | null;
+  token: object;
+};
+export type InitialCaseDraft = {
+  inspection_type: string;
+  applicable_standard: string;
+  reason: string;
+  acknowledged: boolean;
+};
+export const emptyInitialCaseDraft = (): InitialCaseDraft => ({
+  inspection_type: "", applicable_standard: "", reason: "", acknowledged: false,
+});
+
 export type CatalogCreateState = {
   companyDraft: Omit<CompanyMasterCreateRequest, "company_id">;
   siteDraft: Omit<SiteMasterCreateRequest, "site_id">;
@@ -27,11 +45,13 @@ export type CatalogCreateState = {
   selectedCompanyId: string | null;
   physicalLineDraft: PhysicalLineDraft;
   physicalLineIntent: PhysicalLineCreateIntent | null;
+  initialCaseDraft: InitialCaseDraft;
+  initialCaseIntent: InitialCaseIntent | null;
 };
 
 export const emptyCompanyDraft = (): CatalogCreateState["companyDraft"] => ({ legal_name: "", legal_address: "", english_name: "", short_name: "", legal_address_en: "", reason: "" });
 export const emptySiteDraft = (): CatalogCreateState["siteDraft"] => ({ site_name: "", site_address: "", site_name_en: "", site_address_en: "", province_name: "", short_name: "", reason: "" });
-const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), siteDraft: emptySiteDraft(), companyIntent: null, siteIntent: null, selectedCompanyId: null, physicalLineDraft: emptyPhysicalLineDraft(), physicalLineIntent: null });
+const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), siteDraft: emptySiteDraft(), companyIntent: null, siteIntent: null, selectedCompanyId: null, physicalLineDraft: emptyPhysicalLineDraft(), physicalLineIntent: null, initialCaseDraft: emptyInitialCaseDraft(), initialCaseIntent: null });
 
 function createStore() {
   const values = new Map<string, CatalogCreateState>();

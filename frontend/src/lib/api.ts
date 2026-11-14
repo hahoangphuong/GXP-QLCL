@@ -21,6 +21,7 @@ import type {
   CaseNonissuanceDecisionRead,
   CaseNonissuanceDecisionRecordRequest,
   CaseDetail,
+  InitialCaseCreateRequest,
   CaseListItem,
   CaseReportPage,
   CertificateReportPage,
@@ -507,6 +508,19 @@ export function getInspectionFolder(
     useStubAuth,
     bearerToken,
   });
+}
+
+export function createInitialCase(
+  siteId: string,
+  payload: InitialCaseCreateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionCaseCreateResponse> {
+  return requestJson<InspectionCaseCreateResponse>(
+    `/sites/${encodeURIComponent(siteId)}/inspection-cases/initial`,
+    { method: "POST", body: payload, auth, useStubAuth, bearerToken },
+  );
 }
 
 export function createInspectionCase(

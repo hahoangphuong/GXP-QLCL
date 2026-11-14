@@ -350,7 +350,7 @@ def test_company_committed_lost_response_survives_browser_reload_without_repost(
         assert _rows(db, AuditEvent) == before[AuditEvent] + 1
 
 
-@pytest.mark.parametrize("journal_failure", ("corrupt", "unwritable"))
+@pytest.mark.parametrize("journal_failure", ("corrupt", "empty", "unwritable"))
 def test_corrupt_or_unwritable_catalog_journal_blocks_post(pg_engine, live_backend, journal_failure):
     """Untrusted journal may never silently become a fresh owner after reload."""
     from playwright.sync_api import sync_playwright
@@ -363,11 +363,11 @@ def test_corrupt_or_unwritable_catalog_journal_blocks_post(pg_engine, live_backe
         context = browser.new_context()
         page = context.new_page()
         page.set_default_timeout(15000)
-        if journal_failure == "corrupt":
+        if journal_failure in ("corrupt", "empty"):
             page.add_init_script("""
               sessionStorage.setItem(
                 'gxp-catalog-recovery-v1:synthetic-catalog-company-site',
-                '{ invalid-json-and-unresolved-post'
+                '{ invalid-json-and-unresolved-post' if journal_failure == 'corrupt' else ''
               );
             """)
         else:

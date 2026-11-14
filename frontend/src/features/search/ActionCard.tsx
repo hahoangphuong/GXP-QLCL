@@ -57,7 +57,11 @@ export function ActionCard({
             aria-label={action.label}
             aria-pressed={selectedActionKey === action.action_key}
             data-readiness-status={action.readiness_status}
-            disabled={action.readiness_status !== "available"}
+            // This action opens a context-selection editor; "unavailable" may mean
+            // that GxP has not yet been selected. The editor rechecks the
+            // exact canonical context and never mutates on opening.
+            disabled={action.readiness_status !== "available"
+              && !(action.action_key === "create_initial_case" && action.readiness_status === "unavailable")}
             key={action.action_key}
             onClick={() => onActionSelect?.(action.action_key)}
             ref={(element) => onActionButtonRef?.(action.action_key, element)}

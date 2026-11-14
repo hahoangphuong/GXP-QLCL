@@ -159,7 +159,7 @@ describe("catalog create in-session lifecycle regressions", () => {
     fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "" } });
     await act(async () => { finishSearch([{ ...company, id: "stale-company", legal_name: "Pháp nhân cũ" }]); });
     expect(screen.queryByRole("option", { name: /Pháp nhân cũ/ })).toBeNull();
-    expect(screen.getByLabelText("Tìm Company theo tên")).toHaveValue("");
+    expect((screen.getByLabelText("Tìm Company theo tên") as HTMLInputElement).value).toBe("");
   });
 
   it("revokes a stale Site navigation callback on actual route unmount", async () => {
@@ -195,7 +195,7 @@ describe("catalog create in-session lifecycle regressions", () => {
       await screen.findByRole("status");
       if (index === 0) {
         fireEvent.click(screen.getByRole("button", { name: "Tạo công ty khác" }));
-        expect(screen.getByLabelText("Tên pháp nhân")).toHaveValue("");
+        expect((screen.getByLabelText("Tên pháp nhân") as HTMLInputElement).value).toBe("");
       }
     }
     expect(api.createCompany.mock.calls.map((call: unknown[]) => (call[0] as { company_id: string }).company_id))
@@ -218,7 +218,7 @@ describe("catalog create in-session lifecycle regressions", () => {
       await screen.findByRole("status");
       if (index === 0) {
         fireEvent.click(screen.getByRole("button", { name: "Tạo cơ sở khác" }));
-        expect(screen.getByLabelText("Tên cơ sở")).toHaveValue("");
+        expect((screen.getByLabelText("Tên cơ sở") as HTMLInputElement).value).toBe("");
       }
     }
     expect(api.createSite.mock.calls.map((call: unknown[]) => ({ companyId: call[0], siteId: (call[1] as { site_id: string }).site_id })))

@@ -55,18 +55,88 @@ export const emptyCompanyDraft = (): CatalogCreateState["companyDraft"] => ({ le
 export const emptySiteDraft = (): CatalogCreateState["siteDraft"] => ({ site_name: "", site_address: "", site_name_en: "", site_address_en: "", province_name: "", short_name: "", reason: "" });
 const initial = (): CatalogCreateState => ({ companyDraft: emptyCompanyDraft(), siteDraft: emptySiteDraft(), companyIntent: null, siteIntent: null, selectedCompanyId: null, physicalLineDraft: emptyPhysicalLineDraft(), physicalLineIntent: null, initialCaseDraft: emptyInitialCaseDraft(), initialCaseIntent: null, initialCaseSelectedGxp: "", initialCaseSelectedLineId: "" });
 
+// A tab-scoped recovery journal, never an authority to replay a mutation.
+// Persist only after the intent UUID/payload is admitted; restore every intent
+// as unverified, requiring an authorized canonical GET before any successor.
+// No bearer tokens, passwords or OIDC claims are written. Owners MUST include
+// the current authenticated username, access generation and auth mode.
+const JOURNAL_PREFIX = "gxp-catalog-recovery-v1:";
+
+function hasIntent(value: CatalogCreateState): boolean {
+  return Boolean(value.companyIntent || value.siteIntent
+    || value.physicalLineIntent || value.initialCaseIntent);
+}
+
+function journalStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try { return window.sessionStorage; } catch { return null; }
+}
+
+function hydrateIntent<T extends { phase: CatalogCreatePhase; persisted: unknown; token: object; error: string | null }>(
+  value: T | null,
+): T | null {
+  return value ? {
+    ...value, token: {}, persisted: null, phase: "unverified" as const,
+    error: "Đã khôi phục intent trong tab. Chỉ đọc lại canonical theo UUID; không POST lại.",
+  } : null;
+}
+
+function restore(owner: string): CatalogCreateState {
+  const fallback = initial();
+  const store = journalStorage();
+  if (!store) return fallback;
+  try {
+    const raw = store.getItem(JOURNAL_PREFIX + owner);
+    if (!raw) return fallback;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+    const prior = value as Partial<CatalogCreateState>;
+    // The journal is an untrusted hint, never a source of authorization or
+    // readiness. Reject malformed data rather than admitting a new write.
+    if (!hasIntent({ ...fallback, ...prior }) || !Object.values({
+      company: prior.companyIntent?.payload?.company_id,
+      site: prior.siteIntent?.payload?.site_id,
+      line: prior.physicalLineIntent?.payload?.production_line_id,
+      case: prior.initialCaseIntent?.payload?.case_id,
+    }).every((id) => id === undefined || (typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)))) {
+      return fallback;
+    }
+    return {
+      ...fallback,
+      ...prior,
+      companyIntent: hydrateIntent(prior.companyIntent ?? null),
+      siteIntent: hydrateIntent(prior.siteIntent ?? null),
+      physicalLineIntent: hydrateIntent(prior.physicalLineIntent ?? null),
+      initialCaseIntent: hydrateIntent(prior.initialCaseIntent ?? null),
+    };
+  } catch { return fallback; }
+}
+
+function persist(owner: string, current: CatalogCreateState, next: CatalogCreateState) {
+  if (!hasIntent(current) && !hasIntent(next)) return;
+  const storage = journalStorage();
+  if (!storage) throw new Error("Không thể lưu recovery lock trong tab; không thực hiện mutation.");
+  // A failed write must abort admission *before* the caller executes POST.
+  // Preserve verified data for UI continuity, but never trust it on hydration.
+  if (hasIntent(next)) storage.setItem(JOURNAL_PREFIX + owner, JSON.stringify(next));
+  else storage.removeItem(JOURNAL_PREFIX + owner);
+}
+
 function createStore() {
   const values = new Map<string, CatalogCreateState>();
   const listeners = new Map<string, Set<() => void>>();
   const get = (owner: string) => {
-    if (!values.has(owner)) values.set(owner, initial());
+    if (!values.has(owner)) values.set(owner, restore(owner));
     return values.get(owner)!;
   };
   const notify = (owner: string) => listeners.get(owner)?.forEach((listener) => listener());
   return {
     get,
     update(owner: string, update: (current: CatalogCreateState) => CatalogCreateState) {
-      const next = update(get(owner));
+      const current = get(owner);
+      const next = update(current);
+      if (next === current) return current;
+      persist(owner, current, next);
       values.set(owner, next); notify(owner);
       return next;
     },

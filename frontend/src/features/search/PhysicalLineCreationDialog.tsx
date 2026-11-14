@@ -35,7 +35,7 @@ export function PhysicalLineCreationDialog({
   accessGeneration: number;
   onClose: () => void;
 }) {
-  const owner = JSON.stringify(["physical-line-create", accessGeneration, useStubAuth, siteId]);
+  const owner = JSON.stringify(["physical-line-create", auth.username, auth.role, accessGeneration, useStubAuth, siteId]);
   const { state, update } = useCatalogCreateSession(owner);
   const { physicalLineDraft: draft, physicalLineIntent: intent } = state;
   const [site, setSite] = useState<SiteDetail | null>(null);

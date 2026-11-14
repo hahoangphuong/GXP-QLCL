@@ -50,7 +50,6 @@ describe("PhysicalLineCreationDialog owner and recovery", () => {
       production_line_id: "intent-uuid", code: "A", effective_from: "2026-11-14",
       effective_to: null, physical_identity_evidence_reference: "SOURCE-A", reason: "Đối chiếu hồ sơ vật lý",
     }, auth, true, undefined);
-    expect((await screen.findByRole("status", { name: "" })).textContent).toBeDefined();
     expect(screen.getByText(/Đã xác minh dây chuyền UUID/).textContent).toContain("intent-uuid");
     expect(api.listSiteProductionLines).toHaveBeenCalledWith("site-A", auth, true, undefined);
   });

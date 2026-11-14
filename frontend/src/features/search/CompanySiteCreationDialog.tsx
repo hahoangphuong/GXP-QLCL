@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { createCompany, createSite, getCompany, getSite, listCompanies } from "../../lib/api";
-import type { Company, CompanyDetail, CompanyMasterCreateRequest, SiteDetail, SiteMasterCreateRequest, StubAuthState, WorkspaceActionReadiness } from "../../types";
-import { emptyCompanyDraft, emptySiteDraft, useCatalogCreateSession, type CompanyCreateIntent, type SiteCreateIntent } from "./CatalogCreateSession";
+import type { Company, CompanyDetail, CompanyMasterCreateRequest, SiteDetail, StubAuthState, WorkspaceActionReadiness } from "../../types";
+import { useCatalogCreateSession, type CompanyCreateIntent, type SiteCreateIntent } from "./CatalogCreateSession";
 
 function newCanonicalId(): string {
   return crypto.randomUUID();

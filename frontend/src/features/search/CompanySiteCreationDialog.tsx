@@ -64,6 +64,7 @@ export function CompanySiteCreationDialog({
 }) {
   const { state: session, update } = useCatalogCreateSession(ownerIdentity);
   const { companyDraft, siteDraft, companyIntent, siteIntent, selectedCompanyId } = session;
+  const journalBlocked = Boolean(session.recoveryJournalError);
   const setCompanyDraft = (change: (draft: typeof companyDraft) => typeof companyDraft) => update((current) => ({ ...current, companyDraft: change(current.companyDraft) }));
   const setSiteDraft = (change: (draft: typeof siteDraft) => typeof siteDraft) => update((current) => ({ ...current, siteDraft: change(current.siteDraft) }));
   const setSelectedCompanyId = (change: string | null | ((current: string | null) => string | null)) => update((current) => ({ ...current, selectedCompanyId: typeof change === "function" ? change(current.selectedCompanyId) : change }));
@@ -192,7 +193,7 @@ export function CompanySiteCreationDialog({
 
   async function submitCompany(event: FormEvent) {
     event.preventDefault();
-    if (!actionAvailable(companyAction) || companyLocked || !companyDraft.legal_name.trim() || !companyDraft.legal_address.trim()) return;
+    if (journalBlocked || !actionAvailable(companyAction) || companyLocked || !companyDraft.legal_name.trim() || !companyDraft.legal_address.trim()) return;
     let intent: CompanyCreateIntent | null = null;
     let admitted = false;
     update((current) => {
@@ -216,7 +217,7 @@ export function CompanySiteCreationDialog({
 
   async function submitSite(event: FormEvent) {
     event.preventDefault();
-    if (!actionAvailable(siteAction) || siteLocked || !selectedCompany || selectedCompany.is_inactive || !siteDraft.site_name.trim() || !siteDraft.site_address.trim()) return;
+    if (journalBlocked || !actionAvailable(siteAction) || siteLocked || !selectedCompany || selectedCompany.is_inactive || !siteDraft.site_name.trim() || !siteDraft.site_address.trim()) return;
     let intent: SiteCreateIntent | null = null;
     let admitted = false;
     update((current) => {
@@ -242,24 +243,25 @@ export function CompanySiteCreationDialog({
   return <div className="dialog-backdrop" role="presentation">
     <section aria-labelledby="master-create-dialog-title" aria-modal="true" className="panel reassessment-dialog catalog-create-scroll-dialog" role="dialog">
       <header className="panel-header reassessment-dialog-header"><div><h2 id="master-create-dialog-title">{companyOpen ? "Công ty mới" : "Cơ sở mới"}</h2><p>{companyOpen ? companyAction?.detail : siteAction?.detail}</p></div></header>
+      {session.recoveryJournalError ? <p role="alert" className="form-error">{session.recoveryJournalError}</p> : null}
       {companyOpen ? <form className="stack-form reassessment-form" onSubmit={(event) => void submitCompany(event)}>
-        <label><span>Tên pháp nhân *</span><input aria-label="Tên pháp nhân" disabled={companyLocked || !actionAvailable(companyAction)} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, legal_name: event.target.value }))} required value={companyDraft.legal_name} /></label>
-        <label><span>Địa chỉ pháp lý *</span><textarea aria-label="Địa chỉ pháp lý" disabled={companyLocked || !actionAvailable(companyAction)} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, legal_address: event.target.value }))} required value={companyDraft.legal_address} /></label>
+        <label><span>Tên pháp nhân *</span><input aria-label="Tên pháp nhân" disabled={journalBlocked || companyLocked || !actionAvailable(companyAction)} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, legal_name: event.target.value }))} required value={companyDraft.legal_name} /></label>
+        <label><span>Địa chỉ pháp lý *</span><textarea aria-label="Địa chỉ pháp lý" disabled={journalBlocked || companyLocked || !actionAvailable(companyAction)} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, legal_address: event.target.value }))} required value={companyDraft.legal_address} /></label>
         <label><span>Tên tiếng Anh</span><input aria-label="Tên tiếng Anh" disabled={companyLocked} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, english_name: event.target.value }))} value={companyDraft.english_name ?? ""} /></label>
         <label><span>Tên viết tắt</span><input aria-label="Tên viết tắt công ty" disabled={companyLocked} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, short_name: event.target.value }))} value={companyDraft.short_name ?? ""} /></label>
         <label><span>Địa chỉ tiếng Anh</span><textarea aria-label="Địa chỉ tiếng Anh" disabled={companyLocked} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, legal_address_en: event.target.value }))} value={companyDraft.legal_address_en ?? ""} /></label>
         <label><span>Lý do</span><input aria-label="Lý do tạo công ty" disabled={companyLocked} onChange={(event) => setCompanyDraft((draft) => ({ ...draft, reason: event.target.value }))} value={companyDraft.reason ?? ""} /></label>
         {companyIntent?.phase === "unverified" ? <p className="form-error" role="alert">Chưa xác minh: {companyIntent.error}. UUID và intent đã bị khóa; chỉ có thể đọc lại canonical.</p> : null}
         {companyIntent?.phase === "verified" ? <p role="status">Đã xác minh Công ty canonical. Có thể chọn để tạo Cơ sở.</p> : null}
-        <div className="panel-actions reassessment-dialog-actions"><button disabled={companyLocked || !actionAvailable(companyAction)} type="submit">{companyLocked ? "Đang xác minh..." : "Tạo Công ty"}</button>{companyIntent?.phase === "unverified" ? <button onClick={() => void verifyCompany(companyIntent)} type="button">Đọc lại canonical</button> : null}{companyIntent?.phase === "verified" ? <button onClick={startAnotherCompany} type="button">Tạo công ty khác</button> : null}<button disabled={companyIntent?.phase === "pending" || companyIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
+        <div className="panel-actions reassessment-dialog-actions"><button disabled={journalBlocked || companyLocked || !actionAvailable(companyAction)} type="submit">{companyLocked ? "Đang xác minh..." : "Tạo Công ty"}</button>{companyIntent?.phase === "unverified" ? <button onClick={() => void verifyCompany(companyIntent)} type="button">Đọc lại canonical</button> : null}{companyIntent?.phase === "verified" ? <button onClick={startAnotherCompany} type="button">Tạo công ty khác</button> : null}<button disabled={companyIntent?.phase === "pending" || companyIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
       </form> : null}
       {siteOpen ? <form className="stack-form reassessment-form" onSubmit={(event) => void submitSite(event)}>
         <label><span>Tìm Company theo tên</span><input aria-label="Tìm Company theo tên" disabled={siteLocked} onChange={(event) => setCompanyQuery(event.target.value)} value={companyQuery} /></label>
-        <label><span>Chọn Công ty *</span><select aria-label="Company canonical" disabled={siteLocked || companiesLoading || !actionAvailable(siteAction)} onChange={(event) => setSelectedCompanyId(event.target.value || null)} value={selectedCompanyId ?? ""}><option value="">{companiesLoading ? "Đang tìm Company..." : "-- Tìm theo tên rồi chọn Company canonical --"}</option>{companyIntent?.persisted ? <option value={companyIntent.persisted.id}>{companyIntent.persisted.legal_name} — {companyIntent.persisted.id}</option> : null}{companies.filter((company) => company.id !== companyIntent?.persisted?.id).map((company) => <option key={company.id} value={company.id}>{company.legal_name} — {company.id}</option>)}</select></label>
+        <label><span>Chọn Công ty *</span><select aria-label="Company canonical" disabled={journalBlocked || siteLocked || companiesLoading || !actionAvailable(siteAction)} onChange={(event) => setSelectedCompanyId(event.target.value || null)} value={selectedCompanyId ?? ""}><option value="">{companiesLoading ? "Đang tìm Company..." : "-- Tìm theo tên rồi chọn Company canonical --"}</option>{companyIntent?.persisted ? <option value={companyIntent.persisted.id}>{companyIntent.persisted.legal_name} — {companyIntent.persisted.id}</option> : null}{companies.filter((company) => company.id !== companyIntent?.persisted?.id).map((company) => <option key={company.id} value={company.id}>{company.legal_name} — {company.id}</option>)}</select></label>
         {selectedCompany ? <p>Company đã chọn: <strong>{selectedCompany.legal_name}</strong> ({selectedCompany.id}){selectedCompany.is_inactive ? " — không còn hoạt động" : ""}</p> : null}
         {selectedCompanyError ? <p className="form-error" role="alert">{selectedCompanyError}</p> : null}
         {companiesError ? <p className="form-error" role="alert">{companiesError}</p> : null}
-        <label><span>Tên cơ sở *</span><input aria-label="Tên cơ sở" disabled={siteLocked || !selectedCompany || selectedCompany.is_inactive} onChange={(event) => setSiteDraft((draft) => ({ ...draft, site_name: event.target.value }))} required value={siteDraft.site_name} /></label>
+        <label><span>Tên cơ sở *</span><input aria-label="Tên cơ sở" disabled={journalBlocked || siteLocked || !selectedCompany || selectedCompany.is_inactive} onChange={(event) => setSiteDraft((draft) => ({ ...draft, site_name: event.target.value }))} required value={siteDraft.site_name} /></label>
         <label><span>Địa chỉ cơ sở *</span><textarea aria-label="Địa chỉ cơ sở" disabled={siteLocked || !selectedCompany} onChange={(event) => setSiteDraft((draft) => ({ ...draft, site_address: event.target.value }))} required value={siteDraft.site_address} /></label>
         <label><span>Tên cơ sở tiếng Anh</span><input aria-label="Tên cơ sở tiếng Anh" disabled={siteLocked || !selectedCompany} onChange={(event) => setSiteDraft((draft) => ({ ...draft, site_name_en: event.target.value }))} value={siteDraft.site_name_en ?? ""} /></label>
         <label><span>Địa chỉ cơ sở tiếng Anh</span><textarea aria-label="Địa chỉ cơ sở tiếng Anh" disabled={siteLocked || !selectedCompany} onChange={(event) => setSiteDraft((draft) => ({ ...draft, site_address_en: event.target.value }))} value={siteDraft.site_address_en ?? ""} /></label>
@@ -268,7 +270,7 @@ export function CompanySiteCreationDialog({
         <label><span>Lý do</span><input aria-label="Lý do tạo cơ sở" disabled={siteLocked || !selectedCompany} onChange={(event) => setSiteDraft((draft) => ({ ...draft, reason: event.target.value }))} value={siteDraft.reason ?? ""} /></label>
         {siteIntent?.phase === "unverified" ? <p className="form-error" role="alert">Chưa xác minh: {siteIntent.error}. UUID và intent đã bị khóa; không tạo successor.</p> : null}
         {siteIntent?.phase === "verified" ? <p role="status">Đã xác minh Cơ sở canonical; không có GxP, ProductionLine, Case hoặc Certificate nào được tạo.</p> : null}
-        <div className="panel-actions reassessment-dialog-actions"><button disabled={siteLocked || !selectedCompany || selectedCompany.is_inactive || !actionAvailable(siteAction)} type="submit">{siteLocked ? "Đang xác minh..." : "Tạo Cơ sở"}</button>{siteIntent?.phase === "unverified" ? <button onClick={() => void verifySite(siteIntent, dialogEpoch.current)} type="button">Đọc lại canonical</button> : null}{siteIntent?.phase === "verified" ? <button onClick={startAnotherSite} type="button">Tạo cơ sở khác</button> : null}<button disabled={siteIntent?.phase === "pending" || siteIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
+        <div className="panel-actions reassessment-dialog-actions"><button disabled={journalBlocked || siteLocked || !selectedCompany || selectedCompany.is_inactive || !actionAvailable(siteAction)} type="submit">{siteLocked ? "Đang xác minh..." : "Tạo Cơ sở"}</button>{siteIntent?.phase === "unverified" ? <button onClick={() => void verifySite(siteIntent, dialogEpoch.current)} type="button">Đọc lại canonical</button> : null}{siteIntent?.phase === "verified" ? <button onClick={startAnotherSite} type="button">Tạo cơ sở khác</button> : null}<button disabled={siteIntent?.phase === "pending" || siteIntent?.phase === "unverified"} onClick={onClose} type="button">Đóng</button></div>
       </form> : null}
     </section>
   </div>;

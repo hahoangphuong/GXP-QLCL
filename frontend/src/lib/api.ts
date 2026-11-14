@@ -267,8 +267,8 @@ export function getDashboardSummary(
 }
 
 export function listCompanies(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null, query?: string): Promise<Company[]> {
-  const params = new URLSearchParams({ limit: "50" });
-  if (query?.trim()) params.set("q", query.trim());
+  if (!query?.trim()) return requestJson<Company[]>("/companies", { auth, useStubAuth, bearerToken });
+  const params = new URLSearchParams({ q: query.trim(), limit: "50" });
   return requestJson<Company[]>(buildApiPath("/companies", params), { auth, useStubAuth, bearerToken });
 }
 

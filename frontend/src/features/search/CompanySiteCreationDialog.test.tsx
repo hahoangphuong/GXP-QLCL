@@ -147,3 +147,102 @@ describe("CompanySiteCreationDialog", () => {
     expect(onSiteVerified).not.toHaveBeenCalled();
   });
 });
+
+
+describe("catalog create in-session lifecycle regressions", () => {
+  it("ignores search results from an old query after the operator clears the search", async () => {
+    let finishSearch!: (value: typeof company[]) => void;
+    api.listCompanies.mockImplementationOnce(() => new Promise((resolve) => { finishSearch = resolve; }));
+    view("create_site");
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Pháp nhân cũ" } });
+    await waitFor(() => expect(api.listCompanies).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "" } });
+    await act(async () => { finishSearch([{ ...company, id: "stale-company", legal_name: "Pháp nhân cũ" }]); });
+    expect(screen.queryByRole("option", { name: /Pháp nhân cũ/ })).toBeNull();
+    expect(screen.getByLabelText("Tìm Company theo tên")).toHaveValue("");
+  });
+
+  it("revokes a stale Site navigation callback on actual route unmount", async () => {
+    let finishReadback!: (value: typeof site) => void;
+    api.getSite.mockImplementationOnce(() => new Promise((resolve) => { finishReadback = resolve; }));
+    const onSiteVerified = vi.fn();
+    const rendered = render(<CatalogCreateSessionRoot><CompanySiteCreationDialog
+      auth={auth} companyAction={available} onClose={vi.fn()} onSiteVerified={onSiteVerified}
+      openAction="create_site" ownerIdentity="access-A" siteAction={siteAvailable} useStubAuth
+    /></CatalogCreateSessionRoot>);
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Công ty" } });
+    await screen.findByRole("option", { name: /Công ty A/ });
+    fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-A" } });
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledWith("company-A", auth, true, undefined));
+    fireEvent.change(screen.getByLabelText("Tên cơ sở"), { target: { value: "Cơ sở A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ cơ sở"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Cơ sở" }));
+    await waitFor(() => expect(api.getSite).toHaveBeenCalledTimes(1));
+    rendered.unmount();
+    await act(async () => { finishReadback(site); });
+    expect(onSiteVerified).not.toHaveBeenCalled();
+  });
+
+  it("lets an operator explicitly create two Companies with separate UUIDs in one session", async () => {
+    const ids = ["first-company-uuid", "second-company-uuid"];
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => ids.shift()!) });
+    api.getCompany.mockImplementation((id: string) => Promise.resolve({ ...company, id }));
+    view();
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+      fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+      fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+      await screen.findByRole("status");
+      if (index === 0) {
+        fireEvent.click(screen.getByRole("button", { name: "Tạo công ty khác" }));
+        expect(screen.getByLabelText("Tên pháp nhân")).toHaveValue("");
+      }
+    }
+    expect(api.createCompany.mock.calls.map((call: unknown[]) => (call[0] as { company_id: string }).company_id))
+      .toEqual(["first-company-uuid", "second-company-uuid"]);
+  });
+
+  it("lets an operator explicitly create two Sites under the same canonical Company", async () => {
+    const ids = ["first-site-uuid", "second-site-uuid"];
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => ids.shift()!) });
+    api.getSite.mockImplementation((id: string) => Promise.resolve({ ...site, id }));
+    view("create_site");
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Công ty" } });
+    await screen.findByRole("option", { name: /Công ty A/ });
+    fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-A" } });
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledWith("company-A", auth, true, undefined));
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.change(screen.getByLabelText("Tên cơ sở"), { target: { value: "Cơ sở A" } });
+      fireEvent.change(screen.getByLabelText("Địa chỉ cơ sở"), { target: { value: "Hà Nội" } });
+      fireEvent.click(screen.getByRole("button", { name: "Tạo Cơ sở" }));
+      await screen.findByRole("status");
+      if (index === 0) {
+        fireEvent.click(screen.getByRole("button", { name: "Tạo cơ sở khác" }));
+        expect(screen.getByLabelText("Tên cơ sở")).toHaveValue("");
+      }
+    }
+    expect(api.createSite.mock.calls.map((call: unknown[]) => ({ companyId: call[0], siteId: (call[1] as { site_id: string }).site_id })))
+      .toEqual([
+        { companyId: "company-A", siteId: "first-site-uuid" },
+        { companyId: "company-A", siteId: "second-site-uuid" },
+      ]);
+  });
+
+  it("retains an uncertain Company intent across dialog remount under one session root", async () => {
+    let finishReadback!: (value: typeof company) => void;
+    api.getCompany.mockImplementationOnce(() => new Promise((resolve) => { finishReadback = resolve; }));
+    const props = { auth, companyAction: available, onClose: vi.fn(), onSiteVerified: vi.fn(), ownerIdentity: "access-A", siteAction: siteAvailable, useStubAuth: true };
+    const rendered = render(<CatalogCreateSessionRoot><CompanySiteCreationDialog {...props} openAction="create_company" /></CatalogCreateSessionRoot>);
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledTimes(1));
+    rendered.rerender(<CatalogCreateSessionRoot><CompanySiteCreationDialog {...props} openAction={null} /></CatalogCreateSessionRoot>);
+    rendered.rerender(<CatalogCreateSessionRoot><CompanySiteCreationDialog {...props} openAction="create_company" /></CatalogCreateSessionRoot>);
+    expect((screen.getByRole("button", { name: "Đang xác minh..." }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.createCompany).toHaveBeenCalledTimes(1);
+    await act(async () => { finishReadback({ ...company, id: "uuid-intent" }); });
+    await screen.findByRole("status");
+    expect(api.createCompany).toHaveBeenCalledTimes(1);
+  });
+});

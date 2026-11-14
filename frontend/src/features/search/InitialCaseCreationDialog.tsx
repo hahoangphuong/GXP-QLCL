@@ -41,7 +41,7 @@ export function InitialCaseCreationDialog({
   onClose: () => void;
   onVerifiedOpen: (caseId: string) => void;
 }) {
-  const [gxp, setGxp] = useState<Gxp>("GMP");
+  const [gxp, setGxp] = useState<Gxp | "">("");
   const [lineId, setLineId] = useState<string>("");
   const owner = JSON.stringify(["initial-case-create", accessGeneration, useStubAuth, siteId, gxp, lineId || null]);
   const { state, update } = useCatalogCreateSession(owner);
@@ -65,7 +65,7 @@ export function InitialCaseCreationDialog({
   const lineValid = !lineId || lines.some((line) => line.id === lineId && line.site_id === siteId);
   const context = JSON.stringify([accessGeneration, useStubAuth, siteId, gxp, lineId || null]);
   // A previous context's available signal cannot authorize a new POST.
-  const ready = readinessContext === context && readiness?.readiness_status === "available";
+  const ready = Boolean(gxp) && readinessContext === context && readiness?.readiness_status === "available";
   const locked = Boolean(intent);
   const trimType = draft.inspection_type.trim();
   const trimStandard = draft.applicable_standard.trim();
@@ -100,7 +100,7 @@ export function InitialCaseCreationDialog({
   useEffect(() => {
     const epoch = ++readinessEpoch.current;
     setReadiness(null); setReadinessContext(null); setReadinessError(null);
-    if (!open || !siteId || !validOwner || !lineValid) return () => { ++readinessEpoch.current; };
+    if (!open || !siteId || !validOwner || !lineValid || !gxp) return () => { ++readinessEpoch.current; };
     void getFacilityWorkspace(siteId, auth, useStubAuth, gxp, null, bearerToken, lineId || null)
       .then((workspace) => {
         if (readinessEpoch.current !== epoch) return;
@@ -151,7 +151,7 @@ export function InitialCaseCreationDialog({
       admitted = {
         token: {}, siteId, phase: "pending", persisted: null, error: null,
         payload: {
-          case_id: crypto.randomUUID(), gxp_type: gxp, production_line_id: lineId || null,
+          case_id: crypto.randomUUID(), gxp_type: gxp as Gxp, production_line_id: lineId || null,
           inspection_type: type, applicable_standard: standard || null, reason,
         },
       };
@@ -190,7 +190,8 @@ export function InitialCaseCreationDialog({
       {ownerError ? <p role="alert" className="form-error">{ownerError}</p> : null}
       <div className="stack-form">
         <label><span>Loại GxP *</span><select aria-label="Loại GxP cho hồ sơ mới" value={gxp} onChange={(e) => { setGxp(e.target.value as Gxp); setLineId(""); }}>
-          {supported.map((value) => <option key={value} value={value}>{value}</option>)}
+          <option value="">Chọn loại GxP</option>
+          {supported.map((value) => <option key={value} value={value}>{value}</option>}
         </select></label>
         <label><span>Dây chuyền vật lý theo UUID (tùy chọn)</span><select aria-label="ProductionLine UUID" value={lineId} onChange={(e) => setLineId(e.target.value)}>
           <option value="">Toàn cơ sở (không có ProductionLine UUID)</option>

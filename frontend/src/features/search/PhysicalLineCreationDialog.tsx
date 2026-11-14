@@ -52,7 +52,7 @@ export function PhysicalLineCreationDialog({
   const ready = action?.readiness_status === "available";
   const canonicalOwner = Boolean(siteId && site?.id === siteId && company?.id === site?.company_id && !company?.is_inactive);
   const locked = intent !== null;
-  const canSubmit = ready && canonicalOwner && !locked
+  const canSubmit = ready && canonicalOwner && !locked && !state.recoveryJournalError
     && draft.confirmedDistinct && draft.code.trim().length > 0 && draft.code.trim().length <= 64
     && draft.physical_identity_evidence_reference.trim().length > 0
     && draft.physical_identity_evidence_reference.trim().length <= 512
@@ -162,6 +162,7 @@ export function PhysicalLineCreationDialog({
       </header>
       <p>Site UUID: <code>{siteId ?? "Chưa chọn Site"}</code></p>
       {site && company ? <p>Site: <strong>{site.site_name}</strong> · Công ty: <strong>{company.legal_name}</strong>{company.is_inactive ? " (ngừng hoạt động)" : ""}</p> : null}
+      {state.recoveryJournalError ? <p role="alert" className="form-error">{state.recoveryJournalError}</p> : null}
       {ownerError ? <p className="form-error" role="alert">{ownerError}</p> : null}
       {!ready ? <p role="status">Không được phép tạo dây chuyền: {action?.detail ?? "Backend chưa xác nhận readiness."}</p> : null}
       {listError ? <p className="form-error" role="alert">Chưa tải được danh sách dây chuyền: {listError}</p> : null}

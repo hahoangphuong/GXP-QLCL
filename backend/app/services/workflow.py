@@ -1531,8 +1531,11 @@ class CaseWorkflowService:
         # A Session may cache the Site before another writer changes its owner.
         # Refresh after the Site lock; do not trust the cached company_id.
         session.refresh(site)
+        # Serialize initial Case admission with concurrent Company deactivation.
+        # Lock order is Site -> Company, matching physical-line creation.
         company = session.scalars(
             select(Company).where(Company.id == site.company_id)
+            .with_for_update(of=Company)
             .execution_options(populate_existing=True)
         ).one_or_none()
         if company is None or company.is_inactive:
@@ -1837,8 +1840,11 @@ class CaseWorkflowService:
         ).one_or_none()
         if site is None:
             raise HTTPException(status_code=404, detail="Site not found.")
+        # The Site lock protects its owner link; lock the Company row as well
+        # so deactivation cannot race between the check and line insertion.
         company = session.scalars(
             select(Company).where(Company.id == site.company_id)
+            .with_for_update(of=Company)
             .execution_options(populate_existing=True)
         ).one_or_none()
         if company is None or company.is_inactive:

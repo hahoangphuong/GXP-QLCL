@@ -1334,7 +1334,9 @@ class CatalogReadService:
         return None if latest_value is None else latest_value[0]
 
     def list_companies(self, session: Session, *, q: str | None, limit: int):
-        stmt = select(Company).order_by(Company.legacy_company_id).limit(limit)
+        # Newly created masters have NULL legacy IDs; SQLite and PostgreSQL
+        # sort those differently by default. Keep discovery deterministic.
+        stmt = select(Company).order_by(Company.legacy_company_id.asc().nulls_last(), Company.id).limit(limit)
         if q:
             stmt = stmt.where(Company.legal_name.ilike(f"%{q}%"))
         return list(session.scalars(stmt))
@@ -1346,7 +1348,8 @@ class CatalogReadService:
         return row
 
     def list_sites(self, session: Session, *, q: str | None, limit: int):
-        stmt = select(Site).order_by(Site.legacy_site_id).limit(limit)
+        # Preserve legacy-first ordering consistently across database engines.
+        stmt = select(Site).order_by(Site.legacy_site_id.asc().nulls_last(), Site.id).limit(limit)
         if q:
             stmt = stmt.where(Site.site_name.ilike(f"%{q}%"))
         return list(session.scalars(stmt))

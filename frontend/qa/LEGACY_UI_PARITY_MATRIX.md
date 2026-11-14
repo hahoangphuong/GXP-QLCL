@@ -1,5 +1,18 @@
 # LEGACY_UI_PARITY_MATRIX — Issue #1
 
+## Company / Site canonical creation — Issue #500
+
+The legacy action-panel labels `Công ty mới` and `Cơ sở mới` now open the
+web-owned canonical creation dialog when backend readiness reports
+`available`. The dialog preallocates a UUID per intent, posts exactly once,
+then verifies the authoritative Company/Site GET response before exposing a
+successor action or navigating to the new facility-wide, unclassified search
+target. A transport failure never creates a new UUID or retries POST; the
+intent remains readback-locked until matching canonical fields and parent
+identity are observed. This is a web integrity addition, not inferred legacy
+behavior. Runtime evidence for the legacy fields/recovery UI is
+`EVIDENCE_MISSING`; labels and action-panel placement are retained.
+
 ## Inline editor business-action boundaries — 2026-10-29
 
 Baseline main `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. The versioned

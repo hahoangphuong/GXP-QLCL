@@ -29,13 +29,6 @@ def run(browser, *, uncertain_stage: str | None = None) -> None:
     first_failed_reads: set[str] = set()
     post_attempts: dict[str, int] = {"company": 0, "site": 0, "line": 0, "case": 0}
 
-    def mutation_result(kind, payload, success):
-        post_attempts[kind] += 1
-        if kind == uncertain_stage:
-            # The server committed the create but transport did not report it.
-            return ok({"detail": "ambiguous synthetic committed POST"}, 503)
-        return ok(success, 201)
-
     def intercept(route):
         req = route.request
         url = urlsplit(req.url)
@@ -48,6 +41,13 @@ def run(browser, *, uncertain_stage: str | None = None) -> None:
 
         def ok(data, status=200):
             return route.fulfill(status=status, json=data)
+
+        def mutation_result(kind, success):
+            post_attempts[kind] += 1
+            if kind == uncertain_stage:
+                # Persisted write, but the client sees an ambiguous transport response.
+                return ok({"detail": "ambiguous synthetic committed POST"}, 503)
+            return ok(success, 201)
 
         def read(kind, payload, result):
             assert payload is not None, f"GET before persisted {kind}"
@@ -63,7 +63,7 @@ def run(browser, *, uncertain_stage: str | None = None) -> None:
                 errors.append("duplicate company POST")
                 return ok({"detail": "duplicate"}, 409)
             creates["company"] = payload
-            return mutation_result("company", payload, {"id": payload["company_id"]})
+            return mutation_result("company", {"id": payload["company_id"]})
         company = creates.get("company")
         company_id = company["company_id"] if company else None
         if method == "GET" and company and path == f"/companies/{company_id}":
@@ -82,7 +82,7 @@ def run(browser, *, uncertain_stage: str | None = None) -> None:
                 errors.append("duplicate site POST")
                 return ok({"detail": "duplicate"}, 409)
             creates["site"] = payload
-            return mutation_result("site", payload, {"id": payload["site_id"]})
+            return mutation_result("site", {"id": payload["site_id"]})
         site = creates.get("site")
         site_id = site["site_id"] if site else None
         if method == "GET" and site and path == f"/sites/{site_id}":
@@ -105,7 +105,7 @@ def run(browser, *, uncertain_stage: str | None = None) -> None:
                 errors.append("duplicate physical line POST")
                 return ok({"detail": "duplicate"}, 409)
             creates["line"] = payload
-            return mutation_result("line", payload, {"id": payload["production_line_id"], "audit_event_id": "synthetic-audit"})
+            return mutation_result("line", {"id": payload["production_line_id"], "audit_event_id": "synthetic-audit"})
         line = creates.get("line")
         line_id = line["production_line_id"] if line else None
         if method == "GET" and line and path == f"/production-lines/{line_id}":
@@ -142,7 +142,7 @@ def run(browser, *, uncertain_stage: str | None = None) -> None:
                 errors.append("wrong physical line Case owner")
                 return ok({"detail": "wrong context"}, 409)
             creates["case"] = payload
-            return mutation_result("case", payload, {"case_id": payload["case_id"]})
+            return mutation_result("case", {"case_id": payload["case_id"]})
         case = creates.get("case")
         case_id = case["case_id"] if case else None
         if method == "GET" and case and path == f"/cases/{case_id}":

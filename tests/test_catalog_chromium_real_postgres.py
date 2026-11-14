@@ -411,7 +411,7 @@ def test_initial_case_selection_and_exact_intent_survive_real_browser_reload(pg_
     Synthetic prerequisite catalog rows use canonical ASGI HTTP and the same
     disposable migrated schema. The browser calls actual Vite/FastAPI routes.
     """
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     company_id, site_id, line_id = (str(uuid4()) for _ in range(3))
     ok(api, "POST", "/companies", {
@@ -485,7 +485,7 @@ def test_initial_case_selection_and_exact_intent_survive_real_browser_reload(pg_
             page.reload(wait_until="domcontentloaded")
             page.get_by_label("Loại GxP cho hồ sơ mới").wait_for()
             assert page.get_by_label("Loại GxP cho hồ sơ mới").input_value() == "GMP"
-            assert page.get_by_label("ProductionLine UUID").input_value() == line_id
+            expect(page.get_by_label("ProductionLine UUID")).to_have_value(line_id, timeout=15000)
             page.get_by_text("Chưa xác minh:", exact=False).wait_for()
             assert page.get_by_role("button", name="Đã khóa intent").is_disabled()
             assert len(writes) == 1

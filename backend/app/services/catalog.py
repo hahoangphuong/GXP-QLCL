@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.auth import AuthenticatedUser
@@ -1441,8 +1441,16 @@ class CatalogReadService:
             conditions.append(Case.gxp_type == gxp_type)
         if q:
             pattern = f"%{q}%"
-            conditions.append(or_(Site.site_name.ilike(pattern), Company.legal_name.ilike(pattern),
-                                  Case.legacy_inspection_code.ilike(pattern)))
+            # Search the same canonical Case and its explicitly linked decision.
+            # Operators often paste a Case UUID or decision reference from a
+            # notification. Never infer a decision from a missing Certificate.
+            conditions.append(or_(
+                Site.site_name.ilike(pattern),
+                Company.legal_name.ilike(pattern),
+                Case.legacy_inspection_code.ilike(pattern),
+                cast(Case.id, String).ilike(pattern),
+                CaseCertificateNonissuanceDecision.decision_reference.ilike(pattern),
+            ))
         if opened_year is not None:
             conditions.append(Case.opened_year == opened_year)
         base = (select(Case, Site, Company, ProductionLine, CaseCertificateNonissuanceDecision)

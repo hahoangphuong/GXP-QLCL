@@ -960,7 +960,7 @@ def test_upsert_inspection_plan_persists_stage():
             decision_document_hint=None,
             decision_reference="QD-01",
             reason="Planning baseline.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -979,7 +979,7 @@ def test_plan_created_event_uses_canonical_metadata_across_separate_field_edits(
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    actor = build_authenticated_user("manager01", "manager")
+    actor = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
     with Session(engine) as session:
         case_id = seed_case(session)
 
@@ -1060,7 +1060,7 @@ def test_outcome_recorded_event_uses_canonical_period_and_minutes_from_prior_upd
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    actor = build_authenticated_user("manager01", "manager")
+    actor = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
     with Session(engine) as session:
         case_id = seed_case(session)
 
@@ -1176,7 +1176,7 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
             decision_document_hint=None,
             decision_reference="QD-01",
             reason="Initial plan.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1193,7 +1193,7 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
             decision_document_hint=None,
             decision_reference="QD-01",
             reason="No-op save.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1219,7 +1219,7 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
                 decision_document_hint=None,
                 decision_reference="QD-02",
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "terminal state closed" in str(exc)
@@ -1245,7 +1245,7 @@ def test_upsert_inspection_outcome_persists_stage_and_event():
             bbkt_reference=None,
             outcome_result="compliant",
             reason="Outcome recorded.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1278,7 +1278,7 @@ def test_outcome_compatibility_writer_does_not_infer_a_zero_segment_source_state
             bbkt_reference=None,
                 outcome_result=None,
                 reason="Metadata only.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
                 fields_set=set(),
         )
         session.commit()
@@ -1304,7 +1304,7 @@ def test_outcome_compatibility_writer_normalizes_one_day_and_updates_one_canonic
             bbkt_reference=None,
             outcome_result=None,
             reason="One-day visit.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
     assert (first["inspected_on"], first["inspected_to_on"], first["inspection_period_state"]) == (
@@ -1322,7 +1322,7 @@ def test_outcome_compatibility_writer_normalizes_one_day_and_updates_one_canonic
             bbkt_reference=None,
             outcome_result=None,
             reason="Corrected visit.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
         outcome = session.scalar(select(InspectionOutcome))
@@ -1373,7 +1373,7 @@ def test_outcome_compatibility_writer_metadata_only_preserves_period_truth():
             bbkt_reference=None,
                 outcome_result=None,
                 reason="Metadata only.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
                 fields_set=set(),
         )
         session.commit()
@@ -1422,7 +1422,7 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_multi_segment_tr
                 bbkt_reference=None,
                 outcome_result=None,
                 reason=None,
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         with pytest.raises(Exception, match="multiple canonical period segments"):
             service.upsert_inspection_outcome(
@@ -1435,7 +1435,7 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_multi_segment_tr
                 bbkt_reference=None,
                 outcome_result=None,
                 reason=None,
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
 
 
@@ -1463,7 +1463,7 @@ def test_outcome_compatibility_writer_does_not_replace_a_source_owned_non_known_
                 bbkt_reference=None,
                 outcome_result=None,
                 reason=None,
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         session.rollback()
         outcome = session.scalar(select(InspectionOutcome))
@@ -1494,7 +1494,7 @@ def test_outcome_timing_mutation_rolls_back_segment_and_compatibility_together(m
                 bbkt_reference=None,
                 outcome_result=None,
                 reason=None,
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         session.rollback()
         assert session.scalars(select(InspectionOutcome)).all() == []
@@ -1565,7 +1565,7 @@ def test_upsert_inspection_outcome_blocks_terminal_cases_and_skips_duplicate_eve
             bbkt_reference=None,
             outcome_result="compliant",
             reason="Initial outcome.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1582,7 +1582,7 @@ def test_upsert_inspection_outcome_blocks_terminal_cases_and_skips_duplicate_eve
             bbkt_reference=None,
             outcome_result="compliant",
             reason="No-op save.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1608,7 +1608,7 @@ def test_upsert_inspection_outcome_blocks_terminal_cases_and_skips_duplicate_eve
                 bbkt_reference=None,
                 outcome_result="needs-follow-up",
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "terminal state cancelled" in str(exc)
@@ -1635,7 +1635,7 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
                 {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "SECRETARY", "role_label": "member", "sort_order": 2},
             ],
             reason="Initial team assignment.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1662,7 +1662,7 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
                 {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "member", "sort_order": 1},
             ],
             reason="Team narrowed.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1722,7 +1722,7 @@ def test_upsert_inspection_team_rejects_member_without_identity():
                     {"person_id": None, "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1},
                 ],
                 reason="Invalid payload.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "exactly one" in str(exc)
@@ -1758,7 +1758,7 @@ def test_upsert_inspection_team_rejects_inactive_inspector_profile_for_runtime_c
                     },
                 ],
                 reason="Inactive profile cannot compose a current team.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         with pytest.raises(Exception, match="inspector_profile-owned"):
             service.upsert_inspection_team(
@@ -1774,7 +1774,7 @@ def test_upsert_inspection_team_rejects_inactive_inspector_profile_for_runtime_c
                     },
                 ],
                 reason="Inactive inspector cannot bypass profile identity through Person.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         assert session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == case_id)).first() is None
 
@@ -1804,7 +1804,7 @@ def test_upsert_inspection_team_rejects_active_inspector_person_compatibility_by
                     },
                 ],
                 reason="Inspector must use the inspector profile identity.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         result = service.upsert_inspection_team(
             session,
@@ -1819,7 +1819,7 @@ def test_upsert_inspection_team_rejects_active_inspector_person_compatibility_by
                 },
             ],
             reason="A non-inspector Person remains a compatibility identity.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         assert result["members"][0]["person_id"] == identities["direct_person_id"]
 
@@ -1838,7 +1838,7 @@ def test_upsert_inspection_team_rejects_display_text_as_a_second_member_source()
                 display_text="Do not parse me",
                 members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1}],
                 reason="Invalid dual source.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
 
 
@@ -1864,7 +1864,7 @@ def test_upsert_inspection_team_rejects_unknown_identity_and_stale_version_witho
                 expected_version=1,
                 members=[{"person_id": "00000000-0000-0000-0000-0000000000ff", "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1}],
                 reason="Invalid identity.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "unknown identity" in str(exc)
@@ -1878,7 +1878,7 @@ def test_upsert_inspection_team_rejects_unknown_identity_and_stale_version_witho
             expected_version=1,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1}],
             reason="Replace member from authoritative projection.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -1890,7 +1890,7 @@ def test_upsert_inspection_team_rejects_unknown_identity_and_stale_version_witho
                 expected_version=1,
                 members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "member", "sort_order": 1}],
                 reason="Stale write.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "Stale inspection_team update" in str(exc)
@@ -1944,7 +1944,7 @@ def test_upsert_inspection_team_blocks_terminal_case_before_replacing_members():
                     },
                 ],
                 reason="Blocked terminal case.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "terminal state closed" in str(exc)
@@ -4390,7 +4390,7 @@ def test_inspection_stage_create_only_null_and_versioned_updates(kind):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("inspection-cas", "manager")
+    user = build_authenticated_user("inspection-cas", "manager", permissions={"inspection.edit"})
     with Session(engine) as session:
         case_id = seed_case(session)
 
@@ -4458,7 +4458,7 @@ def test_inspection_team_replace_reads_committed_members_not_cached_before_audit
             seed, case_id=case_id,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                       "role_code": "LEADER", "role_label": "original", "sort_order": 1}],
-            reason="Seed canonical team.", user=build_authenticated_user("team-writer", "manager"),
+            reason="Seed canonical team.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
         )
         seed.commit()
         team_id, version = initial["team_id"], initial["row_version"]
@@ -4480,7 +4480,7 @@ def test_inspection_team_replace_reads_committed_members_not_cached_before_audit
             cached, case_id=case_id, expected_version=version,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                       "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
-            reason="Replace after committed correction.", user=build_authenticated_user("team-writer", "manager"),
+            reason="Replace after committed correction.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
         )
         cached.commit()
 
@@ -4505,7 +4505,7 @@ def test_inspection_team_cached_valid_member_cannot_bypass_newly_ambiguous_ident
             seed, case_id=case_id,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                       "role_code": "LEADER", "role_label": "original", "sort_order": 1}],
-            reason="Seed a valid member.", user=build_authenticated_user("team-writer", "manager"),
+            reason="Seed a valid member.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
         )
         seed.commit()
         team_id, version = initial["team_id"], initial["row_version"]
@@ -4531,7 +4531,7 @@ def test_inspection_team_cached_valid_member_cannot_bypass_newly_ambiguous_ident
                 cached, case_id=case_id, expected_version=version,
                 members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                           "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
-                reason="Must reject ambiguous persisted member.", user=build_authenticated_user("team-writer", "manager"),
+                reason="Must reject ambiguous persisted member.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
             )
         cached.rollback()
 

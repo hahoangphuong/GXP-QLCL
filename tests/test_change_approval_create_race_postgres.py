@@ -49,7 +49,7 @@ def test_change_approval_competing_create_blocks_before_insert():
             change_id, version = change.id, change.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-approval", "manager")
+        user = build_authenticated_user("synthetic-approval", "manager", permissions={"change_request.approve"})
         def write(session, name):
             return service.upsert_change_approval(
                 session, change_request_id=change_id, expected_version=version,

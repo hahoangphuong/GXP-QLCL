@@ -66,7 +66,10 @@ def test_same_case_issuance_and_nonissuance_serialize_without_duplicate_effects(
             case_id, site_id, case_version = case.id, site.id, case.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-nonissuance-race", "manager")
+        user = build_authenticated_user(
+            "synthetic-nonissuance-race", "manager",
+            permissions={"certificate.approve", "certificate.issue"},
+        )
 
         def nonissuance(session):
             return service.record_case_nonissuance_decision(

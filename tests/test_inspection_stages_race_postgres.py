@@ -58,7 +58,7 @@ def test_inspection_stage_competing_creation_serialized_before_dml(kind, loser_t
             case_id = case.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("race-inspection-stage", "manager")
+        user = build_authenticated_user("race-inspection-stage", "manager", permissions={"inspection.edit"})
         model = InspectionPlan if kind == "plan" else InspectionOutcome
         field = "planning_sheet_name" if kind == "plan" else "outcome_result"
 

@@ -58,7 +58,7 @@ def test_case_assessment_competing_creation_serializes_before_mutation(loser_tok
             case_id = case.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("race-case-assessment", "manager")
+        user = build_authenticated_user("race-case-assessment", "manager", permissions={"case.edit"})
 
         def write(session, token, value):
             return service.upsert_case_assessment(

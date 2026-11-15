@@ -47,7 +47,7 @@ def _save(service, session, case_id, version, **changes):
         case_id=case_id,
         expected_version=version,
         reason="synthetic plan interval",
-        user=build_authenticated_user("synthetic-plan-owner", "manager"),
+        user=build_authenticated_user("synthetic-plan-owner", "manager", permissions={"inspection.edit"}),
         fields_set=set(changes),
         **values,
     )

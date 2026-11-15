@@ -65,7 +65,7 @@ def test_inspection_child_write_rechecks_terminal_case_owner(kind):
             case_id, person_id = case.id, person.id
             outcome_version = outcome.row_version
 
-        user = build_authenticated_user("synthetic-inspection-editor", "manager")
+        user = build_authenticated_user("synthetic-inspection-editor", "manager", permissions={"inspection.edit"})
         service = CaseWorkflowService()
         contender = factory()
         old = contender.get(Case, case_id)

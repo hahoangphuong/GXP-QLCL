@@ -1565,6 +1565,7 @@ class CaseWorkflowService:
         Certificate or any unrelated Site/GxP context. UUID4 is supplied
         before POST; a lost response is resolved via GET /cases/{case_id}.
         """
+        require_permissions(user, {"case.edit"})
         if gxp_type not in SUPPORTED_CASE_GXP_TYPES:
             raise HTTPException(status_code=422, detail="Unsupported GxP type for initial Case creation.")
         normalized_type = self._facility_master_required_text(
@@ -3226,6 +3227,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, str | None]:
+        require_permissions(user, {"case.edit"})
         # CAPA creation/assessment uses the Case owner lock. Acquire it before
         # reading the latest CAPA gate or mutating the transition state; an
         # uncommitted new cycle must not be treated as absent.
@@ -3310,6 +3312,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         source_case_id: str | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {"case.edit"})
         locked_site = self._lock_site(session, site_id)
         normalized_gxp_type, normalized_line_code, line = self._validate_create_inspection_case_context(
             session,
@@ -3465,6 +3468,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {"case.edit"})
         # Case closure is a parent-owner transition; the ORM identity might
         # still hold a nonterminal snapshot from an earlier Session read.
         case = self._lock_case(session, case_id)
@@ -3828,6 +3832,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {"case.edit"})
         provided = self._provided_fields(
             fields_set,
             {"submitted_on", "dossier_code", "applicant_name"},
@@ -3940,6 +3945,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {"case.edit"})
         provided = self._provided_fields(fields_set, {"assessed_on", "assessor_name", "assessment_result", "notes"})
         # Serialize null-token create/update on a freshly locked Case owner.
         row = self._lock_case(session, case_id)
@@ -4047,6 +4053,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         provided = self._provided_fields(
             fields_set,
             {"plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"},
@@ -4191,6 +4198,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         provided = self._provided_fields(
             fields_set,
             {
@@ -4370,6 +4378,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         """Replace an explicitly user-entered, ordered actual visit sequence."""
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         # Serialize against Case terminal transitions and refresh cached state.
         case = self._lock_case(session, case_id)
         self._assert_case_not_terminal(case, operation="inspection period update")
@@ -4813,6 +4822,7 @@ class CaseWorkflowService:
         expected_version: int | None = None,
         display_text: str | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         # The Case owner lock prevents replacing members after closure,
         # including when an earlier Session read cached a nonterminal state.
         row = self._lock_case(session, case_id)

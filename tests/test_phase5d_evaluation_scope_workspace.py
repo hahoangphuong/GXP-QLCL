@@ -29,7 +29,7 @@ from backend.app.services.workflow import CaseWorkflowService
 
 
 def _user():
-    return build_authenticated_user("scope.editor", "manager")
+    return build_authenticated_user("scope.editor", "manager", permissions={"case.edit"})
 
 
 def _engine():

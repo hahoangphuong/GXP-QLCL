@@ -79,7 +79,7 @@ def test_evaluation_scope_revalidates_case_terminal_owner_before_aggregate_edit(
             case_id, scope_id, token, node_id = case.id, scope.id, scope.row_version, node.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-scope-editor", "manager")
+        user = build_authenticated_user("synthetic-scope-editor", "manager", permissions={"case.edit"})
         contender = factory()
         cached = contender.get(Case, case_id)
         assert cached.state == CaseState.DRAFT

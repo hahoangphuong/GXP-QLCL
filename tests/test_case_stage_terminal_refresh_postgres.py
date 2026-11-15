@@ -69,7 +69,7 @@ def test_stage_write_rechecks_fresh_case_terminal_state(kind):
             case_id, stage_id, version = case.id, stage.id, stage.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-stage-gate", "manager")
+        user = build_authenticated_user("synthetic-stage-gate", "manager", permissions={"inspection.edit", "case.edit"})
         contender = factory()
         cached = contender.get(Case, case_id)
         assert cached.state == CaseState.INSPECTION_COMPLETED

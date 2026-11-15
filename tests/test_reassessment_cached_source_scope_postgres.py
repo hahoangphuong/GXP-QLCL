@@ -101,7 +101,7 @@ def test_reassessment_copy_refreshes_cached_source_scope_after_committed_edit():
             scope_id, block_id, selection_id = scope.id, block.id, selection.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-scope-copy", "manager")
+        user = build_authenticated_user("synthetic-scope-copy", "manager", permissions={"case.edit"})
         # Begin a Session and cache all source levels before a separate
         # transaction edits them. Commit the reader transaction so it can
         # subsequently acquire a fresh READ COMMITTED snapshot.

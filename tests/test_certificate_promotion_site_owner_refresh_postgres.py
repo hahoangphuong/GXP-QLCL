@@ -94,7 +94,7 @@ def test_certificate_promotion_refuses_reassigned_cached_site_owner(kind):
         editor.commit()
         new_token = canonical.row_version
 
-        user = build_authenticated_user("site-owner-regression", "manager")
+        user = build_authenticated_user("site-owner-regression", "manager", permissions={"certificate.approve"})
         service = CaseWorkflowService()
         with pytest.raises(HTTPException) as denied:
             if kind == "gxp":

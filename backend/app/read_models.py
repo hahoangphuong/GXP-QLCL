@@ -240,9 +240,11 @@ class FacilitySearchPageRead(BaseModel):
     total_count: int
     offset: int
     limit: int
+    quarantined_historical_certificate_legacy_ids: list[int] = []
 
 
 class FacilityWorkspaceSummaryRead(BaseModel):
+    quarantined_historical_certificate_legacy_ids: list[int] = []
     context_key: str
     site_id: str
     legacy_site_id: int | None

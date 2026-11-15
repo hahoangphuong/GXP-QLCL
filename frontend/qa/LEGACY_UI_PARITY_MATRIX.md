@@ -2420,3 +2420,40 @@ canonical endpoint path, all four error classes, and a deferred PCT1 → PCT2
 binary response that opens only PCT2. `EVIDENCE_MISSING`: authenticated Google
 OIDC browser verification, actual NAS/Word binary rendering, native screen
 reader output, and legacy VBA runtime behavior for this web-only round action.
+
+## Operator workspace functional audit — 2026-11-15
+
+**SOURCE_EVIDENCE →** Issue #1, `docs/UI_REDESIGN_VBA_REFERENCE.md`,
+`docs/UI_REDESIGN_VBA_WORKSPACE_FORMS.md`, `docs/VBA_FUNCTION_MAP.md`, the
+recorded MainForm/RecordForm runtime captures, and current React/API-contract
+owners were reviewed after `main` integrated PR #548. The legacy evidence makes
+the master → history → detail model, Vietnamese labels, and dense workspace
+grouping authoritative. It does not prove a browser-side replacement for any
+backend-only legal-document or storage capability.
+
+| Legacy Excel/VBA surface | Current web owner / operator path | Difference classification | Operational impact | Action / verification |
+| --- | --- | --- | --- | --- |
+| Màn hình tra cứu (MainForm master) | `SearchPage` → `SearchToolbar` / `FacilityTable` | Visual exception: the user-approved vertical GxP rail and two in-table filters replace the legacy horizontal rail and standalone `Lọc` row. No functional mismatch found. | High daily-entry surface; selection remains explicit through Enter/Space/click rather than focus-only navigation. | Retain the approved web exception. Fixture and regression coverage verify URL filters, canonical `result_key`, roving focus, and no request from focus-only movement. Exact legacy keyboard runtime remains `EVIDENCE_MISSING`. |
+| Cơ sở / dây chuyền context | `FacilitySummary` / `FacilityWorkspaceTabs` | Partial visual parity: canonical Site/ProductionLine UUID context is richer than the legacy display; the API has no canonical “Giới hạn” source for the legacy field. | High: context must not be inferred from line code or certificate number. | Preserve current explicit summary and tab labels. Do not fabricate legacy limit/provenance values; canonical source is `BLOCKED_BY_BACKEND_CONTRACT` for that field. |
+| Lịch sử kiểm tra và thay đổi | `HistoryTable` → selected history owner in `SearchPage` → `EventWorkspace` | Functional parity verified for selected-event navigation; exact legacy list appearance/scroll geometry is partial. | High: Case/change-request identity controls all downstream workspace reads. | Retain selected-history UUID and A→B→A stale fencing. Existing regression covers selection persistence, late response suppression, keyboard activation, and no selection from Arrow/Home/End alone. |
+| Hồ sơ / Case (đăng ký, kiểm tra, CAPA, xử lý) | `EventWorkspace`, `CaseApplicationWorkspace`, `CaseInspectionWorkspace`, `CaseRemediationWorkspace`, `CaseProcessingWorkspace` | Functional capability is present under backend readiness; visual parity is intentionally partial where canonical multi-round/state data has no one-field VBA equivalent. | High: available create/edit/submit/assess actions must be distinguished from read-only/blocked state. | Keep one Case owner and readiness-driven editors. Regression covers draft/session ownership, expected version, 403/409/422, no blind retry, and stale Case switching. `AUTHENTICATED_UAT_BLOCKED` remains. |
+| KHKT, đoàn kiểm tra, đánh giá và PCT/CT | `CaseInspectionWorkspace` / `CaseApprovalWorkspace` / `ApprovalRoundDocuments` | No missing frontend capability found for the current canonical readiness contracts. PR #548 hardens server authorization; it does not introduce a new client action contract. | High: users can see enabled actions, disabled reasons, PCT→CT ancestry, and round-bound documents. | Preserve canonical approval-submission UUID, Case ownership, `expected_version`, unknown-outcome lock and document binding/open paths. QĐKT render/approved-decision workflow remains `BLOCKED_BY_BACKEND_CONTRACT`; do not add a client-only command. |
+| Certificate GxP và ĐĐK | `CaseCertificateIssueWorkspace`, `GxpCertificateWorkspace`, `BusinessEligibilityWorkspace` | Functional parity is contract-limited: Case issuance/readiness is separate from Facility certificate history; some legacy provenance/grouping is unavailable. | High: duplicate displayed numbers must never merge certificate UUIDs. | Retain per-certificate UUID/version/readiness and source-evidence ownership. Legacy issuance/editor visual runtime and complete ĐĐK provenance remain `EVIDENCE_MISSING` or backend-owned; no inferred links/groups. |
+| Thay đổi cơ sở | `ChangeRequestMutationWorkspace` in `EventWorkspace` | Functional parity is limited to the canonical mutation/readiness set, not a cloned legacy form. | Medium/high: stale requests must not overwrite the selected request or issue an unintended mutation. | Keep Change Request ID/access generation ownership, 403/409/422 presentation, and in-session uncertain-outcome lock. Unsupported legacy fields stay absent until a typed contract exists. |
+| RecordForm / sổ tài liệu | `ContextualDocumentSection`, document registers, and certificate document metadata owners | Intentional functional difference: logical document/version/rendition UUIDs replace filename/path-driven legacy selection. Runtime RecordForm layout remains unknown. | High integrity: prevents cross-Case/round/file-name collision. | Retain one contextual document owner per selected workflow context and backend-provided open/create actions. `LEGACY_RUNTIME_EVIDENCE_MISSING`; Word/NAS binary verification is `AUTHENTICATED_UAT_BLOCKED` / storage UAT pending. |
+| Báo cáo / danh sách vận hành | `ReportsPage`, Case/certificate/change-request read workspaces | Functional capability exists for current canonical reports, but it is not a full FilterForm/worksheet clone. | Medium: reports must not imply unsupported legacy filter/export semantics. | Keep explicit report route/filter contracts and read-only detail ownership. Complete legacy FilterForm parity is `BLOCKED_BY_BACKEND_CONTRACT` / `EVIDENCE_MISSING`; do not implement client-side filter semantics. |
+
+**AUDIT_RESULT →** No source-grounded frontend omission was found that can be
+implemented without inventing a readiness/action, duplicating an existing
+workspace, or crossing a backend/document boundary. In particular, the current
+client already exposes the canonical inspection outcome, final evaluation,
+CAPA, PCT/CT, certificate, change-request and document actions through the
+selected Case/History owner. The highest remaining gaps are QĐKT
+render/approved-decision contracts, complete legacy FilterForm semantics,
+RecordForm runtime geometry, Word/NAS binary verification, and authenticated
+Google OIDC operator UAT. They remain intentionally unimplemented here.
+
+**VALIDATION_SCOPE →** This audit does not relabel fixture/unit coverage as
+authenticated UAT. `AUTHENTICATED_UAT_BLOCKED` remains until a candidate runtime
+and approved authenticated browser session are available; no deployment, OAuth
+change, real write, storage operation, or backend mutation was performed.

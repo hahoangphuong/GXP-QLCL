@@ -4634,46 +4634,63 @@ class CaseWorkflowService:
         *,
         approval_submission_id: str,
     ) -> dict[str, Any]:
-        """Canonical, scoped recovery GET; never infers whether a POST succeeded.
+        """Canonical scoped recovery GET, never a second POST or issuance proof.
 
-        This readback is independent of unrelated Case/Certificate workspace
-        projections. A persisted link is evidence of association only, not
-        evidence of document issuance or binary integrity.
+        Read persisted scalar values under no_autoflush. This must not flush
+        unrelated drafts or overwrite dirty/cached ORM instances while an
+        operator resolves an unknown-outcome approval-document binding.
         """
-        submission = session.scalars(
-            select(InspectionApprovalSubmission)
-            .where(InspectionApprovalSubmission.id == approval_submission_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if submission is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        if submission.stage not in {"PCT", "CT"}:
-            raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
-        expected_family = (
-            "INSPECTION_PT_PCT" if submission.stage == "PCT" else "INSPECTION_PT_CT"
-        )
-        links = list(session.execute(
-            select(InspectionApprovalDocumentLink, Document)
-            .outerjoin(
-                Document, Document.id == InspectionApprovalDocumentLink.document_id,
-            )
-            .where(InspectionApprovalDocumentLink.approval_submission_id == submission.id)
-            .order_by(
-                InspectionApprovalDocumentLink.created_at.asc(),
-                InspectionApprovalDocumentLink.id.asc(),
-            )
-            .execution_options(populate_existing=True)
-        ).all())
+        with session.no_autoflush:
+            source = session.execute(
+                select(
+                    InspectionApprovalSubmission.id,
+                    InspectionApprovalSubmission.case_id,
+                    InspectionApprovalSubmission.stage,
+                    InspectionApprovalSubmission.round_no,
+                    InspectionApprovalSubmission.row_version,
+                ).where(InspectionApprovalSubmission.id == approval_submission_id)
+            ).one_or_none()
+            if source is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            submission_id, case_id, stage, round_no, row_version = source
+            if stage not in {"PCT", "CT"}:
+                raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
+            expected_family = "INSPECTION_PT_PCT" if stage == "PCT" else "INSPECTION_PT_CT"
+            links = session.execute(
+                select(
+                    InspectionApprovalDocumentLink.id,
+                    InspectionApprovalDocumentLink.document_id,
+                    Document.id,
+                    Document.case_id,
+                    Document.family_code,
+                    Document.capa_cycle_id,
+                    Document.certificate_id,
+                    Document.business_eligibility_certificate_id,
+                    Document.change_request_id,
+                )
+                .outerjoin(
+                    Document, Document.id == InspectionApprovalDocumentLink.document_id,
+                )
+                .where(InspectionApprovalDocumentLink.approval_submission_id == submission_id)
+                .order_by(
+                    InspectionApprovalDocumentLink.created_at.asc(),
+                    InspectionApprovalDocumentLink.id.asc(),
+                )
+            ).all()
         result_links: list[dict[str, Any]] = []
-        for link, document in links:
+        for (
+            binding_id, document_id, persisted_document_id, document_case_id,
+            family_code, capa_cycle_id, certificate_id,
+            business_eligibility_certificate_id, change_request_id,
+        ) in links:
             if (
-                document is None
-                or document.case_id != submission.case_id
-                or document.family_code != expected_family
+                persisted_document_id is None
+                or persisted_document_id != document_id
+                or document_case_id != case_id
+                or family_code != expected_family
                 or any(parent is not None for parent in (
-                    document.capa_cycle_id, document.certificate_id,
-                    document.business_eligibility_certificate_id,
-                    document.change_request_id,
+                    capa_cycle_id, certificate_id,
+                    business_eligibility_certificate_id, change_request_id,
                 ))
             ):
                 raise HTTPException(
@@ -4681,18 +4698,18 @@ class CaseWorkflowService:
                     detail="Approval document link violates canonical Case/stage ownership.",
                 )
             result_links.append({
-                "approval_submission_id": submission.id,
-                "document_id": document.id,
-                "binding_id": link.id,
-                "stage": submission.stage,
-                "round_no": submission.round_no,
+                "approval_submission_id": submission_id,
+                "document_id": persisted_document_id,
+                "binding_id": binding_id,
+                "stage": stage,
+                "round_no": round_no,
             })
         return {
-            "approval_submission_id": submission.id,
-            "case_id": submission.case_id,
-            "stage": submission.stage,
-            "round_no": submission.round_no,
-            "row_version": submission.row_version,
+            "approval_submission_id": submission_id,
+            "case_id": case_id,
+            "stage": stage,
+            "round_no": round_no,
+            "row_version": row_version,
             "links": result_links,
         }
 

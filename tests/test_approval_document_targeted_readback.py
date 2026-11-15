@@ -188,3 +188,110 @@ def test_readback_route_requires_same_permissions_as_post_before_looking_up_sour
     assert result.approval_submission_id == "source-uuid"
     assert result.row_version == 2
     assert calls == ["source-uuid"]
+
+
+def test_readback_ignores_pending_canonical_owner_drafts_without_autoflush(tmp_path):
+    """GET must not flush a partially edited submission/Document before recovery."""
+    from sqlalchemy import event
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'approval-draft.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    case_id, other_case_id, pct_id, _foreign_id, document_id = _fixture(engine)
+    service = CaseWorkflowService()
+    try:
+        with Session(engine, autoflush=True, expire_on_commit=False) as session:
+            submission = session.get(InspectionApprovalSubmission, pct_id)
+            document = session.get(Document, document_id)
+            assert submission.row_version == 1
+            # Mutating the cached objects must never change the persisted
+            # readback, invalidate Case ownership or cause an autoflush.
+            submission.row_version = 91
+            submission.stage = "CT"
+            document.case_id = other_case_id
+            document.family_code = "INSPECTION_PT_CT"
+            statement_types = []
+
+            def observe(_conn, _cursor, statement, _params, _context, _many):
+                statement_types.append(statement.lstrip().split(None, 1)[0].upper())
+
+            event.listen(engine, "before_cursor_execute", observe)
+            try:
+                result = service.get_approval_document_bindings(
+                    session, approval_submission_id=pct_id,
+                )
+            finally:
+                event.remove(engine, "before_cursor_execute", observe)
+            assert result == {
+                "approval_submission_id": pct_id, "case_id": case_id,
+                "stage": "PCT", "round_no": 1, "row_version": 1, "links": [],
+            }
+            assert statement_types and set(statement_types) == {"SELECT"}
+            assert submission.row_version == 91 and submission.stage == "CT"
+            assert document.case_id == other_case_id
+            assert document.family_code == "INSPECTION_PT_CT"
+            assert submission in session.dirty and document in session.dirty
+            session.rollback()
+        with Session(engine) as verify:
+            assert verify.get(InspectionApprovalSubmission, pct_id).row_version == 1
+            assert verify.get(Document, document_id).case_id == case_id
+            assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+    finally:
+        engine.dispose()
+
+
+def test_readback_uses_committed_owner_and_document_after_identity_cache(tmp_path):
+    """A lost-response GET must not resurrect stale submission/Document owners."""
+    from sqlalchemy import update
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'approval-stale.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    case_id, other_case_id, pct_id, _foreign_id, document_id = _fixture(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user(
+        "synthetic-binding", permissions={"inspection.edit", "document.read"},
+    )
+    try:
+        with Session(engine) as writer:
+            bound = service.bind_approval_document(
+                writer, approval_submission_id=pct_id, document_id=document_id,
+                expected_version=1, reason="synthetic commit", user=user,
+            )
+            writer.commit()
+        with Session(engine, autoflush=False, expire_on_commit=False) as reader:
+            cached_submission = reader.get(InspectionApprovalSubmission, pct_id)
+            cached_document = reader.get(Document, document_id)
+            assert cached_submission.row_version == bound["row_version"] == 2
+            assert cached_document.case_id == case_id
+            with Session(engine) as writer:
+                writer.execute(
+                    update(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.id == pct_id)
+                    .values(row_version=3)
+                )
+                writer.commit()
+            fresh = service.get_approval_document_bindings(
+                reader, approval_submission_id=pct_id,
+            )
+            assert fresh["row_version"] == 3
+            assert len(fresh["links"]) == 1
+            assert fresh["links"][0]["document_id"] == document_id
+            assert cached_submission.row_version == 2
+            with Session(engine) as writer:
+                writer.execute(
+                    update(Document).where(Document.id == document_id)
+                    .values(case_id=other_case_id)
+                )
+                writer.commit()
+            with pytest.raises(HTTPException) as invalid:
+                service.get_approval_document_bindings(
+                    reader, approval_submission_id=pct_id,
+                )
+            assert invalid.value.status_code == 409
+            assert cached_document.case_id == case_id
+            assert not reader.dirty and not reader.new
+            reader.rollback()
+        with Session(engine) as verify:
+            assert verify.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 1
+            assert verify.scalar(select(func.count(AuditEvent.id))) == 1
+    finally:
+        engine.dispose()

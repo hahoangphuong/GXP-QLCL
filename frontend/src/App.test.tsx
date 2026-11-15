@@ -90,6 +90,8 @@ const apiMocks = vi.hoisted(() => ({
   createCompany: vi.fn(),
   getSite: vi.fn(),
   createSite: vi.fn(),
+  getProductionLine: vi.fn(),
+  createProductionLine: vi.fn(),
   prepareDocument: vi.fn(),
   getCaseInspectionPlanRuntimeReadiness: vi.fn(),
   getCaseQdKtReadiness: vi.fn(),
@@ -1734,6 +1736,26 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("button", { name: "Cơ sở mới" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Thay đổi" })).toBeDisabled();
+  });
+
+  it("opens physical ProductionLine creation only from available readiness and does not mutate on open", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({
+      action_readiness: buildWorkspace().action_readiness.map((item) => item.action_key === "create_production_line"
+        ? { ...item, readiness_status: "available", detail: "Khai báo dây chuyền vật lý canonical.", required_permissions: ["case.edit"] }
+        : item),
+    }));
+    apiMocks.getSite.mockResolvedValue({ id: "site-1", legacy_site_id: null, company_id: "company-1", site_name: "Nhà máy A", site_address: "Hà Nội", site_name_en: null, site_address_en: null, province_name: null, short_name: null });
+    apiMocks.getCompany.mockResolvedValue({ id: "company-1", legacy_company_id: null, legal_name: "Công ty A", legal_address: "Hà Nội", english_name: null, short_name: null, legal_address_en: null, is_inactive: false });
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+
+    renderApp(["/search"]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Dây chuyền mới" }));
+    expect(await screen.findByRole("dialog", { name: "Dây chuyền mới" })).toBeInTheDocument();
+    await screen.findByText("Công ty A / Nhà máy A");
+    expect(apiMocks.createProductionLine).not.toHaveBeenCalled();
   });
 
   it("opens the reassessment dialog with selected context, closes on cancel, and keeps the action rail button-only", async () => {

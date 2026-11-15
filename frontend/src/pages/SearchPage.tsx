@@ -13,6 +13,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { CompanySiteCreationDialog } from "../features/search/CompanySiteCreationDialog";
+import { ProductionLineCreationDialog } from "../features/search/ProductionLineCreationDialog";
 import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPanel";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { caseWorkflowQueue } from "../features/search/caseNavigation";
@@ -2808,10 +2809,10 @@ export function SearchPage({
               || (workspace && workspace.history.length > 0 && !selectedHistory) ? undefined : workspace?.action_readiness}
             onActionSelect={(actionKey) => {
               if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request"
-                && actionKey !== "create_company" && actionKey !== "create_site") {
+                && actionKey !== "create_company" && actionKey !== "create_site" && actionKey !== "create_production_line") {
                 return;
               }
-              if (actionKey === "create_company" || actionKey === "create_site") {
+              if (actionKey === "create_company" || actionKey === "create_site" || actionKey === "create_production_line") {
                 setSelectedActionKey((current) => current === actionKey ? null : actionKey);
                 return;
               }
@@ -2848,6 +2849,22 @@ export function SearchPage({
             ownerIdentity={JSON.stringify(["catalog-create", accessGeneration, useStubAuth])}
             openAction={selectedActionKey === "create_company" || selectedActionKey === "create_site" ? selectedActionKey : null}
             siteAction={workspace?.action_readiness.find((item) => item.action_key === "create_site") ?? null}
+            useStubAuth={useStubAuth}
+          />
+          <ProductionLineCreationDialog
+            action={workspace?.action_readiness.find((item) => item.action_key === "create_production_line") ?? null}
+            auth={auth}
+            bearerToken={bearerToken}
+            onClose={() => setSelectedActionKey(null)}
+            onVerified={() => {
+              // The physical line is deliberately unlinked from any GxP/Case;
+              // refresh only the current Site projections, never select or infer one.
+              setMasterRefreshGeneration((current) => current + 1);
+              void refreshSelectedFacilityWorkspace(selectedHistoryId).catch(() => undefined);
+            }}
+            open={selectedActionKey === "create_production_line"}
+            ownerIdentity={JSON.stringify(["production-line-create", accessGeneration, useStubAuth, selectedResult?.site_id ?? null])}
+            siteId={selectedResult?.site_id ?? null}
             useStubAuth={useStubAuth}
           />
         </div>

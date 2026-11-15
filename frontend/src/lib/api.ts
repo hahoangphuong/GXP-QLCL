@@ -82,6 +82,9 @@ import type {
   Site,
   SiteDetail,
   SiteMasterCreateRequest,
+  ProductionLineMasterCreateRead,
+  ProductionLineMasterCreateRequest,
+  ProductionLineMasterRead,
   StubAuthState,
 } from "../types";
 
@@ -290,6 +293,18 @@ export function getSite(siteId: string, auth: StubAuthState, useStubAuth: boolea
 
 export function createSite(companyId: string, payload: SiteMasterCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<SiteDetail> {
   return requestJson<SiteDetail>(`/companies/${encodeURIComponent(companyId)}/sites`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
+}
+
+export function createProductionLine(siteId: string, payload: ProductionLineMasterCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<ProductionLineMasterCreateRead> {
+  return requestJson<ProductionLineMasterCreateRead>(`/sites/${encodeURIComponent(siteId)}/production-lines`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
+}
+
+export function getProductionLine(productionLineId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<ProductionLineMasterRead> {
+  return requestJson<ProductionLineMasterRead>(`/production-lines/${encodeURIComponent(productionLineId)}`, { auth, useStubAuth, bearerToken });
+}
+
+export function listSiteProductionLines(siteId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<ProductionLineMasterRead[]> {
+  return requestJson<ProductionLineMasterRead[]>(`/sites/${encodeURIComponent(siteId)}/production-lines`, { auth, useStubAuth, bearerToken });
 }
 
 /** Authorized, bounded name search; returns canonical Site identities, never legacy-ID selection. */

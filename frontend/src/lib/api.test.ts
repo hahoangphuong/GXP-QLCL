@@ -48,7 +48,9 @@ import {
   upsertInspectionPlan,
   upsertInspectionPeriodSegments,
   createInspectionApprovalSubmission,
+  createProductionLine,
   completeInspectionApprovalSubmission,
+  getProductionLine,
   transitionCase,
   recordCaseNonissuanceDecision,
 } from "./api";
@@ -615,6 +617,20 @@ describe("frontend API routing contract", () => {
 
     expect(fetchMock.mock.calls[0][0]).toContain("production_line_id=line-uuid-2");
     expect(fetchMock.mock.calls[1][0]).toContain("production_line_id=line-uuid-2");
+  });
+
+  it("uses the explicit physical ProductionLine catalog endpoints without deriving identity from code", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ json: { id: "line-uuid", site_id: "site-123", code: "A", effective_from: "2026-11-14", effective_to: null, row_version: 1, audit_event_id: "audit-1" } }))
+      .mockResolvedValueOnce(mockJsonResponse({ json: { id: "line-uuid", site_id: "site-123", code: "A", effective_from: "2026-11-14", effective_to: null, row_version: 1 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createProductionLine("site-123", { production_line_id: "line-uuid", code: "A", effective_from: "2026-11-14", effective_to: null, physical_identity_evidence_reference: "REF-1", reason: "physical line" }, { username: "operator.local", role: "manager" }, true);
+    await getProductionLine("line-uuid", { username: "operator.local", role: "manager" }, true);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/sites/site-123/production-lines");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "POST", body: JSON.stringify({ production_line_id: "line-uuid", code: "A", effective_from: "2026-11-14", effective_to: null, physical_identity_evidence_reference: "REF-1", reason: "physical line" }) });
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/production-lines/line-uuid");
   });
 
   it("keeps same-code UUID contexts distinct and never synthesizes a legacy or facility owner", async () => {

@@ -21,6 +21,26 @@ authenticated access owner. Selection requires a matching canonical Company
 GET before Site admission, and late responses cannot navigate a replaced
 dialog. Browser-reload durability remains `EVIDENCE_MISSING` by design.
 
+## Explicit physical ProductionLine creation — Issue #502
+
+The existing legacy-positioned action-panel label `Dây chuyền mới` now opens a
+web-owned editor only when authoritative `create_production_line` readiness is
+`available`. The editor requires canonical Site and active owning Company GET
+readback, a client-allocated UUID v4, operator-entered code/effective interval,
+physical-identity evidence reference, reason, and an explicit acknowledgement
+that the result is an unlinked physical master rather than a GxP, Case or
+Certificate action. It posts exactly once per synchronously admitted intent and
+then verifies the same UUID via canonical GET, including Site UUID, code and
+both effective dates. Same-code lines remain distinct solely by UUID.
+
+An unknown POST outcome or `409` remains readback-locked: no new UUID and no
+automatic replay are permitted. Definitive `401`/`403`/`404`/`422` rejection is
+shown separately and requires an explicit new intent. GET does not contain the
+audit evidence reference, so the UI explicitly says that backend has not
+independently verified that evidence. Legacy runtime evidence for a physical
+line editor, its field geometry and recovery interaction is `EVIDENCE_MISSING`;
+the panel label is the only legacy presentation evidence retained here.
+
 ## Inline editor business-action boundaries — 2026-10-29
 
 Baseline main `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. The versioned

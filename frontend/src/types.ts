@@ -88,6 +88,29 @@ export type SiteMasterCreateRequest = {
   reason?: string | null;
 };
 
+/** Physical-line master identity is client allocated, never inferred from code or GxP. */
+export type ProductionLineMasterCreateRequest = {
+  production_line_id: string;
+  code: string;
+  effective_from: string;
+  effective_to: string | null;
+  physical_identity_evidence_reference: string;
+  reason: string;
+};
+
+export type ProductionLineMasterRead = {
+  id: string;
+  site_id: string;
+  code: string;
+  effective_from: string;
+  effective_to: string | null;
+  row_version: number;
+};
+
+export type ProductionLineMasterCreateRead = ProductionLineMasterRead & {
+  audit_event_id: string;
+};
+
 export type CaseListItem = {
   id: string;
   legacy_inspection_id: number | null;

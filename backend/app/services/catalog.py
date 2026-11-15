@@ -1449,7 +1449,12 @@ class CatalogReadService:
                 .join(Site, Site.id == Case.site_id).join(Company, Company.id == Site.company_id)
                 .outerjoin(ProductionLine, ProductionLine.id == Case.production_line_id)
                 .outerjoin(CaseCertificateNonissuanceDecision, CaseCertificateNonissuanceDecision.case_id == Case.id)
-                .where(*conditions))
+                .where(*conditions)
+                # A reused Session can hold Case/Site/Company identities loaded
+                # before another write. SQL filters/counts use current rows;
+                # refresh those same ORM identities before serializing the
+                # report, or page status/name can contradict the SQL result.
+                .execution_options(populate_existing=True))
         if export:
             if offset != 0:
                 raise HTTPException(status_code=422, detail="Export offset must be zero.")

@@ -64,7 +64,7 @@ def test_approval_creation_rechecks_terminal_case_after_cached_identity():
                 contender, case_id=case_id, stage="PCT", reference="Must not persist",
                 submitted_on=None, submitted_time=None, pct_submission_id=None,
                 reason="cached terminal gate regression",
-                user=build_authenticated_user("synthetic-approval-gate", "manager"),
+                user=build_authenticated_user("synthetic-approval-gate", "manager", permissions={"inspection.edit"}),
             )
         assert denied.value.status_code == 409
         contender.rollback()

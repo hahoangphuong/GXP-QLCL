@@ -109,7 +109,7 @@ def _bind(engine, ids):
         CaseWorkflowService().bind_approval_document(
             session, approval_submission_id=ids["pct1"], document_id=ids["doc"],
             expected_version=1, reason="Synthetic association",
-            user=build_authenticated_user("synthetic-pct-editor", "manager"),
+            user=build_authenticated_user("synthetic-pct-editor", "manager", permissions={"inspection.edit", "document.read"}),
         )
         session.commit()
 

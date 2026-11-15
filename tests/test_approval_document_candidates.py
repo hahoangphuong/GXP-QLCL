@@ -25,7 +25,7 @@ def test_every_pct_document_is_a_round_choice_with_canonical_binding_readback():
     Base.metadata.create_all(engine)
     catalog = CatalogReadService()
     workflow = CaseWorkflowService()
-    manager = build_authenticated_user("candidate-manager", "manager")
+    manager = build_authenticated_user("candidate-manager", "manager", permissions={"inspection.edit", "document.read"})
     reader = build_authenticated_user("candidate-reader", "reader")
     try:
         with Session(engine) as session:

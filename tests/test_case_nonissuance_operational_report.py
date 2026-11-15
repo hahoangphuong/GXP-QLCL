@@ -138,12 +138,14 @@ def test_q_finds_canonical_decision_reference_and_case_uuid_across_page_and_expo
 def test_decision_reference_search_respects_page_count_and_export_limit(seeded):
     engine, ids = seeded
     with Session(engine) as db:
-        # Both explicit decisions share the DEC- prefix; page and full export
-        # must select the exact same canonical Case set with no duplicated join.
+        # DEC- also matches UUID fragments such as 4dec- by design. Limit
+        # this decision-only pagination proof to explicit persisted decisions;
+        # broad q searches must continue matching Case UUIDs as well.
         q = "DEC-"
-        first = report(db, q=q, limit=1)
-        second = report(db, q=q, limit=1, offset=1)
-        exported = report(db, q=q, export=True)
+        decision_status = "nonissuance_recorded"
+        first = report(db, q=q, certificate_decision_status=decision_status, limit=1)
+        second = report(db, q=q, certificate_decision_status=decision_status, limit=1, offset=1)
+        exported = report(db, q=q, certificate_decision_status=decision_status, export=True)
         assert first["total_count"] == second["total_count"] == exported["total_count"] == 2
         assert {row["case_id"] for row in first["items"] + second["items"]} == {
             ids["explicit"], ids["unrelated"],

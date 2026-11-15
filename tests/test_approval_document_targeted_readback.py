@@ -45,7 +45,7 @@ def test_targeted_approval_document_get_resolves_unknown_post_without_retry_or_a
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("synthetic-approval-readback", "manager")
+    user = build_authenticated_user("synthetic-approval-readback", "manager", permissions={"inspection.edit", "document.read"})
     try:
         case, other, pct_id, foreign_id, document_id = _fixture(engine)
         with Session(engine) as session:
@@ -114,7 +114,7 @@ def test_targeted_readback_fails_closed_on_invalid_document_owner(corruption):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("synthetic-approval-readback", "manager")
+    user = build_authenticated_user("synthetic-approval-readback", "manager", permissions={"inspection.edit", "document.read"})
     try:
         case, other, pct_id, _foreign, document_id = _fixture(engine)
         with Session(engine) as session:

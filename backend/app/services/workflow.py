@@ -99,6 +99,7 @@ OPEN_CASE_STATES = frozenset(
 )
 CREATE_INSPECTION_CASE_PERMISSION = "case.edit"
 NONISSUANCE_DECISION_PERMISSION = "certificate.approve"
+CERTIFICATE_ISSUE_PERMISSION = "certificate.issue"
 CHANGE_REQUEST_EDIT_PERMISSION = "change_request.edit"
 CHANGE_REQUEST_APPROVE_PERMISSION = "change_request.approve"
 CHANGE_REQUEST_EDITABLE_STATES = frozenset({ChangeRequestState.RECEIVED, ChangeRequestState.UNDER_REVIEW})
@@ -4978,6 +4979,11 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        # Enforce the same entitlement as the HTTP route at the mutation owner.
+        # A direct service caller must not acquire a Site/Case lock, create an
+        # actor, issue a certificate candidate, or write audit without it.
+        if CERTIFICATE_ISSUE_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: certificate.issue.")
         site = self._get_site(session, site_id)
         # All Case-backed certificate candidates depend on the current Case
         # state/CAPA gate, not only GMP inspection issuances. Lock that owner

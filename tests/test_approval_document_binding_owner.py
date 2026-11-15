@@ -77,7 +77,7 @@ def test_explicit_approval_document_bind_and_round_readback(owner_db):
     engine, ids = owner_db
     workflow = CaseWorkflowService()
     catalog = CatalogReadService()
-    user = build_authenticated_user("approval-doc-contract", "manager")
+    user = build_authenticated_user("approval-doc-contract", "manager", permissions={"inspection.edit", "document.read"})
     with Session(engine) as session:
         before = _counts(session)
         first = workflow.bind_approval_document(
@@ -141,7 +141,7 @@ def test_explicit_approval_document_bind_and_round_readback(owner_db):
 )
 def test_approval_doc_rejects_wrong_stage_or_case_without_writing(owner_db, submission, document, status):
     engine, ids = owner_db
-    user = build_authenticated_user("approval-doc-contract", "manager")
+    user = build_authenticated_user("approval-doc-contract", "manager", permissions={"inspection.edit", "document.read"})
     with Session(engine) as session:
         before = _counts(session)
         with pytest.raises(HTTPException) as exc:
@@ -158,7 +158,7 @@ def test_approval_doc_rejects_wrong_stage_or_case_without_writing(owner_db, subm
 def test_approval_doc_prevents_rebinding_and_stale_token(owner_db):
     engine, ids = owner_db
     service = CaseWorkflowService()
-    user = build_authenticated_user("approval-doc-contract", "manager")
+    user = build_authenticated_user("approval-doc-contract", "manager", permissions={"inspection.edit", "document.read"})
     with Session(engine) as session:
         service.bind_approval_document(
             session, approval_submission_id=ids["pct1"],
@@ -207,7 +207,7 @@ def test_unbound_history_remains_unverified(owner_db):
         workspace = CaseWorkspaceRead.model_validate(
             CatalogReadService().get_case_workspace(
                 session, case_id=ids["case"],
-                user=build_authenticated_user("approval-doc-contract", "manager"),
+                user=build_authenticated_user("approval-doc-contract", "manager", permissions={"inspection.edit", "document.read"}),
             )
         )
         assert workspace.inspection.approval_document_links == []

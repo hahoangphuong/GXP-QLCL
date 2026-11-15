@@ -1525,33 +1525,34 @@ class CaseWorkflowService:
             return {**outcome, "readiness_status": "unavailable", "detail": "Chọn loại GxP được hỗ trợ (GMP/GLP/GMPbb)."}
         if self._normalize_line_code(line_code) is not None and production_line_id is None:
             return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền legacy không phải định danh ProductionLine canonical."}
-        site = session.scalars(
-            select(Site).where(Site.id == site_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if site is None:
-            return {**outcome, "readiness_status": "unavailable", "detail": "Cơ sở không tồn tại."}
-        company = session.scalars(
-            select(Company).where(Company.id == site.company_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if company is None or company.is_inactive:
-            return {**outcome, "readiness_status": "unavailable", "detail": "Công ty sở hữu không tồn tại hoặc đã ngừng hoạt động."}
-        if production_line_id is not None:
-            line = session.scalars(
-                select(ProductionLine).where(ProductionLine.id == production_line_id)
-                .execution_options(populate_existing=True)
+        # Advisory readiness must only inspect committed owner values. Never
+        # flush unrelated operator drafts or refresh their cached ORM objects.
+        with session.no_autoflush:
+            site = session.execute(
+                select(Site.id, Site.company_id).where(Site.id == site_id)
             ).one_or_none()
-            if line is None or line.site_id != site.id:
-                return {**outcome, "readiness_status": "unavailable", "detail": "ProductionLine UUID không thuộc cơ sở đã chọn."}
-            if self._normalize_line_code(line_code) not in (None, line.code):
-                return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền không khớp ProductionLine UUID."}
-        if self._initial_case_context_occupied(
-            session, site_id=site.id, gxp_type=str(gxp_type).strip(),
-            production_line_id=production_line_id,
-        ):
-            return {**outcome, "readiness_status": "conflict", "detail": "Đã có Case hoặc GCN trong ngữ cảnh này; không phải hồ sơ đầu tiên."}
-        return {**outcome, "readiness_status": "available", "detail": "Có thể tạo Case nháp mới, không sao chép dữ liệu từ Case cũ hoặc KHKT."}
+            if site is None:
+                return {**outcome, "readiness_status": "unavailable", "detail": "Cơ sở không tồn tại."}
+            company_inactive = session.scalar(
+                select(Company.is_inactive).where(Company.id == site.company_id)
+            )
+            if company_inactive is None or company_inactive:
+                return {**outcome, "readiness_status": "unavailable", "detail": "Công ty sở hữu không tồn tại hoặc đã ngừng hoạt động."}
+            if production_line_id is not None:
+                line = session.execute(
+                    select(ProductionLine.site_id, ProductionLine.code)
+                    .where(ProductionLine.id == production_line_id)
+                ).one_or_none()
+                if line is None or line.site_id != site.id:
+                    return {**outcome, "readiness_status": "unavailable", "detail": "ProductionLine UUID không thuộc cơ sở đã chọn."}
+                if self._normalize_line_code(line_code) not in (None, line.code):
+                    return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền không khớp ProductionLine UUID."}
+            if self._initial_case_context_occupied(
+                session, site_id=site.id, gxp_type=str(gxp_type).strip(),
+                production_line_id=production_line_id,
+            ):
+                return {**outcome, "readiness_status": "conflict", "detail": "Đã có Case hoặc GCN trong ngữ cảnh này; không phải hồ sơ đầu tiên."}
+            return {**outcome, "readiness_status": "available", "detail": "Có thể tạo Case nháp mới, không sao chép dữ liệu từ Case cũ hoặc KHKT."}
 
     def create_initial_inspection_case(
         self, session: Session, *, site_id: str, case_id: str,
@@ -1678,66 +1679,69 @@ class CaseWorkflowService:
                 "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ tạo hồ sơ tái đánh giá mới.",
                 "required_permissions": required_permissions,
             }
-        if production_line_id is not None:
-            # Readiness is a projection, not mutation admission, but must
-            # still report the latest committed ProductionLine Site/code.
-            # The creator may have cached this ORM identity before reparenting.
-            line = session.scalars(
-                select(ProductionLine).where(ProductionLine.id == production_line_id)
-                .execution_options(populate_existing=True)
-            ).one_or_none()
-            if line is None or line.site_id != site_id:
+        # Owner context/readiness is a persisted advisory projection, not a
+        # mutation: no autoflush and no identity-map refresh of active drafts.
+        with session.no_autoflush:
+            if production_line_id is not None:
+                # Readiness is a projection, not mutation admission, but must
+                # still report the latest committed ProductionLine Site/code.
+                # The creator may have cached this ORM identity before reparenting.
+                line = session.execute(
+                    select(ProductionLine.site_id, ProductionLine.code)
+                    .where(ProductionLine.id == production_line_id)
+                ).one_or_none()
+                if line is None or line.site_id != site_id:
+                    return {
+                        "action_key": "create_reassessment_case",
+                        "label": "Tái đánh giá",
+                        "readiness_status": "unavailable",
+                        "detail": "Selected ProductionLine does not belong to this site.",
+                        "required_permissions": required_permissions,
+                    }
+                if normalized_line_code is not None and normalized_line_code != line.code:
+                    return {
+                        "action_key": "create_reassessment_case",
+                        "label": "Tái đánh giá",
+                        "readiness_status": "unavailable",
+                        "detail": "line_code does not match the selected canonical ProductionLine.",
+                        "required_permissions": required_permissions,
+                    }
+            if not self._site_has_gxp_context(
+                session,
+                site_id=site_id,
+                gxp_type=normalized_gxp_type,
+                line_code=normalized_line_code,
+                production_line_id=production_line_id,
+            ):
                 return {
                     "action_key": "create_reassessment_case",
                     "label": "Tái đánh giá",
                     "readiness_status": "unavailable",
-                    "detail": "Selected ProductionLine does not belong to this site.",
+                    "detail": "Ngữ cảnh cơ sở/GxP/dây chuyền đã chọn không khớp với context authoritative hiện có để tái đánh giá.",
                     "required_permissions": required_permissions,
                 }
-            if normalized_line_code is not None and normalized_line_code != line.code:
+            existing_case = self._find_open_context_case(
+                session,
+                site_id=site_id,
+                gxp_type=normalized_gxp_type,
+                line_code=normalized_line_code,
+                production_line_id=production_line_id,
+            )
+            if existing_case is not None:
                 return {
                     "action_key": "create_reassessment_case",
                     "label": "Tái đánh giá",
-                    "readiness_status": "unavailable",
-                    "detail": "line_code does not match the selected canonical ProductionLine.",
+                    "readiness_status": "conflict",
+                    "detail": "Đã có một hồ sơ tái đánh giá chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
                     "required_permissions": required_permissions,
                 }
-        if not self._site_has_gxp_context(
-            session,
-            site_id=site_id,
-            gxp_type=normalized_gxp_type,
-            line_code=normalized_line_code,
-            production_line_id=production_line_id,
-        ):
             return {
                 "action_key": "create_reassessment_case",
                 "label": "Tái đánh giá",
-                "readiness_status": "unavailable",
-                "detail": "Ngữ cảnh cơ sở/GxP/dây chuyền đã chọn không khớp với context authoritative hiện có để tái đánh giá.",
+                "readiness_status": "available",
+                "detail": "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                 "required_permissions": required_permissions,
             }
-        existing_case = self._find_open_context_case(
-            session,
-            site_id=site_id,
-            gxp_type=normalized_gxp_type,
-            line_code=normalized_line_code,
-            production_line_id=production_line_id,
-        )
-        if existing_case is not None:
-            return {
-                "action_key": "create_reassessment_case",
-                "label": "Tái đánh giá",
-                "readiness_status": "conflict",
-                "detail": "Đã có một hồ sơ tái đánh giá chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
-                "required_permissions": required_permissions,
-            }
-        return {
-            "action_key": "create_reassessment_case",
-            "label": "Tái đánh giá",
-            "readiness_status": "available",
-            "detail": "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
-            "required_permissions": required_permissions,
-        }
 
     def _get_change_request(self, session: Session, change_request_id: str) -> ChangeRequest:
         row = session.get(ChangeRequest, change_request_id)
@@ -4634,46 +4638,63 @@ class CaseWorkflowService:
         *,
         approval_submission_id: str,
     ) -> dict[str, Any]:
-        """Canonical, scoped recovery GET; never infers whether a POST succeeded.
+        """Canonical scoped recovery GET, never a second POST or issuance proof.
 
-        This readback is independent of unrelated Case/Certificate workspace
-        projections. A persisted link is evidence of association only, not
-        evidence of document issuance or binary integrity.
+        Read persisted scalar values under no_autoflush. This must not flush
+        unrelated drafts or overwrite dirty/cached ORM instances while an
+        operator resolves an unknown-outcome approval-document binding.
         """
-        submission = session.scalars(
-            select(InspectionApprovalSubmission)
-            .where(InspectionApprovalSubmission.id == approval_submission_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if submission is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        if submission.stage not in {"PCT", "CT"}:
-            raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
-        expected_family = (
-            "INSPECTION_PT_PCT" if submission.stage == "PCT" else "INSPECTION_PT_CT"
-        )
-        links = list(session.execute(
-            select(InspectionApprovalDocumentLink, Document)
-            .outerjoin(
-                Document, Document.id == InspectionApprovalDocumentLink.document_id,
-            )
-            .where(InspectionApprovalDocumentLink.approval_submission_id == submission.id)
-            .order_by(
-                InspectionApprovalDocumentLink.created_at.asc(),
-                InspectionApprovalDocumentLink.id.asc(),
-            )
-            .execution_options(populate_existing=True)
-        ).all())
+        with session.no_autoflush:
+            source = session.execute(
+                select(
+                    InspectionApprovalSubmission.id,
+                    InspectionApprovalSubmission.case_id,
+                    InspectionApprovalSubmission.stage,
+                    InspectionApprovalSubmission.round_no,
+                    InspectionApprovalSubmission.row_version,
+                ).where(InspectionApprovalSubmission.id == approval_submission_id)
+            ).one_or_none()
+            if source is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            submission_id, case_id, stage, round_no, row_version = source
+            if stage not in {"PCT", "CT"}:
+                raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
+            expected_family = "INSPECTION_PT_PCT" if stage == "PCT" else "INSPECTION_PT_CT"
+            links = session.execute(
+                select(
+                    InspectionApprovalDocumentLink.id,
+                    InspectionApprovalDocumentLink.document_id,
+                    Document.id,
+                    Document.case_id,
+                    Document.family_code,
+                    Document.capa_cycle_id,
+                    Document.certificate_id,
+                    Document.business_eligibility_certificate_id,
+                    Document.change_request_id,
+                )
+                .outerjoin(
+                    Document, Document.id == InspectionApprovalDocumentLink.document_id,
+                )
+                .where(InspectionApprovalDocumentLink.approval_submission_id == submission_id)
+                .order_by(
+                    InspectionApprovalDocumentLink.created_at.asc(),
+                    InspectionApprovalDocumentLink.id.asc(),
+                )
+            ).all()
         result_links: list[dict[str, Any]] = []
-        for link, document in links:
+        for (
+            binding_id, document_id, persisted_document_id, document_case_id,
+            family_code, capa_cycle_id, certificate_id,
+            business_eligibility_certificate_id, change_request_id,
+        ) in links:
             if (
-                document is None
-                or document.case_id != submission.case_id
-                or document.family_code != expected_family
+                persisted_document_id is None
+                or persisted_document_id != document_id
+                or document_case_id != case_id
+                or family_code != expected_family
                 or any(parent is not None for parent in (
-                    document.capa_cycle_id, document.certificate_id,
-                    document.business_eligibility_certificate_id,
-                    document.change_request_id,
+                    capa_cycle_id, certificate_id,
+                    business_eligibility_certificate_id, change_request_id,
                 ))
             ):
                 raise HTTPException(
@@ -4681,18 +4702,18 @@ class CaseWorkflowService:
                     detail="Approval document link violates canonical Case/stage ownership.",
                 )
             result_links.append({
-                "approval_submission_id": submission.id,
-                "document_id": document.id,
-                "binding_id": link.id,
-                "stage": submission.stage,
-                "round_no": submission.round_no,
+                "approval_submission_id": submission_id,
+                "document_id": persisted_document_id,
+                "binding_id": binding_id,
+                "stage": stage,
+                "round_no": round_no,
             })
         return {
-            "approval_submission_id": submission.id,
-            "case_id": submission.case_id,
-            "stage": submission.stage,
-            "round_no": submission.round_no,
-            "row_version": submission.row_version,
+            "approval_submission_id": submission_id,
+            "case_id": case_id,
+            "stage": stage,
+            "round_no": round_no,
+            "row_version": row_version,
             "links": result_links,
         }
 

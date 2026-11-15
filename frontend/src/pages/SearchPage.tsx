@@ -261,6 +261,7 @@ type SearchResultsRequest = {
   requestId: number;
   items: FacilitySearchResult[];
   totalCount: number;
+  quarantinedHistoricalCertificateLegacyIds?: number[];
 } & (
   | { status: "loading" }
   | { status: "ready" }
@@ -503,6 +504,8 @@ export function SearchPage({
   const resultsTotalCount = ownedSearchRequest?.totalCount ?? 0;
   const resultsLoading = canLoadSecureApi && (!ownedSearchRequest || ownedSearchRequest.status === "loading");
   const resultsError = ownedSearchRequest?.status === "error" ? ownedSearchRequest.error : null;
+  const quarantinedHistoricalCertificateLegacyIds =
+    ownedSearchRequest?.quarantinedHistoricalCertificateLegacyIds ?? [];
   const resultsOffset = searchPageRequest.context === searchContext ? searchPageRequest.offset : 0;
   const selectedResultFromResults = results.find((item) => item.result_key === selectedResultKey) ?? null;
   const ownedResolvedDeepLinkResult = resolvedDeepLinkResult?.accessGeneration === accessGeneration
@@ -1054,6 +1057,8 @@ export function SearchPage({
           status: "ready",
           items: nextResults,
           totalCount: payload.total_count,
+          quarantinedHistoricalCertificateLegacyIds:
+            payload.quarantined_historical_certificate_legacy_ids ?? [],
         });
         const explicitTarget = explicitTargetPending;
         const compatibleRows = explicitTarget && !pendingDeepLink.resultKey
@@ -2673,6 +2678,14 @@ export function SearchPage({
     <section className="page-section search-page legacy-search-page">
       <div className="search-workspace search-workspace-split search-master-history">
         <div className="legacy-master-pane">
+        {quarantinedHistoricalCertificateLegacyIds.length > 0 && (
+          <p role="status" className="search-historical-certificate-warning">
+            Cảnh báo dữ liệu lịch sử: {quarantinedHistoricalCertificateLegacyIds.length} giấy chứng nhận
+            (ID {quarantinedHistoricalCertificateLegacyIds.join(", ")}) có liên kết hồ sơ kiểm tra
+            khác cơ sở. Các giấy này được cách ly khỏi kết quả chứng nhận hiện hành;
+            dữ liệu gốc không thay đổi và thao tác nghiệp vụ vẫn bị chặn.
+          </p>
+        )}
         <FacilityTable
           filters={{
             facilityName,

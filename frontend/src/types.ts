@@ -280,9 +280,11 @@ export type FacilitySearchPage = {
   total_count: number;
   offset: number;
   limit: number;
+  quarantined_historical_certificate_legacy_ids?: number[];
 };
 
 export type FacilityWorkspaceSummary = {
+  quarantined_historical_certificate_legacy_ids?: number[];
   context_key: string;
   site_id: string;
   legacy_site_id: number | null;

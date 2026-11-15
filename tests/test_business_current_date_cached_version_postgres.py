@@ -73,7 +73,7 @@ def test_business_promotion_rejects_backdate_against_updated_cached_current_vers
             candidate_id, candidate_token = candidate.id, candidate.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-current-date", "manager")
+        actor = build_authenticated_user("synthetic-current-date", "manager", permissions={"certificate.edit", "certificate.approve"})
         contender = factory()
         cached_current_version = contender.get(BusinessEligibilityVersion, current_version_id)
         assert cached_current_version.issued_on == date(2026, 8, 1)

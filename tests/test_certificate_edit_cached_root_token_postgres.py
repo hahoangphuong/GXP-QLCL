@@ -86,7 +86,7 @@ def test_edit_revalidates_cached_certificate_root_before_writes(kind, request_to
             root_id, original_token = root.id, root.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-root-token", "manager")
+        actor = build_authenticated_user("synthetic-root-token", "manager", permissions={"certificate.edit"})
         def edit(session, expected_version, number):
             if kind == "gxp":
                 return service.upsert_certificate_latest_version(

@@ -75,7 +75,7 @@ def test_repeated_gxp_current_promotion_rejected_without_duplicate_audit():
             initial_token = certificate.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-repeated-promotion", "manager")
+        actor = build_authenticated_user("synthetic-repeated-promotion", "manager", permissions={"certificate.approve"})
         with factory() as first:
             promoted = service.promote_certificate_current(
                 first,

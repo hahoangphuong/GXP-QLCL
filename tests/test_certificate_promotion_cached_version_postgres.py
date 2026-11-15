@@ -84,7 +84,7 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
             agg_id, version_id, original_token = aggregate.id, version.id, aggregate.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-version-refresh", "manager")
+        actor = build_authenticated_user("synthetic-version-refresh", "manager", permissions={"certificate.edit", "certificate.approve"})
         contender = factory()
         cached = contender.get(
             CertificateVersion if kind in {"gxp", "gxp_invalid_date_interval"} else BusinessEligibilityVersion,

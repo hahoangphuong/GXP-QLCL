@@ -67,7 +67,7 @@ def test_business_promotion_demotes_peer_cached_as_noncurrent_before_other_commi
             c_id, c_token = pairs[1]
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("business-peer-refresh", "manager")
+        actor = build_authenticated_user("business-peer-refresh", "manager", permissions={"certificate.approve"})
         stale = factory()
         cached_b = stale.get(BusinessEligibilityCertificate, b_id)
         assert cached_b is not None and cached_b.latest_flag is False

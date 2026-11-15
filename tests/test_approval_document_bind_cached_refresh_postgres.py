@@ -126,7 +126,7 @@ def test_document_binding_refreshes_cached_owners_after_writer_commit(
                 document_id=ids["document"],
                 expected_version=original_version,
                 reason="Cached owner must not create a link",
-                user=build_authenticated_user("synthetic-link-owner", "manager"),
+                user=build_authenticated_user("synthetic-link-owner", "manager", permissions={"inspection.edit", "document.read"}),
             )
         assert denied.value.status_code == http_status
         contender.rollback()
@@ -150,7 +150,7 @@ def test_document_binding_refreshes_cached_owners_after_writer_commit(
 def test_approval_document_lost_response_is_resolvable_by_canonical_readback(owner_db):
     factory, ids = owner_db
     contender = writer = None
-    user = build_authenticated_user("synthetic-link-recovery", "manager")
+    user = build_authenticated_user("synthetic-link-recovery", "manager", permissions={"inspection.edit", "document.read"})
     try:
         # The original request/response has been lost while this UI Session
         # still has the previous approval row_version and Document identity.
@@ -235,7 +235,7 @@ def test_document_binding_waits_for_concurrent_document_owner_transaction(
     factory, ids = owner_db
     writer = observer = None
     started = Event()
-    user = build_authenticated_user("synthetic-document-lock", "manager")
+    user = build_authenticated_user("synthetic-document-lock", "manager", permissions={"inspection.edit", "document.read"})
 
     def attempt_bind():
         with factory() as binder:

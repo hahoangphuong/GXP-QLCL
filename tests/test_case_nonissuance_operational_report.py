@@ -99,6 +99,60 @@ def test_filters_counts_pagination_export_and_case_ownership(seeded):
         assert {row["case_id"] for row in report(db, certificate_decision_status="nonissuance_recorded", q="Pharma")["items"]} == {ids["explicit"]}
 
 
+
+def test_q_finds_canonical_decision_reference_and_case_uuid_across_page_and_export(seeded):
+    """The operator quick-search must resolve persisted owner evidence.
+
+    A decision reference is Case-scoped via the explicit decision foreign key;
+    absent GCN, unrelated final evaluation text, and other Case decisions
+    must never become search aliases for the selected Case.
+    """
+    engine, ids = seeded
+    with Session(engine) as db:
+        # Full/partial references locate only the Case with that decision.
+        for query in ("DEC-EXPLICIT-001", "EXPLICIT-001", "dec-explicit"):
+            page = report(db, q=query)
+            assert page["total_count"] == 1
+            assert [row["case_id"] for row in page["items"]] == [ids["explicit"]]
+            assert page["items"][0]["nonissuance_decision_reference"] == "DEC-EXPLICIT-001"
+            exported = report(db, q=query, export=True)
+            assert exported["total_count"] == 1
+            assert [row["case_id"] for row in exported["items"]] == [ids["explicit"]]
+
+        # UUID search works even when there is no explicit decision yet.
+        for key in ("pending", "earlier"):
+            case_id = ids[key]
+            assert [row["case_id"] for row in report(db, q=case_id)["items"]] == [case_id]
+            assert [row["case_id"] for row in report(db, q=case_id[:12], export=True)["items"]] == [case_id]
+
+        # Joining a decision must not let one Case borrow the other Case's ref.
+        other = report(db, q="DEC-OTHER-002")
+        assert [row["case_id"] for row in other["items"]] == [ids["unrelated"]]
+        assert report(db, q="DEC-OTHER-002", gxp_type="GMP")["total_count"] == 0
+        assert report(db, q="DEC-EXPLICIT-001", certificate_decision_status="awaiting_decision")["total_count"] == 0
+        assert report(db, q="no-such-decision-reference")["total_count"] == 0
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert not db.new and not db.dirty
+
+
+def test_decision_reference_search_respects_page_count_and_export_limit(seeded):
+    engine, ids = seeded
+    with Session(engine) as db:
+        # Both explicit decisions share the DEC- prefix; page and full export
+        # must select the exact same canonical Case set with no duplicated join.
+        q = "DEC-"
+        first = report(db, q=q, limit=1)
+        second = report(db, q=q, limit=1, offset=1)
+        exported = report(db, q=q, export=True)
+        assert first["total_count"] == second["total_count"] == exported["total_count"] == 2
+        assert {row["case_id"] for row in first["items"] + second["items"]} == {
+            ids["explicit"], ids["unrelated"],
+        }
+        assert {row["case_id"] for row in exported["items"]} == {
+            ids["explicit"], ids["unrelated"],
+        }
+        assert all(row["certificate_decision_status"] == "nonissuance_recorded" for row in exported["items"])
+
 def test_report_refreshes_cached_case_and_site_after_sql_owner_change(seeded):
     """SQL current classification/count and ORM-projected fields must agree.
 

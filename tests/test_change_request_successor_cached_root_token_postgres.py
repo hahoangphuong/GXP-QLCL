@@ -100,7 +100,7 @@ def test_successor_uses_committed_change_request_token(kind, request_token):
         service = CaseWorkflowService()
         actor = build_authenticated_user(
             "synthetic-successor", "manager",
-            permissions=["change_request.edit", "change_request.approve"],
+            permissions=["change_request.edit", "change_request.approve", "certificate.issue"],
         )
         cached_session = factory()
         cached_parent = cached_session.get(ChangeRequest, row_id)

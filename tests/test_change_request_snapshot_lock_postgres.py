@@ -51,7 +51,7 @@ def test_change_request_snapshot_waits_for_site_owner_before_any_mutation():
             site_id = site.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-change-editor", "manager")
+        user = build_authenticated_user("synthetic-change-editor", "manager", permissions={"change_request.edit"})
 
         def create(session):
             return service.create_change_request(

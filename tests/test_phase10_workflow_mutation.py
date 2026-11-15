@@ -220,7 +220,7 @@ def test_create_inspection_case_persists_draft_case_without_downstream_rows():
             production_line_id=seeded["production_line_id"],
             applicable_standard="WHO-GMP",
             reason="Open new inspection case.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -275,7 +275,7 @@ def test_create_inspection_case_allows_authoritative_certificate_only_line_conte
             production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="Create from certificate-owned line context.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -299,7 +299,7 @@ def test_create_inspection_case_allows_facility_wide_context_without_inventing_l
             line_code=None,
             applicable_standard=None,
             reason="Facility-wide create.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -323,7 +323,7 @@ def test_create_inspection_case_rejects_invalid_site_gxp_or_line_context():
                 line_code="A",
                 applicable_standard=None,
                 reason="Missing site.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "Site not found" in str(exc)
@@ -343,7 +343,7 @@ def test_create_inspection_case_rejects_invalid_site_gxp_or_line_context():
                     line_code=line_code,
                     applicable_standard=None,
                     reason="Invalid context.",
-                    user=build_authenticated_user("manager01", "manager"),
+                    user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
                 )
             except Exception as exc:
                 assert expected_detail in str(exc)
@@ -369,7 +369,7 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
                 production_line_id=seeded["production_line_id"],
                 applicable_standard=None,
                 reason="Duplicate.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "open inspection case already exists" in str(exc)
@@ -388,7 +388,7 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
             production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="First create.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -402,7 +402,7 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
                 production_line_id=seeded["production_line_id"],
                 applicable_standard=None,
                 reason="Retry create.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "open inspection case already exists" in str(exc)
@@ -429,7 +429,7 @@ def test_create_inspection_case_duplicate_rule_is_site_scoped():
             production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="Different site context.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -453,7 +453,7 @@ def test_create_inspection_case_server_owns_reassessment_type():
             production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="Server-owned reassessment type.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -528,7 +528,7 @@ def test_transition_case_persists_audit_without_fabricating_business_event():
             case_id=case_id,
             target_state="application_received",
             reason="Initial intake completed.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -572,7 +572,7 @@ def test_transition_case_rejects_invalid_transition_order():
                 case_id=case_id,
                 target_state="certified",
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "not allowed" in str(exc)
@@ -597,7 +597,7 @@ def test_upsert_case_application_persists_stage_and_audit():
             dossier_reference=None,
             applicant_name="Applicant A",
             reason="Initial intake metadata.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -645,7 +645,7 @@ def test_upsert_case_application_writes_submission_event_without_transitioning_c
             dossier_reference=None,
             applicant_name="Applicant C",
             reason="Submission captured.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -677,7 +677,7 @@ def test_upsert_case_application_rejects_stale_version_and_terminal_states():
             dossier_reference=None,
             applicant_name="Applicant D",
             reason="Initial create.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -692,7 +692,7 @@ def test_upsert_case_application_rejects_stale_version_and_terminal_states():
                 dossier_reference=None,
                 applicant_name="Applicant D",
                 reason="Should conflict.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "Stale case_application update" in str(exc)
@@ -717,7 +717,7 @@ def test_upsert_case_application_rejects_stale_version_and_terminal_states():
                     dossier_reference=None,
                     applicant_name="Applicant Terminal",
                     reason="Should be blocked.",
-                    user=build_authenticated_user("manager01", "manager"),
+                    user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
                 )
             except Exception as exc:
                 assert f"terminal state {terminal_state.value}" in str(exc)
@@ -788,7 +788,7 @@ def test_workflow_audit_payload_redacts_sensitive_keys():
             dossier_reference=None,
             applicant_name="Applicant B",
             reason="Sensitive payload check.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         service._write_audit_event(
             session,
@@ -832,7 +832,7 @@ def test_upsert_case_assessment_persists_stage_and_event_when_assessed_on_presen
             assessment_result="accepted",
             notes="Assessment complete.",
             reason="Assessment captured.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -932,7 +932,7 @@ def test_assessment_partial_field_without_canonical_date_does_not_complete_miles
             assessment_result=None,
             notes=None,
             reason=None,
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             fields_set={"assessor_name"},
         )
         session.commit()
@@ -1997,7 +1997,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
                 case_id=case_id,
                 target_state="awaiting_certificate_decision",
                 reason="Should still be blocked.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "CAPA remains required or unaccepted" in str(exc)
@@ -2079,7 +2079,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
             case_id=case_id,
             target_state="awaiting_certificate_decision",
             reason="CAPA done.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -3002,7 +3002,7 @@ def test_transition_case_to_certified_rejects_latest_rejected_capa():
                 case_id=case_id,
                 target_state="certified",
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "CAPA remains required or unaccepted" in str(exc)
@@ -3028,7 +3028,7 @@ def test_transition_case_to_certified_allows_no_capa_when_workflow_state_is_corr
             case_id=case_id,
             target_state="certified",
             reason="Eligible.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -4201,7 +4201,7 @@ def test_reassessment_uses_explicit_user_fields_and_copies_only_approved_origin_
             line_code="A", production_line_id=seeded["production_line_id"],
             applicable_standard="PIC/S GMP", source_case_id=seeded["seeded_case_id"],
             reason="User requests reassessment with origin-scope inheritance",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
         created = session.get(Case, result["case_id"])
@@ -4242,7 +4242,7 @@ def test_reassessment_without_origin_keeps_user_owned_context_and_no_invented_sc
             line_code="A", production_line_id=seeded["production_line_id"],
             applicable_standard="USER-ENTERED-STANDARD", source_case_id=None,
             reason="Manual input without originating Case",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
         actual = session.get(Case, created["case_id"])

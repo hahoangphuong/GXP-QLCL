@@ -1366,7 +1366,7 @@ def test_a5_certificate_successor_preserves_context_resets_issue_fields_and_reco
             source_affected_artifact_id=source_link_id,
             expected_version=initial_version,
             reason="Prepare adjusted GMP certificate.",
-            user=_editor(),
+            user=_certificate_issuer(),
         )
         session.commit()
         successor_id = result["certificate_id"]
@@ -1445,7 +1445,7 @@ def test_a5_certificate_successor_preserves_context_resets_issue_fields_and_reco
                 source_affected_artifact_id=source_link_id,
                 expected_version=initial_version,
                 reason="Stale retry must fail.",
-                user=_editor(),
+                user=_certificate_issuer(),
             )
         session.rollback()
 
@@ -1512,7 +1512,7 @@ def test_a5_certificate_successor_is_blocked_when_change_request_is_not_editable
                 source_affected_artifact_id=source_link_id,
                 expected_version=change_version,
                 reason="Must not issue after rejection.",
-                user=_editor(),
+                user=_certificate_issuer(),
             )
         session.rollback()
 

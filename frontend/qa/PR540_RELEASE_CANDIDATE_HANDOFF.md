@@ -5,15 +5,18 @@ Status: `CODE_INTEGRATED_RELEASE_CANDIDATE_UAT_PENDING`.
 ## Source boundary
 
 - PR: `#540` (`codex/excel-vba-ui-redesign-20261115`, Draft)
-- Main baseline: `f6d23b079d5bc355376932e8e99e0a59fc69e9f9`
-- Integrated candidate code: `cad7914d` (ordinary merge of the current main)
+- Main baseline: `9f502468a386ac0703ccbe59d424d18a7b881382`
+- Integrated candidate code: `4e2519f5` (ordinary merge of the current main)
 - Required CI: the exact PR-head CI run created after this handoff is committed;
   it must pass the frontend, cross-head integration, PostgreSQL, backend shard,
   hygiene and required-gate jobs before operator UAT begins.
 
-The merge includes server-side service-owner authorization from PRs #549 and
-#550. No frontend permission fallback exists: all enabled controls derive from
-the current canonical readiness/permission response.
+The merge includes server-side service-owner authorization from PRs #549–#552
+and persisted current-team revision ownership for QĐKT from PR #553. No frontend
+permission fallback exists: all enabled controls derive from the current
+canonical readiness/permission response. The QĐKT panel remains read-only:
+current Case team/revision is neither an issued-decision team nor render
+authorization.
 
 ## Supported operator journeys
 
@@ -25,6 +28,12 @@ the current canonical readiness/permission response.
 4. Change Request header/detail/approval/state/successor paths, only when
    backend readiness permits the action.
 5. Reports → canonical Case/Change Request/document return navigation.
+
+Focused regression after the latest merge covers Case lifecycle and application,
+evaluation scope, KHKT/outcome/period/team, CAPA, Change Request, PCT/CT binding,
+certificate issue and QĐKT readiness/current-team ownership. It includes 403,
+409, 422, terminal/readiness gating, expected-version binding, duplicate-command
+prevention and Case A → B → A fencing.
 
 ## Preconditions for authenticated UAT
 

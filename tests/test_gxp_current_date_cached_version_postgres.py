@@ -70,7 +70,7 @@ def test_gxp_promotion_rejects_backdate_against_updated_cached_current_version()
             candidate_id, candidate_token = candidate.id, candidate.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-gxp-current-date", "manager")
+        actor = build_authenticated_user("synthetic-gxp-current-date", "manager", permissions={"certificate.edit", "certificate.approve"})
         contender = factory()
         cached_current_version = contender.get(CertificateVersion, current_version_id)
         assert cached_current_version.issue_date == date(2026, 8, 1)

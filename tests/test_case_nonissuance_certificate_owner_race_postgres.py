@@ -92,7 +92,8 @@ def test_same_case_issuance_and_nonissuance_serialize_without_duplicate_effects(
         # identity must never bypass the Case row lock/current database state.
         second = factory()
         assert second.get(Case, case_id).state == CaseState.AWAITING_CERTIFICATE_DECISION
-        second.rollback()
+        # Keep the Session and its loaded identity alive under READ COMMITTED.
+        # The lock SELECT must use populate_existing rather than trusting it.
 
         first = factory()
         winning = operations[first_action](first)

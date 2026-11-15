@@ -57,6 +57,108 @@ def _record(db, case_id, expected=1, ref="DEC-001"):
     )
 
 
+
+@pytest.mark.parametrize("operation,required_permission,kwargs", [
+    (
+        "upsert_certificate_latest_version", "certificate.edit",
+        dict(certificate_id="00000000-0000-4000-8000-000000000001",
+             expected_version=1, certificate_number="DENIED", issue_date=date(2026, 11, 15),
+             expiry_date=None, scopes=[], reason=None),
+    ),
+    (
+        "promote_certificate_current", "certificate.approve",
+        dict(certificate_id="00000000-0000-4000-8000-000000000001",
+             expected_version=1, reason=None),
+    ),
+    (
+        "issue_business_eligibility", "certificate.issue",
+        dict(site_id="00000000-0000-4000-8000-000000000002",
+             certificate_number="DENIED", issued_on=date(2026, 11, 15),
+             expires_on=None, professional_responsible_person_name=None,
+             notes=None, linked_certificates=[], reason=None),
+    ),
+    (
+        "upsert_business_eligibility_latest_version", "certificate.edit",
+        dict(business_eligibility_certificate_id="00000000-0000-4000-8000-000000000003",
+             expected_version=1, certificate_number="DENIED",
+             issued_on=date(2026, 11, 15), expires_on=None,
+             professional_responsible_person_name=None, notes=None,
+             linked_certificates=[], reason=None),
+    ),
+    (
+        "promote_business_eligibility_current", "certificate.approve",
+        dict(business_eligibility_certificate_id="00000000-0000-4000-8000-000000000003",
+             expected_version=1, reason=None),
+    ),
+])
+@pytest.mark.parametrize("other_permission", [None, "certificate.issue", "certificate.edit", "certificate.approve"])
+def test_certificate_lifecycle_service_guard_denies_before_any_database_read(
+    scenario, operation, required_permission, kwargs, other_permission,
+):
+    """Service callers cannot bypass router RBAC or probe resource existence.
+
+    All five lifecycle mutations must reject missing capability before even
+    querying Site/Certificate/Version, locking, flushing, or auditing.
+    """
+    if other_permission == required_permission:
+        pytest.skip("This test exercises missing permission, not authorized behavior")
+    engine, _ = scenario
+    service = CaseWorkflowService()
+    user = build_authenticated_user(
+        f"no-{required_permission}", "viewer",
+        permissions=set() if other_permission is None else {other_permission},
+    )
+    with Session(engine) as db:
+        reads = []
+
+        def capture_sql(conn, cursor, statement, parameters, context, executemany):
+            reads.append(statement)
+
+        event.listen(engine, "before_cursor_execute", capture_sql)
+        try:
+            with pytest.raises(HTTPException) as forbidden:
+                getattr(service, operation)(db, **kwargs, user=user)
+        finally:
+            event.remove(engine, "before_cursor_execute", capture_sql)
+        assert forbidden.value.status_code == 403
+        assert required_permission in str(forbidden.value.detail)
+        assert reads == []
+        assert not db.new and not db.dirty
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+
+
+def test_certificate_lifecycle_permission_checks_do_not_flush_pending_orm_drafts(scenario):
+    """Denied service calls cannot auto-flush unrelated pending Case edits."""
+    engine, (case_id, _, _) = scenario
+    with Session(engine) as db:
+        draft = db.get(Case, case_id)
+        draft.state = CaseState.PLANNED
+        flushed = []
+
+        def prevent_flush(session, context, instances):
+            flushed.append(True)
+            raise AssertionError("Unauthorized lifecycle call flushed a draft")
+
+        event.listen(db, "before_flush", prevent_flush)
+        try:
+            with pytest.raises(HTTPException) as denied:
+                CaseWorkflowService().issue_business_eligibility(
+                    db, site_id=draft.site_id, certificate_number="NOT-ISSUED",
+                    issued_on=date(2026, 11, 15), expires_on=None,
+                    professional_responsible_person_name=None, notes=None,
+                    linked_certificates=[], reason=None,
+                    user=build_authenticated_user(
+                        "no-issue", "viewer", permissions={"certificate.edit"},
+                    ),
+                )
+        finally:
+            event.remove(db, "before_flush", prevent_flush)
+        assert denied.value.status_code == 403
+        assert flushed == []
+        assert draft.state == CaseState.PLANNED
+        assert draft in db.dirty
+        db.rollback()
+
 def test_explicit_decision_persists_once_and_scoped_get_has_no_side_effects(scenario):
     engine, (case_id, other_id, _) = scenario
     service = CaseWorkflowService()

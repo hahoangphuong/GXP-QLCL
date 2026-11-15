@@ -2776,7 +2776,7 @@ def test_certificate_latest_version_round_trips_structured_scopes_and_bumps_cert
             session, certificate_id=issued["certificate_id"], expected_version=issued["row_version"],
             certificate_number="CERT-SCOPE", issue_date=date(2026, 8, 1), expiry_date=date(2027, 8, 1),
             scopes=[{"scope_key": "b", "scope_text": "B", "language_code": "en", "sort_order": 1}, {"scope_key": "a", "scope_text": "A", "language_code": "vi", "sort_order": 2}],
-            reason="Round trip.", user=build_authenticated_user("admin01", "admin"),
+            reason="Round trip.", user=build_authenticated_user("admin01", "admin", permissions={"certificate.edit"}),
         )
         session.commit()
     assert updated["row_version"] > issued["row_version"]
@@ -2830,7 +2830,7 @@ def test_promote_certificate_current_rejects_pending_capa_for_case_backed_certif
                 session,
                 certificate_id=issued["certificate_id"],
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions={"certificate.approve"}),
             )
         except Exception as exc:
             assert "latest CAPA cycle is accepted" in str(exc)
@@ -3096,7 +3096,7 @@ def test_promote_certificate_current_rejects_older_candidate_than_current():
             session,
             certificate_id=current_result["certificate_id"],
             reason="Promote current baseline.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.approve"}),
         )
         session.commit()
 
@@ -3132,7 +3132,7 @@ def test_promote_certificate_current_rejects_older_candidate_than_current():
                 session,
                 certificate_id=older_candidate["certificate_id"],
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions={"certificate.approve"}),
             )
         except Exception as exc:
             assert "not older than the current active certificate" in str(exc)
@@ -3144,7 +3144,7 @@ def test_certificate_promotion_isolated_by_canonical_production_line_uuid_and_re
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("admin01", "admin")
+    user = build_authenticated_user("admin01", "admin", permissions={"certificate.approve"})
 
     with Session(engine) as session:
         company = Company(legal_name="Promotion identity", short_name="PI")
@@ -3189,7 +3189,7 @@ def test_certificate_promotion_keeps_canonical_legacy_and_facility_contexts_isol
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("manager01", "manager")
+    user = build_authenticated_user("manager01", "manager", permissions={"certificate.approve"})
     with Session(engine) as session:
         company = Company(legal_name="Context isolation", short_name="CTX")
         session.add(company); session.flush()
@@ -3227,7 +3227,7 @@ def test_certificate_promotion_normalizes_legacy_trim_and_facility_blank_peers()
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("manager01", "manager")
+    user = build_authenticated_user("manager01", "manager", permissions={"certificate.approve"})
     with Session(engine) as session:
         company = Company(legal_name="Normalization", short_name="NORM")
         session.add(company); session.flush()
@@ -3255,7 +3255,7 @@ def test_legacy_certificate_effective_line_uses_valid_linked_case_for_identity_a
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("manager01", "manager")
+    user = build_authenticated_user("manager01", "manager", permissions={"certificate.approve"})
     with Session(engine) as session:
         company = Company(legal_name="Linked legacy context", short_name="LINK")
         session.add(company); session.flush()
@@ -3315,7 +3315,7 @@ def test_certificate_invalid_linked_cases_fail_closed_before_identity_or_mutatio
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("manager01", "manager")
+    user = build_authenticated_user("manager01", "manager", permissions={"certificate.approve"})
     with Session(engine) as session:
         company = Company(legal_name="Invalid links", short_name="IL")
         session.add(company); session.flush()
@@ -3395,7 +3395,7 @@ def test_certificate_promotion_checks_and_demotes_all_current_context_peers():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("manager01", "manager")
+    user = build_authenticated_user("manager01", "manager", permissions={"certificate.approve"})
     with Session(engine) as session:
         company = Company(legal_name="Multiple currents", short_name="MC")
         session.add(company); session.flush()
@@ -3429,7 +3429,7 @@ def test_cross_site_certificate_and_reassessment_contexts_fail_closed():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("admin01", "admin")
+    user = build_authenticated_user("admin01", "admin", permissions={"certificate.approve"})
     with Session(engine) as session:
         company = Company(legal_name="Cross-site", short_name="XS")
         session.add(company); session.flush()
@@ -3521,7 +3521,7 @@ def test_upsert_business_eligibility_latest_version_replaces_links():
                 {"certificate_id": certificate["certificate_id"], "link_role": "source_certificate"},
             ],
             reason="Initial DDKD issue.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue", "certificate.edit"}),
         )
         session.commit()
 
@@ -3562,7 +3562,7 @@ def test_upsert_business_eligibility_latest_version_replaces_links():
                 {"certificate_id": replacement_certificate["certificate_id"], "link_role": "replacement_certificate"},
             ],
             reason="Replace linked cert list.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue", "certificate.edit"}),
         )
         session.commit()
 
@@ -3603,7 +3603,7 @@ def _seed_invalid_dkkd_certificate(session: Session, *, cross_site_line: bool = 
 @pytest.mark.parametrize("cross_site_line", [False, True])
 def test_business_eligibility_issue_rejects_invalid_certificate_identity(cross_site_line):
     engine = create_engine("sqlite:///:memory:", future=True); Base.metadata.create_all(engine)
-    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager")
+    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager", permissions={"certificate.issue"})
     with Session(engine) as session:
         site_id, certificate_id = _seed_invalid_dkkd_certificate(session, cross_site_line=cross_site_line)
     with Session(engine) as session:
@@ -3615,7 +3615,7 @@ def test_business_eligibility_issue_rejects_invalid_certificate_identity(cross_s
 
 def test_business_eligibility_update_rolls_back_when_replacement_certificate_is_invalid():
     engine = create_engine("sqlite:///:memory:", future=True); Base.metadata.create_all(engine)
-    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager")
+    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager", permissions={"certificate.issue", "certificate.edit"})
     with Session(engine) as session:
         site_id, invalid_id = _seed_invalid_dkkd_certificate(session)
         good = Certificate(site_id=site_id, certificate_type="GMP", line_code="A", latest_flag=False)
@@ -3634,7 +3634,7 @@ def test_business_eligibility_update_rolls_back_when_replacement_certificate_is_
 
 def test_business_eligibility_promotion_validates_historical_invalid_link_before_mutation():
     engine = create_engine("sqlite:///:memory:", future=True); Base.metadata.create_all(engine)
-    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager")
+    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager", permissions={"certificate.approve"})
     with Session(engine) as session:
         site_id, invalid_id = _seed_invalid_dkkd_certificate(session)
         site = session.get(Site, site_id); assert site is not None
@@ -3674,7 +3674,7 @@ def test_promote_business_eligibility_current_demotes_previous_current():
             notes=None,
             linked_certificates=[],
             reason="First current.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue", "certificate.approve"}),
         )
         session.commit()
 
@@ -3683,7 +3683,7 @@ def test_promote_business_eligibility_current_demotes_previous_current():
             session,
             business_eligibility_certificate_id=first["business_eligibility_certificate_id"],
             reason="Promote first current.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue", "certificate.approve"}),
         )
         session.commit()
 
@@ -3698,7 +3698,7 @@ def test_promote_business_eligibility_current_demotes_previous_current():
             notes=None,
             linked_certificates=[],
             reason="Second candidate.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue", "certificate.approve"}),
         )
         session.commit()
 
@@ -3707,7 +3707,7 @@ def test_promote_business_eligibility_current_demotes_previous_current():
             session,
             business_eligibility_certificate_id=second["business_eligibility_certificate_id"],
             reason="Promote newer current.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue", "certificate.approve"}),
         )
         session.commit()
 
@@ -3819,7 +3819,7 @@ def test_a4_business_eligibility_latest_version_advances_parent_optimistic_lock(
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    manager = build_authenticated_user("manager01", "manager", permissions=set(ROLE_PERMISSIONS["manager"]) | {"certificate.issue", "certificate.edit"})
 
     with Session(engine) as session:
         case_id = seed_case(session)
@@ -3897,7 +3897,7 @@ def test_a4_business_eligibility_rejects_cross_site_gxp_basis_before_link_write(
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    manager = build_authenticated_user("manager01", "manager", permissions=set(ROLE_PERMISSIONS["manager"]) | {"certificate.issue"})
 
     with Session(engine) as session:
         case_id = seed_case(session)
@@ -4064,7 +4064,7 @@ def test_a4_business_eligibility_runtime_rejects_unsupported_link_role_before_wr
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    user = build_authenticated_user("manager01", "manager", permissions=set(ROLE_PERMISSIONS["manager"]) | {"certificate.issue"})
 
     with Session(engine) as session:
         case_id = seed_case(session)
@@ -4106,7 +4106,7 @@ def test_a4_business_eligibility_duplicate_basis_rejected_before_replace_all():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    user = build_authenticated_user("manager01", "manager", permissions=set(ROLE_PERMISSIONS["manager"]) | {"certificate.issue", "certificate.edit"})
 
     with Session(engine) as session:
         case_id = seed_case(session)

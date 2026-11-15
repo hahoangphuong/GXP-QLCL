@@ -851,7 +851,7 @@ def test_assessment_partial_field_updates_preserve_canonical_metadata_and_milest
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    actor = build_authenticated_user("manager01", "manager")
+    actor = build_authenticated_user("manager01", "manager", permissions={"case.edit"})
 
     with Session(engine) as session:
         case_id = seed_case(session)
@@ -3429,7 +3429,7 @@ def test_cross_site_certificate_and_reassessment_contexts_fail_closed():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("admin01", "admin", permissions={"certificate.approve"})
+    user = build_authenticated_user("admin01", "admin", permissions={"certificate.approve", "case.edit"})
     with Session(engine) as session:
         company = Company(legal_name="Cross-site", short_name="XS")
         session.add(company); session.flush()
@@ -4259,7 +4259,7 @@ def test_case_application_null_token_is_create_only_and_conflict_has_no_audit():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("application-cas", "manager")
+    user = build_authenticated_user("application-cas", "manager", permissions={"case.edit"})
     with Session(engine) as session:
         case_id = seed_case(session)
     def write(session, *, expected_version, value):
@@ -4309,7 +4309,7 @@ def test_case_application_numeric_token_does_not_implicitly_create_stage():
                 session, case_id=case_id, expected_version=1,
                 submitted_on=None, dossier_code="wrong-create",
                 dossier_reference=None, applicant_name=None,
-                reason=None, user=build_authenticated_user("app-create", "manager"),
+                reason=None, user=build_authenticated_user("app-create", "manager", permissions={"case.edit"}),
                 fields_set={"dossier_code"},
             )
         assert exc.value.status_code == 409
@@ -4323,7 +4323,7 @@ def test_case_assessment_null_token_is_create_only_and_does_not_leak_audit():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("assessment-cas", "manager")
+    user = build_authenticated_user("assessment-cas", "manager", permissions={"case.edit"})
     with Session(engine) as session:
         case_id = seed_case(session)
 
@@ -4376,7 +4376,7 @@ def test_case_assessment_numeric_token_cannot_create_missing_stage():
                 session, case_id=case_id, expected_version=1,
                 assessed_on=None, assessor_name="untrusted first update",
                 assessment_result=None, notes=None, reason=None,
-                user=build_authenticated_user("assessment-create", "manager"),
+                user=build_authenticated_user("assessment-create", "manager", permissions={"case.edit"}),
                 fields_set={"assessor_name"},
             )
         assert error.value.status_code == 409

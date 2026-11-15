@@ -210,6 +210,7 @@ class DashboardSummaryRead(BaseModel):
     active_certificates: int
     expiring_certificates_90_days: int
     incomplete_changes: int
+    quarantined_historical_certificate_legacy_ids: list[int] = []
     queue: list[DashboardQueueItemRead]
 
 

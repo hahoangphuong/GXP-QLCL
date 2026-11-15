@@ -246,3 +246,55 @@ def test_certificate_report_unknown_invalid_link_fails_across_filters_and_export
             with pytest.raises(HTTPException, match="invalid linked Case") as exc:
                 _certificate_report(service, db, **kwargs)
             assert exc.value.status_code == 409
+
+
+def test_dashboard_certificate_metrics_exclude_quarantine_but_keep_other_queues(tmp_path):
+    """The dashboard and certificate report share the same validated population."""
+    from datetime import timedelta
+    from backend.app.read_models import DashboardSummaryRead
+
+    engine, certs, _ = _source_fixture(tmp_path)
+    service = CatalogReadService()
+    with Session(engine) as db:
+        for legacy_id in (1180, 9000):
+            version = db.scalar(select(CertificateVersion).where(
+                CertificateVersion.certificate_id == certs[legacy_id],
+            ))
+            assert version is not None
+            version.expiry_date = date.today() + timedelta(days=30)
+        db.commit()
+    with Session(engine) as db:
+        cert_count = db.scalar(select(func.count()).select_from(Certificate))
+        audit_count = db.scalar(select(func.count()).select_from(AuditEvent))
+        result = service.get_dashboard_summary(db, queue_limit=20)
+        assert result["total_facilities"] == 5
+        assert result["total_cases"] == 3
+        assert result["active_certificates"] == 1
+        assert result["expiring_certificates_90_days"] == 1
+        assert result["quarantined_historical_certificate_legacy_ids"] == [376, 1037, 1180]
+        assert DashboardSummaryRead.model_validate(result).active_certificates == 1
+        report = _certificate_report(service, db)
+        assert report["total_count"] == 1
+        assert report["items"][0]["certificate_id"] == certs[9000]
+        assert db.scalar(select(func.count()).select_from(Certificate)) == cert_count
+        assert db.scalar(select(func.count()).select_from(AuditEvent)) == audit_count
+        assert not db.new and not db.dirty
+
+
+def test_dashboard_unknown_bad_certificate_remains_fail_closed_even_if_not_latest(tmp_path):
+    """A new corrupt Case link cannot be hidden inside unrelated dashboard KPIs."""
+    engine, _, sites = _source_fixture(tmp_path)
+    with Session(engine) as db:
+        wrong_case = Case(site_id=sites[298], gxp_type="GMP", state=CaseState.CERTIFIED)
+        db.add(wrong_case)
+        db.flush()
+        db.add(Certificate(
+            site_id=sites[73], case_id=wrong_case.id,
+            legacy_certificate_id=9937,
+            certificate_type="GMP", issuance_basis="inspection_case",
+            latest_flag=False,
+        ))
+        db.commit()
+        with pytest.raises(HTTPException, match="invalid linked Case") as error:
+            CatalogReadService().get_dashboard_summary(db, queue_limit=0)
+        assert error.value.status_code == 409

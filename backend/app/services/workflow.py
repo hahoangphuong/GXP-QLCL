@@ -1525,33 +1525,34 @@ class CaseWorkflowService:
             return {**outcome, "readiness_status": "unavailable", "detail": "Chọn loại GxP được hỗ trợ (GMP/GLP/GMPbb)."}
         if self._normalize_line_code(line_code) is not None and production_line_id is None:
             return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền legacy không phải định danh ProductionLine canonical."}
-        site = session.scalars(
-            select(Site).where(Site.id == site_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if site is None:
-            return {**outcome, "readiness_status": "unavailable", "detail": "Cơ sở không tồn tại."}
-        company = session.scalars(
-            select(Company).where(Company.id == site.company_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if company is None or company.is_inactive:
-            return {**outcome, "readiness_status": "unavailable", "detail": "Công ty sở hữu không tồn tại hoặc đã ngừng hoạt động."}
-        if production_line_id is not None:
-            line = session.scalars(
-                select(ProductionLine).where(ProductionLine.id == production_line_id)
-                .execution_options(populate_existing=True)
+        # Advisory readiness must only inspect committed owner values. Never
+        # flush unrelated operator drafts or refresh their cached ORM objects.
+        with session.no_autoflush:
+            site = session.execute(
+                select(Site.id, Site.company_id).where(Site.id == site_id)
             ).one_or_none()
-            if line is None or line.site_id != site.id:
-                return {**outcome, "readiness_status": "unavailable", "detail": "ProductionLine UUID không thuộc cơ sở đã chọn."}
-            if self._normalize_line_code(line_code) not in (None, line.code):
-                return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền không khớp ProductionLine UUID."}
-        if self._initial_case_context_occupied(
-            session, site_id=site.id, gxp_type=str(gxp_type).strip(),
-            production_line_id=production_line_id,
-        ):
-            return {**outcome, "readiness_status": "conflict", "detail": "Đã có Case hoặc GCN trong ngữ cảnh này; không phải hồ sơ đầu tiên."}
-        return {**outcome, "readiness_status": "available", "detail": "Có thể tạo Case nháp mới, không sao chép dữ liệu từ Case cũ hoặc KHKT."}
+            if site is None:
+                return {**outcome, "readiness_status": "unavailable", "detail": "Cơ sở không tồn tại."}
+            company_inactive = session.scalar(
+                select(Company.is_inactive).where(Company.id == site.company_id)
+            )
+            if company_inactive is None or company_inactive:
+                return {**outcome, "readiness_status": "unavailable", "detail": "Công ty sở hữu không tồn tại hoặc đã ngừng hoạt động."}
+            if production_line_id is not None:
+                line = session.execute(
+                    select(ProductionLine.site_id, ProductionLine.code)
+                    .where(ProductionLine.id == production_line_id)
+                ).one_or_none()
+                if line is None or line.site_id != site.id:
+                    return {**outcome, "readiness_status": "unavailable", "detail": "ProductionLine UUID không thuộc cơ sở đã chọn."}
+                if self._normalize_line_code(line_code) not in (None, line.code):
+                    return {**outcome, "readiness_status": "unavailable", "detail": "Mã dây chuyền không khớp ProductionLine UUID."}
+            if self._initial_case_context_occupied(
+                session, site_id=site.id, gxp_type=str(gxp_type).strip(),
+                production_line_id=production_line_id,
+            ):
+                return {**outcome, "readiness_status": "conflict", "detail": "Đã có Case hoặc GCN trong ngữ cảnh này; không phải hồ sơ đầu tiên."}
+            return {**outcome, "readiness_status": "available", "detail": "Có thể tạo Case nháp mới, không sao chép dữ liệu từ Case cũ hoặc KHKT."}
 
     def create_initial_inspection_case(
         self, session: Session, *, site_id: str, case_id: str,
@@ -1678,66 +1679,69 @@ class CaseWorkflowService:
                 "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ tạo hồ sơ tái đánh giá mới.",
                 "required_permissions": required_permissions,
             }
-        if production_line_id is not None:
-            # Readiness is a projection, not mutation admission, but must
-            # still report the latest committed ProductionLine Site/code.
-            # The creator may have cached this ORM identity before reparenting.
-            line = session.scalars(
-                select(ProductionLine).where(ProductionLine.id == production_line_id)
-                .execution_options(populate_existing=True)
-            ).one_or_none()
-            if line is None or line.site_id != site_id:
+        # Owner context/readiness is a persisted advisory projection, not a
+        # mutation: no autoflush and no identity-map refresh of active drafts.
+        with session.no_autoflush:
+            if production_line_id is not None:
+                # Readiness is a projection, not mutation admission, but must
+                # still report the latest committed ProductionLine Site/code.
+                # The creator may have cached this ORM identity before reparenting.
+                line = session.execute(
+                    select(ProductionLine.site_id, ProductionLine.code)
+                    .where(ProductionLine.id == production_line_id)
+                ).one_or_none()
+                if line is None or line.site_id != site_id:
+                    return {
+                        "action_key": "create_reassessment_case",
+                        "label": "Tái đánh giá",
+                        "readiness_status": "unavailable",
+                        "detail": "Selected ProductionLine does not belong to this site.",
+                        "required_permissions": required_permissions,
+                    }
+                if normalized_line_code is not None and normalized_line_code != line.code:
+                    return {
+                        "action_key": "create_reassessment_case",
+                        "label": "Tái đánh giá",
+                        "readiness_status": "unavailable",
+                        "detail": "line_code does not match the selected canonical ProductionLine.",
+                        "required_permissions": required_permissions,
+                    }
+            if not self._site_has_gxp_context(
+                session,
+                site_id=site_id,
+                gxp_type=normalized_gxp_type,
+                line_code=normalized_line_code,
+                production_line_id=production_line_id,
+            ):
                 return {
                     "action_key": "create_reassessment_case",
                     "label": "Tái đánh giá",
                     "readiness_status": "unavailable",
-                    "detail": "Selected ProductionLine does not belong to this site.",
+                    "detail": "Ngữ cảnh cơ sở/GxP/dây chuyền đã chọn không khớp với context authoritative hiện có để tái đánh giá.",
                     "required_permissions": required_permissions,
                 }
-            if normalized_line_code is not None and normalized_line_code != line.code:
+            existing_case = self._find_open_context_case(
+                session,
+                site_id=site_id,
+                gxp_type=normalized_gxp_type,
+                line_code=normalized_line_code,
+                production_line_id=production_line_id,
+            )
+            if existing_case is not None:
                 return {
                     "action_key": "create_reassessment_case",
                     "label": "Tái đánh giá",
-                    "readiness_status": "unavailable",
-                    "detail": "line_code does not match the selected canonical ProductionLine.",
+                    "readiness_status": "conflict",
+                    "detail": "Đã có một hồ sơ tái đánh giá chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
                     "required_permissions": required_permissions,
                 }
-        if not self._site_has_gxp_context(
-            session,
-            site_id=site_id,
-            gxp_type=normalized_gxp_type,
-            line_code=normalized_line_code,
-            production_line_id=production_line_id,
-        ):
             return {
                 "action_key": "create_reassessment_case",
                 "label": "Tái đánh giá",
-                "readiness_status": "unavailable",
-                "detail": "Ngữ cảnh cơ sở/GxP/dây chuyền đã chọn không khớp với context authoritative hiện có để tái đánh giá.",
+                "readiness_status": "available",
+                "detail": "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                 "required_permissions": required_permissions,
             }
-        existing_case = self._find_open_context_case(
-            session,
-            site_id=site_id,
-            gxp_type=normalized_gxp_type,
-            line_code=normalized_line_code,
-            production_line_id=production_line_id,
-        )
-        if existing_case is not None:
-            return {
-                "action_key": "create_reassessment_case",
-                "label": "Tái đánh giá",
-                "readiness_status": "conflict",
-                "detail": "Đã có một hồ sơ tái đánh giá chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
-                "required_permissions": required_permissions,
-            }
-        return {
-            "action_key": "create_reassessment_case",
-            "label": "Tái đánh giá",
-            "readiness_status": "available",
-            "detail": "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
-            "required_permissions": required_permissions,
-        }
 
     def _get_change_request(self, session: Session, change_request_id: str) -> ChangeRequest:
         row = session.get(ChangeRequest, change_request_id)

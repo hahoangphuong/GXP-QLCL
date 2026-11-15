@@ -9,7 +9,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
-from backend.app.auth import AuthenticatedUser
+from backend.app.auth import AuthenticatedUser, require_permissions
 from backend.app.db.enums import AuditActorType, CaseState, ChangeRequestState, InspectionEventType
 from backend.app.db.models.phase1 import (
     AppUser,
@@ -2453,6 +2453,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         # Share the Site owner lock used by certificate/eligibility promotion.
         # Snapshot current affected artifacts only after competing promotions
         # have committed, so the new Change Request does not capture stale
@@ -2519,6 +2520,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION, CERTIFICATE_ISSUE_PERMISSION})
         row = self._get_change_request(session, change_request_id)
         # The Change Request owns successor issuance. Serialize against its
         # committed root before checking the optimistic token or writing artifacts.
@@ -2700,6 +2702,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION, CERTIFICATE_ISSUE_PERMISSION})
         row = self._get_change_request(session, change_request_id)
         # The Change Request owns successor issuance. Serialize against its
         # committed root before checking the optimistic token or writing artifacts.
@@ -2869,6 +2872,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         row = self._get_change_request(session, change_request_id)
         # Serialize header writes and refresh any cached aggregate root before
         # validating the optimistic token from the caller.
@@ -2916,6 +2920,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         row = self._get_change_request(session, change_request_id)
         # The Change Request owns the detail mutation token. Refresh and lock
         # its committed version before any detail or audit write.
@@ -2973,6 +2978,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         detail = session.get(ChangeRequestDetail, change_detail_id)
         if detail is None:
             raise HTTPException(status_code=404, detail="Change request detail not found.")
@@ -3032,6 +3038,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {CHANGE_REQUEST_APPROVE_PERMISSION})
         # Serialize approval create-vs-create on the Change Request owner.
         # Lock before reading the optional approval; otherwise two writers
         # can both see no approval and attempt a duplicate INSERT.
@@ -3095,6 +3102,11 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        try:
+            permission_target = ChangeRequestState(target_state)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Unsupported change request state: {target_state}") from exc
+        require_permissions(user, {change_request_transition_permission(permission_target)})
         row = self._get_change_request(session, change_request_id)
         # Transition gates must use the committed owner state and version,
         # never the Session's stale ChangeRequest identity.
@@ -3612,6 +3624,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.edit"})
         # Serialize CAPA round allocation against its owning Case. A unique
         # (case_id, round_no) constraint alone lets competing creates race all
         # the way to INSERT instead of rejecting at the business gate.
@@ -3675,6 +3688,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.edit"})
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA update",
         )
@@ -3719,6 +3733,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.edit"})
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA submit",
         )
@@ -3759,6 +3774,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.assess"})
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA assess",
         )

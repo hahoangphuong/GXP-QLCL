@@ -28,7 +28,7 @@ def test_successor_audit_write_failure_rolls_back_all_candidate_artifacts(
     engine = create_engine(f"sqlite:///{(tmp_path / (kind + '.sqlite')).as_posix()}", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("rollback-probe", "manager")
+    user = build_authenticated_user("rollback-probe", "manager", permissions={"change_request.edit", "certificate.issue"})
     with Session(engine) as seed:
         company = Company(legal_name="Synthetic failure probe")
         seed.add(company)

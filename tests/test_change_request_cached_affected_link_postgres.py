@@ -139,7 +139,7 @@ def test_change_request_successor_refreshes_cached_affected_link(kind):
 
         actor = build_authenticated_user(
             "synthetic-cr-link", "manager",
-            permissions=("change_request.edit", "change_request.approve"),
+            permissions=("change_request.edit", "change_request.approve", "certificate.issue"),
         )
         params = dict(
             change_request_id=request_id,

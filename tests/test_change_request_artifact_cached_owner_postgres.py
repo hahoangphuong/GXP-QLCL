@@ -162,7 +162,7 @@ def test_change_request_successor_checks_committed_artifact_owner(changed_owner)
         actor = build_authenticated_user(
             "synthetic-cr-artifact-owner",
             "manager",
-            permissions=("change_request.edit", "change_request.approve"),
+            permissions=("change_request.edit", "change_request.approve", "certificate.issue"),
         )
         arguments = dict(
             change_request_id=request_id,

@@ -55,7 +55,7 @@ def test_concurrent_capa_round_creation_loser_blocks_before_insert(loser_token):
             case_id = case.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-capa-actor", "manager")
+        user = build_authenticated_user("synthetic-capa-actor", "manager", permissions={"capa.edit"})
         def create(session, token, value):
             return service.create_capa_cycle(
                 session, case_id=case_id, expected_case_version=token,

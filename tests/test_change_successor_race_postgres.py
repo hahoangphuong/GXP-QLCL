@@ -74,7 +74,7 @@ def test_competing_certificate_successors_leave_one_lineage_and_audit():
             source_id = source.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-successor", "manager")
+        user = build_authenticated_user("synthetic-successor", "manager", permissions={"change_request.edit", "certificate.issue"})
         with factory() as setup:
             created = service.create_change_request(
                 setup, site_id=site_id, scope_label="Synthetic adjustment",
@@ -176,7 +176,7 @@ def test_competing_business_eligibility_successors_leave_one_lineage_and_audit()
             site_id, source_id = site.id, source.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-dkkd-successor", "manager")
+        user = build_authenticated_user("synthetic-dkkd-successor", "manager", permissions={"change_request.edit", "certificate.issue"})
         with factory() as setup:
             created = service.create_change_request(
                 setup, site_id=site_id, scope_label="Synthetic DDKD adjustment",

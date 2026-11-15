@@ -400,13 +400,25 @@ class CaseWorkflowService:
         ) is not None
 
     def get_case_nonissuance_decision(self, session: Session, *, case_id: str) -> dict[str, Any]:
-        """Canonical readback for uncertain POST; never retries or synthesizes."""
-        self._get_case(session, case_id)
-        decision = session.scalars(
-            select(CaseCertificateNonissuanceDecision)
-            .where(CaseCertificateNonissuanceDecision.case_id == case_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
+        """Canonical SQL readback for uncertain POST, without autoflush.
+
+        A GET must neither flush unrelated pending ORM drafts nor replace their
+        values with older persisted data. Query scalar columns rather than
+        ORM instances to avoid identity-map projection leaks.
+        """
+        with session.no_autoflush:
+            if session.scalar(select(Case.id).where(Case.id == case_id)) is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
+            decision = session.execute(
+                select(
+                    CaseCertificateNonissuanceDecision.id,
+                    CaseCertificateNonissuanceDecision.case_id,
+                    CaseCertificateNonissuanceDecision.decided_on,
+                    CaseCertificateNonissuanceDecision.decision_reference,
+                    CaseCertificateNonissuanceDecision.explanation,
+                    CaseCertificateNonissuanceDecision.recorded_by_user_id,
+                ).where(CaseCertificateNonissuanceDecision.case_id == case_id)
+            ).one_or_none()
         return {
             "case_id": case_id,
             "decision": None if decision is None else {
@@ -429,30 +441,38 @@ class CaseWorkflowService:
             "linked_certificate_exists": "Case already has a linked certificate record.",
         }[reason_code]
 
-    def _nonissuance_decision_blocker(self, session: Session, *, case: Case) -> str | None:
-        """One canonical business gate for readiness and locked POST.
+    def _nonissuance_decision_blocker(
+        self, session: Session, *, case_id: str, case_state: CaseState,
+    ) -> str | None:
+        """One persisted-data business gate for readiness and locked POST.
 
-        Readiness is advisory and read-only. The mutation always calls the same
-        gate *after* locking the Case and verifying expected row_version.
+        The mutation supplies locked Case fields. Readiness supplies SQL
+        projections. Child status/date facts are read as scalar columns so a
+        reused Session cannot flush or overwrite pending child ORM drafts.
         """
-        if case.state != CaseState.AWAITING_CERTIFICATE_DECISION:
+        if case_state != CaseState.AWAITING_CERTIFICATE_DECISION:
             return "case_state_not_eligible"
         if session.scalar(
             select(CaseCertificateNonissuanceDecision.id)
-            .where(CaseCertificateNonissuanceDecision.case_id == case.id)
+            .where(CaseCertificateNonissuanceDecision.case_id == case_id)
         ) is not None:
             return "nonissuance_already_recorded"
-        outcome = session.scalars(
-            select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if outcome is None or not str(outcome.final_evaluation or "").strip():
+        final_evaluation = session.scalar(
+            select(InspectionOutcome.final_evaluation)
+            .where(InspectionOutcome.case_id == case_id)
+        )
+        if not str(final_evaluation or "").strip():
             return "final_evaluation_missing"
-        latest = self._latest_case_capa_cycle(session, case.id)
-        if latest is not None and latest.status != CAPA_ACCEPTED_STATUS:
+        latest_capa_status = session.scalar(
+            select(CapaCycle.status)
+            .where(CapaCycle.case_id == case_id)
+            .order_by(CapaCycle.round_no.desc(), CapaCycle.created_at.desc())
+            .limit(1)
+        )
+        if latest_capa_status is not None and latest_capa_status != CAPA_ACCEPTED_STATUS:
             return "latest_capa_not_accepted"
         if session.scalar(
-            select(Certificate.id).where(Certificate.case_id == case.id).limit(1)
+            select(Certificate.id).where(Certificate.case_id == case_id).limit(1)
         ) is not None:
             return "linked_certificate_exists"
         return None
@@ -460,23 +480,30 @@ class CaseWorkflowService:
     def get_case_nonissuance_record_readiness(
         self, session: Session, *, case_id: str, user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        """Advisory Case-specific readiness for recording an explicit decision.
+        """Read-only advisory readiness from persisted Case and child columns.
 
-        Not certificate.issue readiness, not proof of legal issuance, and not
-        authority to close Case. POST independently rechecks under lock.
+        No refresh of dirty ORM identities, no autoflush, and no authority to
+        render, close, or legally issue a decision. POST rechecks under lock.
         """
-        case = self._get_case(session, case_id)
-        session.refresh(case)
-        permission = NONISSUANCE_DECISION_PERMISSION
-        blocker = (
-            "missing_permission" if permission not in user.permissions
-            else self._nonissuance_decision_blocker(session, case=case)
-        )
+        with session.no_autoflush:
+            persisted = session.execute(
+                select(Case.id, Case.state, Case.row_version)
+                .where(Case.id == case_id)
+            ).one_or_none()
+            if persisted is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
+            permission = NONISSUANCE_DECISION_PERMISSION
+            blocker = (
+                "missing_permission" if permission not in user.permissions
+                else self._nonissuance_decision_blocker(
+                    session, case_id=persisted.id, case_state=persisted.state,
+                )
+            )
         return {
             "action_key": "record_certificate_nonissuance_decision",
             "label": "Ghi nhận quyết định không cấp GCN",
-            "case_id": case.id,
-            "expected_case_version": case.row_version,
+            "case_id": persisted.id,
+            "expected_case_version": persisted.row_version,
             "available": blocker is None,
             "reason_code": blocker,
             "required_permissions": [permission],
@@ -501,7 +528,7 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="Decision reference is required (up to 255 characters).")
         if not explanation or not explanation.strip():
             raise HTTPException(status_code=422, detail="Decision explanation is required.")
-        blocker = self._nonissuance_decision_blocker(session, case=case)
+        blocker = self._nonissuance_decision_blocker(session, case_id=case.id, case_state=case.state)
         if blocker is not None:
             raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))
         actor = self._get_or_create_app_user(session, user)
@@ -537,34 +564,47 @@ class CaseWorkflowService:
         case_id: str,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        case = self._get_case(session, case_id)
-        # Readiness may run in a long-lived Session after another writer
-        # committed a Case transition. Refresh the owner state before deciding
-        # whether issuance should be offered; mutation rechecks under Case lock.
-        session.refresh(case)
-        permission = "certificate.issue"
-        reason = None if permission in user.permissions else "missing_permission"
-        if reason is None and session.scalar(
-            select(CaseCertificateNonissuanceDecision.id)
-            .where(CaseCertificateNonissuanceDecision.case_id == case.id)
-        ) is not None:
-            reason = "case_nonissuance_decision_recorded"
-        if reason is None and case.gxp_type == "GMP" and self._gmp_case_already_issued(session, case.id):
-            reason = "gmp_case_already_issued"
-        if reason is None:
-            if case.state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
-                reason = "case_state_not_eligible"
-            else:
-                latest_capa = self._latest_case_capa_cycle(session, case.id)
-                if latest_capa is not None and latest_capa.status != CAPA_ACCEPTED_STATUS:
-                    reason = "latest_capa_not_accepted"
+        """Advisory Case issuance readiness from persisted, scalar sources.
+
+        Read-only callers may carry a dirty cached Case or CAPA round. SQL
+        source values must be authoritative without flushing or discarding
+        those pending ORM changes; issuance still revalidates under Case lock.
+        """
+        with session.no_autoflush:
+            persisted = session.execute(
+                select(Case.id, Case.state, Case.gxp_type)
+                .where(Case.id == case_id)
+            ).one_or_none()
+            if persisted is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
+            permission = "certificate.issue"
+            reason = None if permission in user.permissions else "missing_permission"
+            if reason is None and session.scalar(
+                select(CaseCertificateNonissuanceDecision.id)
+                .where(CaseCertificateNonissuanceDecision.case_id == persisted.id)
+            ) is not None:
+                reason = "case_nonissuance_decision_recorded"
+            if reason is None and persisted.gxp_type == "GMP" and self._gmp_case_already_issued(session, persisted.id):
+                reason = "gmp_case_already_issued"
+            if reason is None:
+                if persisted.state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
+                    reason = "case_state_not_eligible"
+                else:
+                    latest_capa_status = session.scalar(
+                        select(CapaCycle.status)
+                        .where(CapaCycle.case_id == persisted.id)
+                        .order_by(CapaCycle.round_no.desc(), CapaCycle.created_at.desc())
+                        .limit(1)
+                    )
+                    if latest_capa_status is not None and latest_capa_status != CAPA_ACCEPTED_STATUS:
+                        reason = "latest_capa_not_accepted"
         return {
             "action_key": "issue_certificate",
             "label": "Cấp chứng nhận GxP",
             "available": reason is None,
             "reason_code": reason,
             "required_permissions": [permission],
-            "certificate_type": case.gxp_type,
+            "certificate_type": persisted.gxp_type,
             "issuance_basis": "inspection_case",
         }
 

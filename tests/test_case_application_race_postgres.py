@@ -51,7 +51,7 @@ def test_case_application_competing_creation_is_serialized_and_loser_fails_close
             case_id = case.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("race-case-application", "manager")
+        user = build_authenticated_user("race-case-application", "manager", permissions={"case.edit"})
         def write(session, token, value):
             return service.upsert_case_application(
                 session, case_id=case_id, expected_version=token,

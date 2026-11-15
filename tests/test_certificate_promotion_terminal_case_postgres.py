@@ -78,7 +78,7 @@ def test_certificate_promotion_rechecks_cached_case_after_committed_cancellation
             case_token, cert_token = case.row_version, cert.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-promotion-case", "manager", permissions={"certificate.approve"})
+        actor = build_authenticated_user("synthetic-promotion-case", "manager", permissions={"certificate.approve", "case.edit"})
         contender = factory()
         cached_case = contender.get(Case, case_id)
         assert cached_case.state == CaseState.AWAITING_CERTIFICATE_DECISION

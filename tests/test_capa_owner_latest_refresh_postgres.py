@@ -86,7 +86,7 @@ def test_capa_mutations_revalidate_latest_committed_owner_and_status(scenario):
         expected_version = canonical.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("ci-capa-owner", "manager", permissions={"capa.edit"})
+        user = build_authenticated_user("ci-capa-owner", "manager", permissions={"capa.edit", "case.edit"})
         with pytest.raises(HTTPException) as denied:
             if scenario == "cached_owner_reassigned":
                 service.submit_capa_cycle(

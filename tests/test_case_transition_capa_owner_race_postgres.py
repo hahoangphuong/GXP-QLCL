@@ -56,7 +56,7 @@ def test_transition_serializes_against_newly_created_uncommitted_capa():
             case_id, version = case.id, case.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-case-transition-race", "manager", permissions={"capa.edit"})
+        user = build_authenticated_user("synthetic-case-transition-race", "manager", permissions={"capa.edit", "case.edit"})
         first = factory()
         created = service.create_capa_cycle(
             first, case_id=case_id, expected_case_version=version,

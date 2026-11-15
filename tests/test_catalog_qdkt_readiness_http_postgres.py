@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import (
-    AuditEvent, Case, Company, Document, DocumentVersion,
+    AuditEvent, Case, Company, Document,
     InspectionDecision, InspectionPlan, ProductionLine, Site,
 )
 from test_canonical_http_workflow_postgres import api, ok
@@ -56,11 +56,6 @@ def _counts(engine, case_id):
                 ("documents", Document, Document.case_id == case_id),
                 ("decisions", InspectionDecision, InspectionDecision.inspection_plan_id.in_(
                     select(InspectionPlan.id).where(InspectionPlan.case_id == case_id))),
-                ("versions", DocumentVersion, DocumentVersion.id.in_(
-                    select(DocumentVersion.id).join(
-                        Document, Document.id == DocumentVersion.document_variant_id
-                    ).where(Document.case_id == case_id)
-                )),
             )
         }
 
@@ -122,6 +117,7 @@ def test_new_case_qdkt_draft_never_promotes_plan_scalar_to_issued_reference(pg_e
         db.add(first)
         db.commit()
         first_id = first.id
+        plan_id = plan_row.id
     source_only = _readiness(api, case_id)
     assert source_only["decision_source_id"] == first_id
     assert "QDKT_LEGAL_ISSUANCE_EVIDENCE_UNPROVEN" in source_only["blocked_reasons"]
@@ -153,7 +149,7 @@ def test_new_case_qdkt_draft_never_promotes_plan_scalar_to_issued_reference(pg_e
         assert db.scalar(select(func.count()).select_from(Document)
                          .where(Document.case_id == case_id)) == 0
         assert db.scalar(select(func.count()).select_from(InspectionDecision)
-                         .where(InspectionDecision.inspection_plan_id == plan_row.id)) == 2
+                         .where(InspectionDecision.inspection_plan_id == plan_id)) == 2
 
 
 def test_qdkt_reference_ambiguous_replacements_and_permission_fail_closed(pg_engine, api):

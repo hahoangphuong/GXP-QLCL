@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import (
-    AuditEvent, Case, Certificate, Company, ProductionLine, Site,
+    AuditEvent, Case, CaseCertificateNonissuanceDecision, Certificate, Company, ProductionLine, Site,
 )
 from test_canonical_http_workflow_postgres import (
     api, ok, workspace, transition, new_cycle, submit_assess,
@@ -264,4 +264,146 @@ def test_real_http_new_initial_case_continues_through_capa_pct_ct_and_close(pg_e
         )) == 1
         assert db.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.entity_id == certificate_id, AuditEvent.action == "certificate.issue",
+        )) == 1
+
+
+def test_real_initial_case_explicit_nonissuance_blocks_certificate_and_terminal_guess(pg_engine, api):
+    """No Certificate, 'closed' or 'cancelled' is inferred from an explicit refusal.
+
+    This is a canonical recorded fact, not a rendered/signed legal decision.
+    The backend intentionally has no terminal lifecycle for this branch yet.
+    """
+    company_id, site_id, line_id, case_id = (new_uuid() for _ in range(4))
+    ok(api, "POST", "/companies", {
+        "company_id": company_id, "legal_name": "Synthetic refusal-branch company",
+        "legal_address": "Synthetic legal address", "reason": "Isolated scenario",
+    })
+    ok(api, "POST", f"/companies/{company_id}/sites", {
+        "site_id": site_id, "site_name": "Synthetic refusal-branch Site",
+        "site_address": "Synthetic factory", "reason": "Isolated scenario",
+    })
+    ok(api, "POST", f"/sites/{site_id}/production-lines", {
+        "production_line_id": line_id, "code": "L1",
+        "effective_from": "2026-01-01",
+        "physical_identity_evidence_reference": "SYNTHETIC-REFUSAL-OWNER",
+        "reason": "Explicit physical asset",
+    })
+    created = ok(api, "POST", f"/sites/{site_id}/inspection-cases/initial", {
+        "case_id": case_id, "gxp_type": "GMP",
+        "production_line_id": line_id, "inspection_type": "Mới",
+        "applicable_standard": "WHO-GMP", "reason": "New synthetic Case",
+    })
+    assert created["state"] == "draft"
+    assert ok(api, "GET", f"/cases/{case_id}/certificate-nonissuance-decision")["decision"] is None
+    blocked = ok(api, "GET", f"/cases/{case_id}/certificate-nonissuance-decision/readiness")
+    assert not blocked["available"]
+    assert blocked["reason_code"] == "case_state_not_eligible"
+
+    for target in (
+        "application_received", "under_assessment", "planned",
+        "decision_issued", "inspection_in_progress",
+    ):
+        transition(api, case_id, target)
+    ok(api, "PUT", f"/cases/{case_id}/outcome", {
+        "inspected_on": "2026-11-10", "inspected_to_on": "2026-11-10",
+        "outcome_result": "Synthetic inspection findings",
+    })
+    transition(api, case_id, "inspection_completed")
+    first = new_cycle(api, case_id)
+    submit_assess(api, case_id, first, "accepted")
+    final_ready = workspace(api, case_id)["inspection"]["final_evaluation_readiness"]
+    assert final_ready["available"]
+    ok(api, "POST", f"/cases/{case_id}/outcome/final-evaluation", {
+        "expected_version": final_ready["expected_version"],
+        "final_evaluation": "Không đạt",
+    })
+    transition(api, case_id, "awaiting_certificate_decision")
+    before = counts(pg_engine)
+
+    # Readiness is advisory: mutation must independently re-check under lock.
+    readiness = ok(api, "GET", f"/cases/{case_id}/certificate-nonissuance-decision/readiness")
+    assert readiness["available"]
+    assert readiness["case_id"] == case_id
+    expected = readiness["expected_case_version"]
+    payload = {
+        "expected_case_version": expected,
+        "decided_on": "2026-11-13",
+        "decision_reference": "SYNTHETIC-NONISSUANCE-" + case_id[:8],
+        "explanation": "Synthetic explicit reason; no legal document generated",
+        "reason": "Isolated operator contract",
+    }
+    status, _ = api(
+        "POST", f"/cases/{case_id}/certificate-nonissuance-decision",
+        payload, role="reader",
+    )
+    assert status == 403
+    status, _ = api("POST", f"/cases/{case_id}/certificate-nonissuance-decision", {
+        **payload, "expected_case_version": expected + 1,
+    })
+    assert status == 409
+    status, _ = api("POST", f"/cases/{case_id}/certificate-nonissuance-decision", {
+        **payload, "decision_reference": " ",
+    })
+    assert status == 422
+    assert counts(pg_engine) == before
+    assert ok(api, "GET", f"/cases/{case_id}/certificate-nonissuance-decision")["decision"] is None
+
+    recorded = ok(api, "POST", f"/cases/{case_id}/certificate-nonissuance-decision", payload)
+    decision = recorded["decision"]
+    assert recorded["case_id"] == case_id
+    assert decision["case_id"] == case_id
+    assert decision["decision_reference"] == payload["decision_reference"]
+    assert decision["decided_on"] == payload["decided_on"]
+    decision_id = decision["decision_id"]
+    assert ok(api, "GET", f"/cases/{case_id}/certificate-nonissuance-decision") == recorded
+
+    after_record = counts(pg_engine)
+    assert after_record[Certificate.__tablename__] == before[Certificate.__tablename__]
+    assert after_record[AuditEvent.__tablename__] == before[AuditEvent.__tablename__] + 1
+
+    # No invented retry/idempotency or silent Certificate when POST is ambiguous.
+    status, _ = api("POST", f"/cases/{case_id}/certificate-nonissuance-decision", payload)
+    assert status == 409
+    assert ok(api, "GET", f"/cases/{case_id}/certificate-nonissuance-decision") == recorded
+    assert counts(pg_engine) == after_record
+
+    denied = ok(api, "GET", f"/cases/{case_id}/certificate-nonissuance-decision/readiness")
+    assert not denied["available"] and denied["reason_code"] == "nonissuance_already_recorded"
+    ws = workspace(api, case_id)
+    assert ws["nonissuance_decision"]["decision"]["decision_id"] == decision_id
+    assert not ws["certificate_issue_readiness"]["available"]
+    assert ws["certificate_issue_readiness"]["reason_code"] == "case_nonissuance_decision_recorded"
+    certificate_payload = {
+        "case_id": case_id, "certificate_type": "GMP",
+        "issuance_basis": "inspection_case", "certificate_number": "MUST-NOT-ISSUE",
+        "issue_date": "2026-11-13", "expiry_date": "2027-11-13", "scopes": [],
+    }
+    status, _ = api("POST", f"/sites/{site_id}/certificates", certificate_payload)
+    assert status == 409
+    for target in ("certified", "cancelled"):
+        action = next(a for a in ws["transition_actions"] if a["target_state"] == target)
+        assert not action["available"]
+        assert action["reason_code"] == "nonissuance_decision_recorded"
+        status, _ = api("POST", f"/cases/{case_id}/transition", {
+            "target_state": target, "expected_version": action["expected_version"],
+            "reason": "No inferred terminal state",
+        })
+        assert status == 409
+    assert counts(pg_engine) == after_record
+    detail = ok(api, "GET", f"/cases/{case_id}")
+    assert detail["state"] == "awaiting_certificate_decision"
+    assert detail["production_line_id"] == line_id
+    assert detail["site_id"] == site_id
+
+    with Session(pg_engine) as db:
+        assert db.scalar(select(func.count()).select_from(Certificate)
+                         .where(Certificate.case_id == case_id)) == 0
+        decisions = list(db.scalars(
+            select(CaseCertificateNonissuanceDecision)
+            .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+        ))
+        assert len(decisions) == 1 and decisions[0].id == decision_id
+        assert db.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == decision_id,
+            AuditEvent.action == "case_certificate_nonissuance_decision.record",
         )) == 1

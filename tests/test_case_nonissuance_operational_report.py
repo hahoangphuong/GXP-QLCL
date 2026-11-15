@@ -3,7 +3,7 @@ from datetime import date
 import anyio
 import pytest
 from fastapi import FastAPI, HTTPException
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 from backend.app.api.routers.catalog import register_catalog_routes
@@ -97,6 +97,54 @@ def test_filters_counts_pagination_export_and_case_ownership(seeded):
         assert {row["case_id"] for row in report(db, certificate_decision_status="nonissuance_recorded", gxp_type="GMP")["items"]} == {ids["explicit"]}
         assert report(db, certificate_decision_status="awaiting_decision", state="planned")["total_count"] == 0
         assert {row["case_id"] for row in report(db, certificate_decision_status="nonissuance_recorded", q="Pharma")["items"]} == {ids["explicit"]}
+
+
+def test_report_refreshes_cached_case_and_site_after_sql_owner_change(seeded):
+    """SQL current classification/count and ORM-projected fields must agree.
+
+    A long-lived Session can contain earlier Case and Site ORM identities.
+    Bypass ORM synchronization to simulate another writer committing values;
+    the report SELECT must repopulate rather than serialize stale objects.
+    """
+    engine, ids = seeded
+    with Session(engine) as db:
+        case = db.get(Case, ids["pending"])
+        site = db.get(Site, case.site_id)
+        assert case.state == CaseState.AWAITING_CERTIFICATE_DECISION
+        original_name = site.site_name
+        replacement_name = "Updated canonical report facility"
+        assert original_name != replacement_name
+
+        db.execute(
+            update(Case).where(Case.id == case.id)
+            .values(state=CaseState.PLANNED)
+            .execution_options(synchronize_session=False)
+        )
+        db.execute(
+            update(Site).where(Site.id == site.id)
+            .values(site_name=replacement_name)
+            .execution_options(synchronize_session=False)
+        )
+        # Demonstrate the scenario: tracked identities still have old values.
+        assert case.state == CaseState.AWAITING_CERTIFICATE_DECISION
+        assert site.site_name == original_name
+
+        page = report(db)
+        by_id = {item["case_id"]: item for item in page["items"]}
+        assert by_id[ids["pending"]]["state"] == CaseState.PLANNED.value
+        assert by_id[ids["pending"]]["certificate_decision_status"] == "not_at_decision_stage"
+        assert by_id[ids["pending"]]["facility_name"] == replacement_name
+        assert by_id[ids["explicit"]]["certificate_decision_status"] == "nonissuance_recorded"
+        assert case.state == CaseState.PLANNED
+        assert site.site_name == replacement_name
+        # Filters/counts must not disagree with projected Case state.
+        assert report(db, certificate_decision_status="awaiting_decision")["total_count"] == 0
+        changed = report(db, certificate_decision_status="not_at_decision_stage")
+        assert changed["total_count"] == 2
+        assert {item["case_id"] for item in changed["items"]} == {
+            ids["pending"], ids["earlier"],
+        }
+        assert not db.new and not db.dirty
 
 
 @pytest.mark.parametrize("wrong", ["", "refused", "issued", "nonissuance", "pending", "other"])

@@ -34,15 +34,19 @@ def test_new_case_team_canonical_http_never_becomes_issued_qdkt(pg_engine, api):
         db.add(inspector)
         db.flush()
         profile = InspectorProfile(person_id=inspector.id)
+        secretary_person = Person(full_name="Synthetic Secretary", display_name="Inspector Secretary")
+        db.add(secretary_person)
+        db.flush()
+        secretary_profile = InspectorProfile(person_id=secretary_person.id)
         representative = InspectionTeamParticipantCatalog(
             code="SYNTH-QDKT-" + case_id[:10],
             participant_kind="ORGANIZATION_REPRESENTATIVE",
             display_name="Synthetic Organization Representative",
             organization_name="Synthetic company",
         )
-        db.add_all([profile, representative])
+        db.add_all([profile, secretary_profile, representative])
         db.commit()
-        profile_id, catalog_id = profile.id, representative.id
+        profile_id, secretary_id, catalog_id = profile.id, secretary_profile.id, representative.id
 
     members = [
         {
@@ -51,9 +55,14 @@ def test_new_case_team_canonical_http_never_becomes_issued_qdkt(pg_engine, api):
             "role_code": "LEADER", "sort_order": 1,
         },
         {
+            "identity_kind": "INSPECTOR_PROFILE",
+            "inspector_profile_id": secretary_id,
+            "role_code": "SECRETARY", "sort_order": 2,
+        },
+        {
             "identity_kind": "ORGANIZATION_REPRESENTATIVE",
             "participant_catalog_id": catalog_id,
-            "role_code": "MEMBER", "sort_order": 2,
+            "role_code": "MEMBER", "sort_order": 3,
         },
     ]
     status, _ = api("PUT", f"/cases/{case_id}/team", {
@@ -66,16 +75,16 @@ def test_new_case_team_canonical_http_never_becomes_issued_qdkt(pg_engine, api):
         "reason": "Explicit synthetic operator team",
     })
     assert created["case_id"] == case_id
-    assert len(created["members"]) == 2
+    assert len(created["members"]) == 3
     assert created["row_version"] >= 2
     team_id = created["team_id"]
     view = ok(api, "GET", route)
     assert view["case_id"] == case_id and view["team_id"] == team_id
     assert view["team_revision"] == created["row_version"]
-    assert [row["role_code"] for row in view["members"]] == ["LEADER", "MEMBER"]
-    assert [row["sort_order"] for row in view["members"]] == [1, 2]
+    assert [row["role_code"] for row in view["members"]] == ["LEADER", "SECRETARY", "MEMBER"]
+    assert [row["sort_order"] for row in view["members"]] == [1, 2, 3]
     assert [row["display_name"] for row in view["members"]] == [
-        "Inspector A", "Synthetic Organization Representative",
+        "Inspector A", "Inspector Secretary", "Synthetic Organization Representative",
     ]
     assert view["source_kind"] == "CURRENT_CASE_TEAM"
     assert view["draft_snapshot_available"] is False
@@ -97,7 +106,7 @@ def test_new_case_team_canonical_http_never_becomes_issued_qdkt(pg_engine, api):
         assert db.scalar(select(func.count()).select_from(InspectionTeam)
                          .where(InspectionTeam.case_id == case_id)) == 1
         assert db.scalar(select(func.count()).select_from(InspectionTeamMember)
-                         .where(InspectionTeamMember.team_id == team_id)) == 2
+                         .where(InspectionTeamMember.team_id == team_id)) == 3
         assert db.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.entity_id == team_id,
             AuditEvent.action == "inspection_team.upsert",

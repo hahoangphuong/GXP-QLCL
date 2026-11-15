@@ -5,19 +5,21 @@ import { CASE_STATE_OPTIONS, formatStatusLabel } from "../../lib/presentation";
 type Filters = {
   query: string;
   province: string;
-  caseState: string;
+  caseStates: string[];
   certificateState: string;
   certificateExpiringWithinDays: string;
   changeRequestStates: string[];
 };
+
+type FilterChange = Exclude<keyof Filters, "caseStates"> | "caseState";
 
 function buildFilterChips(filters: Filters): string[] {
   const chips: string[] = [];
   if (filters.province.trim()) {
     chips.push(`Tỉnh/thành: ${filters.province.trim()}`);
   }
-  if (filters.caseState) {
-    chips.push(`Trạng thái hồ sơ: ${formatStatusLabel(filters.caseState)}`);
+  if (filters.caseStates.length > 0) {
+    chips.push(`Trạng thái hồ sơ: ${filters.caseStates.map((item) => formatStatusLabel(item)).join(", ")}`);
   } else if (filters.changeRequestStates.length > 0) {
     chips.push(`Thay đổi: ${filters.changeRequestStates.map((item) => formatStatusLabel(item)).join(", ")}`);
   }
@@ -40,7 +42,7 @@ export function SearchToolbar({
   hasMasterFilters = false,
 }: {
   filters: Filters;
-  onChange: (field: keyof Filters, value: string) => void;
+  onChange: (field: FilterChange, value: string) => void;
   onClear: () => void;
   gxpType: string;
   loadedCount: number;
@@ -49,6 +51,7 @@ export function SearchToolbar({
 }) {
   const [expanded, setExpanded] = useState(false);
   const chips = buildFilterChips(filters);
+  const hasMultipleCaseStates = filters.caseStates.length > 1;
 
   return (
     <section className="panel panel-tight search-toolbar">
@@ -96,7 +99,8 @@ export function SearchToolbar({
           </label>
           <label>
             <span>Trạng thái hồ sơ</span>
-            <select value={filters.caseState} onChange={(event) => onChange("caseState", event.target.value)}>
+            <select value={filters.caseStates.length === 1 ? filters.caseStates[0] : ""} onChange={(event) => onChange("caseState", event.target.value)}>
+              {hasMultipleCaseStates ? <option disabled value="">Nhiều trạng thái (giữ theo liên kết)</option> : null}
               <option value="">Tất cả</option>
               {CASE_STATE_OPTIONS.map((option) => (
                 <option key={option} value={option}>

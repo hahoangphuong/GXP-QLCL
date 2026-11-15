@@ -7,7 +7,7 @@ import { SearchToolbar } from "./SearchToolbar";
 const filters = {
   query: "",
   province: "",
-  caseState: "",
+  caseStates: [],
   certificateState: "",
   certificateExpiringWithinDays: "",
   changeRequestStates: [],
@@ -47,6 +47,20 @@ describe("SearchToolbar", () => {
 
     expect(screen.getByLabelText("Bộ lọc đang áp dụng")).toHaveTextContent("Tỉnh/thành: Hà Nội");
     expect(screen.getByLabelText("Bộ lọc đang áp dụng")).toHaveTextContent("Chứng nhận: Còn hiệu lực");
+    expect(screen.getByRole("button", { name: "Xóa lọc" })).toBeEnabled();
+  });
+
+  it("keeps every URL-backed case state visible without collapsing a multi-value filter into no filter", () => {
+    render(<SearchToolbar
+      filters={{ ...filters, caseStates: ["draft", "inspection_completed"] }}
+      gxpType="GMP"
+      loadedCount={2}
+      totalCount={2}
+      onChange={vi.fn()}
+      onClear={vi.fn()}
+    />);
+
+    expect(screen.getByLabelText("Bộ lọc đang áp dụng")).toHaveTextContent("Trạng thái hồ sơ: Nháp, Đã hoàn tất kiểm tra");
     expect(screen.getByRole("button", { name: "Xóa lọc" })).toBeEnabled();
   });
 });

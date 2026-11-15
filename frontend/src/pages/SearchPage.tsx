@@ -2697,7 +2697,7 @@ export function SearchPage({
           filters={{
             query: generalQuery,
             province,
-            caseState: caseStates.length === 1 ? caseStates[0] : "",
+            caseStates,
             certificateState,
             certificateExpiringWithinDays,
             changeRequestStates,

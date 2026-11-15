@@ -99,7 +99,7 @@ def test_reassessment_copies_consistent_scope_while_certified_source_is_edited()
             site_id, source_id, node_id, scope_version = site.id, source.id, node.id, scope.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-reassessment", "manager")
+        user = build_authenticated_user("synthetic-reassessment", "manager", permissions={"case.edit"})
 
         def create_copy():
             try:

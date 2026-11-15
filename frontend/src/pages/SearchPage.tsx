@@ -23,6 +23,7 @@ import { caseReportReturn } from "../features/reports/caseReportUrl";
 import { reportReturnLocation } from "../features/reports/reportReturnLocation";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { ReassessmentDialog } from "../features/search/ReassessmentDialog";
+import { SearchToolbar } from "../features/search/SearchToolbar";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import { useBusinessEligibilitySourceEvidence } from "../features/search/useBusinessEligibilitySourceEvidence";
 import { useCertificateDocumentMetadata } from "../features/search/useCertificateDocumentMetadata";
@@ -1636,6 +1637,20 @@ export function SearchPage({
     });
   }
 
+  function clearSearchFilters() {
+    startTransition(() => {
+      resetDependentContext();
+      setGeneralQuery("");
+      setFacilityName("");
+      setCertificateScope("");
+      setProvince("");
+      setCaseStates([]);
+      setCertificateState("");
+      setCertificateExpiringWithinDays("");
+      setChangeRequestStates([]);
+    });
+  }
+
   function loadMoreResults() {
     if (resultsLoading || !hasMoreResults) {
       return;
@@ -2678,6 +2693,25 @@ export function SearchPage({
     <section className="page-section search-page legacy-search-page">
       <div className="search-workspace search-workspace-split search-master-history">
         <div className="legacy-master-pane">
+        <SearchToolbar
+          filters={{
+            query: generalQuery,
+            province,
+            caseState: caseStates.length === 1 ? caseStates[0] : "",
+            certificateState,
+            certificateExpiringWithinDays,
+            changeRequestStates,
+          }}
+          gxpType={gxpType}
+          hasMasterFilters={Boolean(facilityName || certificateScope)}
+          loadedCount={results.length}
+          totalCount={resultsTotalCount}
+          onChange={(field, value) => {
+            if (field === "changeRequestStates") return;
+            updateFilter(field === "query" ? "generalQuery" : field, value);
+          }}
+          onClear={clearSearchFilters}
+        />
         {quarantinedHistoricalCertificateLegacyIds.length > 0 && (
           <p role="status" className="search-historical-certificate-warning">
             Cảnh báo dữ liệu lịch sử: {quarantinedHistoricalCertificateLegacyIds.length} giấy chứng nhận
@@ -2708,6 +2742,7 @@ export function SearchPage({
           rows={results}
           selectedResultKey={visibleSelectedResultKey}
           selectedGxpType={gxpType}
+          totalCount={resultsTotalCount}
         />
         </div>
         <FacilityHistoryPane

@@ -22,15 +22,16 @@ function focus(element: HTMLElement) {
 }
 
 describe("HistoryTable", () => {
-  it("shows the original three columns while retaining authoritative states on accessible row labels and titles", () => {
+  it("shows the compact four columns with authoritative state presentation", () => {
     render(<HistoryTable rows={rows} selectedHistoryId="case-uuid" onSelect={vi.fn()} />);
-    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["Loại", "Tiêu chuẩn", "Ngày"]);
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["Loại", "Tiêu chuẩn", "Ngày", "Trạng thái"]);
     const tableRows = bodyRows();
     expect(tableRows[0]).toHaveAttribute("title", "Chờ cấp chứng nhận");
     expect(within(tableRows[0]).getByText("04-09-2026")).toBeInTheDocument();
     expect(within(tableRows[1]).getByText("Thay đổi")).toHaveAttribute("title", "Thay đổi cơ sở");
     expect(within(tableRows[1]).getByText(rows[1].standard!)).toHaveAttribute("title", rows[1].standard);
     expect(tableRows[1]).toHaveAttribute("aria-label", expect.stringContaining("Đang xem xét"));
+    expect(within(tableRows[0]).getByText("Chờ cấp chứng nhận")).toBeInTheDocument();
     expect(tableRows[2]).toHaveAttribute("title", "future_backend_state");
     expect(within(tableRows[2]).getAllByText("Chưa có")).toHaveLength(2);
     expect(screen.queryByText("KT-01")).not.toBeInTheDocument();
@@ -78,7 +79,7 @@ describe("HistoryTable", () => {
     render(<HistoryTable rows={[]} selectedHistoryId="stale-id" onSelect={onSelect} />);
     expect(screen.getByText("0 sự kiện")).toBeInTheDocument();
     const emptyCell = screen.getByRole("cell");
-    expect(emptyCell).toHaveAttribute("colspan", "3");
+    expect(emptyCell).toHaveAttribute("colspan", "4");
     expect(emptyCell).toHaveTextContent("Chưa có lịch sử kiểm tra hoặc thay đổi");
     fireEvent.click(emptyCell);
     expect(onSelect).not.toHaveBeenCalled();

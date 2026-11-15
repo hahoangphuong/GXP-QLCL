@@ -3027,3 +3027,157 @@ tr:focus-visible {
 .persisted-version-fields dt { font-weight: 600; }
 .persisted-version-fields dd, .persisted-version-text { min-width: 0; margin: 0; padding: 4px; background: #bfffff; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .persisted-version-fields > div { grid-template-columns: minmax(0, 1fr); } }
+
+/* Compact master → history → detail workspace. The source of business state
+   remains SearchPage; these rules only restore the MainForm scanning order. */
+.legacy-search-page {
+  grid-template-columns: minmax(0, 1fr) clamp(20rem, 28vw, 25rem);
+  grid-template-rows: minmax(17rem, 36vh) auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "master history"
+    "actions actions"
+    "tabs tabs"
+    "detail detail";
+  gap: 0.5rem;
+}
+
+.legacy-search-page .legacy-master-pane {
+  grid-area: master;
+  gap: 0.35rem;
+}
+
+.legacy-search-page .history-panel {
+  display: flex;
+  grid-area: history;
+  min-width: 0;
+}
+
+.legacy-search-page .search-context-actions {
+  grid-area: actions;
+  min-width: 0;
+}
+
+.legacy-search-page .facility-tabs { grid-area: tabs; }
+.legacy-search-page .facility-tab-body,
+.legacy-search-page .search-detail-area > .state-panel { grid-area: detail; }
+
+.legacy-search-page .search-toolbar {
+  display: grid;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.38rem 0.5rem;
+  border-radius: 5px;
+}
+
+.legacy-search-page .toolbar-primary-compact {
+  display: grid;
+  grid-template-columns: auto auto minmax(15rem, 1fr) auto auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legacy-search-page .toolbar-heading,
+.legacy-search-page .toolbar-gxp-context,
+.legacy-search-page .toolbar-meta {
+  white-space: nowrap;
+}
+
+.legacy-search-page .toolbar-heading { display: inline-flex; align-items: baseline; gap: 0.35rem; }
+.legacy-search-page .toolbar-label { color: #17313c; font-size: 0.86rem; font-weight: 800; }
+.legacy-search-page .toolbar-meta,
+.legacy-search-page .toolbar-gxp-context { color: #617982; font-size: 0.76rem; }
+.legacy-search-page .toolbar-search-primary input { min-height: 28px; }
+.legacy-search-page .search-toolbar button { min-height: 28px; padding: 0 0.55rem; font-size: 0.78rem; }
+.legacy-search-page .search-toolbar .toolbar-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; }
+.legacy-search-page .search-toolbar .toolbar-grid label { display: grid; gap: 0.15rem; font-size: 0.76rem; }
+
+.legacy-search-page .search-historical-certificate-warning {
+  margin: 0;
+  padding: 0.22rem 0.45rem;
+  border: 1px solid #edcf91;
+  border-radius: 3px;
+  background: #fff8e9;
+  color: #765213;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.legacy-search-page .results-panel { flex: 1 1 auto; min-height: 0; }
+.legacy-search-page .facility-table-header { min-height: 30px; padding: 0.28rem 0.5rem; align-items: center; }
+.legacy-search-page .facility-table-header h2 { margin: 0; color: #17313c; font-size: 0.88rem; }
+.legacy-search-page .facility-table-header .panel-meta { color: #617982; font-size: 0.75rem; }
+.legacy-search-page .facility-table .col-code { width: 4.4rem; }
+.legacy-search-page .facility-table .col-facility { width: 25%; }
+.legacy-search-page .facility-table .col-scope { width: 34%; }
+.legacy-search-page .facility-table .col-province { width: 13%; }
+.legacy-search-page .facility-table .col-reference { width: 8.5rem; }
+.legacy-search-page .facility-table .col-status { width: 10.5rem; }
+.legacy-search-page :is(.facility-table, .history-table) thead { position: sticky; top: 0; z-index: 2; }
+.legacy-search-page .facility-table th { background: #eef4f6; }
+
+.legacy-search-page .history-panel .panel-header { min-height: 30px; padding: 0.28rem 0.45rem; align-items: center; }
+.legacy-search-page .history-panel .panel-header h3 { margin: 0; }
+.legacy-search-page .history-panel .panel-meta { color: #617982; font-size: 0.75rem; }
+.legacy-search-page .history-table { min-width: 100%; table-layout: fixed; font-size: 0.78rem; }
+.legacy-search-page .history-table .col-event-type { width: 18%; }
+.legacy-search-page .history-table .col-standard { width: 25%; }
+.legacy-search-page .history-table .col-date { width: 21%; }
+.legacy-search-page .history-table .col-state { width: 36%; }
+.legacy-search-page .history-table :is(th, td) { padding: 0.34rem 0.38rem; overflow-wrap: anywhere; }
+.legacy-search-page .history-table td:nth-child(2) { white-space: normal; }
+
+/* Keep action discovery, but stop the old action card competing with the master grid. */
+.legacy-search-page .action-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.38rem 0.75rem;
+  margin: 0;
+  padding: 0.32rem 0.48rem;
+  background: #f7fafb;
+}
+
+.legacy-search-page .action-toolbar-heading { font-size: 0.8rem; font-weight: 800; color: #17313c; }
+.legacy-search-page .action-group { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.legacy-search-page .action-group-label { color: #617982; font-size: 0.73rem; white-space: nowrap; }
+.legacy-search-page .action-toolbar .action-grid { display: flex; flex-wrap: wrap; gap: 0.28rem; }
+.legacy-search-page .action-toolbar .action-grid button {
+  justify-content: center;
+  min-height: 28px;
+  padding: 0.18rem 0.52rem;
+  font-size: 0.76rem;
+}
+
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]),
+.legacy-search-page:has(.facility-tabs .workspace-tab:first-child[aria-selected="true"]) {
+  grid-template-areas:
+    "master history"
+    "actions actions"
+    "tabs tabs"
+    "detail detail";
+}
+
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) :is(.history-panel, .facility-context-bar),
+.legacy-search-page:has(.facility-tabs .workspace-tab:first-child[aria-selected="true"]) .history-panel { display: flex; }
+
+@media (max-width: 1100px) {
+  .legacy-search-page,
+  .legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]),
+  .legacy-search-page:has(.facility-tabs .workspace-tab:first-child[aria-selected="true"]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(15rem, auto) minmax(12rem, auto) auto auto minmax(26rem, auto);
+    grid-template-areas: "master" "history" "actions" "tabs" "detail";
+    height: auto;
+  }
+  .legacy-search-page .toolbar-primary-compact { grid-template-columns: auto minmax(12rem, 1fr) auto auto; }
+  .legacy-search-page .toolbar-gxp-context { display: none; }
+  .legacy-search-page .search-toolbar .toolbar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .legacy-search-page .toolbar-primary-compact { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .legacy-search-page .toolbar-heading { grid-column: 1 / -1; }
+  .legacy-search-page .search-toolbar .toolbar-grid { grid-template-columns: minmax(0, 1fr); }
+  .legacy-search-page .action-group { align-items: flex-start; flex-direction: column; gap: 0.2rem; }
+}

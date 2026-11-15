@@ -979,7 +979,7 @@ def test_plan_created_event_uses_canonical_metadata_across_separate_field_edits(
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    actor = build_authenticated_user("manager01", "manager")
+    actor = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
     with Session(engine) as session:
         case_id = seed_case(session)
 
@@ -1060,7 +1060,7 @@ def test_outcome_recorded_event_uses_canonical_period_and_minutes_from_prior_upd
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    actor = build_authenticated_user("manager01", "manager")
+    actor = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
     with Session(engine) as session:
         case_id = seed_case(session)
 
@@ -4390,7 +4390,7 @@ def test_inspection_stage_create_only_null_and_versioned_updates(kind):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("inspection-cas", "manager")
+    user = build_authenticated_user("inspection-cas", "manager", permissions={"inspection.edit"})
     with Session(engine) as session:
         case_id = seed_case(session)
 
@@ -4458,7 +4458,7 @@ def test_inspection_team_replace_reads_committed_members_not_cached_before_audit
             seed, case_id=case_id,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                       "role_code": "LEADER", "role_label": "original", "sort_order": 1}],
-            reason="Seed canonical team.", user=build_authenticated_user("team-writer", "manager"),
+            reason="Seed canonical team.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
         )
         seed.commit()
         team_id, version = initial["team_id"], initial["row_version"]
@@ -4480,7 +4480,7 @@ def test_inspection_team_replace_reads_committed_members_not_cached_before_audit
             cached, case_id=case_id, expected_version=version,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                       "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
-            reason="Replace after committed correction.", user=build_authenticated_user("team-writer", "manager"),
+            reason="Replace after committed correction.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
         )
         cached.commit()
 
@@ -4505,7 +4505,7 @@ def test_inspection_team_cached_valid_member_cannot_bypass_newly_ambiguous_ident
             seed, case_id=case_id,
             members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                       "role_code": "LEADER", "role_label": "original", "sort_order": 1}],
-            reason="Seed a valid member.", user=build_authenticated_user("team-writer", "manager"),
+            reason="Seed a valid member.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
         )
         seed.commit()
         team_id, version = initial["team_id"], initial["row_version"]
@@ -4531,7 +4531,7 @@ def test_inspection_team_cached_valid_member_cannot_bypass_newly_ambiguous_ident
                 cached, case_id=case_id, expected_version=version,
                 members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None,
                           "role_code": "LEADER", "role_label": "replacement", "sort_order": 1}],
-                reason="Must reject ambiguous persisted member.", user=build_authenticated_user("team-writer", "manager"),
+                reason="Must reject ambiguous persisted member.", user=build_authenticated_user("team-writer", "manager", permissions={"inspection.edit"}),
             )
         cached.rollback()
 

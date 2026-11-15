@@ -100,6 +100,8 @@ OPEN_CASE_STATES = frozenset(
 CREATE_INSPECTION_CASE_PERMISSION = "case.edit"
 NONISSUANCE_DECISION_PERMISSION = "certificate.approve"
 CERTIFICATE_ISSUE_PERMISSION = "certificate.issue"
+CERTIFICATE_EDIT_PERMISSION = "certificate.edit"
+CERTIFICATE_APPROVE_PERMISSION = "certificate.approve"
 CHANGE_REQUEST_EDIT_PERMISSION = "change_request.edit"
 CHANGE_REQUEST_APPROVE_PERMISSION = "change_request.approve"
 CHANGE_REQUEST_EDITABLE_STATES = frozenset({ChangeRequestState.RECEIVED, ChangeRequestState.UNDER_REVIEW})
@@ -5092,6 +5094,10 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        # Match the HTTP route at the service mutation owner, before
+        # resolving Site/Certificate identity, locking or writing audit.
+        if CERTIFICATE_EDIT_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: certificate.edit.")
         certificate = self._get_certificate(session, certificate_id)
         # Serialize edits on their aggregate root and refresh an already-cached
         # ORM identity before validating the caller's concurrency token.
@@ -5176,6 +5182,10 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        # Match the HTTP route at the service mutation owner, before
+        # resolving Site/Certificate identity, locking or writing audit.
+        if CERTIFICATE_APPROVE_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: certificate.approve.")
         certificate = self._get_certificate(session, certificate_id)
         # The Site lock protects the single-current invariant. A cached
         # Certificate can predate a committed reassignment to another Site.
@@ -5354,6 +5364,10 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        # Match the HTTP route at the service mutation owner, before
+        # resolving Site/Certificate identity, locking or writing audit.
+        if CERTIFICATE_ISSUE_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: certificate.issue.")
         site = self._get_site(session, site_id)
         actor = self._get_or_create_app_user(session, user)
 
@@ -5436,6 +5450,10 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        # Match the HTTP route at the service mutation owner, before
+        # resolving Site/Certificate identity, locking or writing audit.
+        if CERTIFICATE_EDIT_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: certificate.edit.")
         row = self._get_business_eligibility(session, business_eligibility_certificate_id)
         # Lock/refresh the aggregate root before comparing its optimistic token;
         # otherwise Session identity-map cache can reject a valid update.
@@ -5536,6 +5554,10 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        # Match the HTTP route at the service mutation owner, before
+        # resolving Site/Certificate identity, locking or writing audit.
+        if CERTIFICATE_APPROVE_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: certificate.approve.")
         row = self._get_business_eligibility(session, business_eligibility_certificate_id)
         # As for GxP, the Site lock must be the candidate's canonical owner.
         # A previous Session read is not evidence that its Site FK is current.

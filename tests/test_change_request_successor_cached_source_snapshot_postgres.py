@@ -198,7 +198,7 @@ def test_successor_copies_committed_version_and_children(kind):
         setattr(service, create_method, create_while_competing_writer_waits)
         actor = build_authenticated_user(
             "synthetic-snapshot", "manager",
-            permissions=["change_request.edit", "change_request.approve"],
+            permissions=["change_request.edit", "change_request.approve", "certificate.issue"],
         )
         params = dict(
             change_request_id=ids["request"],

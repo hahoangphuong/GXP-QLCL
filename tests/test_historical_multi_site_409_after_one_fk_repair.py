@@ -22,23 +22,27 @@ from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 
 
-def _expect_global_409(session: Session) -> None:
+def _expect_historical_read_quarantine(session: Session, *, expected_legacy_ids: list[int]) -> None:
+    """Search discloses exactly the unresolved historical sources, not a legal grant."""
     service = CatalogReadService()
     for filter_gxp in ("GMP", "GLP", None):
-        with pytest.raises(HTTPException, match="invalid linked Case") as error:
-            service.search_facilities(
-                session,
-                q=None,
-                gxp_type=filter_gxp,
-                province=None,
-                case_states=None,
-                change_request_states=None,
-                certificate_state=None,
-                certificate_expiring_within_days=None,
-                offset=0,
-                limit=100,
-            )
-        assert error.value.status_code == 409
+        page = service.search_facilities(
+            session,
+            q=None,
+            gxp_type=filter_gxp,
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=100,
+        )
+        assert page["quarantined_historical_certificate_legacy_ids"] == expected_legacy_ids
+        assert all(
+            row["current_certificate_number"] not in {"119/GCN-QLD", "314/GCN-QLD"}
+            for row in page["items"]
+        )
 
 
 def test_repairing_legacy_gmp_376_does_not_hide_multisite_1037_1180(tmp_path):
@@ -117,7 +121,7 @@ def test_repairing_legacy_gmp_376_does_not_hide_multisite_1037_1180(tmp_path):
         original_imported_fk = case378.id
 
     with Session(engine) as session:
-        _expect_global_409(session)
+        _expect_historical_read_quarantine(session, expected_legacy_ids=[376, 1037, 1180])
 
         # Simulate the separately planned ONE FK correction on disposable
         # SQLite only. Never reassign Case 1023 or merge Domesco Sites.
@@ -147,9 +151,10 @@ def test_repairing_legacy_gmp_376_does_not_hide_multisite_1037_1180(tmp_path):
                 CaseWorkflowService._validate_certificate_linked_case(session, invalid)
             assert error.value.status_code == 409
 
-        # Even when 376 is corrected, both GMP and unrelated GLP filtered
-        # searches must fail closed rather than suppress legacy anomalies.
-        _expect_global_409(session)
+        # Search remains usable and discloses each still-unadjudicated Site
+        # mismatch, even for an unrelated GLP filter. No certificate is
+        # legalized or selected as a current grant.
+        _expect_historical_read_quarantine(session, expected_legacy_ids=[1037, 1180])
 
         # No source FK, site anchor, document or historical scope is
         # changed by this regression: the hypothetical rebind rolls back.

@@ -4371,8 +4371,8 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         """Replace an explicitly user-entered, ordered actual visit sequence."""
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         # Serialize against Case terminal transitions and refresh cached state.
         case = self._lock_case(session, case_id)
         self._assert_case_not_terminal(case, operation="inspection period update")

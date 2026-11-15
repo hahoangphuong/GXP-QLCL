@@ -161,7 +161,7 @@ def test_direct_service_nonissuance_requires_approval_permission_without_side_ef
     decision or audit write. The denied actor must not be persisted.
     """
     engine, (case_id, _, _) = scenario
-    denied = build_authenticated_user("nonissuance-service-denied", permissions=permissions)
+    denied = build_authenticated_user("nonissuance-service-denied", "viewer", permissions=permissions)
     with Session(engine) as db:
         service = CaseWorkflowService()
         before_case = db.get(Case, case_id).row_version
@@ -192,7 +192,7 @@ def test_service_permission_guard_precedes_case_lookup(scenario):
                 expected_case_version=1, decided_on=date(2026, 11, 13),
                 decision_reference="DENIED-404", explanation="Denied",
                 reason=None,
-                user=build_authenticated_user("nonissuance-unknown-reader", permissions=set()),
+                user=build_authenticated_user("nonissuance-unknown-reader", "viewer", permissions=set()),
             )
         assert error.value.status_code == 403
         assert db.scalar(select(func.count(AuditEvent.id))) == 0

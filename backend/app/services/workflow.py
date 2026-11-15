@@ -4511,12 +4511,12 @@ class CaseWorkflowService:
         return self._serialize_inspection_outcome(stage, audit_event_id=audit.id, inspection_event_id=None)
 
     def create_approval_submission(self, session: Session, *, case_id: str, stage: str, reference: str | None, submitted_on: date | None, submitted_time, pct_submission_id: str | None, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
-        try:
-            # Enforce HTTP-equivalent RBAC at the canonical mutation owner
+        # Enforce HTTP-equivalent RBAC at the canonical mutation owner
         # before checking resource identity, locks, version or audit.
         if INSPECTION_EDIT_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: inspection.edit.")
-        normalized_stage = validate_approval_stage(stage)
+        try:
+            normalized_stage = validate_approval_stage(stage)
         except InspectionContractViolation as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:

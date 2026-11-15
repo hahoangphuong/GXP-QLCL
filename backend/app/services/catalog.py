@@ -2070,7 +2070,9 @@ class CatalogReadService:
         }
 
     def list_site_gxp_certificates(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None, production_line_id: str | None = None):
-        self._assert_certificate_links_valid(session, site_id=site_id)
+        quarantined_ids, quarantined_legacy_ids = self._quarantined_historical_search_certificates(
+            session, site_id=site_id
+        )
         self.get_site(session, site_id)
         normalized_line_code = self._normalize_line_code(line_code)
         lines = {row.id: row for row in session.scalars(select(ProductionLine).where(ProductionLine.site_id == site_id))}
@@ -2112,6 +2114,7 @@ class CatalogReadService:
                 )
                 .where(
                     Certificate.site_id == site_id,
+                    Certificate.id.not_in(quarantined_ids),
                     *( [Certificate.certificate_type == gxp_type] if gxp_type else [] ),
                 )
             ).all()
@@ -2183,7 +2186,8 @@ class CatalogReadService:
                 item["certificate_id"],
             )
         )
-        return {"items": items}
+        return {"items": items,
+                "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids}
 
     def get_gxp_certificate_version_history(
         self,

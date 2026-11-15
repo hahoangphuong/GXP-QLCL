@@ -1283,8 +1283,11 @@ class CatalogReadService:
         certificate_state: str | None = None,
         certificate_expiring_within_days: int | None = None,
         certificate_scope: str | None = None,
+        excluded_certificate_ids: set[str] | None = None,
     ):
         conditions = [Certificate.site_id == Site.id, Certificate.latest_flag.is_(True)]
+        if excluded_certificate_ids:
+            conditions.append(Certificate.id.not_in(excluded_certificate_ids))
         if gxp_type:
             conditions.append(Certificate.certificate_type == gxp_type)
         if certificate_state == "active":
@@ -1638,6 +1641,11 @@ class CatalogReadService:
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 
     def get_dashboard_summary(self, session: Session, *, queue_limit: int):
+        # Dashboard certificate counts and operator reports must project the
+        # same source-validated universe. Unknown corruption still fails 409.
+        quarantined_ids, quarantined_legacy_ids = (
+            self._quarantined_historical_search_certificates(session)
+        )
         total_facilities = session.scalar(select(func.count()).select_from(Site)) or 0
         total_cases = session.scalar(select(func.count()).select_from(Case)) or 0
         active_cases = session.scalar(
@@ -1657,12 +1665,18 @@ class CatalogReadService:
         ) or 0
         active_certificates = session.scalar(
             select(func.count()).select_from(Site).where(
-                self._build_current_certificate_exists_clause(certificate_state="active")
+                self._build_current_certificate_exists_clause(
+                    certificate_state="active",
+                    excluded_certificate_ids=quarantined_ids,
+                )
             )
         ) or 0
         expiring_certificates_90_days = session.scalar(
             select(func.count()).select_from(Site).where(
-                self._build_current_certificate_exists_clause(certificate_expiring_within_days=90)
+                self._build_current_certificate_exists_clause(
+                    certificate_expiring_within_days=90,
+                    excluded_certificate_ids=quarantined_ids,
+                )
             )
         ) or 0
         incomplete_changes = session.scalar(
@@ -1719,6 +1733,7 @@ class CatalogReadService:
             "active_certificates": active_certificates,
             "expiring_certificates_90_days": expiring_certificates_90_days,
             "incomplete_changes": incomplete_changes,
+            "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids,
             "queue": queue,
         }
 

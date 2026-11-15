@@ -152,6 +152,52 @@ def test_http_permissions_and_canonical_get(scenario):
         assert result.decision is None
 
 
+
+@pytest.mark.parametrize("permissions", [set(), {"inspection.edit"}, {"certificate.issue"}])
+def test_direct_service_nonissuance_requires_approval_permission_without_side_effects(scenario, permissions):
+    """Service callers cannot bypass the HTTP permission owner.
+
+    Authorization must fail before any Case lock, actor creation, business
+    decision or audit write. The denied actor must not be persisted.
+    """
+    engine, (case_id, _, _) = scenario
+    denied = build_authenticated_user("nonissuance-service-denied", "viewer", permissions=permissions)
+    with Session(engine) as db:
+        service = CaseWorkflowService()
+        before_case = db.get(Case, case_id).row_version
+        with pytest.raises(HTTPException) as error:
+            service.record_case_nonissuance_decision(
+                db, case_id=case_id, expected_case_version=before_case,
+                decided_on=date(2026, 11, 13), decision_reference="DENIED-001",
+                explanation="Must never persist", reason="synthetic permission probe",
+                user=denied,
+            )
+        assert error.value.status_code == 403
+        assert service.get_case_nonissuance_record_readiness(
+            db, case_id=case_id, user=denied
+        )["reason_code"] == "missing_permission"
+        assert db.scalar(select(func.count(CaseCertificateNonissuanceDecision.id))) == 0
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert db.get(Case, case_id).row_version == before_case
+        assert not db.new and not db.dirty
+
+
+def test_service_permission_guard_precedes_case_lookup(scenario):
+    """Do not reveal Case existence to unauthorized direct service calls."""
+    engine, (_, _, _) = scenario
+    with Session(engine) as db:
+        with pytest.raises(HTTPException) as error:
+            CaseWorkflowService().record_case_nonissuance_decision(
+                db, case_id="00000000-0000-4000-8000-000000000001",
+                expected_case_version=1, decided_on=date(2026, 11, 13),
+                decision_reference="DENIED-404", explanation="Denied",
+                reason=None,
+                user=build_authenticated_user("nonissuance-unknown-reader", "viewer", permissions=set()),
+            )
+        assert error.value.status_code == 403
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert not db.new and not db.dirty
+
 def test_no_certificate_row_does_not_imply_nonissuance(scenario):
     engine, (case_id, _, _) = scenario
     with Session(engine) as db:

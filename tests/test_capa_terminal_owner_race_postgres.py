@@ -63,7 +63,7 @@ def test_capa_child_mutation_waits_for_terminal_case_owner(operation):
             case_id, cycle_id, version = case.id, cycle.id, cycle.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-capa-actor", "manager")
+        user = build_authenticated_user("synthetic-capa-actor", "manager", permissions={"capa.edit", "capa.assess"})
 
         def mutate(session):
             if operation == "update":

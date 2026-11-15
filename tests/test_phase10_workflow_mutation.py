@@ -1978,7 +1978,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
             requested_on=date(2026, 8, 18),
             notes="Round 1 requested.",
             reason="Need corrective actions.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2012,7 +2012,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
             submitted_on=date(2026, 8, 19),
             notes="Submitted round 1.",
             reason="Operator submitted CAPA.",
-            user=build_authenticated_user("inspector01", "inspector"),
+            user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
         )
         session.commit()
 
@@ -2026,7 +2026,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
             result="rejected",
             notes="Need another round.",
             reason="Round 1 rejected.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2039,7 +2039,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
             requested_on=date(2026, 8, 21),
             notes="Round 2 requested.",
             reason="Follow-up CAPA.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2053,7 +2053,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
             submitted_on=date(2026, 8, 22),
             notes="Submitted round 2.",
             reason="Round 2 submit.",
-            user=build_authenticated_user("inspector01", "inspector"),
+            user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
         )
         session.commit()
 
@@ -2067,7 +2067,7 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
             result="accepted",
             notes="CAPA accepted.",
             reason="Round 2 accepted.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2106,7 +2106,7 @@ def test_create_capa_cycle_rejects_case_already_awaiting_certificate_decision():
                 requested_on=date(2026, 8, 24),
                 notes="Should fail.",
                 reason="Late CAPA request.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "inspection_completed" in str(exc)
@@ -2184,7 +2184,7 @@ def test_update_capa_cycle_rejects_mutation_after_acceptance():
             requested_on=date(2026, 8, 18),
             notes="Round 1.",
             reason="Need CAPA.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2196,7 +2196,7 @@ def test_update_capa_cycle_rejects_mutation_after_acceptance():
             submitted_on=date(2026, 8, 19),
             notes="Submitted.",
             reason="Submit.",
-            user=build_authenticated_user("inspector01", "inspector"),
+            user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
         )
         session.commit()
 
@@ -2210,7 +2210,7 @@ def test_update_capa_cycle_rejects_mutation_after_acceptance():
             result="accepted",
             notes="Accepted.",
             reason="Assess.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2223,7 +2223,7 @@ def test_update_capa_cycle_rejects_mutation_after_acceptance():
                 requested_on=date(2026, 8, 18),
                 notes="Should fail.",
                 reason="Attempt mutate accepted cycle.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "requested or rejected" in str(exc)
@@ -2250,7 +2250,7 @@ def test_update_capa_cycle_rejects_mutation_while_submitted():
             requested_on=date(2026, 8, 18),
             notes="Round 1.",
             reason="Need CAPA.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2262,7 +2262,7 @@ def test_update_capa_cycle_rejects_mutation_while_submitted():
             submitted_on=date(2026, 8, 19),
             notes="Submitted.",
             reason="Submit.",
-            user=build_authenticated_user("inspector01", "inspector"),
+            user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
         )
         session.commit()
 
@@ -2275,7 +2275,7 @@ def test_update_capa_cycle_rejects_mutation_while_submitted():
                 requested_on=date(2026, 8, 18),
                 notes="Should fail.",
                 reason="Attempt mutate submitted cycle.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "requested or rejected" in str(exc)
@@ -2302,7 +2302,7 @@ def test_capa_mutations_block_terminal_case():
             requested_on=date(2026, 8, 18),
             notes="Round 1.",
             reason="Need CAPA.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2321,7 +2321,7 @@ def test_capa_mutations_block_terminal_case():
                 requested_on=date(2026, 8, 24),
                 notes="Should fail.",
                 reason="Terminal create.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             ),
             lambda: service.update_capa_cycle(
                 session,
@@ -2330,7 +2330,7 @@ def test_capa_mutations_block_terminal_case():
                 requested_on=date(2026, 8, 18),
                 notes="Should fail.",
                 reason="Terminal update.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             ),
             lambda: service.submit_capa_cycle(
                 session,
@@ -2339,7 +2339,7 @@ def test_capa_mutations_block_terminal_case():
                 submitted_on=date(2026, 8, 19),
                 notes="Should fail.",
                 reason="Terminal submit.",
-                user=build_authenticated_user("inspector01", "inspector"),
+                user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
             ),
         ):
             try:
@@ -2363,7 +2363,7 @@ def test_capa_mutations_block_terminal_case():
             submitted_on=date(2026, 8, 19),
             notes="Submitted.",
             reason="Submit.",
-            user=build_authenticated_user("inspector01", "inspector"),
+            user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
         )
         session.commit()
 
@@ -2384,7 +2384,7 @@ def test_capa_mutations_block_terminal_case():
                 result="accepted",
                 notes="Should fail.",
                 reason="Terminal assess.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         except Exception as exc:
             assert "terminal state cancelled" in str(exc)
@@ -2857,7 +2857,7 @@ def test_assess_capa_cycle_binds_assessor_to_authenticated_actor():
             requested_on=date(2026, 8, 18),
             notes="Round 1.",
             reason="Need CAPA.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2869,7 +2869,7 @@ def test_assess_capa_cycle_binds_assessor_to_authenticated_actor():
             submitted_on=date(2026, 8, 19),
             notes="Submitted.",
             reason="Submit.",
-            user=build_authenticated_user("inspector01", "inspector"),
+            user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
         )
         session.commit()
 
@@ -2883,7 +2883,7 @@ def test_assess_capa_cycle_binds_assessor_to_authenticated_actor():
             result="accepted",
             notes="Accepted.",
             reason="Assess.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2920,7 +2920,7 @@ def test_assess_capa_cycle_route_requires_capa_assess_permission(tmp_path):
             requested_on=date(2026, 8, 18),
             notes="Round 1.",
             reason="Need CAPA.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
         session.commit()
 
@@ -2932,7 +2932,7 @@ def test_assess_capa_cycle_route_requires_capa_assess_permission(tmp_path):
             submitted_on=date(2026, 8, 19),
             notes="Submitted.",
             reason="Submit.",
-            user=build_authenticated_user("inspector01", "inspector"),
+            user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
         )
         session.commit()
 
@@ -3052,13 +3052,13 @@ def test_non_latest_capa_cycle_is_historical_and_cannot_be_reopened():
             service.update_capa_cycle(
                 session, capa_cycle_id=first.id, expected_version=first.row_version,
                 requested_on=None, incoming_reference=None, notes=None, reason=None,
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
         with pytest.raises(HTTPException, match="latest CAPA cycle"):
             service.submit_capa_cycle(
                 session, capa_cycle_id=first.id, expected_version=first.row_version,
                 submitted_on=date(2026, 10, 1), notes=None, reason=None,
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )
 
 

@@ -3624,6 +3624,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.edit"})
         # Serialize CAPA round allocation against its owning Case. A unique
         # (case_id, round_no) constraint alone lets competing creates race all
         # the way to INSERT instead of rejecting at the business gate.
@@ -3687,6 +3688,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.edit"})
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA update",
         )
@@ -3731,6 +3733,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.edit"})
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA submit",
         )
@@ -3771,6 +3774,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {"capa.assess"})
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA assess",
         )

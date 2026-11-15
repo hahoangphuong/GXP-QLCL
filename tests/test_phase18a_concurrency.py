@@ -295,7 +295,7 @@ def test_capa_service_uses_row_version_for_stale_update_guard(tmp_path: Path):
                 requested_on=date(2026, 8, 20),
                 notes="stale payload",
                 reason="stale update",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions={"capa.edit"}),
             )
         except Exception as exc:
             assert "Stale capa_cycle update" in str(exc)

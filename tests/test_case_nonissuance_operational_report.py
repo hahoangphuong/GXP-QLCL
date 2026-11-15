@@ -10,7 +10,7 @@ from backend.app.api.routers.catalog import register_catalog_routes
 from backend.app.auth import build_authenticated_user, get_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AppUser, AuditEvent, Case, CaseCertificateNonissuanceDecision, Company, Site
+from backend.app.db.models.phase1 import AppUser, AuditEvent, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateVersion, Company, Site
 from backend.app.services.catalog import CatalogReadService
 
 
@@ -98,6 +98,177 @@ def test_filters_counts_pagination_export_and_case_ownership(seeded):
         assert report(db, certificate_decision_status="awaiting_decision", state="planned")["total_count"] == 0
         assert {row["case_id"] for row in report(db, certificate_decision_status="nonissuance_recorded", q="Pharma")["items"]} == {ids["explicit"]}
 
+
+
+def test_q_finds_canonical_decision_reference_and_case_uuid_across_page_and_export(seeded):
+    """The operator quick-search must resolve persisted owner evidence.
+
+    A decision reference is Case-scoped via the explicit decision foreign key;
+    absent GCN, unrelated final evaluation text, and other Case decisions
+    must never become search aliases for the selected Case.
+    """
+    engine, ids = seeded
+    with Session(engine) as db:
+        # Full/partial references locate only the Case with that decision.
+        for query in ("DEC-EXPLICIT-001", "EXPLICIT-001", "dec-explicit"):
+            page = report(db, q=query)
+            assert page["total_count"] == 1
+            assert [row["case_id"] for row in page["items"]] == [ids["explicit"]]
+            assert page["items"][0]["nonissuance_decision_reference"] == "DEC-EXPLICIT-001"
+            exported = report(db, q=query, export=True)
+            assert exported["total_count"] == 1
+            assert [row["case_id"] for row in exported["items"]] == [ids["explicit"]]
+
+        # UUID search works even when there is no explicit decision yet.
+        for key in ("pending", "earlier"):
+            case_id = ids[key]
+            assert [row["case_id"] for row in report(db, q=case_id)["items"]] == [case_id]
+            assert [row["case_id"] for row in report(db, q=case_id[:12], export=True)["items"]] == [case_id]
+
+        # Joining a decision must not let one Case borrow the other Case's ref.
+        other = report(db, q="DEC-OTHER-002")
+        assert [row["case_id"] for row in other["items"]] == [ids["unrelated"]]
+        assert report(db, q="DEC-OTHER-002", gxp_type="GMP")["total_count"] == 0
+        assert report(db, q="DEC-EXPLICIT-001", certificate_decision_status="awaiting_decision")["total_count"] == 0
+        assert report(db, q="no-such-decision-reference")["total_count"] == 0
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert not db.new and not db.dirty
+
+
+def test_decision_reference_search_respects_page_count_and_export_limit(seeded):
+    engine, ids = seeded
+    with Session(engine) as db:
+        # Both explicit decisions share the DEC- prefix; page and full export
+        # must select the exact same canonical Case set with no duplicated join.
+        q = "DEC-"
+        first = report(db, q=q, limit=1)
+        second = report(db, q=q, limit=1, offset=1)
+        exported = report(db, q=q, export=True)
+        assert first["total_count"] == second["total_count"] == exported["total_count"] == 2
+        assert {row["case_id"] for row in first["items"] + second["items"]} == {
+            ids["explicit"], ids["unrelated"],
+        }
+        assert {row["case_id"] for row in exported["items"]} == {
+            ids["explicit"], ids["unrelated"],
+        }
+        assert all(row["certificate_decision_status"] == "nonissuance_recorded" for row in exported["items"])
+
+
+def test_q_finds_latest_canonical_gcn_number_without_cross_case_leakage(seeded):
+    """Operators can navigate from a GCN number to the canonical owning Case.
+
+    Only exact UUID/Site/GxP/facility-wide identity is accepted. Historic
+    mismatches and administrative certificates must not fabricate a Case link.
+    """
+    engine, ids = seeded
+    with Session(engine) as db:
+        owner = db.get(Case, ids["pending"])
+        alien = db.get(Case, ids["unrelated"])
+
+        canonical = Certificate(
+            case_id=owner.id, site_id=owner.site_id,
+            certificate_type="GMP", issuance_basis="inspection_case",
+            latest_flag=False,
+        )
+        wrong_site = Certificate(
+            case_id=owner.id, site_id=alien.site_id,
+            certificate_type="GMP", issuance_basis="inspection_case",
+            latest_flag=True,
+        )
+        wrong_type = Certificate(
+            case_id=owner.id, site_id=owner.site_id,
+            certificate_type="GLP", issuance_basis="inspection_case",
+            latest_flag=True,
+        )
+        wrong_line = Certificate(
+            case_id=owner.id, site_id=owner.site_id,
+            certificate_type="GMP", issuance_basis="inspection_case",
+            line_code="LEGACY-UNPROVEN", latest_flag=True,
+        )
+        administrative = Certificate(
+            case_id=owner.id, site_id=owner.site_id,
+            certificate_type="GMP", issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        db.add_all([canonical, wrong_site, wrong_type, wrong_line, administrative])
+        db.flush()
+        db.add_all([
+            CertificateVersion(
+                certificate_id=canonical.id, version_no=1,
+                is_latest_version=False, certificate_number="GCN-OLD-2024",
+            ),
+            CertificateVersion(
+                certificate_id=canonical.id, version_no=2,
+                is_latest_version=True, certificate_number="119/GCN-QLD-CANONICAL",
+            ),
+            CertificateVersion(
+                certificate_id=wrong_site.id, version_no=1,
+                is_latest_version=True, certificate_number="GCN-WRONG-SITE",
+            ),
+            CertificateVersion(
+                certificate_id=wrong_type.id, version_no=1,
+                is_latest_version=True, certificate_number="GCN-WRONG-GXP",
+            ),
+            CertificateVersion(
+                certificate_id=wrong_line.id, version_no=1,
+                is_latest_version=True, certificate_number="GCN-WRONG-LINE",
+            ),
+            CertificateVersion(
+                certificate_id=administrative.id, version_no=1,
+                is_latest_version=True, certificate_number="GCN-ADMINISTRATIVE",
+            ),
+        ])
+        db.commit()
+
+        for query in ("119/GCN-QLD-CANONICAL", "gcn-qld-canonical"):
+            page = report(db, q=query)
+            assert page["total_count"] == 1
+            assert [row["case_id"] for row in page["items"]] == [ids["pending"]]
+            assert page["items"][0]["certificate_decision_status"] == "awaiting_decision"
+            assert [row["case_id"] for row in report(db, q=query, export=True)["items"]] == [ids["pending"]]
+        for rejected in (
+            "GCN-OLD-2024", "GCN-WRONG-SITE", "GCN-WRONG-GXP",
+            "GCN-WRONG-LINE", "GCN-ADMINISTRATIVE",
+        ):
+            assert report(db, q=rejected)["total_count"] == 0
+            assert report(db, q=rejected, export=True)["items"] == []
+        assert report(
+            db, q="119/GCN-QLD-CANONICAL", certificate_decision_status="nonissuance_recorded",
+        )["total_count"] == 0
+        assert report(db, q="119/GCN-QLD-CANONICAL", gxp_type="GLP")["total_count"] == 0
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+
+
+def test_gcn_search_exists_prevents_duplicate_cases_when_many_certificates_match(seeded):
+    engine, ids = seeded
+    with Session(engine) as db:
+        owner = db.get(Case, ids["pending"])
+        certs = [
+            Certificate(
+                case_id=owner.id, site_id=owner.site_id,
+                certificate_type="GMP", issuance_basis="inspection_case",
+                latest_flag=(i == 0),
+            )
+            for i in range(2)
+        ]
+        db.add_all(certs)
+        db.flush()
+        db.add_all([
+            CertificateVersion(
+                certificate_id=cert.id, version_no=1,
+                is_latest_version=True, certificate_number="DUPLICATE-GCN-SEARCH",
+            )
+            for cert in certs
+        ])
+        db.commit()
+
+        first = report(db, q="DUPLICATE-GCN-SEARCH", limit=1)
+        after = report(db, q="DUPLICATE-GCN-SEARCH", limit=1, offset=1)
+        export = report(db, q="DUPLICATE-GCN-SEARCH", export=True)
+        assert first["total_count"] == after["total_count"] == export["total_count"] == 1
+        assert [r["case_id"] for r in first["items"]] == [ids["pending"]]
+        assert after["items"] == []
+        assert [r["case_id"] for r in export["items"]] == [ids["pending"]]
 
 def test_report_refreshes_cached_case_and_site_after_sql_owner_change(seeded):
     """SQL current classification/count and ORM-projected fields must agree.

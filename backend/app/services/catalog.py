@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.auth import AuthenticatedUser
@@ -1441,8 +1441,53 @@ class CatalogReadService:
             conditions.append(Case.gxp_type == gxp_type)
         if q:
             pattern = f"%{q}%"
-            conditions.append(or_(Site.site_name.ilike(pattern), Company.legal_name.ilike(pattern),
-                                  Case.legacy_inspection_code.ilike(pattern)))
+            # Search the same canonical Case and its explicitly linked decision.
+            # Operators often paste a Case UUID or decision reference from a
+            # notification. Never infer a decision from a missing Certificate.
+            # A Certificate number is a useful path back to its owning Case,
+            # but a historical cross-Site/GxP/line association is not proof of
+            # that ownership. Require exact canonical identity and the
+            # explicitly latest version; do not match administrative-only or
+            # unlinked legacy Certificate records.
+            canonical_certificate_number = (
+                select(Certificate.id)
+                .join(
+                    CertificateVersion,
+                    and_(
+                        CertificateVersion.certificate_id == Certificate.id,
+                        CertificateVersion.is_latest_version.is_(True),
+                    ),
+                )
+                .where(
+                    Certificate.case_id == Case.id,
+                    Certificate.site_id == Case.site_id,
+                    Certificate.certificate_type == Case.gxp_type,
+                    Certificate.issuance_basis == "inspection_case",
+                    or_(
+                        and_(
+                            Case.production_line_id.is_not(None),
+                            Certificate.production_line_id == Case.production_line_id,
+                        ),
+                        and_(
+                            Case.production_line_id.is_(None),
+                            Certificate.production_line_id.is_(None),
+                            Case.scope_code.is_(None),
+                            Certificate.line_code.is_(None),
+                        ),
+                    ),
+                    CertificateVersion.certificate_number.ilike(pattern),
+                )
+                .correlate(Case)
+                .exists()
+            )
+            conditions.append(or_(
+                Site.site_name.ilike(pattern),
+                Company.legal_name.ilike(pattern),
+                Case.legacy_inspection_code.ilike(pattern),
+                cast(Case.id, String).ilike(pattern),
+                CaseCertificateNonissuanceDecision.decision_reference.ilike(pattern),
+                canonical_certificate_number,
+            ))
         if opened_year is not None:
             conditions.append(Case.opened_year == opened_year)
         base = (select(Case, Site, Company, ProductionLine, CaseCertificateNonissuanceDecision)

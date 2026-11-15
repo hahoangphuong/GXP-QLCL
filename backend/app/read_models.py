@@ -822,6 +822,7 @@ class GxpCertificateListItemRead(BaseModel):
 
 class GxpCertificateListRead(BaseModel):
     items: list[GxpCertificateListItemRead]
+    quarantined_historical_certificate_legacy_ids: list[int] = []
 
 
 class CertificateActionReadinessRead(BaseModel):

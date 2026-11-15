@@ -101,7 +101,7 @@ def test_ddk_revalidates_linked_gxp_after_committed_site_move(operation):
         changed.site_id = site_b_id
         writer.commit()
 
-        actor = build_authenticated_user("ci-ddk-link-site", "manager")
+        actor = build_authenticated_user("ci-ddk-link-site", "manager", permissions={"certificate.edit", "certificate.approve"})
         service = CaseWorkflowService()
         with pytest.raises(HTTPException) as denied:
             if operation == "replace_links":
@@ -236,7 +236,7 @@ def test_ddk_promotion_rechecks_cached_link_target_after_committed_rebind():
                 business_eligibility_certificate_id=ddk_id,
                 expected_version=ddk_token,
                 reason="stale DDK link target should not promote",
-                user=build_authenticated_user("ci-ddk-rebound-link", "manager"),
+                user=build_authenticated_user("ci-ddk-rebound-link", "manager", permissions={"certificate.edit", "certificate.approve"}),
             )
         assert denied.value.status_code == 409
         assert "invalid linked" in str(denied.value.detail).lower()

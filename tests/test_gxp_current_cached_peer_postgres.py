@@ -65,7 +65,7 @@ def test_gxp_promotion_demotes_current_peer_cached_noncurrent_before_other_commi
             c_id, c_token = pairs[1]
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-gxp-peer", "manager")
+        actor = build_authenticated_user("synthetic-gxp-peer", "manager", permissions={"certificate.approve"})
         stale = factory()
         cached_b = stale.get(Certificate, b_id)
         assert cached_b is not None and cached_b.latest_flag is False

@@ -81,7 +81,7 @@ def test_latest_version_edit_audit_reads_committed_state_not_stale_identity(kind
             aggregate_id, version_id, original_token = aggregate.id, version.id, aggregate.row_version
 
         service = CaseWorkflowService()
-        actor = build_authenticated_user("synthetic-edit-audit", "manager")
+        actor = build_authenticated_user("synthetic-edit-audit", "manager", permissions={"certificate.edit"})
         stale = factory()
         cached = stale.get(CertificateVersion if kind == "gxp" else BusinessEligibilityVersion, version_id)
         assert cached.certificate_number == "ORIGINAL"

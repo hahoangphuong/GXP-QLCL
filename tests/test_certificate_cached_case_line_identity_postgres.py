@@ -123,7 +123,7 @@ def test_ddk_promotion_rechecks_canonical_gxp_case_and_line_owner(changed_owner)
                 business_eligibility_certificate_id=ddk_id,
                 expected_version=root_version,
                 reason="reject stale linked Case or canonical ProductionLine",
-                user=build_authenticated_user("ci-gxp-line-canonical", "manager"),
+                user=build_authenticated_user("ci-gxp-line-canonical", "manager", permissions={"certificate.approve"}),
             )
         assert denied.value.status_code == 409
         assert "invalid linked" in str(denied.value.detail).lower()

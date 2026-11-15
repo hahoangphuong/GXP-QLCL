@@ -64,7 +64,7 @@ def test_same_context_certificate_promotions_serialize_before_peer_read():
             ids, tokens = [r[0] for r in rows], [r[1] for r in rows]
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("promotion-race-user", "manager")
+        user = build_authenticated_user("promotion-race-user", "manager", permissions={"certificate.approve"})
         first = factory()
         result1 = service.promote_certificate_current(
             first, certificate_id=ids[0], expected_version=tokens[0],

@@ -58,7 +58,7 @@ def test_non_gmp_case_backed_issuance_waits_for_terminal_case_owner():
             site_id, case_id = site.id, case.id
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-gsp-issuer", "manager")
+        user = build_authenticated_user("synthetic-gsp-issuer", "manager", permissions={"certificate.issue"})
 
         def issue(session):
             return service.issue_certificate(

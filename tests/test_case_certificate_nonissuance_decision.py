@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 from fastapi import FastAPI, HTTPException
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, event, func, select, update
 from sqlalchemy.orm import Session
 
 from backend.app.api.routers.workflow import register_workflow_routes
@@ -12,7 +12,7 @@ from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import (
     AuditEvent, Case, CaseCertificateNonissuanceDecision, Certificate,
-    Company, InspectionOutcome, Site,
+    Company, InspectionOutcome, Site, CapaCycle,
 )
 from backend.app.services.workflow import CaseWorkflowService
 
@@ -83,6 +83,162 @@ def test_explicit_decision_persists_once_and_scoped_get_has_no_side_effects(scen
     with Session(engine) as db:
         assert db.scalar(select(func.count(AuditEvent.id))) == 1
 
+
+
+def test_nonissuance_and_issuance_readers_never_flush_or_discard_dirty_drafts(scenario):
+    """Three GET surfaces must read persisted facts without modifying a caller's draft."""
+    engine, (case_id, _, site_id) = scenario
+    svc = CaseWorkflowService()
+    with Session(engine) as db:
+        case = db.get(Case, case_id)
+        outcome = db.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id))
+        case.state = CaseState.CERTIFIED
+        outcome.final_evaluation = None
+        pending = Certificate(
+            site_id=site_id, case_id=case_id, certificate_type="GMP",
+            issuance_basis="inspection_case", latest_flag=False,
+        )
+        db.add(pending)
+        flushes = []
+
+        def reject_flush(session, context, instances):
+            flushes.append(True)
+            raise AssertionError("Advisory GET must not flush pending business changes")
+
+        event.listen(db, "before_flush", reject_flush)
+        try:
+            assert svc.get_case_nonissuance_decision(db, case_id=case_id)["decision"] is None
+            decision = svc.get_case_nonissuance_record_readiness(
+                db, case_id=case_id, user=_actor(),
+            )
+            issuance = svc.get_case_certificate_issue_readiness(
+                db, case_id=case_id, user=_actor(),
+            )
+        finally:
+            event.remove(db, "before_flush", reject_flush)
+        assert decision["available"] is True
+        assert decision["reason_code"] is None
+        assert issuance["available"] is True
+        assert issuance["reason_code"] is None
+        assert not flushes
+        assert case.state == CaseState.CERTIFIED
+        assert outcome.final_evaluation is None
+        assert pending in db.new
+        assert case in db.dirty and outcome in db.dirty
+        db.rollback()
+    with Session(engine) as verify:
+        assert verify.get(Case, case_id).state == CaseState.AWAITING_CERTIFICATE_DECISION
+        assert verify.scalar(
+            select(InspectionOutcome.final_evaluation)
+            .where(InspectionOutcome.case_id == case_id)
+        ) == "Recorded final assessment"
+        assert verify.scalar(select(func.count(Certificate.id))) == 0
+
+
+def test_readiness_uses_current_sql_case_state_without_overwriting_cached_case(scenario):
+    """Source is SQL-current even when the ORM identity is stale."""
+    engine, (case_id, _, _) = scenario
+    svc = CaseWorkflowService()
+    with Session(engine) as db:
+        cached = db.get(Case, case_id)
+        assert cached.state == CaseState.AWAITING_CERTIFICATE_DECISION
+        db.execute(
+            update(Case).where(Case.id == case_id)
+            .values(state=CaseState.PLANNED)
+            .execution_options(synchronize_session=False)
+        )
+        assert cached.state == CaseState.AWAITING_CERTIFICATE_DECISION
+        decision = svc.get_case_nonissuance_record_readiness(
+            db, case_id=case_id, user=_actor(),
+        )
+        issuance = svc.get_case_certificate_issue_readiness(
+            db, case_id=case_id, user=_actor(),
+        )
+        assert decision["reason_code"] == "case_state_not_eligible"
+        assert issuance["reason_code"] == "case_state_not_eligible"
+        assert cached.state == CaseState.AWAITING_CERTIFICATE_DECISION
+        assert not db.new and not db.dirty
+        db.rollback()
+
+
+def test_readiness_uses_persisted_capa_status_without_discarding_pending_edit(scenario):
+    """A pending CAPA edit cannot authorize a decision, or be destroyed by GET."""
+    engine, (case_id, _, _) = scenario
+    with Session(engine) as seed:
+        cycle = CapaCycle(case_id=case_id, round_no=1, status="requested")
+        seed.add(cycle)
+        seed.commit()
+        cycle_id = cycle.id
+    with Session(engine) as db:
+        cached = db.get(CapaCycle, cycle_id)
+        cached.status = "accepted"
+        svc = CaseWorkflowService()
+        decision = svc.get_case_nonissuance_record_readiness(
+            db, case_id=case_id, user=_actor(),
+        )
+        issuance = svc.get_case_certificate_issue_readiness(
+            db, case_id=case_id, user=_actor(),
+        )
+        assert decision["reason_code"] == "latest_capa_not_accepted"
+        assert issuance["reason_code"] == "latest_capa_not_accepted"
+        assert cached.status == "accepted"
+        assert cached in db.dirty
+        db.rollback()
+    with Session(engine) as verify:
+        assert verify.get(CapaCycle, cycle_id).status == "requested"
+
+
+def test_canonical_get_does_not_flush_unpersisted_nonissuance_fact(scenario):
+    """Unknown-outcome readback must never promote a pending in-memory decision."""
+    engine, (case_id, _, _) = scenario
+    with Session(engine) as db:
+        db.add(CaseCertificateNonissuanceDecision(
+            case_id=case_id, decided_on=date(2026, 11, 15),
+            decision_reference="PENDING-NOT-COMMITTED", explanation="Synthetic",
+            recorded_by_user_id="00000000-0000-4000-8000-000000000001",
+        ))
+        result = CaseWorkflowService().get_case_nonissuance_decision(db, case_id=case_id)
+        assert result == {"case_id": case_id, "decision": None}
+        assert len(db.new) == 1
+        db.rollback()
+
+
+@pytest.mark.parametrize("permissions", [
+    {"inspection.edit"}, {"certificate.approve"}, {"certificate.edit"},
+])
+def test_direct_certificate_issue_requires_issue_permission_without_effects(scenario, permissions):
+    """The service owner, not just the HTTP endpoint, must reject unprivileged issuance."""
+    engine, (case_id, _, site_id) = scenario
+    actor = build_authenticated_user("unprivileged-certificate-actor", "viewer", permissions=permissions)
+    with Session(engine) as db:
+        with pytest.raises(HTTPException) as error:
+            CaseWorkflowService().issue_certificate(
+                db, site_id=site_id, case_id=case_id,
+                certificate_type="GMP", issuance_basis="inspection_case",
+                certificate_number="MUST-NOT-ISSUE", issue_date=date(2026, 11, 15),
+                expiry_date=date(2028, 11, 15), scopes=[], reason=None, user=actor,
+            )
+        assert error.value.status_code == 403
+        assert db.scalar(select(func.count(Certificate.id))) == 0
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert not db.new and not db.dirty
+
+
+def test_unauthorized_certificate_issue_does_not_probe_site_case_or_create_audit(scenario):
+    engine, _ = scenario
+    with Session(engine) as db:
+        with pytest.raises(HTTPException) as error:
+            CaseWorkflowService().issue_certificate(
+                db, site_id="00000000-0000-4000-8000-000000000001",
+                case_id="00000000-0000-4000-8000-000000000002",
+                certificate_type="GMP", issuance_basis="inspection_case",
+                certificate_number="DENIED", issue_date=date(2026, 11, 15),
+                expiry_date=None, scopes=[], reason=None,
+                user=build_authenticated_user("unprivileged-certificate-reader", "viewer"),
+            )
+        assert error.value.status_code == 403
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert not db.new and not db.dirty
 
 def test_decision_prevents_future_case_backed_certificate_issue(scenario):
     engine, (case_id, _, site_id) = scenario

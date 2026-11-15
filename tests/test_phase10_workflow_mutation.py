@@ -2419,7 +2419,7 @@ def test_issue_certificate_allows_administrative_no_case_and_persists_scope():
                 {"scope_key": "line_1", "scope_text": "Tablet line", "language_code": "vi", "sort_order": 1},
             ],
             reason="Administrative reissue.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         session.commit()
 
@@ -2464,7 +2464,7 @@ def test_issue_certificate_rejects_inspection_basis_without_case():
                 expiry_date=date(2027, 8, 16),
                 scopes=[],
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
             )
         except Exception as exc:
             assert "requires a backing case_id" in str(exc)
@@ -2498,7 +2498,7 @@ def test_issue_certificate_rejects_certificate_type_mismatching_backing_case():
                 expiry_date=date(2027, 8, 16),
                 scopes=[],
                 reason="Should fail.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
             )
         except Exception as exc:
             assert "certificate_type must match" in str(exc)
@@ -2532,7 +2532,7 @@ def test_issue_certificate_accepts_matching_non_gmp_case_type(gxp_type: str):
             expiry_date=date(2027, 8, 16),
             scopes=[],
             reason="Matching case type.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         session.commit()
 
@@ -2565,7 +2565,7 @@ def test_issue_certificate_rejects_case_not_yet_awaiting_certificate_decision():
                 expiry_date=date(2027, 8, 16),
                 scopes=[],
                 reason="Too early.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
             )
         except Exception as exc:
             assert "awaiting_certificate_decision" in str(exc)
@@ -2607,7 +2607,7 @@ def test_issue_certificate_rejects_pending_capa_for_case_backed_certificate():
                 expiry_date=date(2027, 8, 16),
                 scopes=[],
                 reason="Blocked by CAPA.",
-                user=build_authenticated_user("manager01", "manager"),
+                user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
             )
         except Exception as exc:
             assert "latest CAPA cycle is accepted" in str(exc)
@@ -2652,7 +2652,7 @@ def test_issue_certificate_allows_case_backed_certificate_when_latest_capa_is_ac
             expiry_date=date(2027, 8, 18),
             scopes=[],
             reason="CAPA accepted.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         session.commit()
 
@@ -2680,7 +2680,7 @@ def test_certificate_action_readiness_uses_the_same_promotion_blockers_as_mutati
             expiry_date=date(2027, 8, 18),
             scopes=[],
             reason="Seed readiness.",
-            user=build_authenticated_user("admin01", "admin"),
+            user=build_authenticated_user("admin01", "admin", permissions={"certificate.issue"}),
         )
         session.commit()
 
@@ -2768,7 +2768,7 @@ def test_certificate_latest_version_round_trips_structured_scopes_and_bumps_cert
             session, site_id=case.site_id, case_id=case_id, certificate_type="GMP", issuance_basis="inspection_case",
             certificate_number="CERT-SCOPE", issue_date=date(2026, 8, 1), expiry_date=date(2027, 8, 1),
             scopes=[{"scope_key": "a", "scope_text": "A", "language_code": "vi", "sort_order": 2}, {"scope_key": "b", "scope_text": "B", "language_code": "en", "sort_order": 1}],
-            reason="Seed.", user=build_authenticated_user("admin01", "admin"),
+            reason="Seed.", user=build_authenticated_user("admin01", "admin", permissions={"certificate.issue"}),
         )
         session.commit()
     with Session(engine) as session:
@@ -2816,7 +2816,7 @@ def test_promote_certificate_current_rejects_pending_capa_for_case_backed_certif
             expiry_date=date(2027, 8, 18),
             scopes=[],
             reason="Seed cert.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         certificate = session.get(Certificate, issued["certificate_id"])
         assert certificate is not None
@@ -3087,7 +3087,7 @@ def test_promote_certificate_current_rejects_older_candidate_than_current():
             expiry_date=date(2027, 8, 16),
             scopes=[],
             reason="Current baseline.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         session.commit()
 
@@ -3122,7 +3122,7 @@ def test_promote_certificate_current_rejects_older_candidate_than_current():
             expiry_date=date(2027, 8, 10),
             scopes=[],
             reason="Older successor.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         session.commit()
 
@@ -3504,7 +3504,7 @@ def test_upsert_business_eligibility_latest_version_replaces_links():
             expiry_date=date(2027, 8, 18),
             scopes=[],
             reason="Linked cert 1.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         session.commit()
 
@@ -3545,7 +3545,7 @@ def test_upsert_business_eligibility_latest_version_replaces_links():
             expiry_date=date(2027, 8, 20),
             scopes=[],
             reason="Linked cert 2.",
-            user=build_authenticated_user("manager01", "manager"),
+            user=build_authenticated_user("manager01", "manager", permissions={"certificate.issue"}),
         )
         session.commit()
 

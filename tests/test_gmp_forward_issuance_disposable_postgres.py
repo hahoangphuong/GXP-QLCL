@@ -83,7 +83,7 @@ def test_two_sessions_cannot_issue_two_gmp_certificates_from_one_case():
             seed.commit()
             case_id = case.id
 
-        user = build_authenticated_user(f"disposable-gmp-issuer-{token}", "admin")
+        user = build_authenticated_user(f"disposable-gmp-issuer-{token}", "admin", permissions={"certificate.issue"})
         service = CaseWorkflowService()
 
         def issue(session, number):

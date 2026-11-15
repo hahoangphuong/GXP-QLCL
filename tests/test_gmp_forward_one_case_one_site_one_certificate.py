@@ -47,7 +47,7 @@ def _issue(session, site_id, case_id, *, gxp_type="GMP", number="GMP-CERT-01"):
         expiry_date=date(2029, 10, 18),
         scopes=[],
         reason="Prospective case-backed issue",
-        user=build_authenticated_user("authorized-issuer", "admin"),
+        user=build_authenticated_user("authorized-issuer", "admin", permissions={"certificate.issue"}),
     )
 
 

@@ -202,6 +202,44 @@ def test_canonical_get_does_not_flush_unpersisted_nonissuance_fact(scenario):
         assert len(db.new) == 1
         db.rollback()
 
+
+@pytest.mark.parametrize("permissions", [
+    {"inspection.edit"}, {"certificate.approve"}, {"certificate.edit"},
+])
+def test_direct_certificate_issue_requires_issue_permission_without_effects(scenario, permissions):
+    """The service owner, not just the HTTP endpoint, must reject unprivileged issuance."""
+    engine, (case_id, _, site_id) = scenario
+    actor = build_authenticated_user("unprivileged-certificate-actor", "viewer", permissions=permissions)
+    with Session(engine) as db:
+        with pytest.raises(HTTPException) as error:
+            CaseWorkflowService().issue_certificate(
+                db, site_id=site_id, case_id=case_id,
+                certificate_type="GMP", issuance_basis="inspection_case",
+                certificate_number="MUST-NOT-ISSUE", issue_date=date(2026, 11, 15),
+                expiry_date=date(2028, 11, 15), scopes=[], reason=None, user=actor,
+            )
+        assert error.value.status_code == 403
+        assert db.scalar(select(func.count(Certificate.id))) == 0
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert not db.new and not db.dirty
+
+
+def test_unauthorized_certificate_issue_does_not_probe_site_case_or_create_audit(scenario):
+    engine, _ = scenario
+    with Session(engine) as db:
+        with pytest.raises(HTTPException) as error:
+            CaseWorkflowService().issue_certificate(
+                db, site_id="00000000-0000-4000-8000-000000000001",
+                case_id="00000000-0000-4000-8000-000000000002",
+                certificate_type="GMP", issuance_basis="inspection_case",
+                certificate_number="DENIED", issue_date=date(2026, 11, 15),
+                expiry_date=None, scopes=[], reason=None,
+                user=build_authenticated_user("unprivileged-certificate-reader", "viewer"),
+            )
+        assert error.value.status_code == 403
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+        assert not db.new and not db.dirty
+
 def test_decision_prevents_future_case_backed_certificate_issue(scenario):
     engine, (case_id, _, site_id) = scenario
     with Session(engine) as db:

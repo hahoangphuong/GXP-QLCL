@@ -98,6 +98,7 @@ OPEN_CASE_STATES = frozenset(
     }
 )
 CREATE_INSPECTION_CASE_PERMISSION = "case.edit"
+NONISSUANCE_DECISION_PERMISSION = "certificate.approve"
 CHANGE_REQUEST_EDIT_PERMISSION = "change_request.edit"
 CHANGE_REQUEST_APPROVE_PERMISSION = "change_request.approve"
 CHANGE_REQUEST_EDITABLE_STATES = frozenset({ChangeRequestState.RECEIVED, ChangeRequestState.UNDER_REVIEW})
@@ -466,7 +467,7 @@ class CaseWorkflowService:
         """
         case = self._get_case(session, case_id)
         session.refresh(case)
-        permission = "certificate.approve"
+        permission = NONISSUANCE_DECISION_PERMISSION
         blocker = (
             "missing_permission" if permission not in user.permissions
             else self._nonissuance_decision_blocker(session, case=case)
@@ -490,7 +491,10 @@ class CaseWorkflowService:
 
         No certificate, legal document or guessed historical refusal is created.
         Case lock serializes this against Case-backed certificate issuance.
+        The service itself enforces authorization even for non-HTTP callers.
         """
+        if NONISSUANCE_DECISION_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: certificate.approve.")
         case = self._lock_case(session, case_id)
         self._assert_expected_version(case, expected_case_version, label="case")
         if not decision_reference or not decision_reference.strip() or len(decision_reference.strip()) > 255:

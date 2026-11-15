@@ -180,3 +180,69 @@ def test_unrelated_unknown_historical_link_still_blocks_global_search(tmp_path):
         db.commit()
         with pytest.raises(HTTPException, match="invalid linked Case"):
             _search(CatalogReadService(), db, gxp_type="GLP", offset=0, limit=1)
+
+
+def _certificate_report(service, db, **changes):
+    args = {
+        "gxp_type": None, "q": None, "expiry_days": None,
+        "export": False, "offset": 0, "limit": 100, "number": None,
+    }
+    return service.get_certificate_report(db, **(args | changes))
+
+
+def test_certificate_report_exposes_legacy_quarantine_without_inventing_grant(tmp_path):
+    """Counts, pagination and export must agree and disclose suppressed sources."""
+    from backend.app.read_models import CertificateReportPageRead
+
+    engine, certs, _ = _source_fixture(tmp_path)
+    service = CatalogReadService()
+    with Session(engine) as db:
+        cert_count = db.scalar(select(func.count()).select_from(Certificate))
+        before_audit = db.scalar(select(func.count()).select_from(AuditEvent))
+        for gxp_type in (None, "GMP", "GLP"):
+            report = _certificate_report(service, db, gxp_type=gxp_type, limit=1)
+            assert report["quarantined_historical_certificate_legacy_ids"] == [376, 1037, 1180]
+            assert report["total_count"] == (0 if gxp_type == "GLP" else 1)
+            assert len(report["items"]) == report["total_count"]
+            assert CertificateReportPageRead.model_validate(report).total_count == report["total_count"]
+        report = _certificate_report(service, db)
+        assert [row["certificate_id"] for row in report["items"]] == [certs[9000]]
+        assert report["items"][0]["certificate_number"] == "GMP-9000"
+        assert report["items"][0]["case_id"] is not None
+        assert _certificate_report(service, db, limit=1, offset=1)["items"] == []
+        assert _certificate_report(service, db, export=True)["items"] == report["items"]
+        assert _certificate_report(service, db, number="GMP-1180")["items"] == []
+        assert _certificate_report(service, db, q="Historical Site 46")["total_count"] == 0
+        assert _certificate_report(service, db, number="GMP-9000")["total_count"] == 1
+        # Only source-identified exclusions, never data patch, report artifact
+        # generation or synthetic audit writes.
+        assert db.scalar(select(func.count()).select_from(Certificate)) == cert_count
+        assert db.scalar(select(func.count()).select_from(AuditEvent)) == before_audit
+        assert not db.new and not db.dirty
+
+
+def test_certificate_report_unknown_invalid_link_fails_across_filters_and_export(tmp_path):
+    """A fourth orphaned source must not be hidden behind a page/filter."""
+    engine, _, sites = _source_fixture(tmp_path)
+    service = CatalogReadService()
+    with Session(engine) as db:
+        wrong_case = Case(
+            site_id=sites[298], gxp_type="GMP", state=CaseState.CERTIFIED,
+        )
+        db.add(wrong_case)
+        db.flush()
+        db.add(Certificate(
+            site_id=sites[73], legacy_certificate_id=9937,
+            case_id=wrong_case.id, certificate_type="GMP",
+            issuance_basis="inspection_case", latest_flag=False,
+        ))
+        db.commit()
+        for kwargs in (
+            {},
+            {"gxp_type": "GLP", "limit": 1, "offset": 100},
+            {"number": "GMP-9000"},
+            {"export": True},
+        ):
+            with pytest.raises(HTTPException, match="invalid linked Case") as exc:
+                _certificate_report(service, db, **kwargs)
+            assert exc.value.status_code == 409

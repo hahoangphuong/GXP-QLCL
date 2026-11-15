@@ -99,7 +99,7 @@ def bound_db():
                 session, approval_submission_id=ids["pct"],
                 document_id=ids["document"], expected_version=1,
                 reason="Synthetic association identity proof",
-                user=build_authenticated_user("bound-source-pg", "manager"),
+                user=build_authenticated_user("bound-source-pg", "manager", permissions={"inspection.edit", "document.read"}),
             )
             assert bound["created"] is True
             ids["binding"] = bound["binding_id"]

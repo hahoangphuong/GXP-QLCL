@@ -48,12 +48,12 @@ def test_new_case_team_canonical_http_never_becomes_issued_qdkt(pg_engine, api):
         {
             "identity_kind": "INSPECTOR_PROFILE",
             "inspector_profile_id": profile_id,
-            "role_code": "LEADER", "sort_order": 0,
+            "role_code": "LEADER", "sort_order": 1,
         },
         {
             "identity_kind": "ORGANIZATION_REPRESENTATIVE",
             "participant_catalog_id": catalog_id,
-            "role_code": "MEMBER", "sort_order": 1,
+            "role_code": "MEMBER", "sort_order": 2,
         },
     ]
     status, _ = api("PUT", f"/cases/{case_id}/team", {
@@ -73,7 +73,7 @@ def test_new_case_team_canonical_http_never_becomes_issued_qdkt(pg_engine, api):
     assert view["case_id"] == case_id and view["team_id"] == team_id
     assert view["team_revision"] == created["row_version"]
     assert [row["role_code"] for row in view["members"]] == ["LEADER", "MEMBER"]
-    assert [row["sort_order"] for row in view["members"]] == [0, 1]
+    assert [row["sort_order"] for row in view["members"]] == [1, 2]
     assert [row["display_name"] for row in view["members"]] == [
         "Inspector A", "Synthetic Organization Representative",
     ]

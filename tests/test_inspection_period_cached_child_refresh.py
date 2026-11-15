@@ -54,7 +54,7 @@ def _setup(tmp_path):
 
 def test_compatibility_writer_rechecks_changed_segment_ordinal_before_replace(tmp_path):
     engine, case_id, outcome_id, segment_id, expected_version = _setup(tmp_path)
-    user = build_authenticated_user("period-owner-manager", "manager")
+    user = build_authenticated_user("period-owner-manager", "manager", permissions={"inspection.edit"})
     try:
         with Session(engine, autoflush=False, expire_on_commit=False) as contender:
             stale = contender.get(InspectionPeriodSegment, segment_id)
@@ -89,7 +89,7 @@ def test_compatibility_writer_rechecks_changed_segment_ordinal_before_replace(tm
 
 def test_period_replace_audit_before_uses_fresh_committed_segment_dates(tmp_path):
     engine, case_id, outcome_id, segment_id, expected_version = _setup(tmp_path)
-    user = build_authenticated_user("period-owner-manager", "manager")
+    user = build_authenticated_user("period-owner-manager", "manager", permissions={"inspection.edit"})
     try:
         with Session(engine, autoflush=False, expire_on_commit=False) as contender:
             stale = contender.get(InspectionPeriodSegment, segment_id)

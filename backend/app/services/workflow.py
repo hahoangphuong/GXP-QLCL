@@ -4047,6 +4047,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         provided = self._provided_fields(
             fields_set,
             {"plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"},
@@ -4191,6 +4192,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         provided = self._provided_fields(
             fields_set,
             {
@@ -4369,6 +4371,7 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         """Replace an explicitly user-entered, ordered actual visit sequence."""
         # Serialize against Case terminal transitions and refresh cached state.
         case = self._lock_case(session, case_id)
@@ -4813,6 +4816,7 @@ class CaseWorkflowService:
         expected_version: int | None = None,
         display_text: str | None = None,
     ) -> dict[str, Any]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         # The Case owner lock prevents replacing members after closure,
         # including when an earlier Session read cached a nonterminal state.
         row = self._lock_case(session, case_id)

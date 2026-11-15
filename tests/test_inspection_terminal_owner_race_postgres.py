@@ -68,7 +68,7 @@ def test_inspection_mutation_waits_for_terminal_case_owner(kind):
             case_id, stage_id, version = case.id, stage.id, stage.row_version
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("synthetic-inspection-actor", "manager")
+        user = build_authenticated_user("synthetic-inspection-actor", "manager", permissions={"inspection.edit"})
 
         def mutate(session):
             if kind == "final_evaluation":

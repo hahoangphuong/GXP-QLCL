@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import AuthenticatedUser
 from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_readable_scope
+from backend.app.domain.legacy_certificate_search_quarantine import is_witnessed_historical_search_quarantine
 from backend.app.db.enums import CaseState, ChangeRequestState
 from backend.app.document.contextual_actions import (
     build_case_contextual_document_specs,
@@ -1227,6 +1228,35 @@ class CatalogReadService:
             CaseWorkflowService._validate_certificate_linked_case(session, certificate)
 
     @staticmethod
+    def _quarantined_historical_search_certificates(
+        session: Session, *, site_id: str | None = None
+    ) -> tuple[set[str], list[int]]:
+        """Read-only projection exclusion. Never changes authoritative Certificate rows.
+
+        Validate *all* linked rows before filters or pagination. Exactly three
+        independently witnessed cross-Site source identities may be quarantined;
+        every other invalid link must raise the existing 409.
+        """
+        statement = select(Certificate).where(Certificate.case_id.is_not(None))
+        if site_id is not None:
+            statement = statement.where(Certificate.site_id == site_id)
+        quarantined: set[str] = set()
+        legacy_ids: list[int] = []
+        for certificate in session.scalars(statement):
+            try:
+                CaseWorkflowService._validate_certificate_linked_case(session, certificate)
+            except HTTPException as error:
+                if error.status_code != 409:
+                    raise
+                case = session.get(Case, certificate.case_id)
+                site = session.get(Site, certificate.site_id)
+                if not is_witnessed_historical_search_quarantine(certificate, case, site):
+                    raise
+                quarantined.add(certificate.id)
+                legacy_ids.append(certificate.legacy_certificate_id)
+        return quarantined, sorted(legacy_ids)
+
+    @staticmethod
     def _build_case_exists_clause(
         *,
         gxp_type: str | None = None,
@@ -1732,7 +1762,7 @@ class CatalogReadService:
         offset: int,
         limit: int,
     ) -> dict[str, object]:
-        self._assert_certificate_links_valid(session)
+        quarantined_ids, quarantined_legacy_ids = self._quarantined_historical_search_certificates(session)
         sites = list(session.scalars(select(Site).order_by(Site.legacy_site_id, Site.id)))
         companies = {row.id: row for row in session.scalars(select(Company))}
         lines = {row.id: row for row in session.scalars(select(ProductionLine))}
@@ -1747,7 +1777,11 @@ class CatalogReadService:
             )
             if occurred_at is not None
         }
-        certificates = list(session.scalars(select(Certificate).where(Certificate.latest_flag.is_(True))))
+        certificates = [
+            row for row in session.scalars(
+                select(Certificate).where(Certificate.latest_flag.is_(True))
+            ) if row.id not in quarantined_ids
+        ]
         change_requests = list(session.scalars(select(ChangeRequest)))
         case_by_id = {row.id: row for row in cases}
         versions = {row.certificate_id: row for row in session.scalars(select(CertificateVersion).where(CertificateVersion.is_latest_version.is_(True)))}
@@ -1861,10 +1895,14 @@ class CatalogReadService:
                 )
                 results.append({"result_key": result_key, "site_id": site.id, "legacy_site_id": site.legacy_site_id, "facility_code": self._preferred_site_code(site, regulatory), "context_code": self._build_context_code(site, gxp_type=regulatory, line_code=line_code), "result_grain": "facility" if state == "facility_wide" else "production_line", "gxp_type": regulatory, "line_code": line_code, "production_line_id": line_id, "production_line_code": line_code, "production_line_identity_state": state, "facility_name": site.site_name, "company_name": company.legal_name, "gxp_types": sorted({key[1] for key in site_keys if key[1] is not None}), "certificate_scope_summary": None if certificate_context is None else certificate_context.scope_summary, "province_name": site.province_name, "last_inspection_on": self._select_latest_inspection_on(context_cases, outcomes_by_case_id=outcomes_by_case_id, inspection_event_dates_by_case_id=inspection_event_dates_by_case_id), "current_state": None if latest_case is None else latest_case.state.value, "current_certificate_number": None if certificate_context is None else certificate_context.version.certificate_number, "current_certificate_expiry": None if certificate_context is None else certificate_context.version.expiry_date})
         results.sort(key=lambda row: (row["legacy_site_id"] is None, row["legacy_site_id"] or 0, row["facility_name"], row["gxp_type"] or "", row["production_line_identity_state"], row["production_line_id"] or "", row["line_code"] or ""))
-        return {"items": results[offset : offset + limit], "total_count": len(results), "offset": offset, "limit": limit}
+        return {"items": results[offset : offset + limit], "total_count": len(results),
+                "offset": offset, "limit": limit,
+                "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids}
 
     def get_facility_workspace(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None, production_line_id: str | None = None):
-        self._assert_certificate_links_valid(session, site_id=site_id)
+        quarantined_ids, quarantined_legacy_ids = self._quarantined_historical_search_certificates(
+            session, site_id=site_id
+        )
         site = self.get_site(session, site_id)
         company = self.get_company(session, site.company_id)
         site_cases = list(session.scalars(select(Case).where(Case.site_id == site_id)))
@@ -1903,6 +1941,7 @@ class CatalogReadService:
                     ),
                 )
                 .where(Certificate.site_id == site_id, Certificate.latest_flag.is_(True))
+                .where(Certificate.id.not_in(quarantined_ids))
             ).all()
         )
         certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
@@ -1990,6 +2029,7 @@ class CatalogReadService:
 
         return {
             "summary": {
+                "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids,
                 "context_key": self._build_result_key(site.id, gxp_type=gxp_type, line_code=selected_line_code) + (f":{selected_line_id}" if selected_line_id else f":{identity_state}"),
                 "site_id": site.id,
                 "legacy_site_id": site.legacy_site_id,

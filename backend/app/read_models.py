@@ -178,6 +178,7 @@ class CertificateReportPageRead(BaseModel):
     total_count: int
     offset: int
     limit: int
+    quarantined_historical_certificate_legacy_ids: list[int] = []
 
 
 class ChangeRequestReportItemRead(BaseModel):

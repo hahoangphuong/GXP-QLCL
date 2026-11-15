@@ -33,7 +33,7 @@ def test_approval_completion_owner_prevents_backdated_mutation_without_audit(
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    user = build_authenticated_user("synthetic-approval-completion", "manager")
+    user = build_authenticated_user("synthetic-approval-completion", "manager", permissions={"inspection.edit"})
     try:
         with Session(engine) as setup:
             company = Company(legal_name="Synthetic completion chronology")

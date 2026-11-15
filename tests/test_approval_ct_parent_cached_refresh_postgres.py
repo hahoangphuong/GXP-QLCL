@@ -80,7 +80,7 @@ def test_ct_parent_uses_fresh_authoritative_snapshot_after_case_lock(change, all
         writer.commit()
 
         service = CaseWorkflowService()
-        user = build_authenticated_user("pct-parent-refresh", "manager")
+        user = build_authenticated_user("pct-parent-refresh", "manager", permissions={"inspection.edit"})
         args = dict(
             case_id=case_id, stage="CT", reference="Synthetic CT",
             submitted_on=None, submitted_time=None, pct_submission_id=pct_id,
@@ -167,7 +167,7 @@ def test_completion_refuses_submission_reassigned_away_from_cached_case_owner():
                 expected_version=new_version,
                 completed_on=date(2026, 11, 11), completed_time=None,
                 reason="stale owner lock probe",
-                user=build_authenticated_user("approval-owner-refresh", "manager"),
+                user=build_authenticated_user("approval-owner-refresh", "manager", permissions={"inspection.edit"}),
             )
         assert denied.value.status_code == 409
         assert "owner changed" in str(denied.value.detail)

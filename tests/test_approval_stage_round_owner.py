@@ -18,7 +18,7 @@ from backend.app.services.workflow import CaseWorkflowService
 def test_approval_creation_normalizes_stage_and_allocates_case_stage_rounds():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
-    user = build_authenticated_user("approval-stage-round-owner", "manager")
+    user = build_authenticated_user("approval-stage-round-owner", "manager", permissions={"inspection.edit"})
     service = CaseWorkflowService()
     try:
         with Session(engine) as session:

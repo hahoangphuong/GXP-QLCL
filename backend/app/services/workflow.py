@@ -102,6 +102,8 @@ NONISSUANCE_DECISION_PERMISSION = "certificate.approve"
 CERTIFICATE_ISSUE_PERMISSION = "certificate.issue"
 CERTIFICATE_EDIT_PERMISSION = "certificate.edit"
 CERTIFICATE_APPROVE_PERMISSION = "certificate.approve"
+INSPECTION_EDIT_PERMISSION = "inspection.edit"
+APPROVAL_DOCUMENT_BIND_PERMISSIONS = frozenset({"inspection.edit", "document.read"})
 CHANGE_REQUEST_EDIT_PERMISSION = "change_request.edit"
 CHANGE_REQUEST_APPROVE_PERMISSION = "change_request.approve"
 CHANGE_REQUEST_EDITABLE_STATES = frozenset({ChangeRequestState.RECEIVED, ChangeRequestState.UNDER_REVIEW})
@@ -4481,6 +4483,10 @@ class CaseWorkflowService:
     def finalize_inspection_outcome(self, session: Session, *, case_id: str, expected_version: int, final_evaluation: str, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
         # Case transitions write the owning row. Serialize terminal-state
         # eligibility before finalizing an outcome and creating an audit fact.
+        # Enforce HTTP-equivalent RBAC at the canonical mutation owner
+        # before checking resource identity, locks, version or audit.
+        if INSPECTION_EDIT_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: inspection.edit.")
         row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection final evaluation")
         stage = session.scalars(
@@ -4505,6 +4511,10 @@ class CaseWorkflowService:
         return self._serialize_inspection_outcome(stage, audit_event_id=audit.id, inspection_event_id=None)
 
     def create_approval_submission(self, session: Session, *, case_id: str, stage: str, reference: str | None, submitted_on: date | None, submitted_time, pct_submission_id: str | None, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
+        # Enforce HTTP-equivalent RBAC at the canonical mutation owner
+        # before checking resource identity, locks, version or audit.
+        if INSPECTION_EDIT_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: inspection.edit.")
         try:
             normalized_stage = validate_approval_stage(stage)
         except InspectionContractViolation as exc:
@@ -4550,6 +4560,10 @@ class CaseWorkflowService:
         return self._serialize_approval_submission(submission)
 
     def complete_approval_submission(self, session: Session, *, approval_submission_id: str, expected_version: int, completed_on: date, completed_time, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
+        # Enforce HTTP-equivalent RBAC at the canonical mutation owner
+        # before checking resource identity, locks, version or audit.
+        if INSPECTION_EDIT_PERMISSION not in user.permissions:
+            raise HTTPException(status_code=403, detail="Missing required permission: inspection.edit.")
         row = session.get(InspectionApprovalSubmission, approval_submission_id)
         if row is None:
             raise HTTPException(status_code=404, detail="Approval submission not found.")
@@ -4673,6 +4687,10 @@ class CaseWorkflowService:
         The owning Case lock fences concurrent CT/PCT and document-binding
         mutations; the submission token fences stale UI selections.
         """
+        # Enforce HTTP-equivalent RBAC at the canonical mutation owner
+        # before checking resource identity, locks, version or audit.
+        if not APPROVAL_DOCUMENT_BIND_PERMISSIONS.issubset(user.permissions):
+            raise HTTPException(status_code=403, detail="Missing required permissions: inspection.edit, document.read.")
         identity = session.get(InspectionApprovalSubmission, approval_submission_id)
         if identity is None:
             raise HTTPException(status_code=404, detail="Approval submission not found.")

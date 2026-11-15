@@ -159,6 +159,86 @@ def test_certificate_lifecycle_permission_checks_do_not_flush_pending_orm_drafts
         assert draft in db.dirty
         db.rollback()
 
+
+@pytest.mark.parametrize("operation,kwargs,required", [
+    ("finalize_inspection_outcome", {
+        "case_id": "00000000-0000-4000-8000-000000000001",
+        "expected_version": 1, "final_evaluation": "DENIED", "reason": None,
+    }, {"inspection.edit"}),
+    ("create_approval_submission", {
+        "case_id": "00000000-0000-4000-8000-000000000001",
+        "stage": "PCT", "reference": None, "submitted_on": None,
+        "submitted_time": None, "pct_submission_id": None, "reason": None,
+    }, {"inspection.edit"}),
+    ("complete_approval_submission", {
+        "approval_submission_id": "00000000-0000-4000-8000-000000000002",
+        "expected_version": 1, "completed_on": date(2026, 11, 15),
+        "completed_time": None, "reason": None,
+    }, {"inspection.edit"}),
+    ("bind_approval_document", {
+        "approval_submission_id": "00000000-0000-4000-8000-000000000002",
+        "document_id": "00000000-0000-4000-8000-000000000003",
+        "expected_version": 1, "reason": None,
+    }, {"inspection.edit", "document.read"}),
+])
+@pytest.mark.parametrize("permissions", [set(), {"case.edit"}, {"inspection.edit"}, {"document.read"}])
+def test_approval_mutations_enforce_service_permissions_before_any_read(
+    scenario, operation, kwargs, required, permissions,
+):
+    """Direct service callers may not bypass the owning HTTP route permissions."""
+    if required.issubset(permissions):
+        pytest.skip("Authorized caller: existing business-gate tests cover this case")
+    engine, _ = scenario
+    user = build_authenticated_user("approval-denied", "viewer", permissions=permissions)
+    with Session(engine) as db:
+        reads = []
+
+        def capture_sql(conn, cursor, statement, parameters, context, executemany):
+            reads.append(statement)
+
+        event.listen(engine, "before_cursor_execute", capture_sql)
+        try:
+            with pytest.raises(HTTPException) as denied:
+                getattr(CaseWorkflowService(), operation)(db, **kwargs, user=user)
+        finally:
+            event.remove(engine, "before_cursor_execute", capture_sql)
+        assert denied.value.status_code == 403
+        assert reads == []
+        assert not db.new and not db.dirty
+        assert db.scalar(select(func.count(AuditEvent.id))) == 0
+
+
+def test_denied_approval_document_bind_does_not_flush_pending_case_draft(scenario):
+    engine, (case_id, _, _) = scenario
+    with Session(engine) as db:
+        case = db.get(Case, case_id)
+        case.state = CaseState.PLANNED
+        flushes = []
+
+        def reject_flush(session, context, instances):
+            flushes.append(True)
+            raise AssertionError("Denied approval document mutation must not flush draft")
+
+        event.listen(db, "before_flush", reject_flush)
+        try:
+            with pytest.raises(HTTPException) as denied:
+                CaseWorkflowService().bind_approval_document(
+                    db,
+                    approval_submission_id="00000000-0000-4000-8000-000000000002",
+                    document_id="00000000-0000-4000-8000-000000000003",
+                    expected_version=1, reason=None,
+                    user=build_authenticated_user(
+                        "approval-reader-only", "viewer", permissions={"document.read"},
+                    ),
+                )
+        finally:
+            event.remove(db, "before_flush", reject_flush)
+        assert denied.value.status_code == 403
+        assert flushes == []
+        assert case in db.dirty
+        db.rollback()
+
+
 def test_explicit_decision_persists_once_and_scoped_get_has_no_side_effects(scenario):
     engine, (case_id, other_id, _) = scenario
     service = CaseWorkflowService()

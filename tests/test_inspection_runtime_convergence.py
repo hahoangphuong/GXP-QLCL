@@ -20,7 +20,7 @@ def test_typed_plan_and_outcome_metadata_reject_compatibility_writes_and_preserv
     with Session(engine) as session:
         case_id = seed_case(session)
     with Session(engine) as session:
-        user = build_authenticated_user("manager01", "manager")
+        user = build_authenticated_user("manager01", "manager", permissions={"inspection.edit"})
         with pytest.raises(HTTPException, match="read-only compatibility"):
             service.upsert_inspection_plan(session, case_id=case_id, plan_start_on=None, plan_end_on=None, planning_sheet_name=None, decision_document_hint="legacy hint", decision_reference="QD-12", decision_date=date(2026, 9, 1), reason="compatibility", user=user)
         plan = service.upsert_inspection_plan(session, case_id=case_id, plan_start_on=None, plan_end_on=None, planning_sheet_name=None, decision_document_hint=None, decision_reference="QD-12", decision_date=date(2026, 9, 1), reason="typed", user=user)
@@ -53,7 +53,7 @@ def test_finalization_and_approval_parent_contracts():
     with Session(engine) as session:
         case_id = seed_case(session)
     with Session(engine) as session:
-        user = build_authenticated_user("manager01", "manager")
+        user = build_authenticated_user("manager01", "manager", permissions={"inspection.edit"})
         outcome = service.upsert_inspection_outcome(session, case_id=case_id, inspected_on=None, inspected_to_on=None, decision_reference=None, bbkt_reference=None, outcome_result="Dat", reason="outcome", user=user)
         session.add(CapaCycle(case_id=case_id, round_no=1, status="submitted"))
         session.flush()

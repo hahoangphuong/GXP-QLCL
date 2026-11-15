@@ -1492,9 +1492,16 @@ class CatalogReadService:
             raise HTTPException(status_code=422, detail="Unsupported certificate expiry window.")
         if gxp_type is not None and gxp_type not in ("GMP", "GLP", "GMPbb", "GSP", "GDP"):
             raise HTTPException(status_code=422, detail="Invalid certificate GxP type.")
+        # Validate all Certificate→Case links before report filters/pagination.
+        # Only the three independently witnessed legacy source mismatches are
+        # quarantined from read projections; all other invalid links remain 409.
+        quarantined_ids, quarantined_legacy_ids = (
+            self._quarantined_historical_search_certificates(session)
+        )
         conditions = [
             Certificate.latest_flag.is_(True),
             CertificateVersion.is_latest_version.is_(True),
+            Certificate.id.not_in(quarantined_ids),
         ]
         if gxp_type:
             conditions.append(Certificate.certificate_type == gxp_type)
@@ -1572,7 +1579,10 @@ class CatalogReadService:
                 "lifecycle_state": version.lifecycle_state,
                 "status": self._derive_certificate_status(CertificateContextRow(certificate=certificate, version=version, line_code=line_code)),
             })
-        return {"items": items, "total_count": total, "offset": offset, "limit": limit}
+        return {
+            "items": items, "total_count": total, "offset": offset, "limit": limit,
+            "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids,
+        }
 
     def get_change_request_report(
         self, session: Session, *, state: str | None, q: str | None,

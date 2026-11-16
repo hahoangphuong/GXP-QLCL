@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import String, and_, cast, func, or_, select
@@ -1379,6 +1380,51 @@ class CatalogReadService:
         if row is None:
             raise HTTPException(status_code=404, detail="Company not found.")
         return row
+
+    @staticmethod
+    def _committed_master_snapshot(
+        session: Session, *, model: type, identity: str, missing_detail: str,
+    ) -> SimpleNamespace:
+        """Read a persisted resource for unknown-POST-outcome recovery.
+
+        Unlike Session.get or ORM entity SELECT, column projection does not
+        return the Session's dirty/cached identity or autoflush pending drafts.
+        It also does not expire or overwrite a tracked operator edit. This
+        snapshot must not be treated as a lock, authorization, or proof that a
+        missing POST can safely be replayed.
+        """
+        with session.no_autoflush:
+            row = session.execute(
+                select(*model.__table__.columns)
+                .where(model.id == identity)
+            ).mappings().one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail=missing_detail)
+        return SimpleNamespace(**row)
+
+    def get_company_master_persisted(
+        self, session: Session, company_id: str,
+    ) -> SimpleNamespace:
+        return self._committed_master_snapshot(
+            session, model=Company, identity=company_id,
+            missing_detail="Company not found.",
+        )
+
+    def get_site_master_persisted(
+        self, session: Session, site_id: str,
+    ) -> SimpleNamespace:
+        return self._committed_master_snapshot(
+            session, model=Site, identity=site_id,
+            missing_detail="Site not found.",
+        )
+
+    def get_production_line_master_persisted(
+        self, session: Session, production_line_id: str,
+    ) -> SimpleNamespace:
+        return self._committed_master_snapshot(
+            session, model=ProductionLine, identity=production_line_id,
+            missing_detail="ProductionLine not found.",
+        )
 
     def list_sites(self, session: Session, *, q: str | None, limit: int):
         # Preserve legacy-first ordering consistently across database engines.

@@ -202,7 +202,7 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        line = session.get(ProductionLine, production_line_id)
+        line = service.get_production_line_master_persisted(session, production_line_id)
         if line is None:
             raise HTTPException(status_code=404, detail="ProductionLine not found.")
         return ProductionLineMasterRead(
@@ -297,7 +297,7 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        row = service.get_company(session, company_id)
+        row = service.get_company_master_persisted(session, company_id)
         return CompanyDetailRead(
             id=row.id,
             legacy_company_id=row.legacy_company_id,
@@ -315,7 +315,7 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        row = service.get_site(session, site_id)
+        row = service.get_site_master_persisted(session, site_id)
         return SiteDetailRead(
             id=row.id,
             legacy_site_id=row.legacy_site_id,

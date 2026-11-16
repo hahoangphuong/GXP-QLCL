@@ -2024,6 +2024,10 @@ class CaseWorkflowService:
         UUID v4 is client-generated before the first POST. If response delivery
         fails, the operator reads canonical GET /companies/{id}; do not replay.
         """
+        # Enforce the HTTP case.edit entitlement at the service mutation owner.
+        # A direct/internal caller must not validate/probe identities or flush
+        # a pending draft when it is not authorized to create a master.
+        require_permissions(user, {"case.edit"})
         normalized = {
             "legal_name": self._facility_master_required_text(legal_name, field="legal_name", limit=512),
             "legal_address": self._facility_master_required_text(legal_address, field="legal_address", limit=10000),
@@ -2059,6 +2063,10 @@ class CaseWorkflowService:
 
         Does not fabricate GxP registration, ProductionLine or inspection Case.
         """
+        # Enforce the HTTP case.edit entitlement at the service mutation owner.
+        # A direct/internal caller must not validate/probe identities or flush
+        # a pending draft when it is not authorized to create a master.
+        require_permissions(user, {"case.edit"})
         normalized = {
             "site_name": self._facility_master_required_text(site_name, field="site_name", limit=512),
             "site_address": self._facility_master_required_text(site_address, field="site_address", limit=10000),
@@ -2106,6 +2114,10 @@ class CaseWorkflowService:
         admission, regulatory scope owner, or Case/Certificate linkage.
         Stable client-generated UUID v4 is the only replay/recovery identity.
         """
+        # Enforce the HTTP case.edit entitlement at the service mutation owner.
+        # A direct/internal caller must not validate/probe identities or flush
+        # a pending draft when it is not authorized to create a master.
+        require_permissions(user, {"case.edit"})
         normalized_code = self._facility_master_required_text(code, field="code", limit=64)
         reference = self._facility_master_required_text(
             physical_identity_evidence_reference,

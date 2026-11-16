@@ -334,8 +334,16 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        row = service.get_case(session, case_id)
-        line = None if row.production_line_id is None else session.get(ProductionLine, row.production_line_id)
+        # This endpoint is the canonical recovery readback for an Initial Case
+        # whose client-generated UUID was admitted before POST. Do not return
+        # an uncommitted or stale Case/ProductionLine from the Session cache,
+        # or flush an operator draft while resolving uncertain POST delivery.
+        row = service.get_case_master_persisted(session, case_id)
+        with session.no_autoflush:
+            line = None if row.production_line_id is None else session.execute(
+                select(ProductionLine.site_id, ProductionLine.code)
+                .where(ProductionLine.id == row.production_line_id)
+            ).one_or_none()
         if row.production_line_id is not None and (line is None or line.site_id != row.site_id):
             raise HTTPException(status_code=409, detail="Case references an invalid canonical ProductionLine.")
         raw_scope_code = str(row.scope_code or "").strip() or None

@@ -4908,22 +4908,47 @@ class CaseWorkflowService:
         # before checking resource identity, locks, version or audit.
         if INSPECTION_EDIT_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: inspection.edit.")
-        row = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(row, operation="inspection final evaluation")
-        stage = session.scalars(
-            select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)
-            .execution_options(populate_existing=True)
-        ).first()
-        if stage is None:
-            raise HTTPException(status_code=422, detail="Inspection outcome must exist before final evaluation.")
-        self._assert_expected_version(stage, expected_version, label="inspection_outcome")
-        if stage.final_evaluation is not None:
-            if stage.final_evaluation == final_evaluation:
-                return self._serialize_inspection_outcome(stage, audit_event_id=None, inspection_event_id=None)
-            raise HTTPException(status_code=409, detail="Inspection final evaluation is immutable once set.")
-        if not str(final_evaluation).strip():
-            raise HTTPException(status_code=422, detail="Inspection final evaluation is required.")
-        self._assert_latest_capa_accepted_if_present(session, row.id, blocked_detail="Latest CAPA cycle must be accepted before final evaluation.")
+        # Before the intentional evaluation/audit write, every owner check
+        # must be SELECT-only. Do not autoflush unrelated drafts or discard
+        # cached Case/Outcome edits with populate_existing.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before final evaluation.",
+                )
+            row = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(row, operation="inspection final evaluation")
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, InspectionOutcome)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection outcome has uncommitted changes; resolve draft before final evaluation.",
+                    )
+            stage = session.scalars(
+                select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)
+                .execution_options(populate_existing=True)
+            ).first()
+            if stage is None:
+                raise HTTPException(status_code=422, detail="Inspection outcome must exist before final evaluation.")
+            self._assert_expected_version(stage, expected_version, label="inspection_outcome")
+            if stage.final_evaluation is not None:
+                if stage.final_evaluation == final_evaluation:
+                    return self._serialize_inspection_outcome(stage, audit_event_id=None, inspection_event_id=None)
+                raise HTTPException(status_code=409, detail="Inspection final evaluation is immutable once set.")
+            if not str(final_evaluation).strip():
+                raise HTTPException(status_code=422, detail="Inspection final evaluation is required.")
+            self._assert_latest_capa_accepted_if_present(
+                session, row.id,
+                blocked_detail="Latest CAPA cycle must be accepted before final evaluation.",
+            )
         before = self._snapshot_fields(stage, ["outcome_result", "final_evaluation"])
         stage.final_evaluation = final_evaluation
         actor = self._get_or_create_app_user(session, user)

@@ -5758,7 +5758,28 @@ class CaseWorkflowService:
         # resolving Site/Certificate identity, locking or writing audit.
         if CERTIFICATE_ISSUE_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.issue.")
-        site = self._get_site(session, site_id)
+        # DDK identity includes the owning Company, not just the Site FK.
+        # A long-lived operator Session can cache the old Site.company_id
+        # after a different writer reparents the Site. Serialize issuance
+        # against that reparenting and reject stale owner selection rather
+        # than stamping the old Company on a new certificate/audit.
+        #
+        # Do not autoflush or refresh the caller's pending Site draft while
+        # verifying persisted ownership. A mutation with an uncommitted owner
+        # change must resolve that change before issuing a certificate.
+        with session.no_autoflush:
+            site = self._get_site(session, site_id)
+            self._lock_site(session, site_id)
+            committed_company_id = session.scalar(
+                select(Site.company_id).where(Site.id == site_id)
+            )
+            if committed_company_id is None:
+                raise HTTPException(status_code=404, detail="Site not found.")
+            if site.company_id != committed_company_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility Site/Company owner changed; reload canonical Site.",
+                )
         actor = self._get_or_create_app_user(session, user)
 
         row, version, created_links = self._create_business_eligibility_candidate(

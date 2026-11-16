@@ -1557,25 +1557,36 @@ class CaseWorkflowService:
         # A long-lived Session may have cached a child before its owning
         # Case FK was changed by another transaction. Never trust the cached
         # relationship to decide which Case lock protects this mutation.
-        cached_cycle = self._get_capa_cycle(session, capa_cycle_id)
-        case_id = session.scalar(
-            select(CapaCycle.case_id).where(CapaCycle.id == capa_cycle_id)
-        )
-        if case_id is None:
-            raise HTTPException(status_code=404, detail="CAPA cycle not found.")
-        if cached_cycle.case_id != case_id:
-            raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
-        parent = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(parent, operation=operation)
-        cycle = session.scalars(
-            select(CapaCycle).where(CapaCycle.id == capa_cycle_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if cycle is None:
-            raise HTTPException(status_code=404, detail="CAPA cycle not found.")
-        if cycle.case_id != parent.id:
-            raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
-        return cycle
+        # This admission path runs before any intentional CAPA mutation.
+        # Reused Sessions may carry unrelated drafts and pending inserts;
+        # neither owner verification nor row locks may implicitly flush them.
+        with session.no_autoflush:
+            cached_cycle = self._get_capa_cycle(session, capa_cycle_id)
+            # populate_existing would otherwise silently discard an operator's
+            # uncommitted CAPA edit. Reject instead of refreshing that draft.
+            if session.is_modified(cached_cycle, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="CAPA cycle has uncommitted changes; resolve the draft before mutation.",
+                )
+            case_id = session.scalar(
+                select(CapaCycle.case_id).where(CapaCycle.id == capa_cycle_id)
+            )
+            if case_id is None:
+                raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+            if cached_cycle.case_id != case_id:
+                raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
+            parent = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(parent, operation=operation)
+            cycle = session.scalars(
+                select(CapaCycle).where(CapaCycle.id == capa_cycle_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if cycle is None:
+                raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+            if cycle.case_id != parent.id:
+                raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
+            return cycle
 
     def _site_has_gxp_context(
         self,

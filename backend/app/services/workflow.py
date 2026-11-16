@@ -5134,32 +5134,49 @@ class CaseWorkflowService:
         # before checking resource identity, locks, version or audit.
         if not APPROVAL_DOCUMENT_BIND_PERMISSIONS.issubset(user.permissions):
             raise HTTPException(status_code=403, detail="Missing required permissions: inspection.edit, document.read.")
-        identity = session.get(InspectionApprovalSubmission, approval_submission_id)
-        if identity is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        case = self._lock_case(session, identity.case_id)
-        self._assert_case_not_terminal(case, operation="approval document binding")
-        submission = session.scalars(
-            select(InspectionApprovalSubmission)
-            .where(InspectionApprovalSubmission.id == approval_submission_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if submission is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        if submission.case_id != case.id:
-            raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload.")
-        self._assert_expected_version(submission, expected_version, label="approval_submission")
+        # Admission is read-only until all canonical owners and the version
+        # have passed. Do not flush unrelated drafts or refresh a dirty PCT/CT.
+        with session.no_autoflush:
+            identity = session.get(InspectionApprovalSubmission, approval_submission_id)
+            if identity is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            if session.is_modified(identity, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Approval submission has uncommitted changes; resolve draft before binding.",
+                )
+            case = self._lock_case(session, identity.case_id)
+            self._assert_case_not_terminal(case, operation="approval document binding")
+            submission = session.scalars(
+                select(InspectionApprovalSubmission)
+                .where(InspectionApprovalSubmission.id == approval_submission_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if submission is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            if submission.case_id != case.id:
+                raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload.")
+            self._assert_expected_version(submission, expected_version, label="approval_submission")
         # Lock the exact source Document after the owning Case. A concurrent
         # document-owner update must finish before we validate its Case/family;
         # otherwise an uncommitted reparent could be missed and a newly
         # persisted approval link would immediately become cross-Case.
-        document = session.scalars(
-            select(Document).where(Document.id == document_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if document is None:
-            raise HTTPException(status_code=404, detail="Document not found.")
+        with session.no_autoflush:
+            cached_document = session.get(Document, document_id)
+            if cached_document is not None and session.is_modified(
+                cached_document, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Document has uncommitted changes; resolve draft before binding.",
+                )
+            document = session.scalars(
+                select(Document).where(Document.id == document_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if document is None:
+                raise HTTPException(status_code=404, detail="Document not found.")
         expected_family = "INSPECTION_PT_PCT" if submission.stage == "PCT" else "INSPECTION_PT_CT"
         if submission.stage not in {"PCT", "CT"}:
             raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
@@ -5175,11 +5192,13 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="Document must belong exclusively to the approval Case.")
         if document.family_code != expected_family:
             raise HTTPException(status_code=422, detail="Document family does not match approval stage.")
-        bound = session.scalars(
-            select(InspectionApprovalDocumentLink)
-            .where(InspectionApprovalDocumentLink.document_id == document.id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
+        # Idempotent lookup is also part of admission, before any new link.
+        with session.no_autoflush:
+            bound = session.scalars(
+                select(InspectionApprovalDocumentLink)
+                .where(InspectionApprovalDocumentLink.document_id == document.id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
         if bound is not None:
             if bound.approval_submission_id != submission.id:
                 raise HTTPException(status_code=409, detail="Document already bound to another approval submission.")

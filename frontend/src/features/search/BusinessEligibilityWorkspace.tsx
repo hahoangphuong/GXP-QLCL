@@ -23,6 +23,7 @@ import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvide
 import { CertificateDocumentMetadata } from "./CertificateDocumentMetadata";
 import { useFacilityCommandLock } from "./CaseDraftSession";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { caseReadinessReason } from "./caseReadinessReason";
 import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 type LinkDraft = { certificate_id: string; link_role: string };
@@ -338,7 +339,7 @@ export function BusinessEligibilityWorkspace({
         <p className="workspace-note" id={hintId}>↑/↓, Home/End: di chuyển · Enter/Space: chọn giấy</p>
         {listError ? <ErrorState message={listError} /> : null}
         {listLoading && items.length > 0 ? <p role="status" className="workspace-note">Đang tải danh mục ĐĐK…</p> : null}
-        {!issueReadiness?.available && issueReadiness?.reason_code ? <p className="workspace-note">{issueReadiness.reason_code}</p> : null}
+        {!issueReadiness?.available && issueReadiness?.reason_code ? <p className="workspace-note">{caseReadinessReason(issueReadiness.reason_code)}</p> : null}
         {listLoading && items.length === 0 ? <EmptyState title="Đang tải GCN đủ điều kiện" description="Đang đồng bộ danh mục chứng nhận của cơ sở." /> : null}
         {!listLoading && !listError && items.length === 0 ? <EmptyState title="Chưa có GCN đủ điều kiện" description="Có thể cấp bản ghi mới nếu backend cho phép thao tác cấp." /> : null}
         {items.length > 0 ? <div className="table-scroll table-scroll-history">
@@ -378,9 +379,9 @@ export function BusinessEligibilityWorkspace({
             {documentMetadata ? <CertificateDocumentMetadata state={documentMetadata} /> : null}
             <div className="certificate-action-bar">
               {edit ? <button disabled={!edit.available || promotionPending || certificateLock.pending || certificateLock.requiresReview} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
-              {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}
+              {!edit?.available && edit?.reason_code ? <span className="workspace-note">{caseReadinessReason(edit.reason_code)}</span> : null}
               {promote ? <button disabled={!promote.available || promotionPending || certificateLock.pending || certificateLock.requiresReview} onClick={() => void promoteOwned(promote.expected_version)} title={promote.reason_code ?? undefined} type="button">{promotionPending ? "Đang cập nhật..." : promote.label}</button> : null}
-              {!promote?.available && promote?.reason_code ? <span>{promote.reason_code}</span> : null}
+              {!promote?.available && promote?.reason_code ? <span className="workspace-note">{caseReadinessReason(promote.reason_code)}</span> : null}
               {promotionError ? <span role="alert">{promotionError}</span> : null}
               {certificateLock.requiresReview ? <span className="workspace-note" role="status">Chưa xác minh kết quả cập nhật hoặc đặt hiện hành GCN đủ điều kiện. Không gửi lại; đối chiếu Certificate canonical.</span> : null}
             </div>

@@ -338,6 +338,23 @@ describe("ChangeRequestMutationWorkspace backend-owned writes", () => {
     expect(handlers.onIssueBusinessEligibilitySuccessor).not.toHaveBeenCalled();
   });
 
+  it("explains a Site/Company owner mismatch beside the blocked DDKD successor action", () => {
+    const handlers = buildHandlers();
+    const workspace = buildWorkspace({
+      action_readiness: buildWorkspace().action_readiness.map((item) =>
+        item.action_key === "issue_business_eligibility_successor:affected-dkkd-1"
+          ? { ...item, available: false, reason_code: "site_company_owner_mismatch" }
+          : item,
+      ),
+    });
+
+    render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={workspace} />);
+
+    expect(screen.getByRole("button", { name: "Tạo GCN ĐĐK điều chỉnh" })).toBeDisabled();
+    expect(screen.getByText(/Dữ liệu Công ty hoặc Cơ sở đã thay đổi\. Tải lại Cơ sở để kiểm tra dữ liệu canonical trước khi thao tác\./)).toBeInTheDocument();
+    expect(handlers.onIssueBusinessEligibilitySuccessor).not.toHaveBeenCalled();
+  });
+
   it("keeps certificate successor controls disabled when backend readiness blocks the action", () => {
     const handlers = buildHandlers();
     const workspace = buildWorkspace({

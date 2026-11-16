@@ -100,6 +100,10 @@ def test_change_request_readiness_refreshes_cached_owner_after_real_transition()
         assert "transition_change_request:under_review" not in current_actions
         assert "transition_change_request:accepted" in current_actions
         assert current_actions["transition_change_request:accepted"]["expected_version"] == committed_token
+        # Readiness sees the new persisted token, without mutating a cached
+        # operator-owned ORM identity loaded before the concurrent commit.
+        assert cached_root.state == ChangeRequestState.RECEIVED
+        assert cached_root.row_version == original_token
 
         with factory() as verify:
             persisted = verify.get(ChangeRequest, row_id)

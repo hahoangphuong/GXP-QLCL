@@ -4944,34 +4944,52 @@ class CaseWorkflowService:
             validate_time_requires_date(value_date=submitted_on, value_time=submitted_time, label="Approval submission")
         except InspectionContractViolation as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        # Lock and refresh the Case owner before applying terminal eligibility.
-        # A Session may already hold an older nonterminal ORM identity.
-        row = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(row, operation="approval submission creation")
-        if normalized_stage == "PCT" and pct_submission_id is not None:
-            raise HTTPException(status_code=422, detail="PCT submission must not set pct_submission_id.")
-        if normalized_stage == "CT":
-            if pct_submission_id is None:
-                raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
-            # The Case lock fences approval mutations, but Session.get may
-            # return a PCT cached before another transaction completed it.
-            # Read the committed child snapshot before CT parent validation.
-            parent = session.scalars(
-                select(InspectionApprovalSubmission)
-                .where(InspectionApprovalSubmission.id == pct_submission_id)
-                .execution_options(populate_existing=True)
-            ).one_or_none()
-            if parent is None:
-                raise HTTPException(status_code=404, detail="PCT approval submission not found.")
+        # Pre-insert admission must not autoflush unrelated operator drafts.
+        # populate_existing is required for committed ownership, but must
+        # never silently discard a locally dirty Case or PCT parent.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before approval creation.",
+                )
+            # Lock and refresh the Case owner before terminal eligibility.
+            row = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(row, operation="approval submission creation")
+            if normalized_stage == "PCT" and pct_submission_id is not None:
+                raise HTTPException(status_code=422, detail="PCT submission must not set pct_submission_id.")
+            if normalized_stage == "CT":
+                if pct_submission_id is None:
+                    raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
+                cached_parent = session.get(InspectionApprovalSubmission, pct_submission_id)
+                if cached_parent is not None and session.is_modified(
+                    cached_parent, include_collections=False,
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="PCT parent has uncommitted changes; resolve draft before CT creation.",
+                    )
+                # The Case lock fences concurrent mutations, but a cached
+                # PCT still needs a committed, refreshed parent snapshot.
+                parent = session.scalars(
+                    select(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.id == pct_submission_id)
+                    .execution_options(populate_existing=True)
+                ).one_or_none()
+                if parent is None:
+                    raise HTTPException(status_code=404, detail="PCT approval submission not found.")
+                try:
+                    validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
+                except InspectionContractViolation as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+            rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
             try:
-                validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
+                round_no = next_approval_round(rounds)
             except InspectionContractViolation as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-        rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
-        try:
-            round_no = next_approval_round(rounds)
-        except InspectionContractViolation as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
         submission = InspectionApprovalSubmission(case_id=row.id, stage=normalized_stage, round_no=round_no, reference=reference, submitted_on=submitted_on, submitted_time=submitted_time, pct_submission_id=pct_submission_id)
         session.add(submission)
         session.flush()

@@ -56,6 +56,16 @@ describe("PhysicalLineCreationDialog owner and recovery", () => {
     expect(api.listSiteProductionLines).toHaveBeenCalledWith("site-A", auth, true, undefined);
   });
 
+  it("adds only the exact verified ProductionLine UUID to the active Site list", async () => {
+    view();
+    await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dây chuyền vật lý" }));
+
+    await screen.findByText(/Đã xác minh dây chuyền UUID/);
+
+    expect(screen.getByText("Hiện có 1 dây chuyền trên Site. Mã trùng không có nghĩa là cùng định danh vật lý.")).toBeTruthy();
+  });
+
   it("admits two simultaneous submissions as one POST and one UUID", async () => {
     let release!: (value: typeof record) => void;
     api.createProductionLine.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));

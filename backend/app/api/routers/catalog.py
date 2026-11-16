@@ -217,13 +217,26 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        # Site existence is verified even if the child collection is empty.
-        service.get_site(session, site_id)
-        from sqlalchemy import select
-        rows = session.scalars(
-            select(ProductionLine).where(ProductionLine.site_id == site_id)
-            .order_by(ProductionLine.code, ProductionLine.id)
-        ).all()
+        # Project committed SQL scalars, never cached/dirty ORM identities.
+        # This read-only list must not flush unrelated operator drafts.
+        with session.no_autoflush:
+            persisted_site_id = session.scalar(
+                select(Site.id).where(Site.id == site_id)
+            )
+            if persisted_site_id is None:
+                raise HTTPException(status_code=404, detail="Site not found.")
+            rows = session.execute(
+                select(
+                    ProductionLine.id,
+                    ProductionLine.site_id,
+                    ProductionLine.code,
+                    ProductionLine.effective_from,
+                    ProductionLine.effective_to,
+                    ProductionLine.row_version,
+                )
+                .where(ProductionLine.site_id == site_id)
+                .order_by(ProductionLine.code, ProductionLine.id)
+            ).all()
         return [
             ProductionLineMasterRead(
                 id=row.id, site_id=row.site_id, code=row.code,

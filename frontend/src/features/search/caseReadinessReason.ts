@@ -16,6 +16,7 @@ const REASONS: Record<string, string> = {
   certificate_data_incomplete: "Chứng nhận còn thiếu thông tin bắt buộc để đưa vào trạng thái hiện hành.",
   already_current: "Chứng nhận này đã là bản hiện hành.",
   candidate_issue_date_precedes_current: "Ngày cấp của chứng nhận dự kiến không được sớm hơn chứng nhận hiện hành.",
+  site_company_owner_mismatch: "Dữ liệu Công ty hoặc Cơ sở đã thay đổi. Tải lại Cơ sở để kiểm tra dữ liệu canonical trước khi thao tác.",
 };
 
 export function caseReadinessReason(code: string): string {

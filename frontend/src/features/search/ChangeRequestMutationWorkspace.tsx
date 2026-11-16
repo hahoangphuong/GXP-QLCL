@@ -1,5 +1,6 @@
 import { useCaseCommandLock, useCaseDraftSession } from "./CaseDraftSession";
 import { CaseFieldMutationRecoveryError } from "./caseFieldMutationRecovery";
+import { caseReadinessReason } from "./caseReadinessReason";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
@@ -596,6 +597,7 @@ export function ChangeRequestMutationWorkspace({
                     >
                       {pending ? "Đang tạo..." : successorReadiness?.label ?? "Tạo GCN ĐĐK điều chỉnh"}
                     </button>
+                    {!successorReadiness?.available && successorReadiness?.reason_code ? <span className="workspace-note">{caseReadinessReason(successorReadiness.reason_code)}</span> : null}
                   </div>
                 );
               })}

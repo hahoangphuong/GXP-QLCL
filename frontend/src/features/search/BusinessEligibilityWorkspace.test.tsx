@@ -578,6 +578,19 @@ describe("BusinessEligibilityWorkspace write workflow", () => {
     expect(props.onPromoteCurrent).toHaveBeenCalledWith(4);
   });
 
+  it("blocks current promotion and explains a persisted Site/Company owner mismatch", () => {
+    const props = baseProps();
+    render(<BusinessEligibilityWorkspace {...props} detail={{ ...detail(), action_readiness: detail().action_readiness!.map((action) =>
+      action.action_key === "promote_current"
+        ? { ...action, available: false, reason_code: "site_company_owner_mismatch" }
+        : action,
+    ) }} />);
+
+    expect(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" })).toBeDisabled();
+    expect(screen.getByText(/Dữ liệu Công ty hoặc Cơ sở đã thay đổi\. Tải lại Cơ sở để kiểm tra dữ liệu canonical trước khi thao tác\./)).toBeInTheDocument();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
+
   it.each([403, 422])("keeps edit dialog open for non-stale mutation failures (%s)", async (status) => {
     const props = baseProps();
     props.onEditLatestVersion.mockRejectedValue(Object.assign(new Error(`${status} failure`), { status }));

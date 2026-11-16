@@ -196,20 +196,30 @@ export function CompanySiteCreationDialog({
     if (journalBlocked || !actionAvailable(companyAction) || companyLocked || !companyDraft.legal_name.trim() || !companyDraft.legal_address.trim()) return;
     let intent: CompanyCreateIntent | null = null;
     let admitted = false;
-    update((current) => {
-      if (current.companyIntent) return current;
-      admitted = true;
-      intent = { token: {}, phase: "pending", error: null, persisted: null, payload: {
-        company_id: newCanonicalId(), legal_name: companyDraft.legal_name.trim(), legal_address: companyDraft.legal_address.trim(),
-        english_name: optional(companyDraft.english_name), short_name: optional(companyDraft.short_name), legal_address_en: optional(companyDraft.legal_address_en), reason: optional(companyDraft.reason),
-      } };
-      return { ...current, companyIntent: intent };
-    });
+    try {
+      update((current) => {
+        if (current.companyIntent) return current;
+        admitted = true;
+        intent = { token: {}, phase: "pending", error: null, persisted: null, payload: {
+          company_id: newCanonicalId(), legal_name: companyDraft.legal_name.trim(), legal_address: companyDraft.legal_address.trim(),
+          english_name: optional(companyDraft.english_name), short_name: optional(companyDraft.short_name), legal_address_en: optional(companyDraft.legal_address_en), reason: optional(companyDraft.reason),
+        } };
+        return { ...current, companyIntent: intent };
+      });
+    } catch { return; }
     if (!admitted || !intent) return;
     const admittedIntent = intent as CompanyCreateIntent;
     try {
       await createCompany(admittedIntent.payload, auth, useStubAuth, bearerToken);
-    } catch {
+    } catch (error) {
+      if ((error as { status?: number } | null)?.status === 403) {
+        try {
+          update((current) => current.companyIntent?.token !== admittedIntent.token || current.companyIntent.phase === "verified" ? current : {
+            ...current, companyIntent: { ...current.companyIntent, phase: "unverified", error: errorMessage(error) },
+          });
+        } catch { /* the recovery journal already exposes the blocked state */ }
+        return;
+      }
       // A transport failure has an unknown mutation outcome. The sole recovery is canonical GET by this UUID.
     }
     await verifyCompany(admittedIntent);
@@ -220,20 +230,30 @@ export function CompanySiteCreationDialog({
     if (journalBlocked || !actionAvailable(siteAction) || siteLocked || !selectedCompany || selectedCompany.is_inactive || !siteDraft.site_name.trim() || !siteDraft.site_address.trim()) return;
     let intent: SiteCreateIntent | null = null;
     let admitted = false;
-    update((current) => {
-      if (current.siteIntent || current.selectedCompanyId !== selectedCompany.id) return current;
-      admitted = true;
-      intent = { token: {}, companyId: selectedCompany.id, phase: "pending", error: null, persisted: null, payload: {
-        site_id: newCanonicalId(), site_name: siteDraft.site_name.trim(), site_address: siteDraft.site_address.trim(),
-        site_name_en: optional(siteDraft.site_name_en), site_address_en: optional(siteDraft.site_address_en), province_name: optional(siteDraft.province_name), short_name: optional(siteDraft.short_name), reason: optional(siteDraft.reason),
-      } };
-      return { ...current, siteIntent: intent };
-    });
+    try {
+      update((current) => {
+        if (current.siteIntent || current.selectedCompanyId !== selectedCompany.id) return current;
+        admitted = true;
+        intent = { token: {}, companyId: selectedCompany.id, phase: "pending", error: null, persisted: null, payload: {
+          site_id: newCanonicalId(), site_name: siteDraft.site_name.trim(), site_address: siteDraft.site_address.trim(),
+          site_name_en: optional(siteDraft.site_name_en), site_address_en: optional(siteDraft.site_address_en), province_name: optional(siteDraft.province_name), short_name: optional(siteDraft.short_name), reason: optional(siteDraft.reason),
+        } };
+        return { ...current, siteIntent: intent };
+      });
+    } catch { return; }
     if (!admitted || !intent) return;
     const admittedIntent = intent as SiteCreateIntent;
     try {
       await createSite(admittedIntent.companyId, admittedIntent.payload, auth, useStubAuth, bearerToken);
-    } catch {
+    } catch (error) {
+      if ((error as { status?: number } | null)?.status === 403) {
+        try {
+          update((current) => current.siteIntent?.token !== admittedIntent.token || current.siteIntent.phase === "verified" ? current : {
+            ...current, siteIntent: { ...current.siteIntent, phase: "unverified", error: errorMessage(error) },
+          });
+        } catch { /* the recovery journal already exposes the blocked state */ }
+        return;
+      }
       // Same UUID is read back; we intentionally never retry POST after an uncertain outcome.
     }
     await verifySite(admittedIntent, dialogEpoch.current);

@@ -785,6 +785,11 @@ class CaseWorkflowService:
     ) -> str | None:
         if not version.certificate_number or version.issued_on is None:
             return "certificate_data_incomplete"
+        persisted_company_id = session.scalar(
+            select(Site.company_id).where(Site.id == certificate.site_id)
+        )
+        if persisted_company_id is None or persisted_company_id != certificate.company_id:
+            return "site_company_owner_mismatch"
 
         for link in session.scalars(
             select(BusinessEligibilityCertificateLink).where(
@@ -843,6 +848,7 @@ class CaseWorkflowService:
                 select(
                     BusinessEligibilityCertificate.id,
                     BusinessEligibilityCertificate.site_id,
+                    BusinessEligibilityCertificate.company_id,
                     BusinessEligibilityCertificate.latest_flag,
                     BusinessEligibilityCertificate.row_version,
                 ).where(
@@ -900,6 +906,13 @@ class CaseWorkflowService:
         """Advisory-only SQL predicate. Mutation promotion remains authoritative."""
         if not version.certificate_number or version.issued_on is None:
             return "certificate_data_incomplete"
+        # Site ownership may be reparented after a DDK candidate was issued.
+        # An old Company's candidate cannot become the new Company's Current.
+        persisted_company_id = session.scalar(
+            select(Site.company_id).where(Site.id == certificate.site_id)
+        )
+        if persisted_company_id is None or persisted_company_id != certificate.company_id:
+            return "site_company_owner_mismatch"
 
         source_links = session.execute(
             select(BusinessEligibilityCertificateLink.certificate_id)
@@ -5969,21 +5982,44 @@ class CaseWorkflowService:
         # resolving Site/Certificate identity, locking or writing audit.
         if CERTIFICATE_APPROVE_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.approve.")
-        row = self._get_business_eligibility(session, business_eligibility_certificate_id)
+        # Resolve the cached candidate inside the same no-autoflush owner
+        # boundary: Session.get may otherwise flush an unrelated dirty Site
+        # before the committed Site/Company lock-and-compare gate executes.
         # As for GxP, the Site lock must be the candidate's canonical owner.
-        # A previous Session read is not evidence that its Site FK is current.
-        owner_site_id = session.scalar(
-            select(BusinessEligibilityCertificate.site_id)
-            .where(BusinessEligibilityCertificate.id == business_eligibility_certificate_id)
-        )
-        if owner_site_id is None:
-            raise HTTPException(status_code=404, detail="Business eligibility certificate not found.")
-        if row.site_id != owner_site_id:
-            raise HTTPException(status_code=409, detail="Business eligibility Site owner changed; reload canonical certificate.")
-        self._lock_site(session, owner_site_id)
+        with session.no_autoflush:
+            row = self._get_business_eligibility(session, business_eligibility_certificate_id)
+            owner_site_id = session.scalar(
+                select(BusinessEligibilityCertificate.site_id)
+                .where(BusinessEligibilityCertificate.id == business_eligibility_certificate_id)
+            )
+            if owner_site_id is None:
+                raise HTTPException(status_code=404, detail="Business eligibility certificate not found.")
+            if row.site_id != owner_site_id:
+                raise HTTPException(status_code=409, detail="Business eligibility Site owner changed; reload canonical certificate.")
+            site = self._lock_site(session, owner_site_id)
+            persisted_company_id = session.scalar(
+                select(Site.company_id).where(Site.id == owner_site_id)
+            )
+            # Detect pending Site owner edits as well as committed changes by
+            # another writer. Neither may be flushed/accepted as a silent
+            # Company switch during a Current-promotion mutation.
+            if (
+                persisted_company_id is None
+                or site.company_id != persisted_company_id
+                or row.company_id != persisted_company_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility Site/Company owner mismatch; reload canonical Site.",
+                )
         session.refresh(row)
         if row.site_id != owner_site_id:
             raise HTTPException(status_code=409, detail="Business eligibility Site owner changed; reload canonical certificate.")
+        if row.company_id != persisted_company_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Business eligibility Site/Company owner mismatch; reload canonical Site.",
+            )
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
         candidate_version = self._load_latest_business_eligibility_version(session, row.id)
         # A cached version can predate a committed edit even when the root
@@ -5997,6 +6033,7 @@ class CaseWorkflowService:
         if blocker is not None:
             details = {
                 "certificate_data_incomplete": "Business eligibility promotion requires certificate number and issue date.",
+                "site_company_owner_mismatch": "Business eligibility certificate Company does not match the owning Site's current Company.",
                 "invalid_linked_certificate": "Business eligibility promotion references an invalid linked Case, canonical ProductionLine, or cross-site certificate.",
                 "multiple_current_records": "Business eligibility promotion is blocked because the site has multiple current records.",
                 "already_current": "Business eligibility certificate is already the current record for this site.",

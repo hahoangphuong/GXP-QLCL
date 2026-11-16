@@ -352,40 +352,157 @@ class CaseWorkflowService:
         certificate_id: str,
         user: AuthenticatedUser,
     ) -> list[dict[str, Any]]:
-        """Describe the contextual rules still enforced by certificate mutations."""
-        certificate = self._get_certificate(session, certificate_id)
-        # Readiness may reuse a long-lived Session after another writer commits.
-        # Refresh root and child identities before checking eligibility/tokens;
-        # the mutation still revalidates under the Site/Case owner locks.
-        session.refresh(certificate)
-        self._certificate_line_identity(session, certificate)
-        version = self._load_latest_certificate_version(session, certificate.id)
-        session.refresh(version)
-        edit_permission = "certificate.edit"
-        promote_permission = "certificate.approve"
-        edit_reason = None if edit_permission in user.permissions else "missing_permission"
-        promote_reason = None if promote_permission in user.permissions else "missing_permission"
-        if promote_reason is None:
-            promote_reason = self._get_certificate_promotion_blocker(session, certificate=certificate, version=version)
+        """Read GxP readiness from committed scalars without refreshing drafts."""
+        with session.no_autoflush:
+            certificate = session.execute(
+                select(
+                    Certificate.id,
+                    Certificate.site_id,
+                    Certificate.certificate_type,
+                    Certificate.case_id,
+                    Certificate.production_line_id,
+                    Certificate.line_code,
+                    Certificate.latest_flag,
+                    Certificate.row_version,
+                ).where(Certificate.id == certificate_id)
+            ).one_or_none()
+            if certificate is None:
+                raise HTTPException(status_code=404, detail="Certificate not found.")
+            self._certificate_readiness_line_identity(session, certificate)
+            version = self._certificate_readiness_version(session, certificate.id)
+            edit_permission = "certificate.edit"
+            promote_permission = "certificate.approve"
+            edit_reason = None if edit_permission in user.permissions else "missing_permission"
+            promote_reason = None if promote_permission in user.permissions else "missing_permission"
+            if promote_reason is None:
+                promote_reason = self._certificate_promotion_blocker_persisted(
+                    session, certificate=certificate, version=version,
+                )
+            return [
+                {
+                    "action_key": "edit_latest_version",
+                    "label": "Cập nhật chứng nhận",
+                    "available": edit_reason is None,
+                    "reason_code": edit_reason,
+                    "required_permissions": [edit_permission],
+                    "expected_version": certificate.row_version,
+                },
+                {
+                    "action_key": "promote_current",
+                    "label": "Đặt làm chứng nhận hiện hành",
+                    "available": promote_reason is None,
+                    "reason_code": promote_reason,
+                    "required_permissions": [promote_permission],
+                    "expected_version": certificate.row_version,
+                },
+            ]
 
-        return [
-            {
-                "action_key": "edit_latest_version",
-                "label": "Cập nhật chứng nhận",
-                "available": edit_reason is None,
-                "reason_code": edit_reason,
-                "required_permissions": [edit_permission],
-                "expected_version": certificate.row_version,
-            },
-            {
-                "action_key": "promote_current",
-                "label": "Đặt làm chứng nhận hiện hành",
-                "available": promote_reason is None,
-                "reason_code": promote_reason,
-                "required_permissions": [promote_permission],
-                "expected_version": certificate.row_version,
-            },
+    def _certificate_readiness_version(self, session: Session, certificate_id: str) -> Any:
+        """Match latest-flag-first, version-number-fallback policy using SQL."""
+        fields = (
+            CertificateVersion.id,
+            CertificateVersion.certificate_number,
+            CertificateVersion.issue_date,
+            CertificateVersion.expiry_date,
+        )
+        version = session.execute(
+            select(*fields).where(
+                CertificateVersion.certificate_id == certificate_id,
+                CertificateVersion.is_latest_version.is_(True),
+            ).limit(1)
+        ).one_or_none()
+        if version is None:
+            version = session.execute(
+                select(*fields).where(CertificateVersion.certificate_id == certificate_id)
+                .order_by(CertificateVersion.version_no.desc()).limit(1)
+            ).one_or_none()
+        if version is None:
+            raise HTTPException(status_code=409, detail="Certificate has no persisted version.")
+        return version
+
+    def _certificate_readiness_line_identity(self, session: Session, certificate: Any) -> str | None:
+        """Validate committed Case/line ownership and resolve legacy context."""
+        linked_case = None
+        if certificate.case_id is not None:
+            linked_case = session.execute(
+                select(Case.site_id, Case.gxp_type, Case.scope_code)
+                .where(Case.id == certificate.case_id)
+            ).one_or_none()
+            if (
+                linked_case is None
+                or linked_case.site_id != certificate.site_id
+                or linked_case.gxp_type != certificate.certificate_type
+            ):
+                raise HTTPException(status_code=409, detail="Certificate references an invalid linked Case.")
+        if certificate.production_line_id is not None:
+            line_site_id = session.scalar(
+                select(ProductionLine.site_id)
+                .where(ProductionLine.id == certificate.production_line_id)
+            )
+            if line_site_id != certificate.site_id:
+                raise HTTPException(status_code=409, detail="Certificate references an invalid canonical ProductionLine.")
+        direct_code = self._normalize_line_code(certificate.line_code)
+        if direct_code is not None:
+            return direct_code
+        return None if linked_case is None else self._normalize_line_code(linked_case.scope_code)
+
+    def _certificate_promotion_blocker_persisted(
+        self, session: Session, *, certificate: Any, version: Any,
+    ) -> str | None:
+        """Advisory-only peer/Case/CAPA projection; mutation checks stay locked."""
+        legacy_line_code = self._certificate_readiness_line_identity(session, certificate)
+        if certificate.latest_flag:
+            return "already_current"
+        if certificate.case_id is not None:
+            case_state = session.scalar(
+                select(Case.state).where(Case.id == certificate.case_id)
+            )
+            if case_state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
+                return "case_state_not_eligible"
+            latest_capa = session.execute(
+                select(CapaCycle.id, CapaCycle.status)
+                .where(CapaCycle.case_id == certificate.case_id)
+                .order_by(CapaCycle.round_no.desc(), CapaCycle.created_at.desc())
+                .limit(1)
+            ).one_or_none()
+            if latest_capa is not None and latest_capa.status != CAPA_ACCEPTED_STATUS:
+                return "latest_capa_not_accepted"
+        if not version.certificate_number or version.issue_date is None or version.expiry_date is None:
+            return "certificate_data_incomplete"
+        if version.expiry_date < version.issue_date:
+            return "certificate_expiry_precedes_issue"
+
+        context = [
+            Certificate.site_id == certificate.site_id,
+            Certificate.certificate_type == certificate.certificate_type,
+            self._certificate_valid_linked_case_sql(),
         ]
+        if certificate.production_line_id is not None:
+            context.append(Certificate.production_line_id == certificate.production_line_id)
+        else:
+            context.append(Certificate.production_line_id.is_(None))
+            db_line_code = self._certificate_effective_line_sql()
+            context.append(
+                db_line_code.is_(None)
+                if legacy_line_code is None
+                else db_line_code == legacy_line_code
+            )
+        current_peers = session.execute(
+            select(
+                Certificate.id, Certificate.site_id, Certificate.certificate_type,
+                Certificate.case_id, Certificate.production_line_id, Certificate.line_code,
+            )
+            .where(*context, Certificate.latest_flag.is_(True))
+            .order_by(Certificate.id.asc())
+        ).all()
+        for peer in current_peers:
+            self._certificate_readiness_line_identity(session, peer)
+            if peer.id == certificate.id:
+                continue
+            current_version = self._certificate_readiness_version(session, peer.id)
+            if current_version.issue_date is not None and version.issue_date < current_version.issue_date:
+                return "candidate_issue_date_precedes_current"
+        return None
 
     @staticmethod
     def _gmp_case_already_issued(session: Session, case_id: str) -> bool:

@@ -22,6 +22,15 @@ function exactReadback(intent: PhysicalLineCreateIntent, row: ProductionLineMast
     && (row.effective_to ?? null) === (intent.payload.effective_to ?? null);
 }
 
+function creationOwner(
+  auth: StubAuthState,
+  accessGeneration: number,
+  useStubAuth: boolean,
+  siteId: string | null,
+): string {
+  return JSON.stringify(["physical-line-create", auth.username, auth.role, accessGeneration, useStubAuth, siteId]);
+}
+
 /** A single physical identity is owned by its UUID, not a Site+code tuple. */
 export function PhysicalLineCreationDialog({
   open, siteId, action, auth, useStubAuth, bearerToken, accessGeneration, onClose,
@@ -35,7 +44,7 @@ export function PhysicalLineCreationDialog({
   accessGeneration: number;
   onClose: () => void;
 }) {
-  const owner = JSON.stringify(["physical-line-create", auth.username, auth.role, accessGeneration, useStubAuth, siteId]);
+  const owner = creationOwner(auth, accessGeneration, useStubAuth, siteId);
   const { state, update } = useCatalogCreateSession(owner);
   const { physicalLineDraft: draft, physicalLineIntent: intent } = state;
   const [site, setSite] = useState<SiteDetail | null>(null);
@@ -102,7 +111,7 @@ export function PhysicalLineCreationDialog({
           ...current.physicalLineIntent, phase: "verified", persisted: row, error: null,
         } };
       });
-      if (accepted && activeRef.current && visibleOwnerRef.current === JSON.stringify(["physical-line-create", accessGeneration, useStubAuth, original.siteId])) {
+      if (accepted && activeRef.current && visibleOwnerRef.current === creationOwner(auth, accessGeneration, useStubAuth, original.siteId)) {
         // Display only the verified identity. Never infer GxP, Case or Certificate.
         setLines((current) => [row, ...current.filter((item) => item.id !== row.id)]);
       }

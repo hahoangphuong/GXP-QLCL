@@ -150,7 +150,8 @@ def test_independent_document_reparent_fails_closed(seeded):
         with pytest.raises(HTTPException) as exc:
             bind(db, approval_id, document_id, version)
         assert exc.value.status_code == 422
-        assert cached.case_id != other_case_id
+        # A clean cached identity is refreshed from the committed document owner.
+        assert cached.case_id == other_case_id
         db.rollback()
     with Session(engine) as check:
         assert check.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 0

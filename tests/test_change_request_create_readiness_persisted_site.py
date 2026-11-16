@@ -31,7 +31,7 @@ def _readiness(session, site_id, *, allowed=True):
         session, site_id=site_id,
         user=build_authenticated_user(
             "synthetic-change-request",
-            permissions={"change_request.edit"} if allowed else set(),
+            permissions={"change_request.edit"} if allowed else {"document.read"},
         ),
     )
 

@@ -5278,42 +5278,75 @@ class CaseWorkflowService:
         display_text: str | None = None,
     ) -> dict[str, Any]:
         require_permissions(user, {INSPECTION_EDIT_PERMISSION})
-        # The Case owner lock prevents replacing members after closure,
-        # including when an earlier Session read cached a nonterminal state.
-        row = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(row, operation="inspection team update")
-        existing_team = session.scalar(
-            select(InspectionTeam).where(InspectionTeam.case_id == row.id)
-            .execution_options(populate_existing=True)
-        )
-        existing_members = [] if existing_team is None else list(
-            session.scalars(
-                select(InspectionTeamMember)
-                .where(InspectionTeamMember.team_id == existing_team.id)
-                .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
-                # The Case lock fences this replacement, but a long-lived
-                # Session may still cache pre-commit member identities.
-                # Validate and audit the committed child snapshot instead.
-                .execution_options(populate_existing=True)
+        # Reject legacy display-text edits before any owner reads.
+        if display_text is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Inspection team display_text is a legacy snapshot and cannot be edited with members.",
             )
-        )
-        if existing_team is not None:
-            existing_identity_state = inspection_team_existing_identity_state(
-                session,
-                members=existing_members,
-            )
-            if not existing_identity_state["round_trip_safe"]:
+        # Admission must not autoflush unrelated drafts, or silently replace
+        # cached Case/Team/Member edits via populate_existing.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
                 raise HTTPException(
                     status_code=409,
-                    detail=(
-                        f"Inspection team {existing_identity_state['blocked_reason_code']} "
-                        "and cannot be replaced by normal runtime editing."
-                    ),
+                    detail="Case has uncommitted changes; resolve draft before inspection team update.",
                 )
-        if display_text is not None:
-            raise HTTPException(status_code=422, detail="Inspection team display_text is a legacy snapshot and cannot be edited with members.")
-        self._validate_team_members(members)
-        self._validate_team_member_identities(session, members)
+            # The Case owner lock prevents replacing members after closure.
+            row = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(row, operation="inspection team update")
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, InspectionTeam)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection team has uncommitted changes; resolve draft before replacement.",
+                    )
+            existing_team = session.scalar(
+                select(InspectionTeam).where(InspectionTeam.case_id == row.id)
+                .execution_options(populate_existing=True)
+            )
+            if existing_team is not None:
+                for cached in tuple(session.dirty):
+                    if (
+                        isinstance(cached, InspectionTeamMember)
+                        and cached.team_id == existing_team.id
+                        and session.is_modified(cached, include_collections=False)
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Inspection team member has uncommitted changes; resolve draft before replacement.",
+                        )
+            existing_members = [] if existing_team is None else list(
+                session.scalars(
+                    select(InspectionTeamMember)
+                    .where(InspectionTeamMember.team_id == existing_team.id)
+                    .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
+                    # Refresh only clean cached member identities after Case lock.
+                    .execution_options(populate_existing=True)
+                )
+            )
+            if existing_team is not None:
+                existing_identity_state = inspection_team_existing_identity_state(
+                    session,
+                    members=existing_members,
+                )
+                if not existing_identity_state["round_trip_safe"]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Inspection team {existing_identity_state['blocked_reason_code']} "
+                            "and cannot be replaced by normal runtime editing."
+                        ),
+                    )
+            self._validate_team_members(members)
+            self._validate_team_member_identities(session, members)
         actor = self._get_or_create_app_user(session, user)
 
         team = existing_team

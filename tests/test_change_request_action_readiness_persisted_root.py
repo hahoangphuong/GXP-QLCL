@@ -46,6 +46,8 @@ def test_action_readiness_uses_persisted_root_without_autoflush_or_draft_refresh
         )
         with Session(engine, autoflush=True, expire_on_commit=False) as session:
             cached = session.get(ChangeRequest, request_id)
+            cached_site = session.get(Site, site.id)
+            cached_site.site_name = "Uncommitted Site draft"
             cached.description = "Uncommitted operator draft"
             cached.state = ChangeRequestState.ACCEPTED
             assert cached in session.dirty
@@ -70,7 +72,8 @@ def test_action_readiness_uses_persisted_root_without_autoflush_or_draft_refresh
             assert "transition_change_request:under_review" in actions
             assert cached.description == "Uncommitted operator draft"
             assert cached.state == ChangeRequestState.ACCEPTED
-            assert cached in session.dirty
+            assert cached_site.site_name == "Uncommitted Site draft"
+            assert cached in session.dirty and cached_site in session.dirty
             session.rollback()
 
         with Session(engine) as verify:

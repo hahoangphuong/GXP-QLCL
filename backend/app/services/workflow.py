@@ -3080,14 +3080,26 @@ class CaseWorkflowService:
                 detail="Affected artifact does not reference a business eligibility certificate.",
             )
 
-        # Source ownership is validated against the committed Site/Company,
-        # not a Site identity cached before another transaction's change.
-        site = session.scalars(
-            select(Site).where(Site.id == row.site_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if site is None:
-            raise HTTPException(status_code=404, detail="Site not found.")
+        # A Change Request row lock does not serialize concurrent Site
+        # reparenting. Lock the Site before reading/copying the source DDK so
+        # a Company change cannot interleave with successor issuance.
+        # Project persisted Site/Company scalars: populate_existing would
+        # overwrite an operator's dirty Site draft; plain ORM SELECT could
+        # reuse a stale Company from the long-lived identity map.
+        with session.no_autoflush:
+            site = self._get_site(session, row.site_id)
+            persisted_site = session.execute(
+                select(Site.id, Site.company_id)
+                .where(Site.id == row.site_id)
+                .with_for_update(of=Site)
+            ).one_or_none()
+            if persisted_site is None:
+                raise HTTPException(status_code=404, detail="Site not found.")
+            if site.company_id != persisted_site.company_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Change request Site/Company owner changed; reload canonical Site.",
+                )
         self._validate_change_request_artifact_target(
             session,
             site=site,

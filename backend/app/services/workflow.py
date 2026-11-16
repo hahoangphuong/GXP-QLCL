@@ -1989,326 +1989,338 @@ class CaseWorkflowService:
         change_request_id: str,
         user: AuthenticatedUser,
     ) -> list[dict[str, Any]]:
+        """Advisory actions from persisted owner state without draft autoflush."""
         with session.no_autoflush:
-            # Read the authoritative persisted parent as scalar columns. Never
-            # refresh a cached operator draft or autoflush it during a GET.
-            row = session.execute(
-                select(
-                    ChangeRequest.id,
-                    ChangeRequest.site_id,
-                    ChangeRequest.state,
-                    ChangeRequest.row_version,
-                ).where(ChangeRequest.id == change_request_id)
-            ).one_or_none()
-            if row is None:
-                raise HTTPException(status_code=404, detail="Change request not found.")
-            actions: list[dict[str, Any]] = []
-            can_edit = CHANGE_REQUEST_EDIT_PERMISSION in user.permissions
-            can_approve = CHANGE_REQUEST_APPROVE_PERMISSION in user.permissions
-            editable = row.state in CHANGE_REQUEST_EDITABLE_STATES
-            approval_editable = row.state in CHANGE_APPROVAL_EDITABLE_STATES
-            certificate_successor_permissions = [
-                CHANGE_REQUEST_EDIT_PERMISSION,
-                "certificate.issue",
-            ]
-            can_issue_certificate_successor = all(
-                permission in user.permissions
-                for permission in certificate_successor_permissions
+            return self._get_change_request_action_readiness_persisted(
+                session, change_request_id=change_request_id, user=user,
             )
-            actions.extend([
-                {
-                    "action_key": "edit_change_request",
-                    "label": "Sửa đề nghị",
-                    "available": can_edit and editable,
-                    "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
-                    "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
-                    "expected_version": row.row_version,
-                    "target_state": None,
-                },
-                {
-                    "action_key": "add_change_detail",
-                    "label": "Thêm chi tiết",
-                    "available": can_edit and editable,
-                    "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
-                    "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
-                    "expected_version": row.row_version,
-                    "target_state": None,
-                },
-                {
-                    "action_key": "edit_change_detail",
-                    "label": "Sửa chi tiết",
-                    "available": can_edit and editable,
-                    "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
-                    "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
-                    "expected_version": row.row_version,
-                    "target_state": None,
-                },
-                {
-                    "action_key": "edit_change_approval",
-                    "label": "Cập nhật xử lý",
-                    "available": can_approve and approval_editable,
-                    "reason_code": None if can_approve and approval_editable else "missing_permission" if not can_approve else "state_not_editable",
-                    "required_permissions": [CHANGE_REQUEST_APPROVE_PERMISSION],
-                    "expected_version": row.row_version,
-                    "target_state": None,
-                },
-            ])
-            # Read-only actions must use the current owning Site/Company too:
-            # a cached Site can make a reparented DDK link look eligible.
-            site = session.scalars(
-                select(Site).where(Site.id == row.site_id)
+
+    def _get_change_request_action_readiness_persisted(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        user: AuthenticatedUser,
+    ) -> list[dict[str, Any]]:
+        # Read the authoritative persisted parent as scalar columns. Never
+        # refresh a cached operator draft or autoflush it during a GET.
+        row = session.execute(
+            select(
+                ChangeRequest.id,
+                ChangeRequest.site_id,
+                ChangeRequest.state,
+                ChangeRequest.row_version,
+            ).where(ChangeRequest.id == change_request_id)
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Change request not found.")
+        actions: list[dict[str, Any]] = []
+        can_edit = CHANGE_REQUEST_EDIT_PERMISSION in user.permissions
+        can_approve = CHANGE_REQUEST_APPROVE_PERMISSION in user.permissions
+        editable = row.state in CHANGE_REQUEST_EDITABLE_STATES
+        approval_editable = row.state in CHANGE_APPROVAL_EDITABLE_STATES
+        certificate_successor_permissions = [
+            CHANGE_REQUEST_EDIT_PERMISSION,
+            "certificate.issue",
+        ]
+        can_issue_certificate_successor = all(
+            permission in user.permissions
+            for permission in certificate_successor_permissions
+        )
+        actions.extend([
+            {
+                "action_key": "edit_change_request",
+                "label": "Sửa đề nghị",
+                "available": can_edit and editable,
+                "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+            {
+                "action_key": "add_change_detail",
+                "label": "Thêm chi tiết",
+                "available": can_edit and editable,
+                "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+            {
+                "action_key": "edit_change_detail",
+                "label": "Sửa chi tiết",
+                "available": can_edit and editable,
+                "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+            {
+                "action_key": "edit_change_approval",
+                "label": "Cập nhật xử lý",
+                "available": can_approve and approval_editable,
+                "reason_code": None if can_approve and approval_editable else "missing_permission" if not can_approve else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_APPROVE_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+        ])
+        # Read-only actions must use the current owning Site/Company too:
+        # a cached Site can make a reparented DDK link look eligible.
+        site = session.scalars(
+            select(Site).where(Site.id == row.site_id)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if site is None:
+            raise HTTPException(status_code=404, detail="Site not found.")
+        certificate_source_links = list(
+            session.scalars(
+                select(ChangeRequestAffectedArtifact)
+                .where(
+                    ChangeRequestAffectedArtifact.change_request_id == row.id,
+                    ChangeRequestAffectedArtifact.certificate_id.is_not(None),
+                )
+                .order_by(ChangeRequestAffectedArtifact.id.asc())
                 .execution_options(populate_existing=True)
-            ).one_or_none()
-            if site is None:
-                raise HTTPException(status_code=404, detail="Site not found.")
-            certificate_source_links = list(
-                session.scalars(
-                    select(ChangeRequestAffectedArtifact)
-                    .where(
-                        ChangeRequestAffectedArtifact.change_request_id == row.id,
-                        ChangeRequestAffectedArtifact.certificate_id.is_not(None),
-                    )
-                    .order_by(ChangeRequestAffectedArtifact.id.asc())
-                    .execution_options(populate_existing=True)
-                )
             )
-            for source_link in certificate_source_links:
-                self._validate_change_request_artifact_target(
-                    session,
-                    site=site,
-                    certificate_id=source_link.certificate_id,
-                    business_eligibility_certificate_id=None,
-                )
-                # The actual successor mutation requires a persisted source
-                # CertificateVersion. Do not advertise an action that would
-                # deterministically fail with HTTP 409 at the owner layer.
-                has_source_version = session.scalar(
-                    select(CertificateVersion.id)
-                    .where(CertificateVersion.certificate_id == source_link.certificate_id)
-                    .limit(1)
-                ) is not None
-                available = editable and can_issue_certificate_successor and has_source_version
-                actions.append(
-                    {
-                        "action_key": f"issue_certificate_successor:{source_link.id}",
-                        "label": "Tạo GCN điều chỉnh",
-                        "available": available,
-                        "reason_code": (
-                            None
-                            if available
-                            else (
-                                "missing_permission"
-                                if not can_issue_certificate_successor
-                                else "state_not_editable"
-                                if not editable
-                                else "source_version_missing"
-                            )
-                        ),
-                        "required_permissions": certificate_successor_permissions,
-                        "expected_version": row.row_version,
-                        "target_state": None,
-                        "source_affected_artifact_id": source_link.id,
-                    }
-                )
-
-            business_eligibility_successor_permissions = [
-                CHANGE_REQUEST_EDIT_PERMISSION,
-                "certificate.issue",
-            ]
-            can_issue_business_eligibility_successor = all(
-                permission in user.permissions
-                for permission in business_eligibility_successor_permissions
+        )
+        for source_link in certificate_source_links:
+            self._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=source_link.certificate_id,
+                business_eligibility_certificate_id=None,
             )
-            business_eligibility_source_links = list(
-                session.scalars(
-                    select(ChangeRequestAffectedArtifact)
-                    .where(
-                        ChangeRequestAffectedArtifact.change_request_id == row.id,
-                        ChangeRequestAffectedArtifact.business_eligibility_certificate_id.is_not(None),
-                    )
-                    .order_by(ChangeRequestAffectedArtifact.id.asc())
-                    .execution_options(populate_existing=True)
-                )
-            )
-            for source_link in business_eligibility_source_links:
-                self._validate_change_request_artifact_target(
-                    session,
-                    site=site,
-                    certificate_id=None,
-                    business_eligibility_certificate_id=source_link.business_eligibility_certificate_id,
-                )
-                source_version_id = session.scalar(
-                    select(BusinessEligibilityVersion.id)
-                    .where(
-                        BusinessEligibilityVersion.business_eligibility_certificate_id
-                        == source_link.business_eligibility_certificate_id
-                    )
-                    .order_by(BusinessEligibilityVersion.version_no.desc())
-                    .limit(1)
-                )
-                # DDK successor issuance revalidates every copied GxP link under
-                # _replace_business_eligibility_links. Readiness must not advertise
-                # a deterministic 409/422 for an already-invalid committed link
-                # graph (including stale identities cached in this Session).
-                invalid_source_links = False
-                if source_version_id is not None and editable and can_issue_business_eligibility_successor:
-                    seen_certificate_ids: set[str] = set()
-                    source_gxp_links = session.scalars(
-                        select(BusinessEligibilityCertificateLink)
-                        .where(
-                            BusinessEligibilityCertificateLink.business_eligibility_version_id
-                            == source_version_id
+            # The actual successor mutation requires a persisted source
+            # CertificateVersion. Do not advertise an action that would
+            # deterministically fail with HTTP 409 at the owner layer.
+            has_source_version = session.scalar(
+                select(CertificateVersion.id)
+                .where(CertificateVersion.certificate_id == source_link.certificate_id)
+                .limit(1)
+            ) is not None
+            available = editable and can_issue_certificate_successor and has_source_version
+            actions.append(
+                {
+                    "action_key": f"issue_certificate_successor:{source_link.id}",
+                    "label": "Tạo GCN điều chỉnh",
+                    "available": available,
+                    "reason_code": (
+                        None
+                        if available
+                        else (
+                            "missing_permission"
+                            if not can_issue_certificate_successor
+                            else "state_not_editable"
+                            if not editable
+                            else "source_version_missing"
                         )
-                        .execution_options(populate_existing=True)
-                    )
-                    for link in source_gxp_links:
-                        if (
-                            link.link_role not in BUSINESS_ELIGIBILITY_LINK_ROLES
-                            or link.certificate_id in seen_certificate_ids
-                        ):
-                            invalid_source_links = True
-                            break
-                        seen_certificate_ids.add(link.certificate_id)
-                        linked_gxp = session.scalars(
-                            select(Certificate).where(Certificate.id == link.certificate_id)
-                            .execution_options(populate_existing=True)
-                        ).one_or_none()
-                        if linked_gxp is None or linked_gxp.site_id != site.id:
-                            invalid_source_links = True
-                            break
-                        try:
-                            self._certificate_line_identity(session, linked_gxp)
-                        except HTTPException:
-                            invalid_source_links = True
-                            break
-                available = (
-                    editable and can_issue_business_eligibility_successor
-                    and source_version_id is not None and not invalid_source_links
-                )
-                actions.append(
-                    {
-                        "action_key": f"issue_business_eligibility_successor:{source_link.id}",
-                        "label": "Tạo GCN ĐĐK điều chỉnh",
-                        "available": available,
-                        "reason_code": (
-                            None
-                            if available
-                            else (
-                                "missing_permission"
-                                if not can_issue_business_eligibility_successor
-                                else "state_not_editable"
-                                if not editable
-                                else "source_version_missing"
-                                if source_version_id is None
-                                else "invalid_source_links"
-                            )
-                        ),
-                        "required_permissions": business_eligibility_successor_permissions,
-                        "expected_version": row.row_version,
-                        "target_state": None,
-                        "source_affected_artifact_id": source_link.id,
-                    }
-                )
+                    ),
+                    "required_permissions": certificate_successor_permissions,
+                    "expected_version": row.row_version,
+                    "target_state": None,
+                    "source_affected_artifact_id": source_link.id,
+                }
+            )
 
-            issued_links = list(
-                session.scalars(
-                    select(ChangeRequestIssuedArtifact)
-                    .where(ChangeRequestIssuedArtifact.change_request_id == row.id)
-                    .order_by(ChangeRequestIssuedArtifact.id.asc())
+        business_eligibility_successor_permissions = [
+            CHANGE_REQUEST_EDIT_PERMISSION,
+            "certificate.issue",
+        ]
+        can_issue_business_eligibility_successor = all(
+            permission in user.permissions
+            for permission in business_eligibility_successor_permissions
+        )
+        business_eligibility_source_links = list(
+            session.scalars(
+                select(ChangeRequestAffectedArtifact)
+                .where(
+                    ChangeRequestAffectedArtifact.change_request_id == row.id,
+                    ChangeRequestAffectedArtifact.business_eligibility_certificate_id.is_not(None),
+                )
+                .order_by(ChangeRequestAffectedArtifact.id.asc())
+                .execution_options(populate_existing=True)
+            )
+        )
+        for source_link in business_eligibility_source_links:
+            self._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=None,
+                business_eligibility_certificate_id=source_link.business_eligibility_certificate_id,
+            )
+            source_version_id = session.scalar(
+                select(BusinessEligibilityVersion.id)
+                .where(
+                    BusinessEligibilityVersion.business_eligibility_certificate_id
+                    == source_link.business_eligibility_certificate_id
+                )
+                .order_by(BusinessEligibilityVersion.version_no.desc())
+                .limit(1)
+            )
+            # DDK successor issuance revalidates every copied GxP link under
+            # _replace_business_eligibility_links. Readiness must not advertise
+            # a deterministic 409/422 for an already-invalid committed link
+            # graph (including stale identities cached in this Session).
+            invalid_source_links = False
+            if source_version_id is not None and editable and can_issue_business_eligibility_successor:
+                seen_certificate_ids: set[str] = set()
+                source_gxp_links = session.scalars(
+                    select(BusinessEligibilityCertificateLink)
+                    .where(
+                        BusinessEligibilityCertificateLink.business_eligibility_version_id
+                        == source_version_id
+                    )
                     .execution_options(populate_existing=True)
                 )
+                for link in source_gxp_links:
+                    if (
+                        link.link_role not in BUSINESS_ELIGIBILITY_LINK_ROLES
+                        or link.certificate_id in seen_certificate_ids
+                    ):
+                        invalid_source_links = True
+                        break
+                    seen_certificate_ids.add(link.certificate_id)
+                    linked_gxp = session.scalars(
+                        select(Certificate).where(Certificate.id == link.certificate_id)
+                        .execution_options(populate_existing=True)
+                    ).one_or_none()
+                    if linked_gxp is None or linked_gxp.site_id != site.id:
+                        invalid_source_links = True
+                        break
+                    try:
+                        self._certificate_line_identity(session, linked_gxp)
+                    except HTTPException:
+                        invalid_source_links = True
+                        break
+            available = (
+                editable and can_issue_business_eligibility_successor
+                and source_version_id is not None and not invalid_source_links
             )
-            for issued_link in issued_links:
-                artifact_kind, artifact_id = self._validate_change_request_artifact_target(
-                    session,
-                    site=site,
-                    certificate_id=issued_link.certificate_id,
-                    business_eligibility_certificate_id=issued_link.business_eligibility_certificate_id,
-                )
-                if artifact_kind == "certificate":
-                    canonical_actions = self.get_certificate_action_readiness(
-                        session,
-                        certificate_id=artifact_id,
-                        user=user,
-                    )
-                    edit_action = next(
-                        item
-                        for item in canonical_actions
-                        if item["action_key"] == "edit_latest_version"
-                    )
-                    promote_action = next(
-                        item
-                        for item in canonical_actions
-                        if item["action_key"] == "promote_current"
-                    )
-                    edit_action_key = f"edit_issued_certificate:{issued_link.id}"
-                    action_key = f"promote_issued_certificate:{issued_link.id}"
-                else:
-                    canonical_actions = self.get_business_eligibility_action_readiness(
-                        session,
-                        business_eligibility_certificate_id=artifact_id,
-                        user=user,
-                    )
-                    edit_action = next(
-                        item
-                        for item in canonical_actions
-                        if item["action_key"] == "edit_latest_version"
-                    )
-                    promote_action = next(
-                        item
-                        for item in canonical_actions
-                        if item["action_key"] == "promote_current"
-                    )
-                    edit_action_key = (
-                        f"edit_issued_business_eligibility:{issued_link.id}"
-                    )
-                    action_key = (
-                        f"promote_issued_business_eligibility:{issued_link.id}"
-                    )
-                actions.append(
-                    {
-                        "action_key": edit_action_key,
-                        "label": edit_action["label"],
-                        "available": edit_action["available"],
-                        "reason_code": edit_action["reason_code"],
-                        "required_permissions": edit_action["required_permissions"],
-                        "expected_version": edit_action["expected_version"],
-                        "target_state": None,
-                        "source_affected_artifact_id": issued_link.source_affected_artifact_id,
-                        "issued_artifact_link_id": issued_link.id,
-                        "target_artifact_kind": artifact_kind,
-                        "target_artifact_id": artifact_id,
-                    }
-                )
-                actions.append(
-                    {
-                        "action_key": action_key,
-                        "label": promote_action["label"],
-                        "available": promote_action["available"],
-                        "reason_code": promote_action["reason_code"],
-                        "required_permissions": promote_action["required_permissions"],
-                        "expected_version": promote_action["expected_version"],
-                        "target_state": None,
-                        "source_affected_artifact_id": issued_link.source_affected_artifact_id,
-                        "issued_artifact_link_id": issued_link.id,
-                        "target_artifact_kind": artifact_kind,
-                        "target_artifact_id": artifact_id,
-                    }
-                )
-
-            for target_state in sorted(ALLOWED_CHANGE_REQUEST_TRANSITIONS.get(row.state, set()), key=lambda item: item.value):
-                permission = change_request_transition_permission(target_state)
-                permitted = permission in user.permissions
-                actions.append({
-                    "action_key": f"transition_change_request:{target_state.value}",
-                    "label": f"Chuyển sang {target_state.value}",
-                    "available": permitted,
-                    "reason_code": None if permitted else "missing_permission",
-                    "required_permissions": [permission],
+            actions.append(
+                {
+                    "action_key": f"issue_business_eligibility_successor:{source_link.id}",
+                    "label": "Tạo GCN ĐĐK điều chỉnh",
+                    "available": available,
+                    "reason_code": (
+                        None
+                        if available
+                        else (
+                            "missing_permission"
+                            if not can_issue_business_eligibility_successor
+                            else "state_not_editable"
+                            if not editable
+                            else "source_version_missing"
+                            if source_version_id is None
+                            else "invalid_source_links"
+                        )
+                    ),
+                    "required_permissions": business_eligibility_successor_permissions,
                     "expected_version": row.row_version,
-                    "target_state": target_state.value,
-                })
-            return actions
+                    "target_state": None,
+                    "source_affected_artifact_id": source_link.id,
+                }
+            )
+
+        issued_links = list(
+            session.scalars(
+                select(ChangeRequestIssuedArtifact)
+                .where(ChangeRequestIssuedArtifact.change_request_id == row.id)
+                .order_by(ChangeRequestIssuedArtifact.id.asc())
+                .execution_options(populate_existing=True)
+            )
+        )
+        for issued_link in issued_links:
+            artifact_kind, artifact_id = self._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=issued_link.certificate_id,
+                business_eligibility_certificate_id=issued_link.business_eligibility_certificate_id,
+            )
+            if artifact_kind == "certificate":
+                canonical_actions = self.get_certificate_action_readiness(
+                    session,
+                    certificate_id=artifact_id,
+                    user=user,
+                )
+                edit_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "edit_latest_version"
+                )
+                promote_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "promote_current"
+                )
+                edit_action_key = f"edit_issued_certificate:{issued_link.id}"
+                action_key = f"promote_issued_certificate:{issued_link.id}"
+            else:
+                canonical_actions = self.get_business_eligibility_action_readiness(
+                    session,
+                    business_eligibility_certificate_id=artifact_id,
+                    user=user,
+                )
+                edit_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "edit_latest_version"
+                )
+                promote_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "promote_current"
+                )
+                edit_action_key = (
+                    f"edit_issued_business_eligibility:{issued_link.id}"
+                )
+                action_key = (
+                    f"promote_issued_business_eligibility:{issued_link.id}"
+                )
+            actions.append(
+                {
+                    "action_key": edit_action_key,
+                    "label": edit_action["label"],
+                    "available": edit_action["available"],
+                    "reason_code": edit_action["reason_code"],
+                    "required_permissions": edit_action["required_permissions"],
+                    "expected_version": edit_action["expected_version"],
+                    "target_state": None,
+                    "source_affected_artifact_id": issued_link.source_affected_artifact_id,
+                    "issued_artifact_link_id": issued_link.id,
+                    "target_artifact_kind": artifact_kind,
+                    "target_artifact_id": artifact_id,
+                }
+            )
+            actions.append(
+                {
+                    "action_key": action_key,
+                    "label": promote_action["label"],
+                    "available": promote_action["available"],
+                    "reason_code": promote_action["reason_code"],
+                    "required_permissions": promote_action["required_permissions"],
+                    "expected_version": promote_action["expected_version"],
+                    "target_state": None,
+                    "source_affected_artifact_id": issued_link.source_affected_artifact_id,
+                    "issued_artifact_link_id": issued_link.id,
+                    "target_artifact_kind": artifact_kind,
+                    "target_artifact_id": artifact_id,
+                }
+            )
+
+        for target_state in sorted(ALLOWED_CHANGE_REQUEST_TRANSITIONS.get(row.state, set()), key=lambda item: item.value):
+            permission = change_request_transition_permission(target_state)
+            permitted = permission in user.permissions
+            actions.append({
+                "action_key": f"transition_change_request:{target_state.value}",
+                "label": f"Chuyển sang {target_state.value}",
+                "available": permitted,
+                "reason_code": None if permitted else "missing_permission",
+                "required_permissions": [permission],
+                "expected_version": row.row_version,
+                "target_state": target_state.value,
+            })
+        return actions
 
     def _validate_change_request_artifact_target(
         self,

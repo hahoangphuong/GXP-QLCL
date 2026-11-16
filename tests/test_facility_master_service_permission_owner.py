@@ -106,7 +106,7 @@ def test_direct_master_create_denied_before_any_sql_or_flush(
             event.remove(engine, "before_cursor_execute", observe)
             event.remove(db, "before_flush", forbidden_flush)
         assert denied.value.status_code == 403
-        assert "case.edit" in str(denied.value.detail)
+        assert denied.value.detail == "User is missing required permission."
         assert before == []
         assert flushes == []
         assert draft.legal_name == "Operator local uncommitted draft"

@@ -1989,10 +1989,31 @@ class CaseWorkflowService:
         change_request_id: str,
         user: AuthenticatedUser,
     ) -> list[dict[str, Any]]:
-        row = self._get_change_request(session, change_request_id)
-        # Read-only action projections must use the committed parent state
-        # and optimistic token, even when this Session cached an older identity.
-        session.refresh(row)
+        """Advisory actions from persisted owner state without draft autoflush."""
+        with session.no_autoflush:
+            return self._get_change_request_action_readiness_persisted(
+                session, change_request_id=change_request_id, user=user,
+            )
+
+    def _get_change_request_action_readiness_persisted(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        user: AuthenticatedUser,
+    ) -> list[dict[str, Any]]:
+        # Read the authoritative persisted parent as scalar columns. Never
+        # refresh a cached operator draft or autoflush it during a GET.
+        row = session.execute(
+            select(
+                ChangeRequest.id,
+                ChangeRequest.site_id,
+                ChangeRequest.state,
+                ChangeRequest.row_version,
+            ).where(ChangeRequest.id == change_request_id)
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Change request not found.")
         actions: list[dict[str, Any]] = []
         can_edit = CHANGE_REQUEST_EDIT_PERMISSION in user.permissions
         can_approve = CHANGE_REQUEST_APPROVE_PERMISSION in user.permissions
@@ -2046,9 +2067,9 @@ class CaseWorkflowService:
         ])
         # Read-only actions must use the current owning Site/Company too:
         # a cached Site can make a reparented DDK link look eligible.
-        site = session.scalars(
-            select(Site).where(Site.id == row.site_id)
-            .execution_options(populate_existing=True)
+        # Project committed Site ownership without refreshing operator drafts.
+        site = session.execute(
+            select(Site.id, Site.company_id).where(Site.id == row.site_id)
         ).one_or_none()
         if site is None:
             raise HTTPException(status_code=404, detail="Site not found.")

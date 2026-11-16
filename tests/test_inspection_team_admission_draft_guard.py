@@ -13,7 +13,7 @@ from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import (
-    AuditEvent, Case, Company, InspectionTeam, InspectionTeamMember, Site,
+    AuditEvent, Case, Company, InspectionTeam, InspectionTeamMember, Person, Site,
 )
 from backend.app.services.workflow import CaseWorkflowService
 
@@ -43,9 +43,13 @@ def seeded(tmp_path):
         team = InspectionTeam(case_id=case.id)
         db.add(team)
         db.flush()
+        person = Person(full_name="Committed member", display_name="Committed member")
+        db.add(person)
+        db.flush()
         member = InspectionTeamMember(
-            team_id=team.id, sort_order=1, identity_kind="LEGACY_PERSON",
-            role_code="LEADER", display_name="Committed member",
+            team_id=team.id, sort_order=1, identity_kind=None,
+            role_code="LEADER", person_id=person.id,
+            display_name="Committed member",
         )
         db.add(member)
         db.commit()

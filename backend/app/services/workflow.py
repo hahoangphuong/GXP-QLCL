@@ -1951,7 +1951,14 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         required_permissions = [CHANGE_REQUEST_EDIT_PERMISSION]
-        if session.get(Site, site_id) is None:
+        # Readiness is advisory: inspect persisted Site identity without
+        # flushing drafts or relying on an already-cached ORM Site object.
+        # The POST rechecks under its authoritative Site owner lock.
+        with session.no_autoflush:
+            site_exists = session.scalar(
+                select(Site.id).where(Site.id == site_id)
+            ) is not None
+        if not site_exists:
             return {
                 "action_key": "create_change_request",
                 "label": "Thay đổi",

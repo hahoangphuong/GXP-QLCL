@@ -620,7 +620,14 @@ class CaseWorkflowService:
         site_id: str,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
-        self._get_site(session, site_id)
+        # Advisory GET must verify persisted Site identity rather than a
+        # potentially deleted cached ORM Site, without flushing drafts.
+        with session.no_autoflush:
+            site_exists = session.scalar(
+                select(Site.id).where(Site.id == site_id)
+            ) is not None
+        if not site_exists:
+            raise HTTPException(status_code=404, detail="Site not found.")
         permission = "certificate.issue"
         reason = None if permission in user.permissions else "missing_permission"
         return {

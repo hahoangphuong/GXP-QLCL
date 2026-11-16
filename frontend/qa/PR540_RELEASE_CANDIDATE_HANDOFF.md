@@ -119,6 +119,71 @@ occurs, and an uncertain outcome remains locked until canonical recovery.
   documentation-only descendant and must not alter frontend product code. The
   only local untracked path is `.codex/` evidence.
 
+## 2026-11-16 backend-main compatibility preflight
+
+**Backend checkpoint examined:**
+`a8b6cd13bbe243e0440c9aaccb89ca51354ff272` (PRs #558–#563). Direct source
+comparison from `70d0004c` to that checkpoint changes only
+`backend/app/services/workflow.py` and backend regression tests. It changes
+readiness implementation from cached ORM refreshes to persisted scalar reads
+inside `no_autoflush`; it does not change API routes, request/response schemas,
+frontend TypeScript types, permissions, action keys, reason-code vocabulary, or
+optimistic-version fields. This is source evidence, not a substitute for an
+authenticated HTTP run.
+
+| Contract | Classification | Evidence and frontend outcome |
+| --- | --- | --- |
+| Change Request create/action readiness; Site/Company root ownership | `COMPATIBLE_WITH_EVIDENCE` | #558/#560 use persisted root/Site and target projections only. `ChangeRequestMutationWorkspace` sends backend readiness `expected_version`, preserves dirty intent, fences A→B→A, and never derives owner identity from labels. |
+| Affected/issued artifact links | `COMPATIBLE_WITH_EVIDENCE` | #559/#560 retain canonical certificate/ĐĐK IDs while reading links from committed scalars. Existing Change Request regressions assert target-owned tokens, exact successor identity and no late-result cross-owner change. |
+| ĐĐK issue and version/current readiness | `COMPATIBLE_WITH_EVIDENCE` | #561/#562 preserve Site UUID, action keys and tokens while eliminating draft autoflush. `BusinessEligibilityWorkspace` tests cover unavailable readiness, exact parent token, 403/409/422, refresh, version edit/promotion and Site A→B→A. |
+| GxP certificate version/current readiness | `COMPATIBLE_WITH_EVIDENCE` | #563 preserves certificate/site/Case/line validation and response shape using persisted projections. `CaseCertificateIssueWorkspace` retains typed drafts, blocks duplicate/unknown issuance, and fences Case A→B→A. |
+| PCT/CT canonical document recovery | `COMPATIBLE_WITH_EVIDENCE` | Candidate recovery remains keyed by `approval_submission_id`, persisted document/binding IDs and expected version; `ApprovalRoundDocuments` rejects stale/ineligible bindings and unknown-outcome replay. |
+| 401/403/404/409/422, timeout and binary/document isolation | `COMPATIBLE_WITH_EVIDENCE` for synthetic behavior | Read-only probe records failure status without server details/retry; workspace regressions retain draft/lock behavior. Authenticated runtime and binary storage behavior are `ENVIRONMENT_BLOCKED`. |
+| Exact frozen frontend against backend `a8b6cd13` over authenticated HTTP | `ENVIRONMENT_BLOCKED` | Rehearsal runtime SHA differs and no approved candidate deployment/OIDC actor exists. This is not a frontend defect or a test-coverage waiver. |
+
+No item is currently classified `FRONTEND_DEFECT` or
+`BACKEND_CONTRACT_QUESTION`. No QA-only code PR was created: the existing test
+and preflight owners already cover the observable contract, and adding a
+duplicate harness would not increase confidence.
+
+### Executed synthetic and preflight evidence
+
+- `pnpm test --run src/qa/rehearsalSmoke.test.ts
+  src/features/search/BusinessEligibilityWorkspace.test.tsx
+  src/features/search/CaseCertificateIssueWorkspace.test.tsx
+  src/features/search/ChangeRequestMutationWorkspace.test.tsx
+  src/features/search/ApprovalRoundDocuments.test.tsx
+  src/features/search/InitialCaseCreationDialog.test.tsx`: **165/165 PASS**
+  across 6 files.
+- `src/qa/rehearsalSmoke.ts` is the executable read-only, fail-closed preflight
+  harness. Its 24 assertions prove GET/HEAD-only behavior, one in-flight owner,
+  canonical Site/line/Case/document/version identity, no filename deduplication,
+  no anonymous OIDC fallback, and non-disclosure of sensitive response detail.
+  Fixture output is deliberately `FIXTURE_ONLY`, never authenticated UAT.
+- The live preflight below was read-only and did not invoke this fixture mode,
+  login, mutation, document binary, or storage operation.
+- `pnpm typecheck`, `pnpm lint`, and `pnpm build`: **PASS** on the frozen
+  frontend source plus this documentation-only descendant. The existing Vite
+  advisory that the production JavaScript chunk exceeds 500 kB remains a
+  non-blocking warning; no limit was raised or warning suppressed.
+
+To run the future authenticated read-only preflight, start the already provided
+`qa/rehearsal.vite.config.ts` proxy only after an approved loopback tunnel is
+verified, then run `runRehearsalSmoke()` from the existing signed-in browser as
+documented in `frontend/qa/REHEARSAL_READ_ONLY.md`. A `BLOCKED` report is the
+required outcome for missing session, empty fixture or identity mismatch; do not
+substitute fixture mode for live authentication.
+
+### Version binding table
+
+| Component | SHA / revision | Evidence | Verification |
+| --- | --- | --- | --- |
+| Frozen frontend executable | `419fef55c788dfde3f61001fd9adc7ea2d25863c` | exact-head CI run 43778464751 | `CI_VERIFIED` |
+| PR documentation baseline | `b8252d6de02473ff344249f980a33ab5b1b7d525` | docs-only diff from frozen executable | `CANDIDATE_IDENTITY_VERIFIED` |
+| Backend main assessed | `a8b6cd13bbe243e0440c9aaccb89ca51354ff272` | #558–#563 source/API diff and backend CI checkpoint | `COMPATIBLE_WITH_EVIDENCE` |
+| Rehearsal runtime | `3bd3c0eae4d118b8bb7b2fb1393a8764ea563107` | public read-only `/api/healthz` and `/api/app/status` | `ENVIRONMENT_BLOCKED` |
+| Rehearsal schema | `20261113_0031` | read-only `/api/readyz`, actual equals expected | current only for old runtime; `ENVIRONMENT_BLOCKED` for candidate |
+
 ## UAT status vocabulary
 
 | Status | Meaning |

@@ -2813,7 +2813,26 @@ class CaseWorkflowService:
         # Snapshot current affected artifacts only after competing promotions
         # have committed, so the new Change Request does not capture stale
         # latest_flag/current records.
-        site = self._lock_site(session, site_id)
+        #
+        # The row lock does not refresh a Site identity previously loaded by
+        # this Session. Compare committed Company ownership with the caller's
+        # Site snapshot *before* selecting current DDK or creating an actor,
+        # request, affected link or audit. Do not flush/refresh an operator's
+        # dirty Site draft just to perform this owner admission.
+        with session.no_autoflush:
+            site = self._get_site(session, site_id)
+            committed_site = session.execute(
+                select(Site.id, Site.company_id)
+                .where(Site.id == site_id)
+                .with_for_update(of=Site)
+            ).one_or_none()
+            if committed_site is None:
+                raise HTTPException(status_code=404, detail="Site not found.")
+            if site.company_id != committed_site.company_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Change request Site/Company owner changed; reload canonical Site.",
+                )
         affected_snapshot = self._resolve_change_request_affected_artifact_snapshot(
             session,
             site=site,

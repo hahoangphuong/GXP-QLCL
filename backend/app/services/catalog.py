@@ -1453,6 +1453,19 @@ class CatalogReadService:
             raise HTTPException(status_code=404, detail="Case not found.")
         return row
 
+    def get_case_master_persisted(
+        self, session: Session, case_id: str,
+    ) -> SimpleNamespace:
+        """Canonical Initial Case readback after uncertain client-UUID POST.
+
+        Project persisted Case scalars, not the Session identity-map snapshot.
+        Missing result does not establish that an in-flight POST cannot commit.
+        """
+        return self._committed_master_snapshot(
+            session, model=Case, identity=case_id,
+            missing_detail="Case not found.",
+        )
+
     def get_case_report(self, session: Session, *, gxp_type: str | None, state: str | None,
                         q: str | None, opened_year: int | None, inspection_queue: bool,
                         export: bool, offset: int, limit: int,

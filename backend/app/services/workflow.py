@@ -2073,17 +2073,17 @@ class CaseWorkflowService:
         ).one_or_none()
         if site is None:
             raise HTTPException(status_code=404, detail="Site not found.")
-        certificate_source_links = list(
-            session.scalars(
-                select(ChangeRequestAffectedArtifact)
-                .where(
-                    ChangeRequestAffectedArtifact.change_request_id == row.id,
-                    ChangeRequestAffectedArtifact.certificate_id.is_not(None),
-                )
-                .order_by(ChangeRequestAffectedArtifact.id.asc())
-                .execution_options(populate_existing=True)
+        certificate_source_links = session.execute(
+            select(
+                ChangeRequestAffectedArtifact.id,
+                ChangeRequestAffectedArtifact.certificate_id,
             )
-        )
+            .where(
+                ChangeRequestAffectedArtifact.change_request_id == row.id,
+                ChangeRequestAffectedArtifact.certificate_id.is_not(None),
+            )
+            .order_by(ChangeRequestAffectedArtifact.id.asc())
+        ).all()
         for source_link in certificate_source_links:
             self._validate_change_request_artifact_target(
                 session,
@@ -2131,17 +2131,17 @@ class CaseWorkflowService:
             permission in user.permissions
             for permission in business_eligibility_successor_permissions
         )
-        business_eligibility_source_links = list(
-            session.scalars(
-                select(ChangeRequestAffectedArtifact)
-                .where(
-                    ChangeRequestAffectedArtifact.change_request_id == row.id,
-                    ChangeRequestAffectedArtifact.business_eligibility_certificate_id.is_not(None),
-                )
-                .order_by(ChangeRequestAffectedArtifact.id.asc())
-                .execution_options(populate_existing=True)
+        business_eligibility_source_links = session.execute(
+            select(
+                ChangeRequestAffectedArtifact.id,
+                ChangeRequestAffectedArtifact.business_eligibility_certificate_id,
             )
-        )
+            .where(
+                ChangeRequestAffectedArtifact.change_request_id == row.id,
+                ChangeRequestAffectedArtifact.business_eligibility_certificate_id.is_not(None),
+            )
+            .order_by(ChangeRequestAffectedArtifact.id.asc())
+        ).all()
         for source_link in business_eligibility_source_links:
             self._validate_change_request_artifact_target(
                 session,
@@ -2165,14 +2165,15 @@ class CaseWorkflowService:
             invalid_source_links = False
             if source_version_id is not None and editable and can_issue_business_eligibility_successor:
                 seen_certificate_ids: set[str] = set()
-                source_gxp_links = session.scalars(
-                    select(BusinessEligibilityCertificateLink)
-                    .where(
+                source_gxp_links = session.execute(
+                    select(
+                        BusinessEligibilityCertificateLink.link_role,
+                        BusinessEligibilityCertificateLink.certificate_id,
+                    ).where(
                         BusinessEligibilityCertificateLink.business_eligibility_version_id
                         == source_version_id
                     )
-                    .execution_options(populate_existing=True)
-                )
+                ).all()
                 for link in source_gxp_links:
                     if (
                         link.link_role not in BUSINESS_ELIGIBILITY_LINK_ROLES
@@ -2222,14 +2223,16 @@ class CaseWorkflowService:
                 }
             )
 
-        issued_links = list(
-            session.scalars(
-                select(ChangeRequestIssuedArtifact)
-                .where(ChangeRequestIssuedArtifact.change_request_id == row.id)
-                .order_by(ChangeRequestIssuedArtifact.id.asc())
-                .execution_options(populate_existing=True)
+        issued_links = session.execute(
+            select(
+                ChangeRequestIssuedArtifact.id,
+                ChangeRequestIssuedArtifact.source_affected_artifact_id,
+                ChangeRequestIssuedArtifact.certificate_id,
+                ChangeRequestIssuedArtifact.business_eligibility_certificate_id,
             )
-        )
+            .where(ChangeRequestIssuedArtifact.change_request_id == row.id)
+            .order_by(ChangeRequestIssuedArtifact.id.asc())
+        ).all()
         for issued_link in issued_links:
             artifact_kind, artifact_id = self._validate_change_request_artifact_target(
                 session,

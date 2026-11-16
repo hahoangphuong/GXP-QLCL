@@ -2067,9 +2067,9 @@ class CaseWorkflowService:
         ])
         # Read-only actions must use the current owning Site/Company too:
         # a cached Site can make a reparented DDK link look eligible.
-        site = session.scalars(
-            select(Site).where(Site.id == row.site_id)
-            .execution_options(populate_existing=True)
+        # Project committed Site ownership without refreshing operator drafts.
+        site = session.execute(
+            select(Site.id, Site.company_id).where(Site.id == row.site_id)
         ).one_or_none()
         if site is None:
             raise HTTPException(status_code=404, detail="Site not found.")

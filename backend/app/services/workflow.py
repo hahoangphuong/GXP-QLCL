@@ -720,41 +720,131 @@ class CaseWorkflowService:
         business_eligibility_certificate_id: str,
         user: AuthenticatedUser,
     ) -> list[dict[str, Any]]:
-        certificate = self._get_business_eligibility(session, business_eligibility_certificate_id)
-        # A read-only readiness Session can outlive another writer's commit.
-        # Refresh both identities before advertising eligibility and the root
-        # optimistic token; the mutation still revalidates under the Site lock.
-        session.refresh(certificate)
-        version = self._load_latest_business_eligibility_version(session, certificate.id)
-        session.refresh(version)
-        edit_permission = "certificate.edit"
-        promote_permission = "certificate.approve"
-        edit_reason = None if edit_permission in user.permissions else "missing_permission"
-        promote_reason = None if promote_permission in user.permissions else "missing_permission"
-        if promote_reason is None:
-            promote_reason = self._get_business_eligibility_promotion_blocker(
-                session,
-                certificate=certificate,
-                version=version,
+        """Read persisted DDK eligibility without flushing or refreshing drafts."""
+        with session.no_autoflush:
+            certificate = session.execute(
+                select(
+                    BusinessEligibilityCertificate.id,
+                    BusinessEligibilityCertificate.site_id,
+                    BusinessEligibilityCertificate.latest_flag,
+                    BusinessEligibilityCertificate.row_version,
+                ).where(
+                    BusinessEligibilityCertificate.id == business_eligibility_certificate_id
+                )
+            ).one_or_none()
+            if certificate is None:
+                raise HTTPException(status_code=404, detail="Business eligibility certificate not found.")
+            version = session.execute(
+                select(
+                    BusinessEligibilityVersion.id,
+                    BusinessEligibilityVersion.certificate_number,
+                    BusinessEligibilityVersion.issued_on,
+                ).where(
+                    BusinessEligibilityVersion.business_eligibility_certificate_id == certificate.id
+                )
+                .order_by(BusinessEligibilityVersion.version_no.desc())
+                .limit(1)
+            ).one_or_none()
+            if version is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility certificate has no persisted version.",
+                )
+            edit_permission = "certificate.edit"
+            promote_permission = "certificate.approve"
+            edit_reason = None if edit_permission in user.permissions else "missing_permission"
+            promote_reason = None if promote_permission in user.permissions else "missing_permission"
+            if promote_reason is None:
+                promote_reason = self._business_eligibility_promotion_blocker_persisted(
+                    session, certificate=certificate, version=version,
+                )
+            return [
+                {
+                    "action_key": "edit_latest_version",
+                    "label": "Cập nhật GCN đủ điều kiện",
+                    "available": edit_reason is None,
+                    "reason_code": edit_reason,
+                    "required_permissions": [edit_permission],
+                    "expected_version": certificate.row_version,
+                },
+                {
+                    "action_key": "promote_current",
+                    "label": "Đặt làm GCN đủ điều kiện hiện hành",
+                    "available": promote_reason is None,
+                    "reason_code": promote_reason,
+                    "required_permissions": [promote_permission],
+                    "expected_version": certificate.row_version,
+                },
+            ]
+
+    def _business_eligibility_promotion_blocker_persisted(
+        self, session: Session, *, certificate: Any, version: Any,
+    ) -> str | None:
+        """Advisory-only SQL predicate. Mutation promotion remains authoritative."""
+        if not version.certificate_number or version.issued_on is None:
+            return "certificate_data_incomplete"
+
+        source_links = session.execute(
+            select(BusinessEligibilityCertificateLink.certificate_id)
+            .where(
+                BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
             )
-        return [
-            {
-                "action_key": "edit_latest_version",
-                "label": "Cập nhật GCN đủ điều kiện",
-                "available": edit_reason is None,
-                "reason_code": edit_reason,
-                "required_permissions": [edit_permission],
-                "expected_version": certificate.row_version,
-            },
-            {
-                "action_key": "promote_current",
-                "label": "Đặt làm GCN đủ điều kiện hiện hành",
-                "available": promote_reason is None,
-                "reason_code": promote_reason,
-                "required_permissions": [promote_permission],
-                "expected_version": certificate.row_version,
-            },
-        ]
+        ).all()
+        for link in source_links:
+            linked = session.execute(
+                select(
+                    Certificate.site_id, Certificate.certificate_type,
+                    Certificate.case_id, Certificate.production_line_id,
+                ).where(Certificate.id == link.certificate_id)
+            ).one_or_none()
+            if linked is None or linked.site_id != certificate.site_id:
+                return "invalid_linked_certificate"
+            if linked.case_id is not None:
+                linked_case = session.execute(
+                    select(Case.site_id, Case.gxp_type)
+                    .where(Case.id == linked.case_id)
+                ).one_or_none()
+                if (
+                    linked_case is None
+                    or linked_case.site_id != linked.site_id
+                    or linked_case.gxp_type != linked.certificate_type
+                ):
+                    return "invalid_linked_certificate"
+            if linked.production_line_id is not None:
+                line_site_id = session.scalar(
+                    select(ProductionLine.site_id)
+                    .where(ProductionLine.id == linked.production_line_id)
+                )
+                if line_site_id != linked.site_id:
+                    return "invalid_linked_certificate"
+
+        current_ids = list(session.scalars(
+            select(BusinessEligibilityCertificate.id)
+            .where(
+                BusinessEligibilityCertificate.site_id == certificate.site_id,
+                BusinessEligibilityCertificate.latest_flag.is_(True),
+            )
+            .order_by(BusinessEligibilityCertificate.id.asc())
+        ))
+        if len(current_ids) > 1:
+            return "multiple_current_records"
+        if current_ids and current_ids[0] == certificate.id:
+            return "already_current"
+        if current_ids:
+            current_version = session.execute(
+                select(BusinessEligibilityVersion.issued_on)
+                .where(
+                    BusinessEligibilityVersion.business_eligibility_certificate_id
+                    == current_ids[0]
+                )
+                .order_by(BusinessEligibilityVersion.version_no.desc())
+                .limit(1)
+            ).one_or_none()
+            if current_version is None or current_version.issued_on is None:
+                return "current_record_incomplete"
+            if version.issued_on < current_version.issued_on:
+                return "candidate_issue_date_precedes_current"
+        return None
 
     def _get_certificate_promotion_blocker(
         self,

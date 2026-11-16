@@ -62,11 +62,14 @@ def _build_facility_action_readiness(
     # Mirror the POST's owner admission before advertising this action.
     line_owner_ready = False
     if can_create_masters:
-        owner = session.execute(
-            select(Site.id, Company.is_inactive)
-            .join(Company, Site.company_id == Company.id)
-            .where(Site.id == site_id)
-        ).one_or_none()
+        # Advisory readiness reads committed owners only. A GET must neither
+        # autoflush operator drafts nor trust cached Site/Company identities.
+        with session.no_autoflush:
+            owner = session.execute(
+                select(Site.id, Company.is_inactive)
+                .join(Company, Site.company_id == Company.id)
+                .where(Site.id == site_id)
+            ).one_or_none()
         line_owner_ready = owner is not None and not owner.is_inactive
     line_status = "forbidden" if not can_create_masters else (
         "available" if line_owner_ready else "unavailable"

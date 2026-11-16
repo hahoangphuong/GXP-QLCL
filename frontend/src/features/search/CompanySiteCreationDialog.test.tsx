@@ -110,6 +110,58 @@ describe("CompanySiteCreationDialog", () => {
     expect(api.getCompany.mock.calls.every((call: unknown[]) => call[0] === "uuid-intent")).toBe(true);
   });
 
+  it("blocks Company admission before POST when the recovery journal cannot persist", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+    view();
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("POST bị chặn");
+    expect(api.createCompany).not.toHaveBeenCalled();
+    expect(api.getCompany).not.toHaveBeenCalledWith("uuid-intent", auth, true, undefined);
+  });
+
+  it("keeps the Company draft locked without canonical verification after an authoritative 403", async () => {
+    api.createCompany.mockRejectedValueOnce(Object.assign(new Error("forbidden"), { status: 403 }));
+    view();
+    fireEvent.change(screen.getByLabelText("Tên pháp nhân"), { target: { value: "Công ty A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ pháp lý"), { target: { value: "Hà Nội" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Công ty" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("không có quyền case.edit");
+    expect(screen.queryByText(/Đã xác minh Công ty canonical/)).toBeNull();
+    expect(api.createCompany).toHaveBeenCalledTimes(1);
+    expect(api.getCompany).not.toHaveBeenCalledWith("uuid-intent", auth, true, undefined);
+    expect((screen.getByLabelText("Tên pháp nhân") as HTMLInputElement).value).toBe("Công ty A");
+  });
+
+  it("keeps the Site draft locked without canonical verification after an authoritative 403", async () => {
+    const onSiteVerified = vi.fn();
+    api.createSite.mockRejectedValueOnce(Object.assign(new Error("forbidden"), { status: 403 }));
+    render(<CatalogCreateSessionRoot><CompanySiteCreationDialog auth={auth}
+      companyAction={available} onClose={vi.fn()} onSiteVerified={onSiteVerified}
+      openAction="create_site" ownerIdentity="access-A" siteAction={siteAvailable} useStubAuth
+    /></CatalogCreateSessionRoot>);
+    fireEvent.change(screen.getByLabelText("Tìm Company theo tên"), { target: { value: "Công ty" } });
+    await screen.findByRole("option", { name: /Công ty A/ });
+    fireEvent.change(screen.getByLabelText("Company canonical"), { target: { value: "company-A" } });
+    await waitFor(() => expect(api.getCompany).toHaveBeenCalledWith("company-A", auth, true, undefined));
+    fireEvent.change(screen.getByLabelText("Tên cơ sở"), { target: { value: "Cơ sở A" } });
+    fireEvent.change(screen.getByLabelText("Địa chỉ cơ sở"), { target: { value: "Hà Nội" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Cơ sở" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("không có quyền case.edit");
+    expect(screen.queryByText(/Đã xác minh Cơ sở canonical/)).toBeNull();
+    expect(api.createSite).toHaveBeenCalledTimes(1);
+    expect(api.getSite).not.toHaveBeenCalledWith("uuid-intent", auth, true, undefined);
+    expect(onSiteVerified).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Tên cơ sở") as HTMLInputElement).value).toBe("Cơ sở A");
+  });
+
   it("rejects readback with a matching UUID but mismatched canonical fields", async () => {
     api.getCompany.mockResolvedValue({ ...company, id: "uuid-intent", legal_name: "Khác" });
     view();

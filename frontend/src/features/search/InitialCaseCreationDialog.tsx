@@ -150,28 +150,38 @@ export function InitialCaseCreationDialog({
     event.preventDefault();
     if (!siteId || !valid) return;
     let admitted: InitialCaseIntent | null = null;
-    update((current) => {
-      if (current.initialCaseIntent || !validOwner || !lineValid || !ready) return current;
-      const source = current.initialCaseDraft;
-      const type = source.inspection_type.trim();
-      const standard = source.applicable_standard.trim();
-      const reason = source.reason.trim();
-      if (!source.acknowledged || !type || type.length > 255 || type.toLocaleLowerCase() === "tái"
-        || standard.length > 255 || !reason || reason.length > 10000) return current;
-      admitted = {
-        token: {}, siteId, phase: "pending", persisted: null, error: null,
-        payload: {
-          case_id: crypto.randomUUID(), gxp_type: gxp as Gxp, production_line_id: lineId || null,
-          inspection_type: type, applicable_standard: standard || null, reason,
-        },
-      };
-      return { ...current, initialCaseIntent: admitted };
-    });
+    try {
+      update((current) => {
+        if (current.initialCaseIntent || !validOwner || !lineValid || !ready) return current;
+        const source = current.initialCaseDraft;
+        const type = source.inspection_type.trim();
+        const standard = source.applicable_standard.trim();
+        const reason = source.reason.trim();
+        if (!source.acknowledged || !type || type.length > 255 || type.toLocaleLowerCase() === "tái"
+          || standard.length > 255 || !reason || reason.length > 10000) return current;
+        admitted = {
+          token: {}, siteId, phase: "pending", persisted: null, error: null,
+          payload: {
+            case_id: crypto.randomUUID(), gxp_type: gxp as Gxp, production_line_id: lineId || null,
+            inspection_type: type, applicable_standard: standard || null, reason,
+          },
+        };
+        return { ...current, initialCaseIntent: admitted };
+      });
+    } catch { return; }
     if (!admitted) return;
     const original = admitted as InitialCaseIntent;
     try {
       await createInitialCase(original.siteId, original.payload, auth, useStubAuth, bearerToken);
-    } catch {
+    } catch (error) {
+      if ((error as { status?: number } | null)?.status === 403) {
+        try {
+          update((current) => current.initialCaseIntent?.token !== original.token || current.initialCaseIntent.phase === "verified" ? current : {
+            ...current, initialCaseIntent: { ...current.initialCaseIntent, phase: "unverified", error: errText(error) },
+          });
+        } catch { /* the recovery journal already exposes the blocked state */ }
+        return;
+      }
       // An unknown POST result never admits a new UUID or repeats POST.
     }
     await verify(original);

@@ -4775,45 +4775,82 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         """Replace an explicitly user-entered, ordered actual visit sequence."""
         require_permissions(user, {INSPECTION_EDIT_PERMISSION})
-        # Serialize against Case terminal transitions and refresh cached state.
-        case = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(case, operation="inspection period update")
-        outcome = session.scalar(
-            select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)
-            .execution_options(populate_existing=True)
-        )
-        readiness = inspection_period_edit_readiness(outcome=outcome, terminal_case=False)
-        if not readiness["available"]:
-            raise HTTPException(
-                status_code=409,
-                detail="Inspection outcome period is source-owned or unclassified and cannot be replaced by runtime segments.",
+        # The authoritative replace-all admission is SELECT-only. Reused
+        # Sessions may hold an unrelated pending Company and locally edited
+        # Case/Outcome/Segment rows. Do not autoflush or overwrite those drafts.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before period replacement.",
+                )
+            case = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(case, operation="inspection period update")
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, InspectionOutcome)
+                    and cached.case_id == case.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection outcome has uncommitted changes; resolve draft before period replacement.",
+                    )
+            outcome = session.scalar(
+                select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)
+                .execution_options(populate_existing=True)
             )
+            readiness = inspection_period_edit_readiness(
+                outcome=outcome, terminal_case=False,
+            )
+            if not readiness["available"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Inspection outcome period is source-owned or unclassified and cannot be replaced by runtime segments.",
+                )
+            if outcome is None:
+                if expected_version is not None:
+                    raise HTTPException(status_code=409, detail="Inspection period initialization requires a null expected_version.")
+            else:
+                if expected_version is None:
+                    raise HTTPException(status_code=409, detail="Existing inspection outcome requires an expected_version.")
+                self._assert_expected_version(outcome, expected_version, label="inspection_outcome")
+            normalized = sorted(segments, key=lambda item: item["ordinal"])
+            if not normalized:
+                raise HTTPException(status_code=422, detail="Inspection period requires at least one ordered segment.")
+            expected_ordinals = list(range(1, len(normalized) + 1))
+            actual_ordinals = [item["ordinal"] for item in normalized]
+            if actual_ordinals != expected_ordinals:
+                raise HTTPException(status_code=422, detail="Inspection period segments must use contiguous ordinals starting at 1.")
+            for item in normalized:
+                if item["started_on"] > item["ended_on"]:
+                    raise HTTPException(status_code=422, detail="Inspection period segment start date must not be after end date.")
+            if outcome is None:
+                existing = []
+            else:
+                for cached in tuple(session.dirty):
+                    if (
+                        isinstance(cached, InspectionPeriodSegment)
+                        and cached.inspection_outcome_id == outcome.id
+                        and session.is_modified(cached, include_collections=False)
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Inspection period segment has uncommitted changes; resolve draft before replacement.",
+                        )
+                existing = list(session.scalars(
+                    select(InspectionPeriodSegment)
+                    .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
+                    .order_by(InspectionPeriodSegment.ordinal)
+                    .execution_options(populate_existing=True)
+                ))
         if outcome is None:
-            if expected_version is not None:
-                raise HTTPException(status_code=409, detail="Inspection period initialization requires a null expected_version.")
             outcome = InspectionOutcome(case_id=case.id, inspection_period_state="KNOWN")
             session.add(outcome)
             session.flush()
-        else:
-            if expected_version is None:
-                raise HTTPException(status_code=409, detail="Existing inspection outcome requires an expected_version.")
-            self._assert_expected_version(outcome, expected_version, label="inspection_outcome")
-        normalized = sorted(segments, key=lambda item: item["ordinal"])
-        if not normalized:
-            raise HTTPException(status_code=422, detail="Inspection period requires at least one ordered segment.")
-        expected_ordinals = list(range(1, len(normalized) + 1))
-        actual_ordinals = [item["ordinal"] for item in normalized]
-        if actual_ordinals != expected_ordinals:
-            raise HTTPException(status_code=422, detail="Inspection period segments must use contiguous ordinals starting at 1.")
-        for item in normalized:
-            if item["started_on"] > item["ended_on"]:
-                raise HTTPException(status_code=422, detail="Inspection period segment start date must not be after end date.")
-        existing = list(session.scalars(
-            select(InspectionPeriodSegment)
-            .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
-            .order_by(InspectionPeriodSegment.ordinal)
-            .execution_options(populate_existing=True)
-        ))
         before = {
             "inspection_period_state": outcome.inspection_period_state,
             "segments": [

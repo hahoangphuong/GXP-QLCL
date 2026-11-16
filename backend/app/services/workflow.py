@@ -1557,25 +1557,36 @@ class CaseWorkflowService:
         # A long-lived Session may have cached a child before its owning
         # Case FK was changed by another transaction. Never trust the cached
         # relationship to decide which Case lock protects this mutation.
-        cached_cycle = self._get_capa_cycle(session, capa_cycle_id)
-        case_id = session.scalar(
-            select(CapaCycle.case_id).where(CapaCycle.id == capa_cycle_id)
-        )
-        if case_id is None:
-            raise HTTPException(status_code=404, detail="CAPA cycle not found.")
-        if cached_cycle.case_id != case_id:
-            raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
-        parent = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(parent, operation=operation)
-        cycle = session.scalars(
-            select(CapaCycle).where(CapaCycle.id == capa_cycle_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if cycle is None:
-            raise HTTPException(status_code=404, detail="CAPA cycle not found.")
-        if cycle.case_id != parent.id:
-            raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
-        return cycle
+        # This admission path runs before any intentional CAPA mutation.
+        # Reused Sessions may carry unrelated drafts and pending inserts;
+        # neither owner verification nor row locks may implicitly flush them.
+        with session.no_autoflush:
+            cached_cycle = self._get_capa_cycle(session, capa_cycle_id)
+            # populate_existing would otherwise silently discard an operator's
+            # uncommitted CAPA edit. Reject instead of refreshing that draft.
+            if session.is_modified(cached_cycle, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="CAPA cycle has uncommitted changes; resolve the draft before mutation.",
+                )
+            case_id = session.scalar(
+                select(CapaCycle.case_id).where(CapaCycle.id == capa_cycle_id)
+            )
+            if case_id is None:
+                raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+            if cached_cycle.case_id != case_id:
+                raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
+            parent = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(parent, operation=operation)
+            cycle = session.scalars(
+                select(CapaCycle).where(CapaCycle.id == capa_cycle_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if cycle is None:
+                raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+            if cycle.case_id != parent.id:
+                raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
+            return cycle
 
     def _site_has_gxp_context(
         self,
@@ -4933,34 +4944,52 @@ class CaseWorkflowService:
             validate_time_requires_date(value_date=submitted_on, value_time=submitted_time, label="Approval submission")
         except InspectionContractViolation as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        # Lock and refresh the Case owner before applying terminal eligibility.
-        # A Session may already hold an older nonterminal ORM identity.
-        row = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(row, operation="approval submission creation")
-        if normalized_stage == "PCT" and pct_submission_id is not None:
-            raise HTTPException(status_code=422, detail="PCT submission must not set pct_submission_id.")
-        if normalized_stage == "CT":
-            if pct_submission_id is None:
-                raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
-            # The Case lock fences approval mutations, but Session.get may
-            # return a PCT cached before another transaction completed it.
-            # Read the committed child snapshot before CT parent validation.
-            parent = session.scalars(
-                select(InspectionApprovalSubmission)
-                .where(InspectionApprovalSubmission.id == pct_submission_id)
-                .execution_options(populate_existing=True)
-            ).one_or_none()
-            if parent is None:
-                raise HTTPException(status_code=404, detail="PCT approval submission not found.")
+        # Pre-insert admission must not autoflush unrelated operator drafts.
+        # populate_existing is required for committed ownership, but must
+        # never silently discard a locally dirty Case or PCT parent.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before approval creation.",
+                )
+            # Lock and refresh the Case owner before terminal eligibility.
+            row = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(row, operation="approval submission creation")
+            if normalized_stage == "PCT" and pct_submission_id is not None:
+                raise HTTPException(status_code=422, detail="PCT submission must not set pct_submission_id.")
+            if normalized_stage == "CT":
+                if pct_submission_id is None:
+                    raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
+                cached_parent = session.get(InspectionApprovalSubmission, pct_submission_id)
+                if cached_parent is not None and session.is_modified(
+                    cached_parent, include_collections=False,
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="PCT parent has uncommitted changes; resolve draft before CT creation.",
+                    )
+                # The Case lock fences concurrent mutations, but a cached
+                # PCT still needs a committed, refreshed parent snapshot.
+                parent = session.scalars(
+                    select(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.id == pct_submission_id)
+                    .execution_options(populate_existing=True)
+                ).one_or_none()
+                if parent is None:
+                    raise HTTPException(status_code=404, detail="PCT approval submission not found.")
+                try:
+                    validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
+                except InspectionContractViolation as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+            rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
             try:
-                validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
+                round_no = next_approval_round(rounds)
             except InspectionContractViolation as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-        rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
-        try:
-            round_no = next_approval_round(rounds)
-        except InspectionContractViolation as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
         submission = InspectionApprovalSubmission(case_id=row.id, stage=normalized_stage, round_no=round_no, reference=reference, submitted_on=submitted_on, submitted_time=submitted_time, pct_submission_id=pct_submission_id)
         session.add(submission)
         session.flush()
@@ -4974,27 +5003,32 @@ class CaseWorkflowService:
         # before checking resource identity, locks, version or audit.
         if INSPECTION_EDIT_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: inspection.edit.")
-        row = session.get(InspectionApprovalSubmission, approval_submission_id)
-        if row is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        # Read the parent identity, acquire its owner lock, then refresh the
-        # child version. This prevents completion against a concurrent Case
-        # terminal transition and preserves stale-version semantics.
-        parent = self._lock_case(session, row.case_id)
-        self._assert_case_not_terminal(parent, operation="approval submission completion")
-        row = session.scalars(
-            select(InspectionApprovalSubmission)
-            .where(InspectionApprovalSubmission.id == approval_submission_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        # Session.get before the Case lock can provide a cached owner FK. If
-        # canonical readback belongs to another Case, this transaction holds
-        # the wrong Case lock and must not mutate that submission.
-        if row.case_id != parent.id:
-            raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
-        self._assert_expected_version(row, expected_version, label="approval_submission")
+        # Parent admission must not autoflush unrelated operator drafts.
+        # A cached approval draft must never be replaced by populate_existing.
+        # The deliberate completion/audit flush happens only after admission.
+        with session.no_autoflush:
+            row = session.get(InspectionApprovalSubmission, approval_submission_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            if session.is_modified(row, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Approval submission has uncommitted changes; resolve draft before completion.",
+                )
+            # Lock and refresh the persisted Case before terminal-state checks.
+            parent = self._lock_case(session, row.case_id)
+            self._assert_case_not_terminal(parent, operation="approval submission completion")
+            row = session.scalars(
+                select(InspectionApprovalSubmission)
+                .where(InspectionApprovalSubmission.id == approval_submission_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            # A cached owner may predate another committed writer's reparent.
+            if row.case_id != parent.id:
+                raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
+            self._assert_expected_version(row, expected_version, label="approval_submission")
         try:
             validate_approval_completion(
                 existing_completed_on=row.completed_on,
@@ -5118,32 +5152,49 @@ class CaseWorkflowService:
         # before checking resource identity, locks, version or audit.
         if not APPROVAL_DOCUMENT_BIND_PERMISSIONS.issubset(user.permissions):
             raise HTTPException(status_code=403, detail="Missing required permissions: inspection.edit, document.read.")
-        identity = session.get(InspectionApprovalSubmission, approval_submission_id)
-        if identity is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        case = self._lock_case(session, identity.case_id)
-        self._assert_case_not_terminal(case, operation="approval document binding")
-        submission = session.scalars(
-            select(InspectionApprovalSubmission)
-            .where(InspectionApprovalSubmission.id == approval_submission_id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if submission is None:
-            raise HTTPException(status_code=404, detail="Approval submission not found.")
-        if submission.case_id != case.id:
-            raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload.")
-        self._assert_expected_version(submission, expected_version, label="approval_submission")
+        # Admission is read-only until all canonical owners and the version
+        # have passed. Do not flush unrelated drafts or refresh a dirty PCT/CT.
+        with session.no_autoflush:
+            identity = session.get(InspectionApprovalSubmission, approval_submission_id)
+            if identity is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            if session.is_modified(identity, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Approval submission has uncommitted changes; resolve draft before binding.",
+                )
+            case = self._lock_case(session, identity.case_id)
+            self._assert_case_not_terminal(case, operation="approval document binding")
+            submission = session.scalars(
+                select(InspectionApprovalSubmission)
+                .where(InspectionApprovalSubmission.id == approval_submission_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if submission is None:
+                raise HTTPException(status_code=404, detail="Approval submission not found.")
+            if submission.case_id != case.id:
+                raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload.")
+            self._assert_expected_version(submission, expected_version, label="approval_submission")
         # Lock the exact source Document after the owning Case. A concurrent
         # document-owner update must finish before we validate its Case/family;
         # otherwise an uncommitted reparent could be missed and a newly
         # persisted approval link would immediately become cross-Case.
-        document = session.scalars(
-            select(Document).where(Document.id == document_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if document is None:
-            raise HTTPException(status_code=404, detail="Document not found.")
+        with session.no_autoflush:
+            cached_document = session.get(Document, document_id)
+            if cached_document is not None and session.is_modified(
+                cached_document, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Document has uncommitted changes; resolve draft before binding.",
+                )
+            document = session.scalars(
+                select(Document).where(Document.id == document_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if document is None:
+                raise HTTPException(status_code=404, detail="Document not found.")
         expected_family = "INSPECTION_PT_PCT" if submission.stage == "PCT" else "INSPECTION_PT_CT"
         if submission.stage not in {"PCT", "CT"}:
             raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
@@ -5159,11 +5210,13 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="Document must belong exclusively to the approval Case.")
         if document.family_code != expected_family:
             raise HTTPException(status_code=422, detail="Document family does not match approval stage.")
-        bound = session.scalars(
-            select(InspectionApprovalDocumentLink)
-            .where(InspectionApprovalDocumentLink.document_id == document.id)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
+        # Idempotent lookup is also part of admission, before any new link.
+        with session.no_autoflush:
+            bound = session.scalars(
+                select(InspectionApprovalDocumentLink)
+                .where(InspectionApprovalDocumentLink.document_id == document.id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
         if bound is not None:
             if bound.approval_submission_id != submission.id:
                 raise HTTPException(status_code=409, detail="Document already bound to another approval submission.")

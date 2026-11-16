@@ -2182,15 +2182,13 @@ class CaseWorkflowService:
                         invalid_source_links = True
                         break
                     seen_certificate_ids.add(link.certificate_id)
-                    linked_gxp = session.scalars(
-                        select(Certificate).where(Certificate.id == link.certificate_id)
-                        .execution_options(populate_existing=True)
-                    ).one_or_none()
-                    if linked_gxp is None or linked_gxp.site_id != site.id:
-                        invalid_source_links = True
-                        break
                     try:
-                        self._certificate_line_identity(session, linked_gxp)
+                        self._validate_change_request_artifact_target_readiness(
+                            session,
+                            site=site,
+                            certificate_id=link.certificate_id,
+                            business_eligibility_certificate_id=None,
+                        )
                     except HTTPException:
                         invalid_source_links = True
                         break

@@ -2085,7 +2085,7 @@ class CaseWorkflowService:
             .order_by(ChangeRequestAffectedArtifact.id.asc())
         ).all()
         for source_link in certificate_source_links:
-            self._validate_change_request_artifact_target(
+            self._validate_change_request_artifact_target_readiness(
                 session,
                 site=site,
                 certificate_id=source_link.certificate_id,
@@ -2143,7 +2143,7 @@ class CaseWorkflowService:
             .order_by(ChangeRequestAffectedArtifact.id.asc())
         ).all()
         for source_link in business_eligibility_source_links:
-            self._validate_change_request_artifact_target(
+            self._validate_change_request_artifact_target_readiness(
                 session,
                 site=site,
                 certificate_id=None,
@@ -2234,7 +2234,7 @@ class CaseWorkflowService:
             .order_by(ChangeRequestIssuedArtifact.id.asc())
         ).all()
         for issued_link in issued_links:
-            artifact_kind, artifact_id = self._validate_change_request_artifact_target(
+            artifact_kind, artifact_id = self._validate_change_request_artifact_target_readiness(
                 session,
                 site=site,
                 certificate_id=issued_link.certificate_id,
@@ -2324,6 +2324,88 @@ class CaseWorkflowService:
                 "target_state": target_state.value,
             })
         return actions
+
+    @staticmethod
+    def _validate_change_request_artifact_target_readiness(
+        session: Session,
+        *,
+        site: Any,
+        certificate_id: str | None,
+        business_eligibility_certificate_id: str | None,
+    ) -> tuple[str, str]:
+        """Validate committed target ownership without refreshing ORM drafts.
+
+        Readiness is advisory. Mutations retain their independently locked
+        canonical validator; this projection never replaces mutation checks.
+        """
+        if (certificate_id is None) == (business_eligibility_certificate_id is None):
+            raise HTTPException(
+                status_code=409,
+                detail="Change request artifact link must reference exactly one canonical artifact.",
+            )
+        if certificate_id is not None:
+            certificate = session.execute(
+                select(
+                    Certificate.id,
+                    Certificate.site_id,
+                    Certificate.certificate_type,
+                    Certificate.case_id,
+                    Certificate.production_line_id,
+                ).where(Certificate.id == certificate_id)
+            ).one_or_none()
+            if certificate is None or certificate.site_id != site.id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Change request artifact references a certificate outside the owning site.",
+                )
+            if certificate.case_id is not None:
+                linked_case = session.execute(
+                    select(Case.site_id, Case.gxp_type)
+                    .where(Case.id == certificate.case_id)
+                ).one_or_none()
+                if (
+                    linked_case is None
+                    or linked_case.site_id != certificate.site_id
+                    or linked_case.gxp_type != certificate.certificate_type
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate references an invalid linked Case.",
+                    )
+            if certificate.production_line_id is not None:
+                line_site_id = session.scalar(
+                    select(ProductionLine.site_id)
+                    .where(ProductionLine.id == certificate.production_line_id)
+                )
+                if line_site_id != certificate.site_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate references an invalid canonical ProductionLine.",
+                    )
+            return "certificate", certificate.id
+
+        business_eligibility = session.execute(
+            select(
+                BusinessEligibilityCertificate.id,
+                BusinessEligibilityCertificate.site_id,
+                BusinessEligibilityCertificate.company_id,
+            ).where(
+                BusinessEligibilityCertificate.id == business_eligibility_certificate_id
+            )
+        ).one_or_none()
+        if (
+            business_eligibility is None
+            or business_eligibility.site_id != site.id
+            or business_eligibility.company_id != site.company_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Change request artifact references a business eligibility "
+                    "record outside the owning site/company."
+                ),
+            )
+        return "business_eligibility_certificate", business_eligibility.id
 
     def _validate_change_request_artifact_target(
         self,

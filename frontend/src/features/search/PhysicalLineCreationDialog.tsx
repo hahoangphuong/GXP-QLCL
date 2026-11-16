@@ -117,29 +117,39 @@ export function PhysicalLineCreationDialog({
     event.preventDefault();
     if (!canSubmit || !siteId) return;
     let admitted: PhysicalLineCreateIntent | null = null;
-    update((current) => {
-      if (current.physicalLineIntent !== null || !canonicalOwner || !ready) return current;
-      const source = current.physicalLineDraft;
-      const code = source.code.trim();
-      const evidence = source.physical_identity_evidence_reference.trim();
-      const reason = source.reason.trim();
-      if (!source.confirmedDistinct || !code || code.length > 64 || !source.effective_from
-        || (source.effective_to && source.effective_to <= source.effective_from)
-        || !evidence || evidence.length > 512 || !reason || reason.length > 10000) return current;
-      admitted = {
-        token: {}, siteId, phase: "pending", error: null, persisted: null,
-        payload: {
-          production_line_id: crypto.randomUUID(), code, effective_from: source.effective_from,
-          effective_to: source.effective_to || null, physical_identity_evidence_reference: evidence, reason,
-        },
-      };
-      return { ...current, physicalLineIntent: admitted };
-    });
+    try {
+      update((current) => {
+        if (current.physicalLineIntent !== null || !canonicalOwner || !ready) return current;
+        const source = current.physicalLineDraft;
+        const code = source.code.trim();
+        const evidence = source.physical_identity_evidence_reference.trim();
+        const reason = source.reason.trim();
+        if (!source.confirmedDistinct || !code || code.length > 64 || !source.effective_from
+          || (source.effective_to && source.effective_to <= source.effective_from)
+          || !evidence || evidence.length > 512 || !reason || reason.length > 10000) return current;
+        admitted = {
+          token: {}, siteId, phase: "pending", error: null, persisted: null,
+          payload: {
+            production_line_id: crypto.randomUUID(), code, effective_from: source.effective_from,
+            effective_to: source.effective_to || null, physical_identity_evidence_reference: evidence, reason,
+          },
+        };
+        return { ...current, physicalLineIntent: admitted };
+      });
+    } catch { return; }
     if (!admitted) return;
     const original = admitted as PhysicalLineCreateIntent;
     try {
       await createProductionLine(original.siteId, original.payload, auth, useStubAuth, bearerToken);
-    } catch {
+    } catch (error) {
+      if ((error as { status?: number } | null)?.status === 403) {
+        try {
+          update((current) => current.physicalLineIntent?.token !== original.token || current.physicalLineIntent.phase === "verified" ? current : {
+            ...current, physicalLineIntent: { ...current.physicalLineIntent, phase: "unverified", error: message(error) },
+          });
+        } catch { /* the recovery journal already exposes the blocked state */ }
+        return;
+      }
       // All uncertain outcomes retain their UUID. No automatic POST replay.
     }
     await verify(original);

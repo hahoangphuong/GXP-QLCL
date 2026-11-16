@@ -106,6 +106,31 @@ describe("PhysicalLineCreationDialog owner and recovery", () => {
     expect(api.getProductionLine.mock.calls.every((call: unknown[]) => call[0] === "intent-uuid")).toBe(true);
   });
 
+  it("blocks physical-line admission before POST when the recovery journal cannot persist", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+    view();
+    await fill();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dây chuyền vật lý" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("POST bị chặn");
+    expect(api.createProductionLine).not.toHaveBeenCalled();
+    expect(api.getProductionLine).not.toHaveBeenCalledWith("intent-uuid", auth, true, undefined);
+  });
+
+  it("does not verify a physical line after the backend authoritatively rejects create with 403", async () => {
+    api.createProductionLine.mockRejectedValueOnce(Object.assign(new Error("forbidden"), { status: 403 }));
+    view();
+    await fill();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dây chuyền vật lý" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Không có quyền case.edit");
+    expect(screen.queryByText(/Đã xác minh dây chuyền UUID/)).toBeNull();
+    expect(api.createProductionLine).toHaveBeenCalledTimes(1);
+    expect(api.getProductionLine).not.toHaveBeenCalledWith("intent-uuid", auth, true, undefined);
+  });
+
   it.each([
     ["wrong Site", { ...record, site_id: "site-B" }],
     ["wrong code", { ...record, code: "B" }],

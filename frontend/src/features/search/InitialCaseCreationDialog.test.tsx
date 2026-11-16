@@ -162,6 +162,31 @@ describe("InitialCaseCreationDialog", () => {
     expect(api.getCaseDetail).toHaveBeenCalledTimes(2);
   });
 
+  it("blocks initial-Case admission before POST when the recovery journal cannot persist", async () => {
+    view();
+    await fill();
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ Draft" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("POST bị chặn");
+    expect(api.createInitialCase).not.toHaveBeenCalled();
+    expect(api.getCaseDetail).not.toHaveBeenCalledWith("case-uuid", auth, true, undefined);
+  });
+
+  it("does not verify a Case after the backend authoritatively rejects create with 403", async () => {
+    api.createInitialCase.mockRejectedValueOnce(Object.assign(new Error("forbidden"), { status: 403 }));
+    view();
+    await fill();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ Draft" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Không có quyền tạo hoặc đọc hồ sơ");
+    expect(screen.queryByText(/Case nháp canonical đã xác minh/)).toBeNull();
+    expect(api.createInitialCase).toHaveBeenCalledTimes(1);
+    expect(api.getCaseDetail).not.toHaveBeenCalledWith("case-uuid", auth, true, undefined);
+  });
+
   it("selects physical line only by Site-scoped canonical UUID and checks exact GET", async () => {
     api.getCaseDetail.mockResolvedValue({ ...caseRow, production_line_id: "line-A", scope_code: "A", production_line_identity_state: "canonical" });
     view();

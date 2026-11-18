@@ -1576,6 +1576,29 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found.")
             if cached_cycle.case_id != case_id:
                 raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
+            # _lock_case() refreshes the cached parent using populate_existing;
+            # reject local edits first, rather than silently losing a Case draft.
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before CAPA mutation.",
+                )
+            # Update/submit/assess subsequently resolve the latest CAPA round
+            # with populate_existing. A different cached cycle may be dirty:
+            # protect that draft too, even when the requested target is older.
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, CapaCycle)
+                    and cached.case_id == case_id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before mutation.",
+                    )
             parent = self._lock_case(session, case_id)
             self._assert_case_not_terminal(parent, operation=operation)
             cycle = session.scalars(
@@ -5077,6 +5100,19 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=409, detail="Inspection final evaluation is immutable once set.")
             if not str(final_evaluation).strip():
                 raise HTTPException(status_code=422, detail="Inspection final evaluation is required.")
+            # The CAPA eligibility check refreshes the latest cycle with
+            # populate_existing. Refuse any dirty CAPA draft for this Case
+            # before that refresh or a successful finalization/audit flush.
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, CapaCycle)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before final evaluation.",
+                    )
             self._assert_latest_capa_accepted_if_present(
                 session, row.id,
                 blocked_detail="Latest CAPA cycle must be accepted before final evaluation.",

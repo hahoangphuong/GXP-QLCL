@@ -6178,6 +6178,14 @@ class CaseWorkflowService:
         # change must resolve that change before issuing a certificate.
         with session.no_autoflush:
             site = self._get_site(session, site_id)
+            # A reused operator Session may hold unsaved Site changes that do
+            # not affect company_id. The later certificate INSERT/flush must
+            # not commit those drafts as collateral issuance writes.
+            if session.is_modified(site, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility Site has uncommitted changes; resolve draft before issuance.",
+                )
             self._lock_site(session, site_id)
             committed_company_id = session.scalar(
                 select(Site.company_id).where(Site.id == site_id)

@@ -6560,6 +6560,46 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Current business eligibility version has uncommitted changes; resolve draft before promotion.",
                     )
+            # The blocker refreshes persisted link rows and their linked GxP
+            # Certificate/Case/Line graph with populate_existing=True.
+            # Inspect cached drafts using committed link identities first.
+            committed_links = session.execute(
+                select(
+                    BusinessEligibilityCertificateLink.id,
+                    BusinessEligibilityCertificateLink.certificate_id,
+                ).where(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id == candidate_version.id
+                )
+            ).all()
+            for link_id, linked_certificate_id in committed_links:
+                link = session.get(BusinessEligibilityCertificateLink, link_id)
+                if link is not None and session.is_modified(link, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Business eligibility linked certificate has uncommitted changes; resolve draft before promotion.",
+                    )
+                linked = session.get(Certificate, linked_certificate_id)
+                if linked is None:
+                    continue
+                if session.is_modified(linked, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Linked GxP certificate has uncommitted changes; resolve draft before promotion.",
+                    )
+                if linked.case_id is not None:
+                    linked_case = session.get(Case, linked.case_id)
+                    if linked_case is not None and session.is_modified(linked_case, include_collections=False):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Linked GxP Case has uncommitted changes; resolve draft before promotion.",
+                        )
+                if linked.production_line_id is not None:
+                    linked_line = session.get(ProductionLine, linked.production_line_id)
+                    if linked_line is not None and session.is_modified(linked_line, include_collections=False):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Linked GxP ProductionLine has uncommitted changes; resolve draft before promotion.",
+                        )
         blocker = self._get_business_eligibility_promotion_blocker(
             session,
             certificate=row,

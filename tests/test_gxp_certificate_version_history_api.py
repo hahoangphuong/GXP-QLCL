@@ -305,7 +305,7 @@ def test_history_version_and_scopes_share_single_joined_snapshot(tmp_path):
 
             def observe(_conn, _cursor, sql, _params, _ctx, _many):
                 normalized = str(sql).lower()
-                if "certificate_versions" in normalized or "certificate_scopes" in normalized:
+                if "certificate_version" in normalized or "certificate_scope" in normalized:
                     joined.append(normalized)
 
             event.listen(engine, "before_cursor_execute", observe)

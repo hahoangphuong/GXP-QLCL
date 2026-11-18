@@ -5261,6 +5261,30 @@ class CaseWorkflowService:
             if row.case_id != parent.id:
                 raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
             self._assert_expected_version(row, expected_version, label="approval_submission")
+            # Completion will flush the whole Session, not just this round.
+            # Protect append-only binding drafts that already belong to the
+            # round or are being locally reparented into/out of it.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, InspectionApprovalDocumentLink)
+                    and pending.approval_submission_id == row.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval document link has uncommitted changes; resolve draft before completion.",
+                    )
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionApprovalDocumentLink):
+                    continue
+                original_round_ids = inspect(cached).attrs.approval_submission_id.history.deleted
+                if (
+                    (cached.approval_submission_id == row.id or row.id in original_round_ids)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval document link has uncommitted changes; resolve draft before completion.",
+                    )
         try:
             validate_approval_completion(
                 existing_completed_on=row.completed_on,
@@ -5460,8 +5484,14 @@ class CaseWorkflowService:
                 if not isinstance(cached, InspectionApprovalDocumentLink):
                     continue
                 previous_document_ids = inspect(cached).attrs.document_id.history.deleted
+                previous_round_ids = inspect(cached).attrs.approval_submission_id.history.deleted
                 if (
-                    (cached.document_id == document.id or document.id in previous_document_ids)
+                    (
+                        cached.document_id == document.id
+                        or document.id in previous_document_ids
+                        or cached.approval_submission_id == submission.id
+                        or submission.id in previous_round_ids
+                    )
                     and session.is_modified(cached, include_collections=False)
                 ):
                     raise HTTPException(
@@ -5471,7 +5501,10 @@ class CaseWorkflowService:
             for pending in tuple(session.new):
                 if (
                     isinstance(pending, InspectionApprovalDocumentLink)
-                    and pending.document_id == document.id
+                    and (
+                        pending.document_id == document.id
+                        or pending.approval_submission_id == submission.id
+                    )
                 ):
                     raise HTTPException(
                         status_code=409,

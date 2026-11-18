@@ -4458,12 +4458,33 @@ class CaseWorkflowService:
             fields_set is None and decision_document_hint is not None
         ):
             raise HTTPException(status_code=422, detail="decision_document_hint is a read-only compatibility field.")
-        row = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(row, operation="inspection plan update")
-        stage = session.scalars(
-            select(InspectionPlan).where(InspectionPlan.case_id == row.id)
-            .with_for_update().execution_options(populate_existing=True)
-        ).first()
+        # Read persisted parent/plan under one SELECT-only admission. Cached
+        # operator drafts must not autoflush or be discarded by refresh.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before inspection plan update.",
+                )
+            row = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(row, operation="inspection plan update")
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, InspectionPlan)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection plan has uncommitted changes; resolve draft before update.",
+                    )
+            stage = session.scalars(
+                select(InspectionPlan).where(InspectionPlan.case_id == row.id)
+                .with_for_update().execution_options(populate_existing=True)
+            ).first()
         if stage is None:
             if expected_version is not None:
                 raise HTTPException(status_code=409, detail="Inspection plan does not exist for supplied expected_version.")

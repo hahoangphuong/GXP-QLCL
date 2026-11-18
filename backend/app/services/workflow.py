@@ -4028,17 +4028,29 @@ class CaseWorkflowService:
         # Serialize CAPA round allocation against its owning Case. A unique
         # (case_id, round_no) constraint alone lets competing creates race all
         # the way to INSERT instead of rejecting at the business gate.
-        row = session.scalars(
-            select(Case).where(Case.id == case_id)
-            .with_for_update(of=Case)
-            .execution_options(populate_existing=True)
-        ).one_or_none()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Case not found.")
-        self._assert_case_not_terminal(row, operation="CAPA create")
-        self._assert_expected_version(row, expected_case_version, label="case")
-        self._assert_case_allows_capa_request(row)
-        self._assert_case_has_no_open_capa_cycle(session, row.id)
+        # Case is the mutation owner. Admission must not flush unrelated
+        # operator drafts or refresh an edited cached Case via populate_existing.
+        # Keep the Case FOR UPDATE lock for concurrent round allocation.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before CAPA creation.",
+                )
+            row = session.scalars(
+                select(Case).where(Case.id == case_id)
+                .with_for_update(of=Case)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
+            self._assert_case_not_terminal(row, operation="CAPA create")
+            self._assert_expected_version(row, expected_case_version, label="case")
+            self._assert_case_allows_capa_request(row)
+            self._assert_case_has_no_open_capa_cycle(session, row.id)
         actor = self._get_or_create_app_user(session, user)
         capa_cycle = CapaCycle(
             case_id=row.id,

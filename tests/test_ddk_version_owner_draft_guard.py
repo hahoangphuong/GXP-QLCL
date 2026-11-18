@@ -45,7 +45,7 @@ def seeded(tmp_path):
         db.flush()
         version = BusinessEligibilityVersion(
             business_eligibility_certificate_id=cert.id, version_no=1,
-            is_latest_version=True, certificate_number="DDK-COMMITTED",
+            certificate_number="DDK-COMMITTED",
             issued_on=date(2026, 11, 1), expires_on=date(2029, 11, 1),
         )
         db.add(version)

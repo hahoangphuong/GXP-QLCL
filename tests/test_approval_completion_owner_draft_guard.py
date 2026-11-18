@@ -117,6 +117,34 @@ def test_dirty_submission_is_rejected_without_autoflush_or_refresh(seeded):
         assert verify.scalar(select(func.count(AuditEvent.id))) == 0
 
 
+
+def test_dirty_case_parent_rejected_before_completion_refresh(seeded):
+    engine, (submission_id, case_id, _, version) = seeded
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        case = db.get(Case, case_id)
+        case.state = CaseState.CLOSED
+        pending = Company(legal_name="Uncommitted Company during completion")
+        db.add(pending)
+        commands, flushes, on_sql, on_flush = spy(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                complete(db, submission_id, version)
+        finally:
+            unspy(engine, db, on_sql, on_flush)
+        assert exc.value.status_code == 409
+        assert "Case has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(commands) <= {"SELECT"}
+        assert case.state == CaseState.CLOSED and case in db.dirty
+        assert pending in db.new
+        db.rollback()
+
+    with Session(engine) as check:
+        assert check.get(Case, case_id).state == CaseState.INSPECTION_COMPLETED
+        assert check.get(InspectionApprovalSubmission, submission_id).completed_on is None
+        assert check.scalar(select(func.count(Company.id))) == 1
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0
+
+
 def test_missing_submission_does_not_flush_unrelated_draft(seeded):
     engine, _ = seeded
     with Session(engine, autoflush=True) as db:

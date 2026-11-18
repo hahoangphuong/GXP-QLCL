@@ -6314,16 +6314,26 @@ class CaseWorkflowService:
         # resolving Site/Certificate identity, locking or writing audit.
         if CERTIFICATE_EDIT_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.edit.")
-        row = self._get_business_eligibility(session, business_eligibility_certificate_id)
-        # Lock/refresh the aggregate root before comparing its optimistic token;
-        # otherwise Session identity-map cache can reject a valid update.
-        session.refresh(row, with_for_update=True)
-        self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
+        # Cached unsaved DDK root/version edits cannot be refreshed away or
+        # unintentionally persisted by a subsequent link-replacement flush.
+        # Keep admission read-only while locking committed aggregate identity.
+        with session.no_autoflush:
+            row = self._get_business_eligibility(session, business_eligibility_certificate_id)
+            if session.is_modified(row, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility certificate has uncommitted changes; resolve draft before editing.",
+                )
+            session.refresh(row, with_for_update=True)
+            self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
+            version = self._load_latest_business_eligibility_version(session, row.id)
+            if session.is_modified(version, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility version has uncommitted changes; resolve draft before editing.",
+                )
+            session.refresh(version)
         actor = self._get_or_create_app_user(session, user)
-        version = self._load_latest_business_eligibility_version(session, row.id)
-        # The root token is authoritative for edits; a cached child Version
-        # must not yield a false optimistic-lock conflict or stale audit delta.
-        session.refresh(version)
         before = {
             "certificate_number": version.certificate_number,
             "issued_on": self._normalize_audit_value(version.issued_on),

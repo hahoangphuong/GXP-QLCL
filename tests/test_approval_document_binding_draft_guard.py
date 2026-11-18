@@ -127,7 +127,8 @@ def test_dirty_case_parent_rejected_before_binding_refresh(seeded):
     engine, (approval_id, document_id, _, version) = seeded
     with Session(engine, autoflush=True, expire_on_commit=False) as db:
         approval = db.get(InspectionApprovalSubmission, approval_id)
-        parent = db.get(Case, approval.case_id)
+        parent_case_id = approval.case_id
+        parent = db.get(Case, parent_case_id)
         parent.state = CaseState.CLOSED
         pending = Company(legal_name="Pending Company during binding")
         db.add(pending)
@@ -144,7 +145,7 @@ def test_dirty_case_parent_rejected_before_binding_refresh(seeded):
         assert pending in db.new
         db.rollback()
     with Session(engine) as check:
-        assert check.get(Case, approval.case_id).state == CaseState.INSPECTION_COMPLETED
+        assert check.get(Case, parent_case_id).state == CaseState.INSPECTION_COMPLETED
         assert check.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 0
         assert check.scalar(select(func.count(AuditEvent.id))) == 0
         assert check.scalar(select(func.count(Company.id))) == 1

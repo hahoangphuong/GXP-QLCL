@@ -6182,6 +6182,13 @@ class CaseWorkflowService:
             # not affect company_id. The later certificate INSERT/flush must
             # not commit those drafts as collateral issuance writes.
             if session.is_modified(site, include_collections=False):
+                # Preserve the existing explicit Site/Company ownership
+                # contract when the pending draft reparents the Site.
+                if inspect(site).attrs.company_id.history.has_changes():
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Business eligibility Site/Company owner changed; reload canonical Site.",
+                    )
                 raise HTTPException(
                     status_code=409,
                     detail="Business eligibility Site has uncommitted changes; resolve draft before issuance.",

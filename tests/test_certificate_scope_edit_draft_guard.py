@@ -123,3 +123,43 @@ def test_certificate_version_edit_fences_draft_scope_before_write(seeded, dirty_
         assert check.scalar(select(func.count(CertificateScope.id))) == 1
         assert check.scalar(select(func.count(AuditEvent.id))) == 0
         assert check.scalar(select(func.count(Company.id))) == 1
+
+def test_certificate_version_edit_rejects_explicit_scope_deletion(seeded):
+    engine, (cert_id, version_id, scope_id, token) = seeded
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        scope = db.get(CertificateScope, scope_id)
+        db.delete(scope)
+        unrelated = Company(legal_name="Pending unrelated Company")
+        db.add(unrelated)
+        sql, flushes = [], []
+
+        def observe(_conn, _cursor, statement, _params, _context, _many):
+            sql.append(statement.lstrip().split(None, 1)[0].upper())
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Deleted scope draft was autoflushed")
+
+        event.listen(engine, "before_cursor_execute", observe)
+        event.listen(db, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                CaseWorkflowService().upsert_certificate_latest_version(
+                    db, certificate_id=cert_id, expected_version=token,
+                    certificate_number="NOT-SAVED", issue_date=date(2026, 11, 2),
+                    expiry_date=date(2029, 11, 2),
+                    scopes=[{"scope_text": "Replacement scope"}],
+                    reason="Deleted child draft", user=USER,
+                )
+        finally:
+            event.remove(engine, "before_cursor_execute", observe)
+            event.remove(db, "before_flush", forbid_flush)
+        assert exc.value.status_code == 409
+        assert "Certificate scope has uncommitted changes" in str(exc.value.detail)
+        assert set(sql) <= {"SELECT"} and not flushes
+        assert scope in db.deleted and unrelated in db.new
+        db.rollback()
+    with Session(engine) as check:
+        assert check.get(CertificateScope, scope_id) is not None
+        assert check.get(CertificateVersion, version_id).certificate_number == "COMMITTED"
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0

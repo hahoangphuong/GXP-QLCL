@@ -130,7 +130,14 @@ def test_ddk_promotion_rejects_draft_link_children_without_flush(seeded, draft_o
             event.remove(engine, "before_cursor_execute", observe)
             event.remove(db, "before_flush", reject_flush)
         assert exc.value.status_code == 409
-        assert "Business eligibility link has uncommitted changes" in str(exc.value.detail)
+        # Candidate link edits retain the existing specific blocker; the new
+        # peer/pending guard handles drafts outside that pre-existing boundary.
+        expected_detail = (
+            "Business eligibility linked certificate has uncommitted changes"
+            if draft_owner == "candidate_link"
+            else "Business eligibility link has uncommitted changes"
+        )
+        assert expected_detail in str(exc.value.detail)
         assert set(statements) <= {"SELECT"} and not flushes
         assert unrelated in db.new
         if draft_owner.startswith("pending"):

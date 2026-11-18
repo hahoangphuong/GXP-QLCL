@@ -139,3 +139,43 @@ def test_promotion_scope_drafts_rejected_before_flush(seeded, dirty_owner):
         assert check.scalar(select(func.count(CertificateScope.id))) == 2
         assert check.scalar(select(func.count(AuditEvent.id))) == 0
         assert check.scalar(select(func.count(Company.id))) == 1
+
+@pytest.mark.parametrize("owner", ["candidate", "current_peer"])
+def test_gxp_promotion_rejects_explicit_scope_deletion(seeded, owner):
+    engine, (candidate_id, peer_id, candidate_v, peer_v, candidate_scope_id, peer_scope_id, token) = seeded
+    scope_id = candidate_scope_id if owner == "candidate" else peer_scope_id
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        scope = db.get(CertificateScope, scope_id)
+        db.delete(scope)
+        unrelated = Company(legal_name="Pending unrelated Company")
+        db.add(unrelated)
+        sql, flushes = [], []
+
+        def observe(_conn, _cursor, statement, _params, _context, _many):
+            sql.append(statement.lstrip().split(None, 1)[0].upper())
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Deleted scope draft was autoflushed")
+
+        event.listen(engine, "before_cursor_execute", observe)
+        event.listen(db, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                CaseWorkflowService().promote_certificate_current(
+                    db, certificate_id=candidate_id, expected_version=token,
+                    reason="Deleted scope draft", user=USER,
+                )
+        finally:
+            event.remove(engine, "before_cursor_execute", observe)
+            event.remove(db, "before_flush", forbid_flush)
+        assert exc.value.status_code == 409
+        assert "Certificate scope has uncommitted changes" in str(exc.value.detail)
+        assert set(sql) <= {"SELECT"} and not flushes
+        assert scope in db.deleted and unrelated in db.new
+        db.rollback()
+    with Session(engine) as check:
+        assert check.get(CertificateScope, scope_id) is not None
+        assert check.get(Certificate, candidate_id).latest_flag is False
+        assert check.get(Certificate, peer_id).latest_flag is True
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0

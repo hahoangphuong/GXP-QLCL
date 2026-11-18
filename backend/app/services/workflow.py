@@ -6702,6 +6702,37 @@ class CaseWorkflowService:
                             status_code=409,
                             detail="Linked GxP ProductionLine has uncommitted changes; resolve draft before promotion.",
                         )
+            # Promotion never edits CertificateLink children. Its final
+            # flush must not persist pending/dirty operator link drafts of
+            # either the candidate or a DB-current peer as collateral writes.
+            affected_version_ids = {candidate_version.id}
+            for current_peer_id in current_peer_ids:
+                affected_version_ids.add(
+                    self._load_latest_business_eligibility_version(session, current_peer_id).id
+                )
+            link_ids = session.scalars(
+                select(BusinessEligibilityCertificateLink.id).where(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id.in_(
+                        affected_version_ids
+                    )
+                )
+            ).all()
+            for link_id in link_ids:
+                cached_link = session.get(BusinessEligibilityCertificateLink, link_id)
+                if cached_link is not None and session.is_modified(cached_link, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Business eligibility link has uncommitted changes; resolve draft before promotion.",
+                    )
+            if any(
+                isinstance(item, BusinessEligibilityCertificateLink)
+                and item.business_eligibility_version_id in affected_version_ids
+                for item in session.new
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility link has uncommitted changes; resolve draft before promotion.",
+                )
         blocker = self._get_business_eligibility_promotion_blocker(
             session,
             certificate=row,

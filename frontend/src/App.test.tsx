@@ -7318,7 +7318,10 @@ describe("App Slice A.4 search workspace", () => {
 
   it("keeps a validated certificate report return available in the direct GxP facility workspace", async () => {
     const reportReturn = "/reports?report=certificates&gxp_type=GMP&expiry_days=30&q=site";
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+
     renderApp([{ pathname: "/search", search: "?facility_tab=Giấy%20chứng%20nhận%20GxP", state: { certificateReportReturn: reportReturn } }]);
+
     expect(await screen.findByRole("link", { name: "Mở lại báo cáo GCN (tab mới)" })).toHaveAttribute("href", reportReturn);
   });
 

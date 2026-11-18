@@ -6510,19 +6510,56 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Business eligibility Site/Company owner mismatch; reload canonical Site.",
                 )
-        session.refresh(row)
-        if row.site_id != owner_site_id:
-            raise HTTPException(status_code=409, detail="Business eligibility Site owner changed; reload canonical certificate.")
-        if row.company_id != persisted_company_id:
-            raise HTTPException(
-                status_code=409,
-                detail="Business eligibility Site/Company owner mismatch; reload canonical Site.",
-            )
-        self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
-        candidate_version = self._load_latest_business_eligibility_version(session, row.id)
-        # A cached version can predate a committed edit even when the root
-        # token was refreshed under the Site lock.
-        session.refresh(candidate_version)
+            # A pending edit to any of these cached owners must not be flushed
+            # as a side effect of promotion, or discarded by refresh.
+            if session.is_modified(site, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility Site has uncommitted changes; resolve draft before promotion.",
+                )
+            if session.is_modified(row, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility certificate has uncommitted changes; resolve draft before promotion.",
+                )
+            session.refresh(row)
+            if row.site_id != owner_site_id:
+                raise HTTPException(status_code=409, detail="Business eligibility Site owner changed; reload canonical certificate.")
+            if row.company_id != persisted_company_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility Site/Company owner mismatch; reload canonical Site.",
+                )
+            self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
+            candidate_version = self._load_latest_business_eligibility_version(session, row.id)
+            if session.is_modified(candidate_version, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility version has uncommitted changes; resolve draft before promotion.",
+                )
+            session.refresh(candidate_version)
+            # The readiness blocker refreshes DB-current peers and their
+            # versions. Admit those identities before populate_existing can
+            # overwrite a cached draft, while holding the owning Site lock.
+            current_peer_ids = session.scalars(
+                select(BusinessEligibilityCertificate.id).where(
+                    BusinessEligibilityCertificate.site_id == owner_site_id,
+                    BusinessEligibilityCertificate.latest_flag.is_(True),
+                )
+            ).all()
+            for current_peer_id in current_peer_ids:
+                peer = session.get(BusinessEligibilityCertificate, current_peer_id)
+                if peer is not None and session.is_modified(peer, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Current business eligibility certificate has uncommitted changes; resolve draft before promotion.",
+                    )
+                peer_version = self._load_latest_business_eligibility_version(session, current_peer_id)
+                if session.is_modified(peer_version, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Current business eligibility version has uncommitted changes; resolve draft before promotion.",
+                    )
         blocker = self._get_business_eligibility_promotion_blocker(
             session,
             certificate=row,

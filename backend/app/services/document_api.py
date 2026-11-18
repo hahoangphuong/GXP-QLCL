@@ -1314,6 +1314,24 @@ class DocumentWorkflowService:
                 .with_for_update(read=True)
             ).mappings()
         ] if active_variant_ids else []
+        # Preserve the existing clean-identity freshness contract used by
+        # finalization readers: a caller that cached a clean Version before
+        # another writer's commit should observe the new committed fields.
+        # Crucially, never refresh a locally modified variant/version; those
+        # values are an operator draft and must remain recoverable.
+        variant_ids = {variant_id for variant_id, _ in variants}
+        version_ids = {version.id for version in versions}
+        for cached in tuple(session.identity_map.values()):
+            if (
+                isinstance(cached, DocumentVariant)
+                and cached.id in variant_ids
+                and not session.is_modified(cached, include_collections=False)
+            ) or (
+                isinstance(cached, DocumentVersion)
+                and cached.id in version_ids
+                and not session.is_modified(cached, include_collections=False)
+            ):
+                session.refresh(cached)
         document_version = self._pick_current_document_version(versions)
         if document_version is None:
             raise HTTPException(status_code=409, detail="Document does not have a current binary version.")

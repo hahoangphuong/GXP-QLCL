@@ -84,7 +84,10 @@ def test_ddk_issue_rejects_dirty_site_before_any_mutation(seeded, dirty_field):
             event.remove(engine, "before_cursor_execute", on_sql)
             event.remove(db, "before_flush", no_flush)
         assert exc.value.status_code == 409
-        assert "Site has uncommitted changes" in str(exc.value.detail)
+        if dirty_field == "company_id":
+            assert "Site/Company owner changed" in str(exc.value.detail)
+        else:
+            assert "Site has uncommitted changes" in str(exc.value.detail)
         assert set(statements) <= {"SELECT"}
         assert not flushes
         assert site in db.dirty and getattr(site, dirty_field) == drafted_value

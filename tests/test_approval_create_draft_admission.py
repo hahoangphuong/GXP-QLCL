@@ -178,6 +178,43 @@ def test_dirty_historical_round_rejected_before_new_round_flush(seeded, stage):
         assert verify.scalar(select(func.count(Company.id))) == 1
 
 
+def test_ct_creation_rejects_dirty_different_pct_round(seeded):
+    engine, (case_id, _, canonical_parent_id) = seeded
+    with Session(engine) as seed:
+        second = InspectionApprovalSubmission(
+            case_id=case_id, stage="PCT", round_no=2,
+            reference="Second committed PCT", completed_on=date(2026, 11, 16),
+        )
+        seed.add(second)
+        seed.commit()
+        sibling_id = second.id
+
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        parent = db.get(InspectionApprovalSubmission, canonical_parent_id)
+        assert parent.reference == "Committed PCT"
+        sibling = db.get(InspectionApprovalSubmission, sibling_id)
+        sibling.reference = "Uncommitted sibling PCT draft"
+        pending = Company(legal_name="Pending Company draft")
+        db.add(pending)
+        sql, flushes, sql_cb, flush_cb = attach_guards(engine, db)
+        try:
+            with pytest.raises(HTTPException) as error:
+                create(db, case_id, canonical_parent_id, stage="CT")
+        finally:
+            detach_guards(engine, db, sql_cb, flush_cb)
+        assert error.value.status_code == 409
+        assert "Approval submission has uncommitted changes" in str(error.value.detail)
+        assert not flushes and set(sql) <= {"SELECT"}
+        assert sibling in db.dirty and sibling.reference == "Uncommitted sibling PCT draft"
+        assert pending in db.new
+        db.rollback()
+
+    with Session(engine) as verify:
+        assert verify.get(InspectionApprovalSubmission, sibling_id).reference == "Second committed PCT"
+        assert verify.scalar(select(func.count(InspectionApprovalSubmission.id))) == 2
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+
+
 def test_clean_second_pct_round_still_allocates_and_audits(seeded):
     engine, (case_id, _, pct_id) = seeded
     with Session(engine) as db:

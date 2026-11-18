@@ -6757,6 +6757,20 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Business eligibility link has uncommitted changes; resolve draft before promotion.",
                     )
+            # A persisted link can be locally reparented *into* the candidate
+            # or current peer from an otherwise unrelated historical Version.
+            # Its committed FK is outside the SELECT above; inspect cached
+            # dirty objects' new FK too, without refreshing operator drafts.
+            if any(
+                isinstance(item, BusinessEligibilityCertificateLink)
+                and item.business_eligibility_version_id in affected_version_ids
+                and session.is_modified(item, include_collections=False)
+                for item in session.dirty
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility link has uncommitted changes; resolve draft before promotion.",
+                )
             if any(
                 isinstance(item, BusinessEligibilityCertificateLink)
                 and item.business_eligibility_version_id in affected_version_ids

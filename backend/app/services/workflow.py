@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, inspect, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -5182,9 +5182,13 @@ class CaseWorkflowService:
             # reused Session. Do not persist operator edits to an earlier
             # PCT/CT round while allocating a new canonical round.
             for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionApprovalSubmission):
+                    continue
+                # Include the persisted owner when an operator has edited
+                # case_id locally; current cached FK alone is not trustworthy.
+                original_owners = inspect(cached).attrs.case_id.history.deleted
                 if (
-                    isinstance(cached, InspectionApprovalSubmission)
-                    and cached.case_id == row.id
+                    (cached.case_id == row.id or row.id in original_owners)
                     and session.is_modified(cached, include_collections=False)
                 ):
                     raise HTTPException(

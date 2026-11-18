@@ -4458,12 +4458,33 @@ class CaseWorkflowService:
             fields_set is None and decision_document_hint is not None
         ):
             raise HTTPException(status_code=422, detail="decision_document_hint is a read-only compatibility field.")
-        row = self._lock_case(session, case_id)
-        self._assert_case_not_terminal(row, operation="inspection plan update")
-        stage = session.scalars(
-            select(InspectionPlan).where(InspectionPlan.case_id == row.id)
-            .with_for_update().execution_options(populate_existing=True)
-        ).first()
+        # Read persisted parent/plan under one SELECT-only admission. Cached
+        # operator drafts must not autoflush or be discarded by refresh.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before inspection plan update.",
+                )
+            row = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(row, operation="inspection plan update")
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, InspectionPlan)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection plan has uncommitted changes; resolve draft before update.",
+                    )
+            stage = session.scalars(
+                select(InspectionPlan).where(InspectionPlan.case_id == row.id)
+                .with_for_update().execution_options(populate_existing=True)
+            ).first()
         if stage is None:
             if expected_version is not None:
                 raise HTTPException(status_code=409, detail="Inspection plan does not exist for supplied expected_version.")
@@ -4646,12 +4667,12 @@ class CaseWorkflowService:
             raise HTTPException(status_code=409, detail="Inspection outcome already exists; expected_version is required.")
         else:
             self._assert_expected_version(stage, expected_version, label="inspection_outcome")
-        if stage is None:
-            # This compatibility endpoint does not own a zero-segment source
-            # meaning, so a metadata-only create remains unclassified.
+        new_stage = stage is None
+        if new_stage:
+            # Stay transient while validating request fields. An invalid
+            # compatibility date or minutes time must not INSERT an Outcome
+            # (nor autoflush unrelated operator drafts) before HTTP 422.
             stage = InspectionOutcome(case_id=row.id, inspection_period_state=None)
-            session.add(stage)
-            session.flush()
         has_compatibility_period = "inspected_on" in provided or "inspected_to_on" in provided
         effective_start = inspected_on if "inspected_on" in provided else stage.inspected_on
         effective_end = inspected_to_on if "inspected_to_on" in provided else stage.inspected_to_on
@@ -4666,24 +4687,27 @@ class CaseWorkflowService:
                 detail="Inspection outcome has a source-owned non-KNOWN period state and requires a state-aware mutation contract.",
             )
         with session.no_autoflush:
-            for cached in tuple(session.dirty):
-                if (
-                    isinstance(cached, InspectionPeriodSegment)
-                    and cached.inspection_outcome_id == stage.id
-                    and session.is_modified(cached, include_collections=False)
-                ):
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Inspection period segment has uncommitted changes; resolve draft before outcome update.",
+            if new_stage:
+                period_segments = []
+            else:
+                for cached in tuple(session.dirty):
+                    if (
+                        isinstance(cached, InspectionPeriodSegment)
+                        and cached.inspection_outcome_id == stage.id
+                        and session.is_modified(cached, include_collections=False)
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Inspection period segment has uncommitted changes; resolve draft before outcome update.",
+                        )
+                period_segments = list(
+                    session.scalars(
+                        select(InspectionPeriodSegment)
+                        .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
+                        .order_by(InspectionPeriodSegment.ordinal)
+                        .execution_options(populate_existing=True)
                     )
-            period_segments = list(
-                session.scalars(
-                    select(InspectionPeriodSegment)
-                    .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
-                    .order_by(InspectionPeriodSegment.ordinal)
-                    .execution_options(populate_existing=True)
                 )
-            )
         if has_compatibility_period and len(period_segments) > 1:
             raise HTTPException(
                 status_code=409,
@@ -4694,6 +4718,20 @@ class CaseWorkflowService:
                 status_code=409,
                 detail="Inspection outcome has an invalid canonical single-segment ordinal.",
             )
+        effective_minutes_on = (
+            minutes_recorded_on if "minutes_recorded_on" in provided
+            else stage.minutes_recorded_on
+        )
+        effective_minutes_time = (
+            minutes_recorded_time if "minutes_recorded_time" in provided
+            else stage.minutes_recorded_time
+        )
+        if effective_minutes_time is not None and effective_minutes_on is None:
+            raise HTTPException(status_code=422, detail="Minutes time requires a minutes date.")
+        if new_stage:
+            # Only an admitted create may participate in SQL writes and audit.
+            session.add(stage)
+            session.flush()
         actor = self._get_or_create_app_user(session, user)
         before = self._snapshot_fields(
             stage,
@@ -4733,8 +4771,6 @@ class CaseWorkflowService:
             },
             provided,
         )
-        if stage.minutes_recorded_time is not None and stage.minutes_recorded_on is None:
-            raise HTTPException(status_code=422, detail="Minutes time requires a minutes date.")
         after = self._snapshot_fields(
             stage,
             ["inspected_on", "inspected_to_on", "inspection_period_state", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],

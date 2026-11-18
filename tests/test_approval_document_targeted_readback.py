@@ -295,3 +295,106 @@ def test_readback_uses_committed_owner_and_document_after_identity_cache(tmp_pat
             assert verify.scalar(select(func.count(AuditEvent.id))) == 1
     finally:
         engine.dispose()
+
+
+def test_recovery_readback_uses_one_consistent_sql_snapshot(tmp_path):
+    """Submitted owner/version and linked Document must derive from one statement.
+
+    Under PostgreSQL READ COMMITTED, two SELECTs can observe different
+    commits and create a mixed recovery receipt. A single joined statement
+    cannot, while still avoiding ORM refreshes or flushing pending drafts.
+    """
+    from sqlalchemy import event
+
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'approval-single-snapshot.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    case_id, _other_id, pct_id, _foreign_id, document_id = _fixture(engine)
+    user = build_authenticated_user(
+        "approval-single-snapshot", permissions={"inspection.edit", "document.read"},
+    )
+    try:
+        with Session(engine) as writer:
+            CaseWorkflowService().bind_approval_document(
+                writer, approval_submission_id=pct_id,
+                document_id=document_id, expected_version=1,
+                reason="Synthetic committed evidence", user=user,
+            )
+            writer.commit()
+
+        with Session(engine, autoflush=True, expire_on_commit=False) as reader:
+            cached_submission = reader.get(InspectionApprovalSubmission, pct_id)
+            cached_document = reader.get(Document, document_id)
+            cached_submission.reference = "Operator unsaved approval reference"
+            cached_document.title = "Operator unsaved document title"
+            pending = Company(legal_name="Unrelated pending operator Company")
+            reader.add(pending)
+            queries = []
+            flushes = []
+
+            def observe(_conn, _cursor, statement, _params, _ctx, _many):
+                queries.append(statement.lstrip().split(None, 1)[0].upper())
+                if len(queries) > 1:
+                    raise AssertionError(
+                        "Approval recovery readback split into multiple SQL snapshots"
+                    )
+
+            def forbid_flush(*_args):
+                flushes.append(True)
+                raise AssertionError("Recovery GET flushed operator draft")
+
+            event.listen(engine, "before_cursor_execute", observe)
+            event.listen(reader, "before_flush", forbid_flush)
+            try:
+                receipt = CaseWorkflowService().get_approval_document_bindings(
+                    reader, approval_submission_id=pct_id,
+                )
+            finally:
+                event.remove(engine, "before_cursor_execute", observe)
+                event.remove(reader, "before_flush", forbid_flush)
+            assert queries == ["SELECT"]
+            assert flushes == []
+            assert receipt["case_id"] == case_id
+            assert receipt["row_version"] == 2
+            assert [row["document_id"] for row in receipt["links"]] == [document_id]
+            assert cached_submission.reference == "Operator unsaved approval reference"
+            assert cached_document.title == "Operator unsaved document title"
+            assert cached_submission in reader.dirty
+            assert cached_document in reader.dirty
+            assert pending in reader.new
+            reader.rollback()
+    finally:
+        engine.dispose()
+
+
+def test_empty_recovery_readback_is_single_statement(tmp_path):
+    from sqlalchemy import event
+
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'approval-single-empty.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    case_id, _other_id, pct_id, _foreign_id, _document_id = _fixture(engine)
+    try:
+        with Session(engine) as reader:
+            statements = []
+
+            def observe(_conn, _cursor, statement, _params, _ctx, _many):
+                statements.append(statement.lstrip().split(None, 1)[0].upper())
+
+            event.listen(engine, "before_cursor_execute", observe)
+            try:
+                receipt = CaseWorkflowService().get_approval_document_bindings(
+                    reader, approval_submission_id=pct_id,
+                )
+            finally:
+                event.remove(engine, "before_cursor_execute", observe)
+            assert statements == ["SELECT"]
+            assert receipt["case_id"] == case_id
+            assert receipt["links"] == []
+            assert receipt["row_version"] == 1
+    finally:
+        engine.dispose()

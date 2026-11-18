@@ -5338,24 +5338,19 @@ class CaseWorkflowService:
         unrelated drafts or overwrite dirty/cached ORM instances while an
         operator resolves an unknown-outcome approval-document binding.
         """
+        # One joined scalar query gives recovery a coherent committed
+        # submission/version/link/document snapshot under READ COMMITTED.
+        # Separate owner and link SELECTs could straddle a concurrent
+        # commit, returning a mixed receipt to an unknown-outcome caller.
+        # No ORM identity refresh and no autoflush of operator drafts.
         with session.no_autoflush:
-            source = session.execute(
+            snapshot = session.execute(
                 select(
                     InspectionApprovalSubmission.id,
                     InspectionApprovalSubmission.case_id,
                     InspectionApprovalSubmission.stage,
                     InspectionApprovalSubmission.round_no,
                     InspectionApprovalSubmission.row_version,
-                ).where(InspectionApprovalSubmission.id == approval_submission_id)
-            ).one_or_none()
-            if source is None:
-                raise HTTPException(status_code=404, detail="Approval submission not found.")
-            submission_id, case_id, stage, round_no, row_version = source
-            if stage not in {"PCT", "CT"}:
-                raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
-            expected_family = "INSPECTION_PT_PCT" if stage == "PCT" else "INSPECTION_PT_CT"
-            links = session.execute(
-                select(
                     InspectionApprovalDocumentLink.id,
                     InspectionApprovalDocumentLink.document_id,
                     Document.id,
@@ -5367,14 +5362,26 @@ class CaseWorkflowService:
                     Document.change_request_id,
                 )
                 .outerjoin(
+                    InspectionApprovalDocumentLink,
+                    InspectionApprovalDocumentLink.approval_submission_id
+                    == InspectionApprovalSubmission.id,
+                )
+                .outerjoin(
                     Document, Document.id == InspectionApprovalDocumentLink.document_id,
                 )
-                .where(InspectionApprovalDocumentLink.approval_submission_id == submission_id)
+                .where(InspectionApprovalSubmission.id == approval_submission_id)
                 .order_by(
                     InspectionApprovalDocumentLink.created_at.asc(),
                     InspectionApprovalDocumentLink.id.asc(),
                 )
             ).all()
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Approval submission not found.")
+        submission_id, case_id, stage, round_no, row_version = snapshot[0][:5]
+        if stage not in {"PCT", "CT"}:
+            raise HTTPException(status_code=409, detail="Unrecognized approval stage.")
+        expected_family = "INSPECTION_PT_PCT" if stage == "PCT" else "INSPECTION_PT_CT"
+        links = [source[5:] for source in snapshot if source[5] is not None]
         result_links: list[dict[str, Any]] = []
         for (
             binding_id, document_id, persisted_document_id, document_case_id,

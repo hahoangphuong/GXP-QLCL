@@ -5077,6 +5077,19 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=409, detail="Inspection final evaluation is immutable once set.")
             if not str(final_evaluation).strip():
                 raise HTTPException(status_code=422, detail="Inspection final evaluation is required.")
+            # The CAPA eligibility check refreshes the latest cycle with
+            # populate_existing. Refuse any dirty CAPA draft for this Case
+            # before that refresh or a successful finalization/audit flush.
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, CapaCycle)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before final evaluation.",
+                    )
             self._assert_latest_capa_accepted_if_present(
                 session, row.id,
                 blocked_detail="Latest CAPA cycle must be accepted before final evaluation.",

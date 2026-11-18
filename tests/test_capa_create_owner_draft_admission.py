@@ -128,6 +128,64 @@ def test_rejected_create_does_not_autoflush_pending_company(seeded, reason, stat
         assert check.scalar(select(func.count(AuditEvent.id))) == 0
 
 
+
+def test_dirty_latest_rejected_round_keeps_draft_and_pending_company(seeded):
+    engine, (case_id, version) = seeded
+    with Session(engine) as seed:
+        rejected = CapaCycle(
+            case_id=case_id, round_no=1,
+            status="rejected", result="rejected",
+        )
+        seed.add(rejected)
+        seed.commit()
+        rejected_id = rejected.id
+
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        cached = db.get(CapaCycle, rejected_id)
+        cached.notes = "Operator edit not yet committed"
+        pending = Company(legal_name="Unrelated pending Company")
+        db.add(pending)
+        statements, flushes, record, reject = guard(engine, db)
+        try:
+            with pytest.raises(HTTPException) as error:
+                create(db, case_id, version)
+        finally:
+            unguard(engine, db, record, reject)
+        assert error.value.status_code == 409
+        assert not flushes and set(statements) <= {"SELECT"}
+        assert cached in db.dirty and pending in db.new
+        assert cached.notes == "Operator edit not yet committed"
+        db.rollback()
+
+    with Session(engine) as check:
+        saved = check.get(CapaCycle, rejected_id)
+        assert saved.status == "rejected"
+        assert saved.notes is None
+        assert check.scalar(select(func.count(CapaCycle.id))) == 1
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0
+        assert check.scalar(select(func.count(Company.id))) == 1
+
+
+def test_clean_new_round_after_rejection_keeps_round_allocation(seeded):
+    engine, (case_id, version) = seeded
+    with Session(engine) as seed:
+        seed.add(CapaCycle(
+            case_id=case_id, round_no=1,
+            status="rejected", result="rejected",
+        ))
+        seed.commit()
+    with Session(engine) as db:
+        response = create(db, case_id, version)
+        assert response["round_no"] == 2
+        db.commit()
+    with Session(engine) as verify:
+        assert [cycle.round_no for cycle in verify.scalars(
+            select(CapaCycle).where(CapaCycle.case_id == case_id)
+            .order_by(CapaCycle.round_no)
+        )] == [1, 2]
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 1
+
+
 def test_clean_create_preserves_single_round_and_audit(seeded):
     engine, (case_id, version) = seeded
     with Session(engine) as db:

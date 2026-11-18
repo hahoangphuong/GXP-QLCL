@@ -2914,6 +2914,9 @@ def test_assess_capa_cycle_route_requires_capa_assess_permission(tmp_path):
         case_row = session.get(Case, case_id)
         assert case_row is not None
         case_row.state = CaseState.INSPECTION_COMPLETED
+        # CAPA admission requires a committed Case owner. This test verifies
+        # assess-route permissions, not an uncommitted Case transition.
+        session.commit()
         created = service.create_capa_cycle(
             session,
             case_id=case_id,

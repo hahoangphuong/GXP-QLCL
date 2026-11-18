@@ -5178,6 +5178,35 @@ class CaseWorkflowService:
                     validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
                 except InspectionContractViolation as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
+            # The post-admission INSERT flushes pending objects as well as
+            # dirty ones. A separately staged round for this same Case must
+            # not be silently inserted as a side effect of this mutation.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, InspectionApprovalSubmission)
+                    and pending.case_id == row.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before creating another round.",
+                    )
+            # The post-admission INSERT also flushes dirty objects in the
+            # reused Session. Do not persist edits to an earlier PCT/CT
+            # round while allocating a new canonical round.
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionApprovalSubmission):
+                    continue
+                # Include the persisted owner when an operator has edited
+                # case_id locally; current cached FK alone is not trustworthy.
+                original_owners = inspect(cached).attrs.case_id.history.deleted
+                if (
+                    (cached.case_id == row.id or row.id in original_owners)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before creating another round.",
+                    )
             rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
             try:
                 round_no = next_approval_round(rounds)

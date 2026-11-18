@@ -122,6 +122,34 @@ def test_dirty_owner_is_rejected_without_refresh_or_autoflush(seeded, dirty_owne
         assert check.scalar(select(func.count(Company.id))) == 1
 
 
+
+def test_dirty_case_parent_rejected_before_binding_refresh(seeded):
+    engine, (approval_id, document_id, _, version) = seeded
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        approval = db.get(InspectionApprovalSubmission, approval_id)
+        parent = db.get(Case, approval.case_id)
+        parent.state = CaseState.CLOSED
+        pending = Company(legal_name="Pending Company during binding")
+        db.add(pending)
+        statements, flushes, sql_fn, flush_fn = observe(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                bind(db, approval_id, document_id, version)
+        finally:
+            release(engine, db, sql_fn, flush_fn)
+        assert exc.value.status_code == 409
+        assert "Case has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(statements) <= {"SELECT"}
+        assert parent.state == CaseState.CLOSED and parent in db.dirty
+        assert pending in db.new
+        db.rollback()
+    with Session(engine) as check:
+        assert check.get(Case, approval.case_id).state == CaseState.INSPECTION_COMPLETED
+        assert check.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 0
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0
+        assert check.scalar(select(func.count(Company.id))) == 1
+
+
 def test_missing_document_does_not_flush_pending_draft(seeded):
     engine, (approval_id, _, _, version) = seeded
     with Session(engine, autoflush=True) as db:

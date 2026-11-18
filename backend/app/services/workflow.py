@@ -5785,12 +5785,24 @@ class CaseWorkflowService:
         # actor, issue a certificate candidate, or write audit without it.
         if CERTIFICATE_ISSUE_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.issue.")
-        site = self._get_site(session, site_id)
-        # All Case-backed certificate candidates depend on the current Case
-        # state/CAPA gate, not only GMP inspection issuances. Lock that owner
-        # before reading eligibility; a terminal transition cannot race with
-        # a non-GMP certificate insert or audit.
-        case = None if case_id is None else self._lock_case(session, case_id)
+        # An operator may reuse a Session with an unsaved Case draft.
+        # _lock_case(populate_existing=True) would overwrite that cached draft;
+        # even the preceding Site lookup must not autoflush unrelated drafts.
+        # Reject before refreshing/locking the Case or writing any SQL.
+        with session.no_autoflush:
+            site = self._get_site(session, site_id)
+            if case_id is not None:
+                cached_case = session.get(Case, case_id)
+                if cached_case is not None and session.is_modified(cached_case, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Case has uncommitted changes; resolve draft before issuing certificate.",
+                    )
+            # All Case-backed certificate candidates depend on the current Case
+            # state/CAPA gate, not only GMP inspection issuances. Lock that owner
+            # before reading eligibility; a terminal transition cannot race with
+            # a non-GMP certificate insert or audit.
+            case = None if case_id is None else self._lock_case(session, case_id)
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,

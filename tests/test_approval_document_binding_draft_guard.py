@@ -151,6 +151,69 @@ def test_dirty_case_parent_rejected_before_binding_refresh(seeded):
         assert check.scalar(select(func.count(Company.id))) == 1
 
 
+@pytest.mark.parametrize("draft_field", ["approval_submission_id", "document_id"])
+def test_dirty_existing_link_is_not_refreshed_during_idempotent_bind(seeded, draft_field):
+    engine, (approval_id, document_id, _, version) = seeded
+    with Session(engine) as seed:
+        link = InspectionApprovalDocumentLink(
+            approval_submission_id=approval_id, document_id=document_id,
+        )
+        seed.add(link)
+        seed.commit()
+        link_id = link.id
+
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        cached = db.get(InspectionApprovalDocumentLink, link_id)
+        local_draft = str(uuid4())
+        setattr(cached, draft_field, local_draft)
+        pending = Company(legal_name="Uncommitted Company")
+        db.add(pending)
+        statements, flushes, sql_fn, flush_fn = observe(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                bind(db, approval_id, document_id, version)
+        finally:
+            release(engine, db, sql_fn, flush_fn)
+        assert exc.value.status_code == 409
+        assert "Approval document link has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(statements) <= {"SELECT"}
+        assert cached in db.dirty and getattr(cached, draft_field) == local_draft
+        assert pending in db.new
+        db.rollback()
+    with Session(engine) as verify:
+        persisted = verify.get(InspectionApprovalDocumentLink, link_id)
+        assert persisted.approval_submission_id == approval_id
+        assert persisted.document_id == document_id
+        assert verify.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 1
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+        assert verify.scalar(select(func.count(Company.id))) == 1
+
+
+def test_pending_same_document_link_fails_closed_before_bind_insert(seeded):
+    engine, (approval_id, document_id, _, version) = seeded
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        pending_link = InspectionApprovalDocumentLink(
+            approval_submission_id=approval_id, document_id=document_id,
+        )
+        pending_company = Company(legal_name="Pending Company")
+        db.add_all((pending_link, pending_company))
+        statements, flushes, sql_fn, flush_fn = observe(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                bind(db, approval_id, document_id, version)
+        finally:
+            release(engine, db, sql_fn, flush_fn)
+        assert exc.value.status_code == 409
+        assert "Approval document link has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(statements) <= {"SELECT"}
+        assert pending_link in db.new and pending_company in db.new
+        db.rollback()
+    with Session(engine) as verify:
+        assert verify.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 0
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+        assert verify.scalar(select(func.count(Company.id))) == 1
+
+
 def test_missing_document_does_not_flush_pending_draft(seeded):
     engine, (approval_id, _, _, version) = seeded
     with Session(engine, autoflush=True) as db:

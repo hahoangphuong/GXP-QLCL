@@ -5452,6 +5452,31 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="Document must belong exclusively to the approval Case.")
         if document.family_code != expected_family:
             raise HTTPException(status_code=422, detail="Document family does not match approval stage.")
+        # Idempotent lookup uses populate_existing. Protect a cached dirty
+        # append-only link before that refresh; a pending link for this same
+        # Document must not be accidentally inserted by the new bind flush.
+        with session.no_autoflush:
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionApprovalDocumentLink):
+                    continue
+                previous_document_ids = inspect(cached).attrs.document_id.history.deleted
+                if (
+                    (cached.document_id == document.id or document.id in previous_document_ids)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval document link has uncommitted changes; resolve draft before binding.",
+                    )
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, InspectionApprovalDocumentLink)
+                    and pending.document_id == document.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval document link has uncommitted changes; resolve draft before binding.",
+                    )
         # Idempotent lookup is also part of admission, before any new link.
         with session.no_autoflush:
             bound = session.scalars(

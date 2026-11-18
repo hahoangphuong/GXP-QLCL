@@ -66,6 +66,21 @@ describe("PhysicalLineCreationDialog owner and recovery", () => {
     expect(screen.getByText("Hiện có 1 dây chuyền trên Site. Mã trùng không có nghĩa là cùng định danh vật lý.")).toBeTruthy();
   });
 
+  it("keeps the exact verified ProductionLine visible when the pre-create Site list resolves late", async () => {
+    let releaseList!: (rows: typeof record[]) => void;
+    api.listSiteProductionLines.mockImplementationOnce(() => new Promise((resolve) => { releaseList = resolve; }));
+
+    view();
+    await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dây chuyền vật lý" }));
+    await screen.findByText(/Đã xác minh dây chuyền UUID/);
+    expect(screen.getByText("Hiện có 1 dây chuyền trên Site. Mã trùng không có nghĩa là cùng định danh vật lý.")).toBeTruthy();
+
+    await act(async () => { releaseList([]); });
+
+    expect(screen.getByText("Hiện có 1 dây chuyền trên Site. Mã trùng không có nghĩa là cùng định danh vật lý.")).toBeTruthy();
+  });
+
   it("admits two simultaneous submissions as one POST and one UUID", async () => {
     let release!: (value: typeof record) => void;
     api.createProductionLine.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));

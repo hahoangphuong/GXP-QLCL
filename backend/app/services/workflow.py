@@ -5791,6 +5791,14 @@ class CaseWorkflowService:
         # Reject before refreshing/locking the Case or writing any SQL.
         with session.no_autoflush:
             site = self._get_site(session, site_id)
+            # Site is the issuance owner even for an administrative candidate.
+            # Never flush an unsaved Site operator draft into an otherwise
+            # unrelated certificate insert/audit.
+            if session.is_modified(site, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Site has uncommitted changes; resolve draft before issuing certificate.",
+                )
             if case_id is not None:
                 cached_case = session.get(Case, case_id)
                 if cached_case is not None and session.is_modified(cached_case, include_collections=False):

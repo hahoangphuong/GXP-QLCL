@@ -53,6 +53,7 @@ export function PhysicalLineCreationDialog({
   const [lines, setLines] = useState<ProductionLineMasterRead[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const fetchEpoch = useRef(0);
+  const listEpoch = useRef(0);
   const activeRef = useRef(false);
   const visibleOwnerRef = useRef(owner);
   activeRef.current = open;
@@ -75,6 +76,7 @@ export function PhysicalLineCreationDialog({
 
   useEffect(() => {
     const epoch = ++fetchEpoch.current;
+    const currentListEpoch = ++listEpoch.current;
     setSite(null);
     setCompany(null);
     setOwnerError(null);
@@ -92,9 +94,11 @@ export function PhysicalLineCreationDialog({
       if (fetchEpoch.current === epoch) setOwnerError(message(error));
     });
     void listSiteProductionLines(siteId, auth, useStubAuth, bearerToken).then((rows) => {
-      if (fetchEpoch.current === epoch) setLines(rows.filter((row) => row.site_id === siteId));
+      if (fetchEpoch.current === epoch && listEpoch.current === currentListEpoch) {
+        setLines(rows.filter((row) => row.site_id === siteId));
+      }
     }).catch((error) => {
-      if (fetchEpoch.current === epoch) setListError(message(error));
+      if (fetchEpoch.current === epoch && listEpoch.current === currentListEpoch) setListError(message(error));
     });
     return () => { ++fetchEpoch.current; activeRef.current = false; };
   }, [open, siteId, auth.username, auth.role, useStubAuth, bearerToken, accessGeneration]);
@@ -113,6 +117,9 @@ export function PhysicalLineCreationDialog({
       });
       if (accepted && activeRef.current && visibleOwnerRef.current === creationOwner(auth, accessGeneration, useStubAuth, original.siteId)) {
         // Display only the verified identity. Never infer GxP, Case or Certificate.
+        // A list request started before the POST may describe an older snapshot.
+        // The exact canonical GET is newer evidence for this active owner.
+        ++listEpoch.current;
         setLines((current) => [row, ...current.filter((item) => item.id !== row.id)]);
       }
     } catch (error) {

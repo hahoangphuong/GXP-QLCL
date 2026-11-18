@@ -5917,18 +5917,31 @@ class CaseWorkflowService:
         # resolving Site/Certificate identity, locking or writing audit.
         if CERTIFICATE_EDIT_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.edit.")
-        certificate = self._get_certificate(session, certificate_id)
-        # Serialize edits on their aggregate root and refresh an already-cached
-        # ORM identity before validating the caller's concurrency token.
-        session.refresh(certificate, with_for_update=True)
-        self._certificate_line_identity(session, certificate)
-        self._assert_expected_version(certificate, expected_version, label="certificate")
+        # A long-lived operator Session may cache unsaved Certificate/Version
+        # edits. Refreshing either identity would discard that draft, while a
+        # preliminary SELECT could autoflush it. Inspect both owners inside a
+        # bounded no-autoflush admission before the first intentional write.
+        with session.no_autoflush:
+            certificate = self._get_certificate(session, certificate_id)
+            if session.is_modified(certificate, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate has uncommitted changes; resolve draft before editing version.",
+                )
+            # Serialize edits on the aggregate root; the committed version
+            # token remains authoritative even with stale cached identities.
+            session.refresh(certificate, with_for_update=True)
+            self._certificate_line_identity(session, certificate)
+            self._assert_expected_version(certificate, expected_version, label="certificate")
+            version = self._load_latest_certificate_version(session, certificate.id)
+            if session.is_modified(version, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate version has uncommitted changes; resolve draft before editing.",
+                )
+            # Refresh child version before capturing committed audit before-state.
+            session.refresh(version)
         actor = self._get_or_create_app_user(session, user)
-        version = self._load_latest_certificate_version(session, certificate.id)
-        # A caller may hold a stale Version ORM identity while supplying the
-        # current aggregate-root token after another committed edit. Refresh
-        # its versioned child before capturing audit before-state and writing.
-        session.refresh(version)
         before = {
             "certificate_number": version.certificate_number,
             "issue_date": self._normalize_audit_value(version.issue_date),
@@ -6315,16 +6328,26 @@ class CaseWorkflowService:
         # resolving Site/Certificate identity, locking or writing audit.
         if CERTIFICATE_EDIT_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.edit.")
-        row = self._get_business_eligibility(session, business_eligibility_certificate_id)
-        # Lock/refresh the aggregate root before comparing its optimistic token;
-        # otherwise Session identity-map cache can reject a valid update.
-        session.refresh(row, with_for_update=True)
-        self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
+        # Cached unsaved DDK root/version edits cannot be refreshed away or
+        # unintentionally persisted by a subsequent link-replacement flush.
+        # Keep admission read-only while locking committed aggregate identity.
+        with session.no_autoflush:
+            row = self._get_business_eligibility(session, business_eligibility_certificate_id)
+            if session.is_modified(row, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility certificate has uncommitted changes; resolve draft before editing.",
+                )
+            session.refresh(row, with_for_update=True)
+            self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
+            version = self._load_latest_business_eligibility_version(session, row.id)
+            if session.is_modified(version, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility version has uncommitted changes; resolve draft before editing.",
+                )
+            session.refresh(version)
         actor = self._get_or_create_app_user(session, user)
-        version = self._load_latest_business_eligibility_version(session, row.id)
-        # The root token is authoritative for edits; a cached child Version
-        # must not yield a false optimistic-lock conflict or stale audit delta.
-        session.refresh(version)
         before = {
             "certificate_number": version.certificate_number,
             "issued_on": self._normalize_audit_value(version.issued_on),

@@ -241,6 +241,34 @@ def test_locally_reparented_historical_round_preserves_original_case_owner(seede
         assert verify.scalar(select(func.count(AuditEvent.id))) == 0
 
 
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+def test_pending_same_case_round_rejected_before_new_round_flush(seeded, stage):
+    engine, (case_id, _, pct_id) = seeded
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        pending_round = InspectionApprovalSubmission(
+            case_id=case_id, stage="PCT", round_no=2,
+            reference="Uncommitted PCT round",
+        )
+        unrelated = Company(legal_name="Pending operator Company")
+        db.add_all([pending_round, unrelated])
+        sql, flushes, sql_cb, flush_cb = attach_guards(engine, db)
+        try:
+            with pytest.raises(HTTPException) as error:
+                create(db, case_id, pct_id, stage=stage)
+        finally:
+            detach_guards(engine, db, sql_cb, flush_cb)
+        assert error.value.status_code == 409
+        assert "Approval submission has uncommitted changes" in str(error.value.detail)
+        assert not flushes and set(sql) <= {"SELECT"}
+        assert pending_round in db.new and unrelated in db.new
+        assert pending_round.reference == "Uncommitted PCT round"
+        db.rollback()
+    with Session(engine) as verify:
+        assert verify.scalar(select(func.count(InspectionApprovalSubmission.id))) == 1
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+        assert verify.scalar(select(func.count(Company.id))) == 1
+
+
 def test_clean_second_pct_round_still_allocates_and_audits(seeded):
     engine, (case_id, _, pct_id) = seeded
     with Session(engine) as db:

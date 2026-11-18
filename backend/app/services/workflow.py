@@ -5178,6 +5178,19 @@ class CaseWorkflowService:
                     validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
                 except InspectionContractViolation as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
+            # The post-admission INSERT flushes every dirty object in the
+            # reused Session. Do not persist operator edits to an earlier
+            # PCT/CT round while allocating a new canonical round.
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, InspectionApprovalSubmission)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before creating another round.",
+                    )
             rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
             try:
                 round_no = next_approval_round(rounds)

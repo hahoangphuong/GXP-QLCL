@@ -289,6 +289,23 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     expect(handlers.onAssessCycle).not.toHaveBeenCalled();
   });
 
+  it("explains the current cycle's canonical CAPA blocker and replaces it after a readiness refresh", () => {
+    const blocked = workspace([cycle()], [action("submit_capa_cycle:capa-1", false)]);
+    const view = renderWorkspace(blocked);
+
+    expect(screen.getByRole("region", { name: "Điều kiện thao tác khắc phục" })).toHaveTextContent("Tài khoản không có quyền thực hiện thao tác này.");
+    expect(screen.getByRole("region", { name: "Điều kiện thao tác khắc phục" })).toHaveTextContent("missing_permission");
+    expect(screen.queryByRole("button", { name: "Ghi nhận tiếp nhận" })).not.toBeInTheDocument();
+    expect(view.handlers.onSubmitCycle).not.toHaveBeenCalled();
+
+    view.rerender(<CaseRemediationWorkspace caseWorkspace={workspace([cycle()], [action("submit_capa_cycle:capa-1")])} selectedCycleId="capa-1" {...view.handlers} />);
+
+    expect(screen.queryByRole("region", { name: "Điều kiện thao tác khắc phục" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-11-18" } });
+    expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeEnabled();
+  });
+
   it("keeps submit and assess drafts across a same-version refetch before invoking the selected cycle actions", async () => {
     const actions = [action("submit_capa_cycle:capa-1"), action("assess_capa_cycle:capa-1")];
     const initial = workspace([cycle({ notes: "Ghi chú ban đầu" })], actions);

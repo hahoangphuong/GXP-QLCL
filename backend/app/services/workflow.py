@@ -5208,6 +5208,16 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Approval submission has uncommitted changes; resolve draft before completion.",
                 )
+            # _lock_case refreshes a cached Case via populate_existing.
+            # Refuse the operator's uncommitted parent draft before that refresh.
+            cached_case = session.get(Case, row.case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before approval completion.",
+                )
             # Lock and refresh the persisted Case before terminal-state checks.
             parent = self._lock_case(session, row.case_id)
             self._assert_case_not_terminal(parent, operation="approval submission completion")
@@ -5355,6 +5365,16 @@ class CaseWorkflowService:
                 raise HTTPException(
                     status_code=409,
                     detail="Approval submission has uncommitted changes; resolve draft before binding.",
+                )
+            # Case FOR UPDATE uses populate_existing: a cached dirty Case
+            # must not be refreshed or silently included in a binding flush.
+            cached_case = session.get(Case, identity.case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before approval document binding.",
                 )
             case = self._lock_case(session, identity.case_id)
             self._assert_case_not_terminal(case, operation="approval document binding")

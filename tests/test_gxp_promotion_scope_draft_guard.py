@@ -179,3 +179,69 @@ def test_gxp_promotion_rejects_explicit_scope_deletion(seeded, owner):
         assert check.get(Certificate, candidate_id).latest_flag is False
         assert check.get(Certificate, peer_id).latest_flag is True
         assert check.scalar(select(func.count(AuditEvent.id))) == 0
+
+
+def test_gxp_promotion_rejects_scope_reparented_from_unrelated_version(seeded):
+    engine, (candidate_id, peer_id, candidate_v, peer_v, candidate_scope_id, peer_scope_id, token) = seeded
+    with Session(engine) as db:
+        site_id = db.get(Certificate, candidate_id).site_id
+        other_certificate = Certificate(
+            site_id=site_id, certificate_type="GSP",
+            issuance_basis="administrative_no_inspection", latest_flag=False,
+        )
+        db.add(other_certificate)
+        db.flush()
+        other_version = CertificateVersion(
+            certificate_id=other_certificate.id, version_no=1, is_latest_version=True,
+            certificate_number="OTHER-CERT", issue_date=date(2026, 10, 1),
+        )
+        db.add(other_version)
+        db.flush()
+        foreign_scope = CertificateScope(
+            certificate_version_id=other_version.id, scope_key="OTHER",
+            scope_text="Persisted other scope", sort_order=1,
+        )
+        db.add(foreign_scope)
+        db.commit()
+        foreign_scope_id, foreign_version_id = foreign_scope.id, other_version.id
+
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        foreign_scope = db.get(CertificateScope, foreign_scope_id)
+        foreign_scope.certificate_version_id = candidate_v
+        unrelated = Company(legal_name="Unrelated pending Company")
+        db.add(unrelated)
+        sql, flushes = [], []
+
+        def observe(_conn, _cursor, statement, _params, _context, _many):
+            sql.append(statement.lstrip().split(None, 1)[0].upper())
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Locally reparented scope must not flush with promotion")
+
+        event.listen(engine, "before_cursor_execute", observe)
+        event.listen(db, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                CaseWorkflowService().promote_certificate_current(
+                    db, certificate_id=candidate_id, expected_version=token,
+                    reason="Synthetic incoming scope reparent", user=USER,
+                )
+        finally:
+            event.remove(engine, "before_cursor_execute", observe)
+            event.remove(db, "before_flush", forbid_flush)
+
+        assert exc.value.status_code == 409
+        assert "Certificate scope has uncommitted changes" in str(exc.value.detail)
+        assert set(sql) <= {"SELECT"} and not flushes
+        assert foreign_scope in db.dirty and foreign_scope.certificate_version_id == candidate_v
+        assert unrelated in db.new
+        db.rollback()
+
+    with Session(engine) as check:
+        assert check.get(CertificateScope, foreign_scope_id).certificate_version_id == foreign_version_id
+        assert check.get(Certificate, candidate_id).latest_flag is False
+        assert check.get(Certificate, peer_id).latest_flag is True
+        assert check.get(CertificateScope, candidate_scope_id).scope_text == "Persisted candidate scope"
+        assert check.get(CertificateScope, peer_scope_id).scope_text == "Persisted peer scope"
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0

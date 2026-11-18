@@ -7,7 +7,7 @@ another committed business-owner change.
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 import pytest
 
@@ -119,5 +119,83 @@ def test_locator_rechecks_capa_case_owner_after_other_session_commit(tmp_path):
             cached_session.rollback()
         with Session(engine) as verify:
             assert verify.get(CapaCycle, cycle_id).case_id == new_case
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("draft_owner", ["variant", "version"])
+def test_locator_uses_committed_binary_snapshot_without_discarding_local_draft(tmp_path, draft_owner):
+    """Sensitive read must not autoflush or refresh operator's variant/version draft."""
+    engine, case_id, _, doc_id, _ = _seed_binary(tmp_path, scope="case")
+    service = DocumentWorkflowService()
+    try:
+        with Session(engine, autoflush=True, expire_on_commit=False) as db:
+            variant = db.query(DocumentVariant).filter_by(document_id=doc_id).one()
+            version = db.query(DocumentVersion).filter_by(document_variant_id=variant.id).one()
+            if draft_owner == "variant":
+                variant.is_active = False
+            else:
+                version.storage_relative_path = "draft/not-yet-saved.docx"
+            pending = Company(legal_name="Unrelated pending company")
+            db.add(pending)
+
+            statements, flushes = [], []
+
+            def on_sql(_conn, _cursor, statement, _params, _context, _many):
+                statements.append(statement.lstrip().split(None, 1)[0].upper())
+
+            def on_flush(*_args):
+                flushes.append(True)
+                raise AssertionError("Binary locator GET must not flush operator drafts")
+
+            event.listen(engine, "before_cursor_execute", on_sql)
+            event.listen(db, "before_flush", on_flush)
+            try:
+                locator = service.get_current_document_binary_locator_for_parent(
+                    db, document_id=doc_id,
+                    expected_parent_scope="case", expected_parent_id=case_id,
+                )
+            finally:
+                event.remove(engine, "before_cursor_execute", on_sql)
+                event.remove(db, "before_flush", on_flush)
+            assert locator.storage_relative_path == "synthetic/owner.docx"
+            assert not flushes
+            assert statements and set(statements) <= {"SELECT"}
+            assert pending in db.new
+            if draft_owner == "variant":
+                assert variant.is_active is False
+                assert variant in db.dirty
+            else:
+                assert version.storage_relative_path == "draft/not-yet-saved.docx"
+                assert version in db.dirty
+            db.rollback()
+        with Session(engine) as check:
+            assert check.query(Company).count() == 1
+            assert check.query(DocumentVariant).one().is_active is True
+            assert check.query(DocumentVersion).one().storage_relative_path == "synthetic/owner.docx"
+    finally:
+        engine.dispose()
+
+
+def test_locator_rechecks_committed_version_after_cached_identity(tmp_path):
+    """A cached clean Version must not authorize a stale storage location."""
+    engine, case_id, _, doc_id, _ = _seed_binary(tmp_path, scope="case")
+    try:
+        with Session(engine, expire_on_commit=False) as cached:
+            variant = cached.query(DocumentVariant).filter_by(document_id=doc_id).one()
+            version = cached.query(DocumentVersion).filter_by(document_variant_id=variant.id).one()
+            assert version.storage_relative_path == "synthetic/owner.docx"
+            with Session(engine) as writer:
+                committed = writer.get(DocumentVersion, version.id)
+                committed.storage_relative_path = "synthetic/updated.docx"
+                writer.commit()
+            locator = DocumentWorkflowService().get_current_document_binary_locator_for_parent(
+                cached, document_id=doc_id,
+                expected_parent_scope="case", expected_parent_id=case_id,
+            )
+            assert locator.storage_relative_path == "synthetic/updated.docx"
+            # A locator GET does not need to change caller's cached ORM identity.
+            assert version.storage_relative_path == "synthetic/owner.docx"
+            cached.rollback()
     finally:
         engine.dispose()

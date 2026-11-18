@@ -5941,6 +5941,30 @@ class CaseWorkflowService:
                 )
             # Refresh child version before capturing committed audit before-state.
             session.refresh(version)
+            # Replacing scopes deletes persisted children. Guard their cached
+            # dirty identities (and pending children of this Version) before
+            # any actor/audit mutation or the replacement's first flush.
+            scope_ids = session.scalars(
+                select(CertificateScope.id).where(
+                    CertificateScope.certificate_version_id == version.id
+                )
+            ).all()
+            for scope_id in scope_ids:
+                scope = session.get(CertificateScope, scope_id)
+                if scope is not None and session.is_modified(scope, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
+                    )
+            if any(
+                isinstance(item, CertificateScope)
+                and item.certificate_version_id == version.id
+                for item in session.new
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
+                )
         actor = self._get_or_create_app_user(session, user)
         before = {
             "certificate_number": version.certificate_number,

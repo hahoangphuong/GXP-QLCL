@@ -5956,6 +5956,19 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
                     )
+            # Persisted scopes from a different Version can be reparented
+            # locally into this Version. Their committed FK is outside the
+            # persisted-ID query above, so inspect incoming dirty identities.
+            if any(
+                isinstance(item, CertificateScope)
+                and item.certificate_version_id == version.id
+                and session.is_modified(item, include_collections=False)
+                for item in session.dirty
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
+                )
             if any(
                 isinstance(item, CertificateScope)
                 and item.certificate_version_id == version.id
@@ -6158,6 +6171,20 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
                     )
+            # A scope persisted under an otherwise unrelated Version may
+            # have been locally reparented into the candidate/current-peer
+            # graph. Such dirty identities are absent from the committed-ID
+            # query and must not ride the final promotion flush.
+            if any(
+                isinstance(item, CertificateScope)
+                and item.certificate_version_id in affected_version_ids
+                and session.is_modified(item, include_collections=False)
+                for item in session.dirty
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
+                )
             if any(
                 isinstance(item, CertificateScope)
                 and item.certificate_version_id in affected_version_ids

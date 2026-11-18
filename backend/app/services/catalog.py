@@ -2329,42 +2329,90 @@ class CatalogReadService:
         *,
         certificate_id: str,
     ) -> dict[str, object]:
-        """Expose each stored CertificateVersion and its *own* stored scopes.
+        """Canonical committed historical CertificateVersion + own scopes.
 
-        CertificateVersion.version_no and certificate_version_id identify a
-        version; Certificate.row_version and latest_flag have DIFFERENT roles.
-        Do not recompute status or copy current scopes into prior versions.
+        The read must not flush unsaved operator work, or combine Version
+        metadata and Scope rows observed on opposite sides of another
+        writer's commit under PostgreSQL READ COMMITTED.
         """
-        certificate = session.get(Certificate, certificate_id)
-        if certificate is None:
-            raise HTTPException(status_code=404, detail="Certificate not found")
-        # Share the exact Case and canonical ProductionLine integrity gate
-        # with the existing current-certificate read model.
-        CaseWorkflowService._certificate_line_identity(session, certificate)
-        versions = list(session.scalars(
-            select(CertificateVersion)
-            .where(CertificateVersion.certificate_id == certificate.id)
-            .order_by(CertificateVersion.version_no.desc(), CertificateVersion.id.asc())
-        ))
-        latest = [v for v in versions if v.is_latest_version]
-        if len(latest) > 1:
-            raise HTTPException(
-                status_code=409,
-                detail="Certificate has ambiguous latest CertificateVersion identity.",
-            )
-        scoped: dict[str, list[CertificateScope]] = defaultdict(list)
-        if versions:
-            for scope in session.scalars(
-                select(CertificateScope)
-                .where(CertificateScope.certificate_version_id.in_([v.id for v in versions]))
+        with session.no_autoflush:
+            certificate = session.get(Certificate, certificate_id)
+            if certificate is None:
+                raise HTTPException(status_code=404, detail="Certificate not found")
+            # Preserve the current Certificate->Case / ProductionLine gate.
+            CaseWorkflowService._certificate_line_identity(session, certificate)
+            snapshot = session.execute(
+                select(
+                    CertificateVersion.id.label("version_id"),
+                    CertificateVersion.version_no,
+                    CertificateVersion.row_version,
+                    CertificateVersion.is_latest_version,
+                    CertificateVersion.lifecycle_state,
+                    CertificateVersion.certificate_number,
+                    CertificateVersion.issue_date,
+                    CertificateVersion.expiry_date,
+                    CertificateVersion.applicable_standard,
+                    CertificateVersion.issuing_authority,
+                    CertificateScope.id.label("scope_id"),
+                    CertificateScope.scope_key,
+                    CertificateScope.scope_text,
+                    CertificateScope.language_code,
+                    CertificateScope.sort_order,
+                    CertificateScope.created_at.label("scope_created_at"),
+                )
+                .select_from(CertificateVersion)
+                .outerjoin(
+                    CertificateScope,
+                    CertificateScope.certificate_version_id == CertificateVersion.id,
+                )
+                .where(CertificateVersion.certificate_id == certificate.id)
                 .order_by(
-                    CertificateScope.certificate_version_id,
+                    CertificateVersion.version_no.desc(),
+                    CertificateVersion.id.asc(),
                     CertificateScope.sort_order.asc(),
                     CertificateScope.created_at.asc(),
                     CertificateScope.id.asc(),
                 )
-            ):
-                scoped[scope.certificate_version_id].append(scope)
+            ).mappings().all()
+
+        # Build every historical version from the same committed statement.
+        # No ORM identity refresh or reuse of possibly dirty cached versions.
+        versions: dict[str, dict[str, object]] = {}
+        scoped: dict[str, list[SimpleNamespace]] = defaultdict(list)
+        for row in snapshot:
+            version_id = row["version_id"]
+            if version_id not in versions:
+                versions[version_id] = {
+                    "certificate_version_id": version_id,
+                    "version_no": row["version_no"],
+                    "row_version": row["row_version"],
+                    "is_latest_version": row["is_latest_version"],
+                    # NULL lifecycle means unproven imported legacy grant.
+                    "lifecycle_state": row["lifecycle_state"],
+                    "certificate_number": row["certificate_number"],
+                    "issue_date": row["issue_date"],
+                    "expiry_date": row["expiry_date"],
+                    "applicable_standard": row["applicable_standard"],
+                    "issuing_authority": row["issuing_authority"],
+                }
+            if row["scope_id"] is not None:
+                scoped[version_id].append(SimpleNamespace(
+                    id=row["scope_id"],
+                    scope_key=row["scope_key"],
+                    scope_text=row["scope_text"],
+                    language_code=row["language_code"],
+                    sort_order=row["sort_order"],
+                    created_at=row["scope_created_at"],
+                ))
+        latest_ids = [
+            version_id for version_id, version in versions.items()
+            if version["is_latest_version"]
+        ]
+        if len(latest_ids) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Certificate has ambiguous latest CertificateVersion identity.",
+            )
         return {
             "certificate_id": certificate.id,
             "site_id": certificate.site_id,
@@ -2372,21 +2420,11 @@ class CatalogReadService:
             "certificate_type": certificate.certificate_type,
             "issuance_basis": certificate.issuance_basis,
             "aggregate_latest_flag": certificate.latest_flag,
-            "latest_version_id": latest[0].id if latest else None,
+            "latest_version_id": latest_ids[0] if latest_ids else None,
             "versions": [
                 {
-                    "certificate_version_id": version.id,
-                    "version_no": version.version_no,
-                    "row_version": version.row_version,
-                    "is_latest_version": version.is_latest_version,
-                    # NULL lifecycle means unproven imported legacy grant.
-                    "lifecycle_state": version.lifecycle_state,
-                    "certificate_number": version.certificate_number,
-                    "issue_date": version.issue_date,
-                    "expiry_date": version.expiry_date,
-                    "applicable_standard": version.applicable_standard,
-                    "issuing_authority": version.issuing_authority,
-                    "scope_summary": self._build_certificate_scope_summary(scoped[version.id]),
+                    **version,
+                    "scope_summary": self._build_certificate_scope_summary(scoped[version_id]),
                     "scopes": [
                         {
                             "id": scope.id,
@@ -2395,10 +2433,10 @@ class CatalogReadService:
                             "language_code": scope.language_code,
                             "sort_order": scope.sort_order,
                         }
-                        for scope in scoped[version.id]
+                        for scope in scoped[version_id]
                     ],
                 }
-                for version in versions
+                for version_id, version in versions.items()
             ],
         }
 

@@ -237,3 +237,87 @@ def test_canonical_production_line_cross_site_rejected_like_current_detail(tmp_p
             )
         assert invalid.value.status_code == 409
     engine.dispose()
+
+
+def test_history_reads_committed_version_scopes_without_flushing_drafts(tmp_path):
+    from sqlalchemy import event
+
+    engine, _, cert_id, _case_id, (old_id, current_id) = _seed(tmp_path)
+    try:
+        with Session(engine, autoflush=True, expire_on_commit=False) as reader:
+            cached_version = reader.get(CertificateVersion, current_id)
+            cached_scope = reader.scalar(
+                select(CertificateScope).where(
+                    CertificateScope.certificate_version_id == old_id,
+                    CertificateScope.scope_key == "old-vi",
+                )
+            )
+            cached_version.certificate_number = "UNSAVED-CURRENT"
+            cached_version.is_latest_version = False
+            cached_scope.scope_text = "UNSAVED-SCOPE"
+            pending = Company(legal_name="Unsaved operator Company")
+            reader.add(pending)
+            statements, flushes = [], []
+
+            def observe(_conn, _cursor, sql, _params, _ctx, _many):
+                statements.append(sql.lstrip().split(None, 1)[0].upper())
+
+            def no_flush(*_):
+                flushes.append(True)
+                raise AssertionError("Read-only CertificateVersion history flushed operator drafts")
+
+            event.listen(engine, "before_cursor_execute", observe)
+            event.listen(reader, "before_flush", no_flush)
+            try:
+                data = CatalogReadService().get_gxp_certificate_version_history(
+                    reader, certificate_id=cert_id,
+                )
+            finally:
+                event.remove(engine, "before_cursor_execute", observe)
+                event.remove(reader, "before_flush", no_flush)
+            assert statements and set(statements) == {"SELECT"}
+            assert not flushes
+            assert data["latest_version_id"] == current_id
+            assert data["versions"][0]["certificate_number"] == "CURRENT-V2"
+            assert data["versions"][0]["is_latest_version"] is True
+            assert data["versions"][1]["scopes"][0]["scope_text"] == "Scope B"
+            assert cached_version.certificate_number == "UNSAVED-CURRENT"
+            assert cached_version.is_latest_version is False
+            assert cached_scope.scope_text == "UNSAVED-SCOPE"
+            assert cached_version in reader.dirty and cached_scope in reader.dirty
+            assert pending in reader.new
+            reader.rollback()
+        with Session(engine) as check:
+            assert check.query(Company).count() == 1
+            assert check.get(CertificateVersion, current_id).certificate_number == "CURRENT-V2"
+    finally:
+        engine.dispose()
+
+
+def test_history_version_and_scopes_share_single_joined_snapshot(tmp_path):
+    """Version fields and own scopes must not span two READ COMMITTED snapshots."""
+    from sqlalchemy import event
+
+    engine, _, cert_id, _case_id, _version_ids = _seed(tmp_path)
+    try:
+        with Session(engine) as reader:
+            joined = []
+
+            def observe(_conn, _cursor, sql, _params, _ctx, _many):
+                normalized = str(sql).lower()
+                if "certificate_version" in normalized or "certificate_scope" in normalized:
+                    joined.append(normalized)
+
+            event.listen(engine, "before_cursor_execute", observe)
+            try:
+                data = CatalogReadService().get_gxp_certificate_version_history(
+                    reader, certificate_id=cert_id,
+                )
+            finally:
+                event.remove(engine, "before_cursor_execute", observe)
+            assert len(joined) == 1
+            assert "join" in joined[0]
+            assert data["versions"][0]["scopes"][0]["scope_key"] == "new-vi"
+            assert [s["scope_key"] for s in data["versions"][1]["scopes"]] == ["old-vi", "old-en"]
+    finally:
+        engine.dispose()

@@ -251,7 +251,7 @@ def test_completion_rejects_same_case_sibling_round_draft(seeded, sibling_kind):
         with Session(engine) as seed:
             sibling = InspectionApprovalSubmission(
                 case_id=other_case_id if sibling_kind == "incoming_reparent" else case_id,
-                stage="CT", round_no=1, reference="Committed sibling",
+                stage="PCT", round_no=2, reference="Committed sibling",
             )
             seed.add(sibling)
             seed.commit()
@@ -259,7 +259,7 @@ def test_completion_rejects_same_case_sibling_round_draft(seeded, sibling_kind):
     with Session(engine, autoflush=True, expire_on_commit=False) as db:
         if sibling_kind == "pending":
             cached = InspectionApprovalSubmission(
-                case_id=case_id, stage="CT", round_no=1,
+                case_id=case_id, stage="PCT", round_no=2,
                 reference="Uncommitted sibling",
             )
             db.add(cached)

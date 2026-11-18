@@ -644,21 +644,63 @@ class DocumentWorkflowService:
         else:
             raise ValueError("Unknown canonical document owner kind.")
 
-        if session.get(owner_type, owner_id) is None:
+        # A metadata GET is a read-only recovery aid, never a write or
+        # binary-signature proof. Read the owner, Document, Variant and
+        # Version in one committed SQL statement. Separate ORM queries
+        # under READ COMMITTED can straddle a writer commit, and a default
+        # autoflush can persist unrelated operator drafts.
+        with session.no_autoflush:
+            snapshot = session.execute(
+                select(
+                    owner_type.id,
+                    Document.id,
+                    Document.case_id,
+                    Document.capa_cycle_id,
+                    Document.certificate_id,
+                    Document.business_eligibility_certificate_id,
+                    Document.change_request_id,
+                    Document.family_code,
+                    Document.document_type_code,
+                    Document.title,
+                    DocumentVariant.id,
+                    DocumentVersion.id,
+                    DocumentVersion.is_current,
+                )
+                .select_from(owner_type)
+                .outerjoin(Document, owner_column == owner_type.id)
+                .outerjoin(
+                    DocumentVariant, DocumentVariant.document_id == Document.id,
+                )
+                .outerjoin(
+                    DocumentVersion,
+                    DocumentVersion.document_variant_id == DocumentVariant.id,
+                )
+                .where(owner_type.id == owner_id)
+                .order_by(Document.id, DocumentVariant.id, DocumentVersion.id)
+            ).all()
+        if not snapshot:
             raise HTTPException(status_code=404, detail="Document business owner not found.")
 
-        documents = list(session.scalars(
-            select(Document).where(owner_column == owner_id).order_by(Document.id)
-        ))
-        for row in documents:
+        registered: dict[str, dict[str, Any]] = {}
+        variant_ids: dict[str, set[str]] = {}
+        version_ids: dict[str, set[str]] = {}
+        current_version_ids: dict[str, set[str]] = {}
+        for (
+            _persisted_owner, document_id, case_id, capa_cycle_id,
+            certificate_id, business_eligibility_certificate_id,
+            change_request_id, family_code, document_type_code, title,
+            variant_id, version_id, is_current,
+        ) in snapshot:
+            if document_id is None:
+                continue
             owners = {
                 key: value
                 for key, value in (
-                    ("case", row.case_id),
-                    ("capa_cycle", row.capa_cycle_id),
-                    ("certificate", row.certificate_id),
-                    ("business_eligibility_certificate", row.business_eligibility_certificate_id),
-                    ("change_request", row.change_request_id),
+                    ("case", case_id),
+                    ("capa_cycle", capa_cycle_id),
+                    ("certificate", certificate_id),
+                    ("business_eligibility_certificate", business_eligibility_certificate_id),
+                    ("change_request", change_request_id),
                 )
                 if value is not None
             }
@@ -667,51 +709,41 @@ class DocumentWorkflowService:
                     status_code=409,
                     detail="Document has ambiguous canonical business ownership.",
                 )
-
-        document_ids = [doc.id for doc in documents]
-        variants = (
-            list(session.scalars(select(DocumentVariant).where(
-                DocumentVariant.document_id.in_(document_ids)
-            )))
-            if document_ids else []
-        )
-        variant_document_id = {variant.id: variant.document_id for variant in variants}
-        versions = (
-            list(session.scalars(select(DocumentVersion).where(
-                DocumentVersion.document_variant_id.in_(variant_document_id)
-            )))
-            if variant_document_id else []
-        )
-        counts = {doc_id: [0, 0, 0] for doc_id in document_ids}
-        for variant in variants:
-            counts[variant.document_id][0] += 1
-        for version in versions:
-            document_id = variant_document_id[version.document_variant_id]
-            counts[document_id][1] += 1
-            if version.is_current:
-                counts[document_id][2] += 1
+            if document_id not in registered:
+                registered[document_id] = {
+                    "document_id": document_id,
+                    "family_code": family_code,
+                    "document_type_code": document_type_code,
+                    "title": title,
+                }
+                variant_ids[document_id] = set()
+                version_ids[document_id] = set()
+                current_version_ids[document_id] = set()
+            if variant_id is not None:
+                variant_ids[document_id].add(variant_id)
+            if version_id is not None:
+                version_ids[document_id].add(version_id)
+                if is_current:
+                    current_version_ids[document_id].add(version_id)
 
         return {
             "owner_kind": owner_kind,
             "owner_id": owner_id,
             "metadata_status": (
                 "registered_metadata_only_unverified"
-                if documents else "no_registered_document_metadata"
+                if registered else "no_registered_document_metadata"
             ),
-            # No file is opened, streamed, trusted, signed or storage-verified.
+            # Never promote registered metadata into signed or binary proof.
             "binary_verified": False,
             "original_signed_document_verified": False,
             "documents": [
                 {
-                    "document_id": doc.id,
-                    "family_code": doc.family_code,
-                    "document_type_code": doc.document_type_code,
-                    "title": doc.title,
-                    "registered_variant_count": counts[doc.id][0],
-                    "registered_version_count": counts[doc.id][1],
-                    "registered_current_version_count": counts[doc.id][2],
+                    **record,
+                    "registered_variant_count": len(variant_ids[document_id]),
+                    "registered_version_count": len(version_ids[document_id]),
+                    "registered_current_version_count": len(current_version_ids[document_id]),
                 }
-                for doc in documents
+                for document_id, record in registered.items()
             ],
         }
 

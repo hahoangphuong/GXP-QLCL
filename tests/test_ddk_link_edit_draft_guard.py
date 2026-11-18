@@ -158,3 +158,44 @@ def test_ddk_edit_rejects_uncommitted_link_graph_without_autoflush(seeded, dirty
         assert check.scalar(select(func.count(BusinessEligibilityCertificateLink.id))) == 1
         assert check.scalar(select(func.count(AuditEvent.id))) == 0
         assert check.scalar(select(func.count(Company.id))) == 1
+
+def test_ddk_version_edit_rejects_explicit_link_deletion(seeded):
+    engine, (ddk_id, version_id, link_id, gxp_id, case_id, line_id, token) = seeded
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        link = db.get(BusinessEligibilityCertificateLink, link_id)
+        db.delete(link)
+        unrelated = Company(legal_name="Pending unrelated Company")
+        db.add(unrelated)
+        sql, flushes = [], []
+
+        def observe(_conn, _cursor, statement, _params, _context, _many):
+            sql.append(statement.lstrip().split(None, 1)[0].upper())
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Deleted link draft was autoflushed")
+
+        event.listen(engine, "before_cursor_execute", observe)
+        event.listen(db, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                CaseWorkflowService().upsert_business_eligibility_latest_version(
+                    db, business_eligibility_certificate_id=ddk_id,
+                    expected_version=token, certificate_number="NOT-SAVED",
+                    issued_on=date(2026, 11, 2), expires_on=None,
+                    professional_responsible_person_name=None,
+                    notes=None, linked_certificates=[{"certificate_id": gxp_id}],
+                    reason="Deleted link draft", user=USER,
+                )
+        finally:
+            event.remove(engine, "before_cursor_execute", observe)
+            event.remove(db, "before_flush", forbid_flush)
+        assert exc.value.status_code == 409
+        assert "Business eligibility link has uncommitted changes" in str(exc.value.detail)
+        assert set(sql) <= {"SELECT"} and not flushes
+        assert link in db.deleted and unrelated in db.new
+        db.rollback()
+    with Session(engine) as check:
+        assert check.get(BusinessEligibilityCertificateLink, link_id) is not None
+        assert check.get(BusinessEligibilityVersion, version_id).certificate_number == "COMMITTED-DDK"
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0

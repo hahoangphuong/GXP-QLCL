@@ -6018,39 +6018,53 @@ class CaseWorkflowService:
         # resolving Site/Certificate identity, locking or writing audit.
         if CERTIFICATE_APPROVE_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.approve.")
-        certificate = self._get_certificate(session, certificate_id)
-        # The Site lock protects the single-current invariant. A cached
-        # Certificate can predate a committed reassignment to another Site.
-        # Refuse to lock/mutate against an outdated owner identity.
-        owner_site_id = session.scalar(
-            select(Certificate.site_id).where(Certificate.id == certificate_id)
-        )
-        if owner_site_id is None:
-            raise HTTPException(status_code=404, detail="Certificate not found.")
-        if certificate.site_id != owner_site_id:
-            raise HTTPException(status_code=409, detail="Certificate Site owner changed; reload canonical certificate.")
-        self._lock_site(session, owner_site_id)
-        session.refresh(certificate)
-        if certificate.site_id != owner_site_id:
-            raise HTTPException(status_code=409, detail="Certificate Site owner changed; reload canonical certificate.")
-        # Case transitions lock their own aggregate. A Site lock alone does
-        # not prevent a cancelled Case from being promoted via a cached identity.
-        # Keep the order Site -> Case, as in reassessment creation.
-        if certificate.case_id is not None:
-            try:
-                self._lock_case(session, certificate.case_id)
-            except HTTPException as exc:
-                if exc.status_code != 404:
-                    raise
-                # Preserve the existing malformed-certificate link contract.
-                raise HTTPException(
-                    status_code=409, detail="Certificate references an invalid linked Case."
-                ) from exc
-        self._assert_expected_version(certificate, expected_version, label="certificate")
-        candidate_version = self._load_latest_certificate_version(session, certificate.id)
-        # The Site owner lock refreshes the aggregate root, not an already-cached
-        # Version identity. Re-read committed version fields before promotion.
-        session.refresh(candidate_version)
+        # Reused operator Sessions may hold dirty Certificate, Site, Case or
+        # Version identities; reject before refresh/populate_existing or writes.
+        # Keep existing Site -> Case locking order and persisted-owner check.
+        with session.no_autoflush:
+            certificate = self._get_certificate(session, certificate_id)
+            # The Site lock protects the single-current invariant. A cached
+            # Certificate can predate a committed reassignment to another Site.
+            # Refuse to lock/mutate against an outdated owner identity.
+            owner_site_id = session.scalar(
+                select(Certificate.site_id).where(Certificate.id == certificate_id)
+            )
+            if owner_site_id is None:
+                raise HTTPException(status_code=404, detail="Certificate not found.")
+            if certificate.site_id != owner_site_id:
+                raise HTTPException(status_code=409, detail="Certificate Site owner changed; reload canonical certificate.")
+            if session.is_modified(certificate, include_collections=False):
+                raise HTTPException(status_code=409, detail="Certificate has uncommitted changes; resolve draft before promotion.")
+            owning_site = self._lock_site(session, owner_site_id)
+            if session.is_modified(owning_site, include_collections=False):
+                raise HTTPException(status_code=409, detail="Site has uncommitted changes; resolve draft before certificate promotion.")
+            session.refresh(certificate)
+            if certificate.site_id != owner_site_id:
+                raise HTTPException(status_code=409, detail="Certificate Site owner changed; reload canonical certificate.")
+            # Case transitions lock their own aggregate. A Site lock alone does
+            # not prevent a cancelled Case from being promoted via a cached identity.
+            # Keep the order Site -> Case, as in reassessment creation.
+            if certificate.case_id is not None:
+                cached_case = session.get(Case, certificate.case_id)
+                if cached_case is not None and session.is_modified(cached_case, include_collections=False):
+                    raise HTTPException(status_code=409, detail="Case has uncommitted changes; resolve draft before certificate promotion.")
+                try:
+                    self._lock_case(session, certificate.case_id)
+                except HTTPException as exc:
+                    if exc.status_code != 404:
+                        raise
+                    # Preserve the existing malformed-certificate link contract.
+                    raise HTTPException(
+                        status_code=409, detail="Certificate references an invalid linked Case."
+                    ) from exc
+            self._assert_expected_version(certificate, expected_version, label="certificate")
+            candidate_version = self._load_latest_certificate_version(session, certificate.id)
+            # A cached dirty Version must not be replaced by committed values.
+            if session.is_modified(candidate_version, include_collections=False):
+                raise HTTPException(status_code=409, detail="Certificate version has uncommitted changes; resolve draft before promotion.")
+            # The Site owner lock refreshes the aggregate root, not an already-cached
+            # Version identity. Re-read committed version fields before promotion.
+            session.refresh(candidate_version)
         blocker = self._get_certificate_promotion_blocker(
             session,
             certificate=certificate,

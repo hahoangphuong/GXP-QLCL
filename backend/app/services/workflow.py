@@ -5261,6 +5261,29 @@ class CaseWorkflowService:
             if row.case_id != parent.id:
                 raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
             self._assert_expected_version(row, expected_version, label="approval_submission")
+            # A completion flush also writes other pending/dirty PCT/CT rows.
+            # Do not persist a staged sibling round as an accidental side effect.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, InspectionApprovalSubmission)
+                    and pending.case_id == parent.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before completion.",
+                    )
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionApprovalSubmission):
+                    continue
+                original_cases = inspect(cached).attrs.case_id.history.deleted
+                if (
+                    (cached.case_id == parent.id or parent.id in original_cases)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before completion.",
+                    )
             # Completion will flush the whole Session, not just this round.
             # Protect append-only binding drafts that already belong to the
             # round or are being locally reparented into/out of it.

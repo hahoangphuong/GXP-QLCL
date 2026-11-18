@@ -185,12 +185,9 @@ def test_ddk_promotion_rejects_explicit_link_deletion(seeded, owner):
             event.remove(engine, "before_cursor_execute", observe)
             event.remove(db, "before_flush", forbid_flush)
         assert exc.value.status_code == 409
-        expected = (
-            "Business eligibility linked certificate has uncommitted changes"
-            if owner == "candidate"
-            else "Business eligibility link has uncommitted changes"
-        )
-        assert expected in str(exc.value.detail)
+        # Session.deleted is distinct from the existing scalar-dirty guard.
+        # Both candidate and peer deletions are admitted at this owner gate.
+        assert "Business eligibility link has uncommitted changes" in str(exc.value.detail)
         assert set(sql) <= {"SELECT"} and not flushes
         assert link in db.deleted and unrelated in db.new
         db.rollback()

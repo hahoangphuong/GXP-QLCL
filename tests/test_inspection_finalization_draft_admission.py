@@ -16,7 +16,7 @@ from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import (
-    AuditEvent, Case, Company, InspectionOutcome, Site,
+    AuditEvent, CapaCycle, Case, Company, InspectionOutcome, Site,
 )
 from backend.app.services.workflow import CaseWorkflowService
 
@@ -157,3 +157,62 @@ def test_clean_finalization_preserves_immutable_result_version_and_audit(seeded)
         assert same["final_evaluation"] == "Final evaluation"
         db.commit()
         assert db.scalar(select(func.count(AuditEvent.id))) == 1
+
+
+@pytest.mark.parametrize("dirty_round", ["latest", "historical"])
+def test_dirty_capa_draft_rejected_before_final_evaluation_or_latest_refresh(
+    seeded, dirty_round,
+):
+    engine, (case_id, outcome_id, version) = seeded
+    with Session(engine) as seed:
+        historical = CapaCycle(
+            case_id=case_id, round_no=1, status="rejected", result="rejected",
+        )
+        seed.add(historical)
+        seed.flush()
+        latest = CapaCycle(
+            case_id=case_id, round_no=2, status="accepted", result="accepted",
+        )
+        seed.add(latest)
+        seed.commit()
+        selected_id = latest.id if dirty_round == "latest" else historical.id
+
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        draft = db.get(CapaCycle, selected_id)
+        draft.notes = "Uncommitted operator CAPA notes"
+        pending = Company(legal_name="Unrelated pending Company")
+        db.add(pending)
+        statements, flushes, observe, fail = guard(engine, db)
+        try:
+            with pytest.raises(HTTPException) as error:
+                finalize(db, case_id, version)
+        finally:
+            unguard(engine, db, observe, fail)
+        assert error.value.status_code == 409
+        assert "CAPA cycle has uncommitted changes" in str(error.value.detail)
+        assert not flushes and set(statements) <= {"SELECT"}
+        assert draft in db.dirty and pending in db.new
+        assert draft.notes == "Uncommitted operator CAPA notes"
+        assert db.get(InspectionOutcome, outcome_id).final_evaluation is None
+        db.rollback()
+    with Session(engine) as verify:
+        assert verify.get(CapaCycle, selected_id).notes is None
+        assert verify.get(InspectionOutcome, outcome_id).final_evaluation is None
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+        assert verify.scalar(select(func.count(Company.id))) == 1
+
+
+def test_persisted_latest_accepted_capa_still_admits_finalization(seeded):
+    engine, (case_id, outcome_id, version) = seeded
+    with Session(engine) as db:
+        db.add(CapaCycle(
+            case_id=case_id, round_no=1, status="accepted", result="accepted",
+        ))
+        db.commit()
+    with Session(engine) as db:
+        response = finalize(db, case_id, version)
+        assert response["final_evaluation"] == "Final evaluation"
+        db.commit()
+    with Session(engine) as verify:
+        assert verify.get(InspectionOutcome, outcome_id).final_evaluation == "Final evaluation"
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 1

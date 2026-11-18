@@ -4050,6 +4050,19 @@ class CaseWorkflowService:
             self._assert_case_not_terminal(row, operation="CAPA create")
             self._assert_expected_version(row, expected_case_version, label="case")
             self._assert_case_allows_capa_request(row)
+            # Latest-round lookup refreshes the cached CapaCycle identity.
+            # Refuse a locally edited cycle before that refresh, including a
+            # rejected historical round from which a new round is allowed.
+            for cached in tuple(session.dirty):
+                if (
+                    isinstance(cached, CapaCycle)
+                    and cached.case_id == row.id
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before CAPA creation.",
+                    )
             self._assert_case_has_no_open_capa_cycle(session, row.id)
         actor = self._get_or_create_app_user(session, user)
         capa_cycle = CapaCycle(

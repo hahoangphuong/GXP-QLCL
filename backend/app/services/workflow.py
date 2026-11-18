@@ -6103,6 +6103,35 @@ class CaseWorkflowService:
                             status_code=409,
                             detail="Current certificate ProductionLine has uncommitted changes; resolve draft before promotion.",
                         )
+            # Promotion does not edit scope children, but its final flush would
+            # persist unrelated operator changes to scopes in this graph.
+            # Fence the candidate and all DB-current peer versions here.
+            affected_version_ids = {candidate_version.id}
+            for peer_id in current_peer_ids:
+                affected_version_ids.add(
+                    self._load_latest_certificate_version(session, peer_id).id
+                )
+            persisted_scope_ids = session.scalars(
+                select(CertificateScope.id).where(
+                    CertificateScope.certificate_version_id.in_(affected_version_ids)
+                )
+            ).all()
+            for scope_id in persisted_scope_ids:
+                scope = session.get(CertificateScope, scope_id)
+                if scope is not None and session.is_modified(scope, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
+                    )
+            if any(
+                isinstance(item, CertificateScope)
+                and item.certificate_version_id in affected_version_ids
+                for item in session.new
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
+                )
         blocker = self._get_certificate_promotion_blocker(
             session,
             certificate=certificate,

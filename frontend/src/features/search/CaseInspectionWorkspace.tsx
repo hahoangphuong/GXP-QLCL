@@ -690,7 +690,7 @@ function CaseInspectionEditor({
               {(finalDraftVersion !== undefined || submittedFinal !== null) ? <button disabled={finalFrozen} onClick={() => { if (finalFrozen) return; setFinalEvaluation(""); setFinalDraftVersion(undefined); setFinalizationError(null); }} type="button">Hủy nhập đánh giá</button> : null}
             </div>
           ) : null}
-          {!finalization.available && finalization.reason_code ? <p className="workspace-note">Không thể chốt: {finalization.reason_code}.</p> : null}
+          {!finalization.available && finalization.reason_code ? <p className="workspace-note">Không thể chốt: {caseReadinessReason(finalization.reason_code)}</p> : null}
           {finalizationError || finalLock.requiresReview ? <p className="form-error" role="alert">{finalizationError ?? "Chưa xác minh kết quả chốt. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
           {submittedFinal ? <p className="workspace-note" role="status">
             {finalLock.pending ? "Đang xác minh kết quả chốt." : "Kết quả chốt chưa được xác minh."}

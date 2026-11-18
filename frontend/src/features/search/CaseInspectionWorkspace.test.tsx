@@ -163,6 +163,30 @@ describe("final evaluation reconciliation and operator draft", () => {
     /> : null}</CaseDraftSession>;
   }
 
+  it("explains the canonical CAPA gate in operator language without enabling finalization", () => {
+    render(<CaseInspectionWorkspace
+      caseWorkspace={workspace({
+        outcome_row_version: 6,
+        final_evaluation: null,
+        final_evaluation_readiness: {
+          action_key: "finalize_inspection_outcome",
+          label: "Chốt đánh giá cuối cùng",
+          available: false,
+          expected_version: 6,
+          reason_code: "latest_capa_not_accepted",
+          required_permissions: ["inspection.edit"],
+        },
+      })}
+      onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()}
+      onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()}
+      onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()}
+      onTransitionCase={vi.fn()} onFinalizeInspectionOutcome={vi.fn()}
+    />);
+
+    expect(screen.getByText(/Vòng khắc phục gần nhất chưa được chấp nhận/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" })).toBeDisabled();
+  });
+
   it("holds the exact final assessment as copyable read-only after an unverified mutation, even after tab remount and readiness withdrawal", async () => {
     const onFinalize = vi.fn().mockRejectedValue(new CaseFieldMutationRecoveryError("Không đọc lại được kết quả chốt."));
     const view = render(editor(onFinalize));

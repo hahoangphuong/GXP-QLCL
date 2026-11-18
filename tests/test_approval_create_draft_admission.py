@@ -149,6 +149,53 @@ def test_rejected_ct_does_not_autoflush_pending_draft(seeded, kind):
         assert db.scalar(select(func.count(AuditEvent.id))) == 0
 
 
+
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+def test_dirty_historical_round_rejected_before_new_round_flush(seeded, stage):
+    engine, (case_id, _, pct_id) = seeded
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        cached = db.get(InspectionApprovalSubmission, pct_id)
+        cached.reference = "Uncommitted historical approval draft"
+        pending = Company(legal_name="Unrelated pending Company")
+        db.add(pending)
+        sql, flushes, sql_cb, flush_cb = attach_guards(engine, db)
+        try:
+            with pytest.raises(HTTPException) as error:
+                # For PCT the cached row is an older round; for CT it is
+                # the completed parent. Both must remain unmodified.
+                create(db, case_id, pct_id, stage=stage)
+        finally:
+            detach_guards(engine, db, sql_cb, flush_cb)
+        assert error.value.status_code == 409
+        assert not flushes and set(sql) <= {"SELECT"}
+        assert cached in db.dirty and pending in db.new
+        assert cached.reference == "Uncommitted historical approval draft"
+        db.rollback()
+    with Session(engine) as verify:
+        assert verify.get(InspectionApprovalSubmission, pct_id).reference == "Committed PCT"
+        assert verify.scalar(select(func.count(InspectionApprovalSubmission.id))) == 1
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 0
+        assert verify.scalar(select(func.count(Company.id))) == 1
+
+
+def test_clean_second_pct_round_still_allocates_and_audits(seeded):
+    engine, (case_id, _, pct_id) = seeded
+    with Session(engine) as db:
+        response = create(db, case_id, pct_id, stage="PCT")
+        assert response["stage"] == "PCT"
+        assert response["round_no"] == 2
+        db.commit()
+    with Session(engine) as verify:
+        rounds = list(verify.scalars(
+            select(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case_id)
+            .order_by(InspectionApprovalSubmission.round_no)
+        ))
+        assert [row.round_no for row in rounds] == [1, 2]
+        assert rounds[0].reference == "Committed PCT"
+        assert verify.scalar(select(func.count(AuditEvent.id))) == 1
+
+
 def test_clean_ct_creation_preserves_parent_identity_round_and_audit(seeded):
     engine, (case_id, _, pct_id) = seeded
     with Session(engine) as db:

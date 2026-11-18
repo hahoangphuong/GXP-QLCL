@@ -2816,7 +2816,7 @@ export function SearchPage({
         <div className="search-context-actions">
           {returnQueue && <Link className="text-link" target={reportReturn?.startsWith("/workflow?") ? "_blank" : undefined} rel={reportReturn?.startsWith("/workflow?") ? "noopener noreferrer" : undefined} to={reportReturn?.startsWith("/workflow?") && location.state?.caseReportCaseId === selectedHistoryId && new URLSearchParams(reportReturn.slice("/workflow?".length)).get("queue") === returnQueue ? reportReturn : `/workflow?queue=${returnQueue}`}>Quay lại hàng đợi</Link>}
           {reportReturn && location.state?.caseReportCaseId === selectedHistoryId && selectedHistory?.source_type === "case" && <Link className="text-link" to={reportReturn} target="_blank" rel="noopener noreferrer">Mở lại báo cáo hồ sơ (tab mới)</Link>}
-          {certificateReportReturn && location.state?.certificateReportCaseId === selectedHistoryId && selectedHistory?.source_type === "case" && <Link className="text-link" to={certificateReportReturn} target="_blank" rel="noopener noreferrer">Mở lại báo cáo GCN (tab mới)</Link>}
+          {certificateReportReturn && selectedFacilityTab === "Giấy chứng nhận GxP" && <Link className="text-link" to={certificateReportReturn} target="_blank" rel="noopener noreferrer">Mở lại báo cáo GCN (tab mới)</Link>}
           {selectedHistory?.source_type === "case" && <Link className="text-link" target="_blank" rel="noopener noreferrer" to={`/documents/cases/${encodeURIComponent(selectedHistory.id)}`}>Mở danh mục tài liệu (tab mới)</Link>}
           <ActionCard
             actions={workspaceLoading || workspaceError || deepLinkError || !selectedResult

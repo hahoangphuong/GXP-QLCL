@@ -16,7 +16,7 @@ from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import (
-    AuditEvent, Case, Company, InspectionApprovalSubmission, Site,
+    AuditEvent, Case, Company, InspectionApprovalDocumentLink, InspectionApprovalSubmission, Site,
 )
 from backend.app.services.workflow import CaseWorkflowService
 
@@ -193,3 +193,99 @@ def test_clean_completion_preserves_timeline_version_and_audit(seeded):
         assert persisted.completed_on == date(2026, 11, 16)
         assert persisted.row_version == version + 1
         assert verify.scalar(select(func.count(AuditEvent.id))) == 1
+
+
+@pytest.mark.parametrize("pending_link", [True, False])
+def test_completion_rejects_same_round_link_draft_without_flush(seeded, pending_link):
+    """Completing PCT must not persist an unrelated round-document draft."""
+    engine, (submission_id, _, other_case_id, version) = seeded
+    with Session(engine) as seed:
+        other = InspectionApprovalSubmission(
+            case_id=other_case_id, stage="PCT", round_no=1,
+        )
+        seed.add(other)
+        seed.flush()
+        link = InspectionApprovalDocumentLink(
+            approval_submission_id=(
+                submission_id if pending_link else other.id
+            ),
+            document_id=str(uuid4()),
+        )
+        if not pending_link:
+            seed.add(link)
+        seed.commit()
+        link_id = None if pending_link else link.id
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        if pending_link:
+            cached = InspectionApprovalDocumentLink(
+                approval_submission_id=submission_id, document_id=str(uuid4()),
+            )
+            db.add(cached)
+        else:
+            cached = db.get(InspectionApprovalDocumentLink, link_id)
+            cached.approval_submission_id = submission_id
+        statements, flushes, sql_fn, flush_fn = spy(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                complete(db, submission_id, version)
+        finally:
+            unspy(engine, db, sql_fn, flush_fn)
+        assert exc.value.status_code == 409
+        assert "Approval document link has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(statements) <= {"SELECT"}
+        assert cached in (db.new if pending_link else db.dirty)
+        db.rollback()
+    with Session(engine) as check:
+        assert check.get(InspectionApprovalSubmission, submission_id).completed_on is None
+        assert check.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == (
+            0 if pending_link else 1
+        )
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0
+
+
+@pytest.mark.parametrize("sibling_kind", ["pending", "dirty", "incoming_reparent"])
+def test_completion_rejects_same_case_sibling_round_draft(seeded, sibling_kind):
+    """Completing one PCT must not silently persist drafts for another round."""
+    engine, (submission_id, case_id, other_case_id, version) = seeded
+    if sibling_kind != "pending":
+        with Session(engine) as seed:
+            sibling = InspectionApprovalSubmission(
+                case_id=other_case_id if sibling_kind == "incoming_reparent" else case_id,
+                stage="PCT", round_no=2, reference="Committed sibling",
+            )
+            seed.add(sibling)
+            seed.commit()
+            sibling_id = sibling.id
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        if sibling_kind == "pending":
+            cached = InspectionApprovalSubmission(
+                case_id=case_id, stage="PCT", round_no=2,
+                reference="Uncommitted sibling",
+            )
+            db.add(cached)
+        else:
+            cached = db.get(InspectionApprovalSubmission, sibling_id)
+            if sibling_kind == "dirty":
+                cached.reference = "Uncommitted sibling reference"
+            else:
+                cached.case_id = case_id
+        sql, flushes, sql_fn, flush_fn = spy(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                complete(db, submission_id, version)
+        finally:
+            unspy(engine, db, sql_fn, flush_fn)
+        assert exc.value.status_code == 409
+        assert "Approval submission has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(sql) <= {"SELECT"}
+        assert cached in (db.new if sibling_kind == "pending" else db.dirty)
+        db.rollback()
+    with Session(engine) as check:
+        assert check.get(InspectionApprovalSubmission, submission_id).completed_on is None
+        if sibling_kind != "pending":
+            persisted = check.get(InspectionApprovalSubmission, sibling_id)
+            assert persisted.reference == "Committed sibling"
+            assert persisted.case_id == (
+                other_case_id if sibling_kind == "incoming_reparent" else case_id
+            )
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0

@@ -263,3 +263,83 @@ def test_clean_binding_remains_append_only_with_one_audit(seeded):
     with Session(engine) as check:
         assert check.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 1
         assert check.scalar(select(func.count(AuditEvent.id))) == 1
+
+
+def test_pending_link_for_same_round_other_document_rejected_without_flush(seeded):
+    """Binding a new document must not silently insert another link for this round."""
+    engine, (approval_id, document_id, _, version) = seeded
+    with Session(engine) as seed:
+        approval = seed.get(InspectionApprovalSubmission, approval_id)
+        another = Document(
+            case_id=approval.case_id, family_code="INSPECTION_PT_PCT",
+            document_type_code="INSPECTION_PT_PCT", title="Another PCT document",
+        )
+        seed.add(another)
+        seed.commit()
+        another_id = another.id
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        pending_link = InspectionApprovalDocumentLink(
+            approval_submission_id=approval_id, document_id=another_id,
+        )
+        db.add(pending_link)
+        sql, flushes, sql_fn, flush_fn = observe(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                bind(db, approval_id, document_id, version)
+        finally:
+            release(engine, db, sql_fn, flush_fn)
+        assert exc.value.status_code == 409
+        assert "Approval document link has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(sql) <= {"SELECT"}
+        assert pending_link in db.new
+        db.rollback()
+    with Session(engine) as check:
+        assert check.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 0
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0
+
+
+@pytest.mark.parametrize("reparent_into_target", [False, True])
+def test_dirty_link_of_same_round_rejected_without_flush(seeded, reparent_into_target):
+    """A different link in the same round is an owner draft, including incoming reparent."""
+    engine, (approval_id, document_id, other_case_id, version) = seeded
+    with Session(engine) as seed:
+        current = seed.get(InspectionApprovalSubmission, approval_id)
+        owner_id = other_case_id if reparent_into_target else current.case_id
+        other_submission = InspectionApprovalSubmission(
+            case_id=other_case_id, stage="PCT", round_no=1,
+        )
+        other_document = Document(
+            case_id=owner_id, family_code="INSPECTION_PT_PCT",
+            document_type_code="INSPECTION_PT_PCT", title="Existing other link",
+        )
+        seed.add_all((other_submission, other_document))
+        seed.flush()
+        link = InspectionApprovalDocumentLink(
+            approval_submission_id=(
+                other_submission.id if reparent_into_target else approval_id
+            ),
+            document_id=other_document.id,
+        )
+        seed.add(link)
+        seed.commit()
+        link_id = link.id
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        cached = db.get(InspectionApprovalDocumentLink, link_id)
+        if reparent_into_target:
+            cached.approval_submission_id = approval_id
+        else:
+            cached.document_id = str(uuid4())
+        sql, flushes, sql_fn, flush_fn = observe(engine, db)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                bind(db, approval_id, document_id, version)
+        finally:
+            release(engine, db, sql_fn, flush_fn)
+        assert exc.value.status_code == 409
+        assert "Approval document link has uncommitted changes" in str(exc.value.detail)
+        assert not flushes and set(sql) <= {"SELECT"}
+        assert cached in db.dirty
+        db.rollback()
+    with Session(engine) as check:
+        assert check.scalar(select(func.count(InspectionApprovalDocumentLink.id))) == 1
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0

@@ -6209,6 +6209,13 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Business eligibility Site/Company owner changed; reload canonical Site.",
                 )
+            # Preserve committed-owner SELECT/lock admission, then reject
+            # any remaining unsaved Site draft before actor or INSERT flush.
+            if session.is_modified(site, include_collections=False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility Site has uncommitted changes; resolve draft before issuance.",
+                )
         actor = self._get_or_create_app_user(session, user)
 
         row, version, created_links = self._create_business_eligibility_candidate(

@@ -6065,6 +6065,44 @@ class CaseWorkflowService:
             # The Site owner lock refreshes the aggregate root, not an already-cached
             # Version identity. Re-read committed version fields before promotion.
             session.refresh(candidate_version)
+            # The blocker and the demotion both load DB-current peers with
+            # populate_existing=True, and inspect peer Version, Case and Line.
+            # Reject cached operator drafts before any of those refreshes.
+            current_peer_ids = session.scalars(
+                select(Certificate.id).where(
+                    self._certificate_context_clause(session, certificate),
+                    Certificate.latest_flag.is_(True),
+                )
+            ).all()
+            for peer_id in current_peer_ids:
+                peer = session.get(Certificate, peer_id)
+                if peer is None:
+                    continue
+                if session.is_modified(peer, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Current certificate has uncommitted changes; resolve draft before promotion.",
+                    )
+                peer_version = self._load_latest_certificate_version(session, peer_id)
+                if session.is_modified(peer_version, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Current certificate version has uncommitted changes; resolve draft before promotion.",
+                    )
+                if peer.case_id is not None:
+                    peer_case = session.get(Case, peer.case_id)
+                    if peer_case is not None and session.is_modified(peer_case, include_collections=False):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Current certificate Case has uncommitted changes; resolve draft before promotion.",
+                        )
+                if peer.production_line_id is not None:
+                    peer_line = session.get(ProductionLine, peer.production_line_id)
+                    if peer_line is not None and session.is_modified(peer_line, include_collections=False):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Current certificate ProductionLine has uncommitted changes; resolve draft before promotion.",
+                        )
         blocker = self._get_certificate_promotion_blocker(
             session,
             certificate=certificate,

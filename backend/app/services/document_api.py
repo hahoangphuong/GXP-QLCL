@@ -1217,6 +1217,27 @@ class DocumentWorkflowService:
         expected_parent_id: str,
         expected_case_id: str | None = None,
     ) -> DocumentBinaryLocator:
+        # This GET may run in a reused Session with unsaved operator drafts.
+        # A read must neither flush those drafts nor replace ORM identity
+        # values by populate_existing. The private owner reads scalar rows.
+        with session.no_autoflush:
+            return self._read_current_document_binary_locator_for_parent(
+                session,
+                document_id=document_id,
+                expected_parent_scope=expected_parent_scope,
+                expected_parent_id=expected_parent_id,
+                expected_case_id=expected_case_id,
+            )
+
+    def _read_current_document_binary_locator_for_parent(
+        self,
+        session: Session,
+        *,
+        document_id: str,
+        expected_parent_scope: DocumentBinaryParentScope,
+        expected_parent_id: str,
+        expected_case_id: str | None = None,
+    ) -> DocumentBinaryLocator:
         # Binary access must never derive exclusive ownership from a cached
         # ORM object. Select scalar FK values under a shared row lock: unlike
         # populate_existing on a versioned entity, this also avoids leaking
@@ -1260,28 +1281,57 @@ class DocumentWorkflowService:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found for requested case.")
             if session.scalar(select(Case.id).where(Case.id == expected_case_id)) is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
-        variants = list(
-            session.scalars(
-                select(DocumentVariant)
-                .where(DocumentVariant.document_id == row.id)
-                .order_by(DocumentVariant.id)
-                .with_for_update(read=True)
-                .execution_options(populate_existing=True)
-            )
-        )
-        # Lock every variant, including retired ones, so concurrent status
-        # changes cannot alter the eligible set during binary verification.
-        # Only active variants may supply the current binary.
-        active_variants = [variant for variant in variants if variant.is_active]
-        versions = [
-            version
-            for variant in active_variants
-            for version in session.scalars(
-                select(DocumentVersion)
-                .where(DocumentVersion.document_variant_id == variant.id)
-                .execution_options(populate_existing=True)
-            )
+        # Read the committed variant/version snapshot into scalar values.
+        # Refreshing ORM entities here silently discards local drafts.
+        # A shared lock on every variant fences active/retired transitions;
+        # lock the versions too, so current/locator fields remain stable
+        # through selection and checksum-backed binary opening.
+        variants = session.execute(
+            select(DocumentVariant.id, DocumentVariant.is_active)
+            .where(DocumentVariant.document_id == row.id)
+            .order_by(DocumentVariant.id)
+            .with_for_update(read=True)
+        ).all()
+        active_variant_ids = [
+            variant_id for variant_id, is_active in variants if is_active
         ]
+        versions = [
+            SimpleNamespace(**dict(version))
+            for version in session.execute(
+                select(
+                    DocumentVersion.id,
+                    DocumentVersion.document_variant_id,
+                    DocumentVersion.version_no,
+                    DocumentVersion.is_current,
+                    DocumentVersion.storage_root,
+                    DocumentVersion.storage_relative_path,
+                    DocumentVersion.original_filename,
+                    DocumentVersion.checksum_sha256,
+                    DocumentVersion.issued_on,
+                    DocumentVersion.created_at,
+                )
+                .where(DocumentVersion.document_variant_id.in_(active_variant_ids))
+                .with_for_update(read=True)
+            ).mappings()
+        ] if active_variant_ids else []
+        # Preserve the existing clean-identity freshness contract used by
+        # finalization readers: a caller that cached a clean Version before
+        # another writer's commit should observe the new committed fields.
+        # Crucially, never refresh a locally modified variant/version; those
+        # values are an operator draft and must remain recoverable.
+        variant_ids = {variant_id for variant_id, _ in variants}
+        version_ids = {version.id for version in versions}
+        for cached in tuple(session.identity_map.values()):
+            if (
+                isinstance(cached, DocumentVariant)
+                and cached.id in variant_ids
+                and not session.is_modified(cached, include_collections=False)
+            ) or (
+                isinstance(cached, DocumentVersion)
+                and cached.id in version_ids
+                and not session.is_modified(cached, include_collections=False)
+            ):
+                session.refresh(cached)
         document_version = self._pick_current_document_version(versions)
         if document_version is None:
             raise HTTPException(status_code=409, detail="Document does not have a current binary version.")
@@ -1307,7 +1357,7 @@ class DocumentWorkflowService:
         )
 
     @staticmethod
-    def _pick_current_document_version(versions: list[DocumentVersion]) -> DocumentVersion | None:
+    def _pick_current_document_version(versions: list[Any]) -> Any | None:
         current_versions = [row for row in versions if row.is_current]
         if not current_versions:
             return None

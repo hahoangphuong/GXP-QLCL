@@ -122,7 +122,7 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   }
   return <section className="workspace-section inspection-period-section" data-case-period tabIndex={-1} aria-label="Khu vực các đợt kiểm tra">
     <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || frozen || editing} onClick={() => { setDraftVersion(readiness?.expected_version ?? null); setEditing(true); setErrorMessage(null); }} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
-    {!readiness?.available && readiness?.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
+    {!readiness?.available && readiness?.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {caseReadinessReason(readiness.reason_code)}</p> : null}
     {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={formatInspectionPeriods(segments)} /> : <div className="inspection-period-editor">
       {segments.map((segment, index) => <div className="inspection-team-edit-row" key={segment.ordinal}>
         <span>Lần {index + 1}</span><input aria-label={`Từ ngày lần ${index + 1}`} disabled={pending || commandLock.pending} readOnly={commandLock.requiresReview} onChange={(event) => { if (frozen) return; setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, started_on: event.target.value } : item)); }} type="date" value={segment.started_on} />
@@ -439,7 +439,7 @@ function InspectionTeamSection({
         <strong>{member.display_name ?? "Định danh chưa resolve"}</strong><span>{member.role_code ?? member.role_label ?? "Chưa có vai trò"}</span>
         {member.identity_status === "unresolved" ? <span className="form-error">Không thể round-trip định danh này.</span> : null}
       </div>)}
-      {!readiness.available && readiness.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
+      {!readiness.available && readiness.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {caseReadinessReason(readiness.reason_code)}</p> : null}
       {errorMessage || commandLock.requiresReview ? <p className="form-error" role="alert">{errorMessage ?? "Chưa xác minh kết quả lưu. Không gửi lại; tải lại hồ sơ để kiểm tra."}</p> : null}
       {editing ? <div className="inspection-team-editor">
         <p className="workspace-note">Lưu sẽ thay toàn bộ danh sách từ dữ liệu có cấu trúc này. Mô tả legacy chỉ đọc, không được dùng để tạo thành viên.</p>

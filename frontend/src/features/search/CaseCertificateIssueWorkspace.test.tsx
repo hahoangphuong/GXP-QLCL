@@ -302,7 +302,7 @@ describe("CaseCertificateIssueWorkspace", () => {
 
     renderWorkspace(vi.fn(), readiness(false));
     expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
-    expect(screen.getByText("case_not_eligible")).toBeInTheDocument();
+    expect(screen.getByText(/case_not_eligible/)).toBeInTheDocument();
   });
 
   it("uses the backend type read-only, starts with no scopes, and submits only case-backed data", async () => {

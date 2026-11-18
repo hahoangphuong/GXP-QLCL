@@ -33,6 +33,8 @@ describe("CaseInspectionWorkspace inspection team editor", () => {
   it("does not enable edit without backend readiness or construct members from legacy text", () => {
     render(<CaseInspectionWorkspace caseWorkspace={workspace({ team: null, team_edit_readiness: { action_key: "edit_inspection_team", label: "Sửa đoàn kiểm tra", available: false, reason_code: "structured_read_unavailable", required_permissions: ["inspection.edit"], expected_version: null, mode: null } })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeDisabled();
+    expect(screen.getByText(/Dữ liệu đoàn kiểm tra chưa ở dạng cấu trúc/)).toBeVisible();
+    expect(screen.getByText(/structured_read_unavailable/)).toBeVisible();
     expect(screen.queryByLabelText("Định danh thành viên 1")).not.toBeInTheDocument();
   });
 
@@ -119,6 +121,7 @@ describe("CaseInspectionWorkspace canonical period editor", () => {
   it.each(["MISSING", "PENDING_INPUT", "NON_DATE_EXPRESSION", "UNRESOLVED"])("fails closed for source-owned %s periods", (state) => {
     render(<CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: 6, inspection_period_state: state, inspection_period_edit_readiness: { action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", available: false, reason_code: "source_owned_period_state", required_permissions: ["inspection.edit"], expected_version: 6, mode: null } })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" })).toBeDisabled();
+    expect(screen.getByText(/Dữ liệu các đợt kiểm tra đang do nguồn legacy quản lý/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Sửa Từ ngày kiểm tra" })).not.toBeInTheDocument();
   });
 

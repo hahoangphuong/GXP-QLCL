@@ -16,6 +16,7 @@ import type {
 import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
 import { CapaCycleComparison } from "./CapaCycleComparison";
+import { caseReadinessReason } from "./caseReadinessReason";
 
 type SubmittedCapaCommand =
   | { kind: "create"; caseId: string; request: CapaCycleCreateRequest }
@@ -138,9 +139,9 @@ function getSelectedCycle(
   return cycles.find((cycle) => cycle.capa_cycle_id === selectedCycleId) ?? cycles.at(-1) ?? null;
 }
 
-function isActionAvailable(caseWorkspace: CaseWorkspace, actionKey: string, cycleId?: string | null): boolean {
+function actionReadiness(caseWorkspace: CaseWorkspace, actionKey: string, cycleId?: string | null) {
   const expectedKey = cycleId ? `${actionKey}:${cycleId}` : actionKey;
-  return (caseWorkspace.remediation.actions ?? []).some((action) => action.action_key === expectedKey && action.available);
+  return (caseWorkspace.remediation.actions ?? []).find((action) => action.action_key === expectedKey);
 }
 
 export function CaseRemediationWorkspace({
@@ -246,12 +247,20 @@ export function CaseRemediationWorkspace({
     return (!session || session.isLive()) && cycleOperationOwner.current === owner;
   }
 
-  const createAvailable = isActionAvailable(caseWorkspace, "create_capa_cycle");
+  const createReadiness = actionReadiness(caseWorkspace, "create_capa_cycle");
+  const createAvailable = createReadiness?.available === true;
   const latestCycle = cycles.at(-1) ?? null;
   const rejectedLatestCycle = latestCycle?.status === "rejected" ? latestCycle : null;
-  const updateAvailable = isActionAvailable(caseWorkspace, "update_capa_cycle", selectedCycle?.capa_cycle_id);
-  const submitAvailable = isActionAvailable(caseWorkspace, "submit_capa_cycle", selectedCycle?.capa_cycle_id);
-  const assessAvailable = isActionAvailable(caseWorkspace, "assess_capa_cycle", selectedCycle?.capa_cycle_id);
+  const updateReadiness = actionReadiness(caseWorkspace, "update_capa_cycle", selectedCycle?.capa_cycle_id);
+  const submitReadiness = actionReadiness(caseWorkspace, "submit_capa_cycle", selectedCycle?.capa_cycle_id);
+  const assessReadiness = actionReadiness(caseWorkspace, "assess_capa_cycle", selectedCycle?.capa_cycle_id);
+  const updateAvailable = updateReadiness?.available === true;
+  const submitAvailable = submitReadiness?.available === true;
+  const assessAvailable = assessReadiness?.available === true;
+  const readinessBlockers = [
+    createReadiness,
+    ...(selectedCycle ? [updateReadiness, submitReadiness, assessReadiness] : []),
+  ].filter((action): action is NonNullable<typeof action> => Boolean(action && !action.available && action.reason_code));
   const hasOpenEditor = isCreating || editingField !== null;
   const isPending = pendingAction !== null;
   const isCommandBlocked = isPending || commandLock.pending || commandLock.requiresReview || createLock.pending || createLock.requiresReview;
@@ -433,6 +442,10 @@ export function CaseRemediationWorkspace({
           ) : null}
         </div>
         {rejectedLatestCycle ? <p className="workspace-note" role="status">Vòng khắc phục {rejectedLatestCycle.round_no} không được chấp nhận. Có thể chỉnh sửa và gửi lại vòng này nếu được phép, hoặc tạo vòng tiếp theo khi backend cho phép. Chưa được chuyển hồ sơ sang quyết định cấp GCN.</p> : null}
+        {readinessBlockers.length ? <section aria-label="Điều kiện thao tác khắc phục" className="workspace-note">
+          <strong>Điều kiện thao tác khắc phục</strong>
+          <ul>{readinessBlockers.map((action) => <li key={action.action_key}><strong>{action.label}:</strong> {caseReadinessReason(action.reason_code!)}</li>)}</ul>
+        </section> : null}
         {cycles.length > 0 ? (
           <div className="table-scroll table-scroll-history">
             <table className="dense-table capa-cycle-table">

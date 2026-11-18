@@ -17,8 +17,19 @@ const REASONS: Record<string, string> = {
   already_current: "Chứng nhận này đã là bản hiện hành.",
   candidate_issue_date_precedes_current: "Ngày cấp của chứng nhận dự kiến không được sớm hơn chứng nhận hiện hành.",
   site_company_owner_mismatch: "Dữ liệu Công ty hoặc Cơ sở đã thay đổi. Tải lại Cơ sở để kiểm tra dữ liệu canonical trước khi thao tác.",
+  structured_read_unavailable: "Dữ liệu đoàn kiểm tra chưa ở dạng cấu trúc để chỉnh sửa an toàn.",
+  source_owned_period_state: "Dữ liệu các đợt kiểm tra đang do nguồn legacy quản lý; chưa thể chỉnh sửa an toàn.",
+  legacy_period_state_unclassified: "Chưa phân loại được trạng thái legacy của các đợt kiểm tra; chưa thể chỉnh sửa an toàn.",
+  final_evaluation_missing: "Cần ghi nhận đánh giá cuối cùng trước khi thực hiện thao tác này.",
+  nonissuance_already_recorded: "Hồ sơ đã có quyết định không cấp được ghi nhận.",
+  linked_certificate_exists: "Hồ sơ đã liên kết với giấy chứng nhận; không thể ghi nhận quyết định không cấp.",
+  no_eligible_documents: "Chưa có tài liệu phù hợp để liên kết.",
+  readiness_unavailable: "Backend chưa cung cấp trạng thái sẵn sàng cho thao tác này.",
 };
 
 export function caseReadinessReason(code: string): string {
-  return Object.prototype.hasOwnProperty.call(REASONS, code) ? `${REASONS[code]} (${code})` : code;
+  const message = Object.prototype.hasOwnProperty.call(REASONS, code)
+    ? REASONS[code]
+    : "Backend chưa có diễn giải cho điều kiện này.";
+  return `${message} (${code})`;
 }

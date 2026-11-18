@@ -194,8 +194,9 @@ def test_locator_rechecks_committed_version_after_cached_identity(tmp_path):
                 expected_parent_scope="case", expected_parent_id=case_id,
             )
             assert locator.storage_relative_path == "synthetic/updated.docx"
-            # A locator GET does not need to change caller's cached ORM identity.
-            assert version.storage_relative_path == "synthetic/owner.docx"
+            # The established clean-cache contract refreshes a version that
+            # has no local draft; dirty cached versions remain untouched.
+            assert version.storage_relative_path == "synthetic/updated.docx"
             cached.rollback()
     finally:
         engine.dispose()

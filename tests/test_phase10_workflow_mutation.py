@@ -2669,7 +2669,7 @@ def test_certificate_action_readiness_uses_the_same_promotion_blockers_as_mutati
         case_row = session.get(Case, case_id)
         assert case_row is not None
         case_row.state = CaseState.AWAITING_CERTIFICATE_DECISION
-        issued = service.issue_certificate(
+        # Certificate issuance requires a persisted Case owner, not a dirty draft.\n        session.commit()\n        issued = service.issue_certificate(
             session,
             site_id=case_row.site_id,
             case_id=case_id,
@@ -2764,7 +2764,7 @@ def test_certificate_latest_version_round_trips_structured_scopes_and_bumps_cert
         case = session.get(Case, case_id)
         assert case is not None
         case.state = CaseState.AWAITING_CERTIFICATE_DECISION
-        issued = service.issue_certificate(
+        # Certificate issuance requires a persisted Case owner, not a dirty draft.\n        session.commit()\n        issued = service.issue_certificate(
             session, site_id=case.site_id, case_id=case_id, certificate_type="GMP", issuance_basis="inspection_case",
             certificate_number="CERT-SCOPE", issue_date=date(2026, 8, 1), expiry_date=date(2027, 8, 1),
             scopes=[{"scope_key": "a", "scope_text": "A", "language_code": "vi", "sort_order": 2}, {"scope_key": "b", "scope_text": "B", "language_code": "en", "sort_order": 1}],

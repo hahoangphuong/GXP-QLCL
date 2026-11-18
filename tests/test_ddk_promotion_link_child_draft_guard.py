@@ -196,3 +196,73 @@ def test_ddk_promotion_rejects_explicit_link_deletion(seeded, owner):
         assert check.get(BusinessEligibilityCertificate, candidate_id).latest_flag is False
         assert check.get(BusinessEligibilityCertificate, peer_id).latest_flag is True
         assert check.scalar(select(func.count(AuditEvent.id))) == 0
+
+
+def test_ddk_promotion_rejects_locally_reparented_historical_link(seeded):
+    """Committed historical link moved locally into candidate is a collateral write.
+
+    The persisted owner is outside candidate/current-peer, while the dirty
+    local FK points to the candidate. No preflight should flush this draft.
+    """
+    engine, (candidate_id, peer_id, candidate_v, peer_v, _candidate_link_id, _peer_link_id, gxp_id, token) = seeded
+    with Session(engine) as db:
+        site_id = db.get(BusinessEligibilityCertificate, candidate_id).site_id
+        historical = BusinessEligibilityVersion(
+            business_eligibility_certificate_id=peer_id, version_no=0,
+            certificate_number="HISTORICAL-DDK", issued_on=date(2025, 1, 1),
+        )
+        other_gxp = Certificate(
+            site_id=site_id, certificate_type="GMP",
+            issuance_basis="administrative_no_inspection", latest_flag=False,
+        )
+        db.add_all([historical, other_gxp])
+        db.flush()
+        historical_link = BusinessEligibilityCertificateLink(
+            business_eligibility_version_id=historical.id,
+            certificate_id=other_gxp.id, link_role="source_certificate",
+        )
+        db.add(historical_link)
+        db.commit()
+        historical_link_id = historical_link.id
+        historical_version_id = historical.id
+
+    with Session(engine, autoflush=True, expire_on_commit=False) as db:
+        link = db.get(BusinessEligibilityCertificateLink, historical_link_id)
+        link.business_eligibility_version_id = candidate_v
+        unrelated = Company(legal_name="Unrelated pending Company")
+        db.add(unrelated)
+        sql, flushes = [], []
+
+        def observe(_conn, _cursor, statement, _params, _context, _many):
+            sql.append(statement.lstrip().split(None, 1)[0].upper())
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Reparented historical link must not be autoflushed")
+
+        event.listen(engine, "before_cursor_execute", observe)
+        event.listen(db, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                CaseWorkflowService().promote_business_eligibility_current(
+                    db, business_eligibility_certificate_id=candidate_id,
+                    expected_version=token, reason="Synthetic reparent admission",
+                    user=USER,
+                )
+        finally:
+            event.remove(engine, "before_cursor_execute", observe)
+            event.remove(db, "before_flush", forbid_flush)
+
+        assert exc.value.status_code == 409
+        assert "Business eligibility link has uncommitted changes" in str(exc.value.detail)
+        assert set(sql) <= {"SELECT"} and not flushes
+        assert link in db.dirty
+        assert link.business_eligibility_version_id == candidate_v
+        assert unrelated in db.new
+        db.rollback()
+
+    with Session(engine) as check:
+        assert check.get(BusinessEligibilityCertificateLink, historical_link_id).business_eligibility_version_id == historical_version_id
+        assert check.get(BusinessEligibilityCertificate, candidate_id).latest_flag is False
+        assert check.get(BusinessEligibilityCertificate, peer_id).latest_flag is True
+        assert check.scalar(select(func.count(AuditEvent.id))) == 0

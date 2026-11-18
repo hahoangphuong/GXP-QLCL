@@ -5941,6 +5941,30 @@ class CaseWorkflowService:
                 )
             # Refresh child version before capturing committed audit before-state.
             session.refresh(version)
+            # Replacing scopes deletes persisted children. Guard their cached
+            # dirty identities (and pending children of this Version) before
+            # any actor/audit mutation or the replacement's first flush.
+            scope_ids = session.scalars(
+                select(CertificateScope.id).where(
+                    CertificateScope.certificate_version_id == version.id
+                )
+            ).all()
+            for scope_id in scope_ids:
+                scope = session.get(CertificateScope, scope_id)
+                if scope is not None and session.is_modified(scope, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
+                    )
+            if any(
+                isinstance(item, CertificateScope)
+                and item.certificate_version_id == version.id
+                for item in session.new
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
+                )
         actor = self._get_or_create_app_user(session, user)
         before = {
             "certificate_number": version.certificate_number,
@@ -6414,6 +6438,55 @@ class CaseWorkflowService:
                     detail="Business eligibility version has uncommitted changes; resolve draft before editing.",
                 )
             session.refresh(version)
+            # The audit/replacement query refreshes and deletes persisted
+            # CertificateLink children. Never erase or flush their drafts.
+            persisted_link_ids = session.scalars(
+                select(BusinessEligibilityCertificateLink.id).where(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
+                )
+            ).all()
+            for link_id in persisted_link_ids:
+                link = session.get(BusinessEligibilityCertificateLink, link_id)
+                if link is not None and session.is_modified(link, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Business eligibility link has uncommitted changes; resolve draft before editing.",
+                    )
+            if any(
+                isinstance(item, BusinessEligibilityCertificateLink)
+                and item.business_eligibility_version_id == version.id
+                for item in session.new
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility link has uncommitted changes; resolve draft before editing.",
+                )
+            # The submitted linked GxP graph is refreshed by the replacement
+            # validator. Inspect cached canonical owners before any refresh.
+            for payload in linked_certificates:
+                linked_id = payload["certificate_id"]
+                linked = session.get(Certificate, linked_id)
+                if linked is None:
+                    continue  # Preserve the validator's canonical 404.
+                if session.is_modified(linked, include_collections=False):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Linked GxP certificate has uncommitted changes; resolve draft before editing.",
+                    )
+                if linked.case_id is not None:
+                    linked_case = session.get(Case, linked.case_id)
+                    if linked_case is not None and session.is_modified(linked_case, include_collections=False):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Linked GxP Case has uncommitted changes; resolve draft before editing.",
+                        )
+                if linked.production_line_id is not None:
+                    linked_line = session.get(ProductionLine, linked.production_line_id)
+                    if linked_line is not None and session.is_modified(linked_line, include_collections=False):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Linked GxP ProductionLine has uncommitted changes; resolve draft before editing.",
+                        )
         actor = self._get_or_create_app_user(session, user)
         before = {
             "certificate_number": version.certificate_number,

@@ -5965,6 +5965,17 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
                 )
+            # A child explicitly marked for deletion is also an operator draft.
+            # Do not let this unrelated mutation flush that DELETE.
+            if any(
+                isinstance(item, CertificateScope)
+                and item.certificate_version_id == version.id
+                for item in session.deleted
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
+                )
         actor = self._get_or_create_app_user(session, user)
         before = {
             "certificate_number": version.certificate_number,
@@ -6151,6 +6162,17 @@ class CaseWorkflowService:
                 isinstance(item, CertificateScope)
                 and item.certificate_version_id in affected_version_ids
                 for item in session.new
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
+                )
+            # A child explicitly marked for deletion is also an operator draft.
+            # Do not let this unrelated mutation flush that DELETE.
+            if any(
+                isinstance(item, CertificateScope)
+                and item.certificate_version_id in affected_version_ids
+                for item in session.deleted
             ):
                 raise HTTPException(
                     status_code=409,
@@ -6456,6 +6478,17 @@ class CaseWorkflowService:
                 isinstance(item, BusinessEligibilityCertificateLink)
                 and item.business_eligibility_version_id == version.id
                 for item in session.new
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Business eligibility link has uncommitted changes; resolve draft before editing.",
+                )
+            # A child explicitly marked for deletion is also an operator draft.
+            # Do not let this unrelated mutation flush that DELETE.
+            if any(
+                isinstance(item, BusinessEligibilityCertificateLink)
+                and item.business_eligibility_version_id == version.id
+                for item in session.deleted
             ):
                 raise HTTPException(
                     status_code=409,

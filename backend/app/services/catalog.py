@@ -2480,51 +2480,191 @@ class CatalogReadService:
         }
 
     def get_gxp_certificate_detail(self, session: Session, *, certificate_id: str):
-        certificate = session.get(Certificate, certificate_id)
-        if certificate is None:
-            raise HTTPException(status_code=404, detail="Certificate not found")
-        CaseWorkflowService._validate_certificate_linked_case(session, certificate)
-        site = self.get_site(session, certificate.site_id)
-        company = self.get_company(session, site.company_id)
-        versions = list(session.scalars(
-            select(CertificateVersion)
+        """Read one committed Certificate detail and its exact latest Scope owner.
+
+        Keep the API's existing projection while avoiding ORM autoflush, dirty
+        identity-map reuse, and mixed READ COMMITTED snapshots across root,
+        Case, Site/Company, canonical line, latest Version, Scope and inspection
+        timing. This is a read-only owner boundary, not version issuance proof.
+        """
+        last_inspection_event = (
+            select(func.max(InspectionEvent.occurred_at))
             .where(
-                CertificateVersion.certificate_id == certificate.id,
-                CertificateVersion.is_latest_version.is_(True),
+                InspectionEvent.case_id == Certificate.case_id,
+                InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED,
             )
-        ))
-        if not versions:
-            raise HTTPException(status_code=404, detail="Certificate latest version not found")
-        if len(versions) != 1:
-            raise HTTPException(status_code=409, detail="Certificate has ambiguous latest CertificateVersion identity.")
-        version = versions[0]
-        linked_case = None if certificate.case_id is None else session.get(Case, certificate.case_id)
-        scope_rows = list(
-            session.scalars(
-                select(CertificateScope)
-                .where(CertificateScope.certificate_version_id == version.id)
-                .order_by(CertificateScope.sort_order.asc(), CertificateScope.created_at.asc(), CertificateScope.id.asc())
-            )
+            .correlate(Certificate)
+            .scalar_subquery()
         )
-        inspected_on = None
-        if linked_case is not None:
-            outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == linked_case.id))
-            if outcome is not None:
-                inspected_on = outcome.inspected_to_on or outcome.inspected_on
-            if inspected_on is None:
-                latest_event = session.scalar(
-                    select(func.max(InspectionEvent.occurred_at)).where(
-                        InspectionEvent.case_id == linked_case.id,
-                        InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED,
-                    )
+        with session.no_autoflush:
+            snapshot = session.execute(
+                select(
+                    Certificate.id.label("cert_id"),
+                    Certificate.row_version.label("cert_row_version"),
+                    Certificate.site_id.label("cert_site_id"),
+                    Certificate.case_id.label("cert_case_id"),
+                    Certificate.certificate_type.label("cert_type"),
+                    Certificate.line_code.label("cert_line_code"),
+                    Certificate.issuance_basis.label("cert_issuance_basis"),
+                    Certificate.latest_flag.label("cert_latest_flag"),
+                    Certificate.production_line_id.label("cert_line_id"),
+                    Case.id.label("case_id"),
+                    Case.site_id.label("case_site_id"),
+                    Case.gxp_type.label("case_gxp_type"),
+                    Case.scope_code.label("case_scope_code"),
+                    Case.legacy_inspection_code.label("case_inspection_code"),
+                    Site.id.label("site_id"),
+                    Site.company_id.label("site_company_id"),
+                    Site.site_name.label("site_name"),
+                    Site.site_address.label("site_address"),
+                    Company.id.label("company_id"),
+                    Company.legal_name.label("company_legal_name"),
+                    Company.legal_address.label("company_legal_address"),
+                    ProductionLine.id.label("line_id"),
+                    ProductionLine.site_id.label("line_site_id"),
+                    ProductionLine.code.label("line_code"),
+                    CertificateVersion.id.label("version_id"),
+                    CertificateVersion.certificate_number.label("version_number"),
+                    CertificateVersion.issue_date.label("version_issue_date"),
+                    CertificateVersion.expiry_date.label("version_expiry_date"),
+                    CertificateVersion.applicable_standard.label("version_standard"),
+                    CertificateVersion.issuing_authority.label("version_authority"),
+                    CertificateScope.id.label("scope_id"),
+                    CertificateScope.scope_key,
+                    CertificateScope.scope_text,
+                    CertificateScope.language_code,
+                    CertificateScope.sort_order,
+                    CertificateScope.created_at.label("scope_created_at"),
+                    InspectionOutcome.inspected_on.label("outcome_inspected_on"),
+                    InspectionOutcome.inspected_to_on.label("outcome_inspected_to_on"),
+                    last_inspection_event.label("event_inspected_at"),
                 )
-                if latest_event is not None:
-                    inspected_on = latest_event.date()
+                .select_from(Certificate)
+                .outerjoin(Case, Case.id == Certificate.case_id)
+                .outerjoin(Site, Site.id == Certificate.site_id)
+                .outerjoin(Company, Company.id == Site.company_id)
+                .outerjoin(
+                    ProductionLine, ProductionLine.id == Certificate.production_line_id,
+                )
+                .outerjoin(
+                    CertificateVersion,
+                    and_(
+                        CertificateVersion.certificate_id == Certificate.id,
+                        CertificateVersion.is_latest_version.is_(True),
+                    ),
+                )
+                .outerjoin(
+                    CertificateScope,
+                    CertificateScope.certificate_version_id == CertificateVersion.id,
+                )
+                .outerjoin(
+                    InspectionOutcome, InspectionOutcome.case_id == Certificate.case_id,
+                )
+                .where(Certificate.id == certificate_id)
+                .order_by(
+                    CertificateVersion.id.asc(),
+                    CertificateScope.sort_order.asc(),
+                    CertificateScope.created_at.asc(),
+                    CertificateScope.id.asc(),
+                )
+            ).mappings().all()
+
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Certificate not found")
+        root = snapshot[0]
+        if root["cert_case_id"] is not None and (
+            root["case_id"] != root["cert_case_id"]
+            or root["case_site_id"] != root["cert_site_id"]
+            or root["case_gxp_type"] != root["cert_type"]
+        ):
+            raise HTTPException(
+                status_code=409, detail="Certificate references an invalid linked Case.",
+            )
+        if root["cert_line_id"] is not None:
+            if root["line_id"] != root["cert_line_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Canonical ProductionLine reference is missing.",
+                )
+            if root["line_site_id"] != root["cert_site_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Canonical ProductionLine reference belongs to a different site.",
+                )
+        if root["site_id"] is None:
+            raise HTTPException(status_code=404, detail="Site not found")
+        if root["company_id"] is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        current_version_ids = {
+            row["version_id"] for row in snapshot if row["version_id"] is not None
+        }
+        if not current_version_ids:
+            raise HTTPException(status_code=404, detail="Certificate latest version not found")
+        if len(current_version_ids) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Certificate has ambiguous latest CertificateVersion identity.",
+            )
+        certificate = SimpleNamespace(
+            id=root["cert_id"],
+            row_version=root["cert_row_version"],
+            site_id=root["cert_site_id"],
+            case_id=root["cert_case_id"],
+            certificate_type=root["cert_type"],
+            line_code=root["cert_line_code"],
+            issuance_basis=root["cert_issuance_basis"],
+            latest_flag=root["cert_latest_flag"],
+            production_line_id=root["cert_line_id"],
+        )
+        linked_case = (
+            SimpleNamespace(
+                id=root["case_id"],
+                gxp_type=root["case_gxp_type"],
+                scope_code=root["case_scope_code"],
+                legacy_inspection_code=root["case_inspection_code"],
+            )
+            if root["case_id"] is not None else None
+        )
+        site = SimpleNamespace(
+            id=root["site_id"],
+            company_id=root["site_company_id"],
+            site_name=root["site_name"],
+            site_address=root["site_address"],
+        )
+        company = SimpleNamespace(
+            id=root["company_id"],
+            legal_name=root["company_legal_name"],
+            legal_address=root["company_legal_address"],
+        )
+        version = SimpleNamespace(
+            certificate_number=root["version_number"],
+            issue_date=root["version_issue_date"],
+            expiry_date=root["version_expiry_date"],
+            applicable_standard=root["version_standard"],
+            issuing_authority=root["version_authority"],
+        )
+        scope_rows = [
+            SimpleNamespace(
+                id=row["scope_id"],
+                scope_key=row["scope_key"],
+                scope_text=row["scope_text"],
+                language_code=row["language_code"],
+                sort_order=row["sort_order"],
+                created_at=row["scope_created_at"],
+            )
+            for row in snapshot if row["scope_id"] is not None
+        ]
+        inspected_on = root["outcome_inspected_to_on"] or root["outcome_inspected_on"]
+        if inspected_on is None and root["event_inspected_at"] is not None:
+            inspected_on = root["event_inspected_at"].date()
+
+        scope_summary = self._build_certificate_scope_summary(scope_rows)
         context = CertificateContextRow(
             certificate=certificate,
             version=version,
             line_code=self._certificate_line_code(certificate, linked_case),
-            scope_summary=self._build_certificate_scope_summary(scope_rows),
+            scope_summary=scope_summary,
         )
         payload = self._serialize_gxp_certificate_detail(
             certificate=certificate,
@@ -2532,13 +2672,23 @@ class CatalogReadService:
             linked_case=linked_case,
             site=site,
             company=company,
-            scope_summary=context.scope_summary,
+            scope_summary=scope_summary,
             scope_rows=scope_rows,
             inspected_on=inspected_on,
         )
-        lines = {row.id: row for row in session.scalars(select(ProductionLine).where(ProductionLine.site_id == site.id))}
+        lines = (
+            {
+                root["line_id"]: SimpleNamespace(
+                    id=root["line_id"],
+                    site_id=root["line_site_id"],
+                    code=root["line_code"],
+                )
+            }
+            if root["line_id"] is not None else {}
+        )
         production_line_id, production_line_code, identity_state = self._line_identity(
-            site_id=certificate.site_id, production_line_id=certificate.production_line_id,
+            site_id=certificate.site_id,
+            production_line_id=certificate.production_line_id,
             raw_line_code=context.line_code,
             lines=lines,
         )

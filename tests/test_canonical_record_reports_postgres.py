@@ -865,3 +865,132 @@ def test_facility_workspace_case_and_line_or_event_use_atomic_pg_snapshot(linked
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+@pytest.mark.parametrize("tamper", ["site", "gxp_type"])
+def test_workspace_detects_invalid_certificate_case_link_committed_after_quarantine_preflight(tamper):
+    """A concurrent owner change cannot escape workspace historical quarantine preflight."""
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import Case
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "workspace_late_corrupt_owner_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Owner integrity company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Owner integrity site")
+            unrelated = Site(company_id=company.id, site_name="Other site")
+            seed.add_all([site, unrelated])
+            seed.flush()
+            case = Case(
+                site_id=site.id, gxp_type="GMP", state=CaseState.CERTIFIED,
+                legacy_inspection_code="INTEGRITY-CASE",
+            )
+            seed.add(case)
+            seed.flush()
+            cert = Certificate(
+                site_id=site.id, case_id=case.id,
+                certificate_type="GMP", latest_flag=True,
+                issuance_basis="inspection_case",
+            )
+            seed.add(cert)
+            seed.flush()
+            seed.add(CertificateVersion(
+                certificate_id=cert.id, version_no=1,
+                certificate_number="CASE-LINK-VALID-BEFORE",
+                is_latest_version=True,
+            ))
+            seed.commit()
+            site_id, other_site_id, case_id, cert_id = (
+                site.id, unrelated.id, case.id, cert.id,
+            )
+
+        committed = []
+        with Session(engine) as reader:
+            def mutate_after_quarantine_preflight(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                old_preflight = (
+                    "from certificate left outer join" in sql
+                    and "case_legacy_id" in sql
+                    and "cert_legacy_id" in sql
+                )
+                # SQLAlchemy binds literal("certificate_owner") as a
+                # parameter, so its value is NOT text in str(statement).
+                # The stable final-source subquery alias identifies the
+                # combined statement without inspecting a bound value.
+                final_snapshot = (
+                    "facility_workspace_atomic_read" in sql
+                    and "from certificate" in sql
+                )
+                if not committed and (old_preflight or final_snapshot):
+                    # RED: writer after old separate preflight, before final SQL.
+                    # GREEN: there is no separate preflight; writer commits
+                    # before the single atomic source statement executes.
+                    result = (
+                        None if final_snapshot
+                        else orm_execute_state.invoke_statement()
+                    )
+                    with Session(engine) as writer:
+                        values = (
+                            {"site_id": other_site_id}
+                            if tamper == "site"
+                            else {"gxp_type": "GLP"}
+                        )
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(**values)
+                        )
+                        writer.commit()
+                    committed.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if final_snapshot else result
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", mutate_after_quarantine_preflight, retval=True)
+            try:
+                with pytest.raises(HTTPException) as exc:
+                    CatalogReadService().get_facility_workspace(
+                        reader, site_id=site_id, gxp_type="GMP",
+                        line_code=None, production_line_id=None,
+                    )
+                assert exc.value.status_code == 409
+                assert "linked Case" in str(exc.value.detail)
+            finally:
+                event.remove(reader, "do_orm_execute", mutate_after_quarantine_preflight)
+            assert committed, "writer never committed at the workspace snapshot boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(Case.site_id).where(Case.id == case_id)
+            ) == (other_site_id if tamper == "site" else site_id)
+            assert verify.scalar(
+                select(Case.gxp_type).where(Case.id == case_id)
+            ) == ("GLP" if tamper == "gxp_type" else "GMP")
+            assert verify.scalar(
+                select(Certificate.case_id).where(Certificate.id == cert_id)
+            ) == case_id
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

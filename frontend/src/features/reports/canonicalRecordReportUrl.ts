@@ -24,7 +24,9 @@ export function parseCanonicalRecordReportUrl(
   const names = kind === "certificates"
     ? ["gxp_type", "expiry_days", "number", "q", "offset"]
     : ["state", "q", "offset"];
+  const routeKeys = returnQueue ? ["queue"] : ["report"];
   const unique = names.every(name => params.getAll(name).length <= 1);
+  const known = [...params.keys()].every(name => [...names, ...routeKeys].includes(name));
   const filters = {
     ...EMPTY_CANONICAL_RECORD_REPORT_FILTERS,
     expiry_days: expiryDefault,
@@ -43,7 +45,7 @@ export function parseCanonicalRecordReportUrl(
     ? kind === "change_requests" && params.getAll("queue").length === 1
       && params.get("queue") === returnQueue && !params.has("report")
     : params.getAll("report").length === 1 && params.get("report") === kind && !params.has("queue");
-  const valid = unique && routeValid && /^(0|[1-9]\d*)$/.test(rawOffset)
+  const valid = unique && known && routeValid && /^(0|[1-9]\d*)$/.test(rawOffset)
     && Number.isSafeInteger(offset) && offset % 100 === 0
     && ["", "GMP", "GLP", "GMPbb", "GSP", "GDP"].includes(filters.gxp_type)
     && ["", "30", "60", "90"].includes(filters.expiry_days)

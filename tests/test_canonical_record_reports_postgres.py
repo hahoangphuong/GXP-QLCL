@@ -190,8 +190,8 @@ def test_certificate_report_count_and_page_share_one_postgres_statement_snapshot
         admin.dispose()
 
 
-@pytest.mark.parametrize("export", [False, True])
-def test_certificate_report_detects_latest_conflict_committed_after_preflight(export):
+@pytest.mark.parametrize("export,offset", [(False, 0), (False, 2), (True, 0)])
+def test_certificate_report_detects_latest_conflict_committed_after_preflight(export, offset):
     """Conflicts committed between preflight and row snapshot fail closed."""
     from sqlalchemy import event, func, select
 
@@ -249,7 +249,7 @@ def test_certificate_report_detects_latest_conflict_committed_after_preflight(ex
                 with pytest.raises(HTTPException) as exc:
                     CatalogReadService().get_certificate_report(
                         reader, gxp_type="GMP", q=None, expiry_days=None,
-                        export=export, offset=0, limit=1,
+                        export=export, offset=offset, limit=1,
                     )
                 assert exc.value.status_code == 409
                 assert "latest" in str(exc.value.detail).lower()

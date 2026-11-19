@@ -321,3 +321,132 @@ def test_history_version_and_scopes_share_single_joined_snapshot(tmp_path):
             assert [s["scope_key"] for s in data["versions"][1]["scopes"]] == ["old-vi", "old-en"]
     finally:
         engine.dispose()
+
+
+def test_history_root_case_and_line_are_one_committed_snapshot_without_autoflush(tmp_path):
+    """Stale/dirty Certificate, Case and ProductionLine cannot override persisted owners."""
+    from sqlalchemy import event
+
+    engine, _, cert_id, case_id, (_old_id, current_id) = _seed(tmp_path)
+    try:
+        with Session(engine) as seed:
+            cert = seed.get(Certificate, cert_id)
+            canonical_line = ProductionLine(
+                site_id=cert.site_id, code="HISTORY-LINE",
+                effective_from=date(2021, 1, 1),
+            )
+            seed.add(canonical_line)
+            seed.flush()
+            cert.production_line_id = canonical_line.id
+            seed.commit()
+            line_id = canonical_line.id
+
+        with Session(engine, autoflush=True, expire_on_commit=False) as reader:
+            cached_root = reader.get(Certificate, cert_id)
+            cached_case = reader.get(Case, case_id)
+            cached_line = reader.get(ProductionLine, line_id)
+            cached_root.latest_flag = False
+            cached_root.certificate_type = "GSP"
+            cached_case.gxp_type = "GSP"
+            cached_line.code = "UNSAVED-LINE"
+            pending = Company(legal_name="Unrelated unsaved Company")
+            reader.add(pending)
+            statements, flushes = [], []
+
+            def on_sql(_conn, _cursor, sql, _params, _context, _many):
+                statements.append(sql.lstrip().split(None, 1)[0].upper())
+                if len(statements) > 1:
+                    raise AssertionError("Certificate history split across SQL snapshots")
+
+            def on_flush(*_):
+                flushes.append(True)
+                raise AssertionError("Certificate history flushed operator drafts")
+
+            event.listen(engine, "before_cursor_execute", on_sql)
+            event.listen(reader, "before_flush", on_flush)
+            try:
+                history = CatalogReadService().get_gxp_certificate_version_history(
+                    reader, certificate_id=cert_id,
+                )
+            finally:
+                event.remove(engine, "before_cursor_execute", on_sql)
+                event.remove(reader, "before_flush", on_flush)
+
+            assert statements == ["SELECT"]
+            assert flushes == []
+            assert history["certificate_type"] == "GMP"
+            assert history["aggregate_latest_flag"] is True
+            assert history["case_id"] == case_id
+            assert history["latest_version_id"] == current_id
+            assert cached_root.certificate_type == "GSP"
+            assert cached_root.latest_flag is False
+            assert cached_case.gxp_type == "GSP"
+            assert cached_line.code == "UNSAVED-LINE"
+            assert cached_root in reader.dirty
+            assert cached_case in reader.dirty
+            assert cached_line in reader.dirty
+            assert pending in reader.new
+            reader.rollback()
+        with Session(engine) as verify:
+            assert verify.get(Certificate, cert_id).certificate_type == "GMP"
+            assert verify.get(Certificate, cert_id).latest_flag is True
+            assert verify.get(Case, case_id).gxp_type == "GMP"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("corruption", ["case_site", "case_type", "line_site"])
+def test_history_fails_closed_on_committed_root_link_corruption_with_cached_owner(
+    tmp_path, corruption,
+):
+    from sqlalchemy import update
+
+    engine, _, cert_id, case_id, _versions = _seed(tmp_path)
+    try:
+        with Session(engine) as seed:
+            cert = seed.get(Certificate, cert_id)
+            foreign_site = seed.scalar(select(Site).where(Site.id != cert.site_id))
+            if corruption == "line_site":
+                line = ProductionLine(
+                    site_id=cert.site_id, code="VALID-FIRST",
+                    effective_from=date(2021, 1, 1),
+                )
+                seed.add(line)
+                seed.flush()
+                cert.production_line_id = line.id
+                line_id = line.id
+            else:
+                line_id = None
+            seed.commit()
+        with Session(engine, autoflush=False, expire_on_commit=False) as reader:
+            cached_cert = reader.get(Certificate, cert_id)
+            cached_case = reader.get(Case, case_id)
+            cached_line = reader.get(ProductionLine, line_id) if line_id else None
+            with Session(engine) as writer:
+                if corruption == "case_site":
+                    writer.execute(
+                        update(Case).where(Case.id == case_id).values(site_id=foreign_site.id)
+                    )
+                elif corruption == "case_type":
+                    writer.execute(
+                        update(Case).where(Case.id == case_id).values(gxp_type="GLP")
+                    )
+                else:
+                    writer.execute(
+                        update(ProductionLine).where(ProductionLine.id == line_id)
+                        .values(site_id=foreign_site.id)
+                    )
+                writer.commit()
+
+            with pytest.raises(HTTPException) as denied:
+                CatalogReadService().get_gxp_certificate_version_history(
+                    reader, certificate_id=cert_id,
+                )
+            assert denied.value.status_code == 409
+            assert cached_cert.id == cert_id
+            assert cached_case.site_id != foreign_site.id if corruption == "case_site" else True
+            assert cached_line.site_id != foreign_site.id if corruption == "line_site" else True
+            assert not reader.new and not reader.dirty
+            reader.rollback()
+    finally:
+        engine.dispose()

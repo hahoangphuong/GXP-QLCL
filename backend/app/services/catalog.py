@@ -2410,17 +2410,10 @@ class CatalogReadService:
                 )
             )
 
-            def persisted_rows(model, *, where):
-                return [
-                    SimpleNamespace(**row)
-                    for row in session.execute(
-                        select(*model.__table__.columns).where(where)
-                    ).mappings().all()
-                ]
-
-            # Read Site/Company/Case, ChangeRequest and GCN/Version/Scope
-            # from ONE PostgreSQL statement snapshot. The separate source
-            # branches avoid the multiplicative Case x CR x Scope join fanout.
+            # Read Site/Company/Case, ChangeRequest, GCN/Version/Scope,
+            # ProductionLine and aggregated inspection-event dates from ONE
+            # SQL statement snapshot. Independent branches avoid Cartesian
+            # Case x CR x Scope x event fanout and preserve owner grain.
             # CAST(NULL AS field_type) preserves Postgres UNION column types
             # (including UUID/enum/date) even when the first branch is empty.
             snapshots = {
@@ -2431,18 +2424,33 @@ class CatalogReadService:
                 "cert": tuple(Certificate.__table__.columns),
                 "version": tuple(CertificateVersion.__table__.columns),
                 "scope": tuple(CertificateScope.__table__.columns),
+                "line": tuple(ProductionLine.__table__.columns),
+                # Only these two columns are needed for the historical
+                # latest-event-date aggregate, not the full event register.
+                "event": (
+                    InspectionEvent.__table__.c.case_id,
+                    InspectionEvent.__table__.c.occurred_at,
+                ),
             }
             cert_columns = snapshots["cert"]
             version_columns = snapshots["version"]
             scope_columns = snapshots["scope"]
 
-            def tagged_columns(*present):
+            def tagged_columns(*present, aggregate_event_dates=False):
+                def project(kind, column):
+                    label = f"{kind}_{column.name}"
+                    if kind not in present:
+                        return cast(literal(None), column.type).label(label)
+                    if (
+                        aggregate_event_dates
+                        and kind == "event"
+                        and column.name == "occurred_at"
+                    ):
+                        return func.max(column).label(label)
+                    return column.label(label)
+
                 return [
-                    (
-                        column.label(f"{kind}_{column.name}")
-                        if kind in present
-                        else cast(literal(None), column.type).label(f"{kind}_{column.name}")
-                    )
+                    project(kind, column)
                     for kind, columns in snapshots.items()
                     for column in columns
                 ]
@@ -2482,9 +2490,27 @@ class CatalogReadService:
                     Certificate.id.not_in(quarantined_ids),
                 )
             )
-            combined = union_all(owner_stmt, change_stmt, certificate_stmt).subquery(
-                "facility_workspace_atomic_read"
+            line_stmt = (
+                select(literal("line").label("source_kind"), *tagged_columns("line"))
+                .select_from(ProductionLine)
+                .where(ProductionLine.site_id == site_id)
             )
+            event_stmt = (
+                select(
+                    literal("event").label("source_kind"),
+                    *tagged_columns("event", aggregate_event_dates=True),
+                )
+                .select_from(InspectionEvent)
+                .where(
+                    InspectionEvent.case_id.in_(
+                        select(Case.id).where(Case.site_id == site_id)
+                    )
+                )
+                .group_by(InspectionEvent.case_id)
+            )
+            combined = union_all(
+                owner_stmt, change_stmt, certificate_stmt, line_stmt, event_stmt
+            ).subquery("facility_workspace_atomic_read")
             persisted = session.execute(
                 select(*combined.c).order_by(
                     combined.c.source_kind,
@@ -2529,9 +2555,11 @@ class CatalogReadService:
             ]
             normalized_line_code = self._normalize_line_code(line_code)
             lines = {
-                row.id: row for row in persisted_rows(
-                    ProductionLine, where=ProductionLine.site_id == site_id,
-                )
+                row["line_id"]: SimpleNamespace(**{
+                    column.name: row["line_" + column.name]
+                    for column in snapshots["line"]
+                })
+                for row in persisted if row["source_kind"] == "line"
             }
             selected_line_id, selected_line_code, identity_state = self._line_identity(
                 site_id=site_id, production_line_id=production_line_id,
@@ -2567,20 +2595,13 @@ class CatalogReadService:
                     and self._normalize_line_code(row.scope_code) is None
                 ]
 
-            case_ids = [item.id for item in site_cases]
-            event_dates = {}
-            if case_ids:
-                rows = session.execute(
-                    select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
-                    .where(InspectionEvent.case_id.in_(case_ids))
-                    .group_by(InspectionEvent.case_id)
-                ).all()
-                event_dates = {
-                    case_id: occurred_at.date() if occurred_at is not None else None
-                    for case_id, occurred_at in rows
-                }
-            # cert_pairs and change_requests were obtained from the same
-            # tagged UNION statement as Site/Company/Case above.
+            event_dates = {
+                row["event_case_id"]: row["event_occurred_at"].date()
+                if row["event_occurred_at"] is not None else None
+                for row in persisted if row["source_kind"] == "event"
+            }
+            # All report inputs (including line and last event date) were
+            # projected from the same tagged statement as Site/Company/Case.
             # Scope fanout yields multiple rows for one valid latest Version.
             # Only distinct latest Version identities for the *same* current
             # Certificate are ambiguous; never reject repeated scope rows.

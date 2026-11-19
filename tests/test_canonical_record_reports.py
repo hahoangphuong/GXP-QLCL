@@ -384,3 +384,95 @@ def test_change_report_uses_committed_rows_without_flushing_operator_drafts(sess
     finally:
         event.remove(session, "before_flush", prohibit_flush)
         session.rollback()
+
+
+def test_dashboard_queue_reads_committed_case_site_company_and_line_without_flush(session):
+    from sqlalchemy import event, inspect, select
+    from backend.app.db.models.phase1 import ProductionLine
+
+    site = session.scalar(select(Site).limit(1))
+    company = session.get(Company, site.company_id)
+    line = ProductionLine(site_id=site.id, code="PERSISTED-LINE", effective_from=date(2026, 1, 1))
+    session.add(line)
+    session.flush()
+    linked_case = Case(
+        site_id=site.id, production_line_id=line.id, gxp_type="GMP",
+        state=CaseState.DRAFT, opened_year=2026, legacy_inspection_code="PERSISTED-CASE",
+    )
+    session.add(linked_case)
+    session.commit()
+    service = CatalogReadService()
+    baseline = service.get_dashboard_summary(session, queue_limit=10)
+    expected = next(row for row in baseline["queue"] if row["case_id"] == linked_case.id)
+
+    linked_case.state = CaseState.CLOSED
+    linked_case.gxp_type = "GLP"
+    linked_case.scope_code = "DRAFT-SCOPE"
+    site.site_name = "DRAFT-SITE"
+    company.legal_name = "DRAFT-COMPANY"
+    line.code = "DRAFT-LINE"
+    pending_company = Company(legal_name="PENDING-COMPANY")
+    session.add(pending_company)
+    flush_calls = []
+
+    def prohibit_flush(_session, _context, _instances):
+        flush_calls.append(True)
+        raise AssertionError("Dashboard read flushed operator drafts")
+
+    event.listen(session, "before_flush", prohibit_flush)
+    try:
+        result = service.get_dashboard_summary(session, queue_limit=10)
+        displayed = next(row for row in result["queue"] if row["case_id"] == linked_case.id)
+        assert displayed == expected
+        assert result["total_cases"] == baseline["total_cases"]
+        assert result["total_facilities"] == baseline["total_facilities"]
+        assert result["active_cases"] == baseline["active_cases"]
+        assert not flush_calls
+        assert linked_case in session.dirty
+        assert site in session.dirty
+        assert company in session.dirty
+        assert line in session.dirty
+        assert inspect(pending_company).pending
+        assert linked_case.state == CaseState.CLOSED
+        assert line.code == "DRAFT-LINE"
+    finally:
+        event.remove(session, "before_flush", prohibit_flush)
+        session.rollback()
+
+
+def test_dashboard_rejects_persisted_reparented_canonical_line_despite_cached_owner(session):
+    from sqlalchemy import select, update
+    from backend.app.db.models.phase1 import ProductionLine
+
+    site = session.scalar(select(Site).limit(1))
+    second_site = Site(company_id=site.company_id, site_name="Other site")
+    session.add(second_site)
+    line = ProductionLine(site_id=site.id, code="LINE-OWNER", effective_from=date(2026, 1, 1))
+    session.add(line)
+    session.flush()
+    linked_case = Case(
+        site_id=site.id, production_line_id=line.id, gxp_type="GMP",
+        state=CaseState.DRAFT, opened_year=2026,
+    )
+    session.add(linked_case)
+    session.commit()
+    assert any(
+        row["case_id"] == linked_case.id
+        for row in CatalogReadService().get_dashboard_summary(session, queue_limit=10)["queue"]
+    )
+
+    assert line.site_id == site.id  # Materialize the old owner into the identity map.
+    # SQL DML bypasses the cached ProductionLine and changes persisted values
+    # visible within this transaction while its ORM identity remains stale.
+    session.execute(
+        update(ProductionLine)
+        .where(ProductionLine.id == line.id)
+        .values(site_id=second_site.id)
+        .execution_options(synchronize_session=False)
+    )
+    assert line.site_id == site.id
+    with pytest.raises(HTTPException) as exc:
+        CatalogReadService().get_dashboard_summary(session, queue_limit=10)
+    assert exc.value.status_code == 409
+    assert "ProductionLine" in str(exc.value.detail)
+    session.rollback()

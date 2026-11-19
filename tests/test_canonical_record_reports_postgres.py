@@ -105,3 +105,86 @@ def test_canonical_record_reports_disposable_postgres():
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_certificate_report_count_and_page_share_one_postgres_statement_snapshot():
+    """A concurrent committed insert may not split page rows from their count."""
+    from sqlalchemy import event, func, select
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "report_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as setup:
+            company = Company(legal_name="Snapshot company")
+            setup.add(company)
+            setup.flush()
+            site = Site(company_id=company.id, site_name="Snapshot site")
+            setup.add(site)
+            setup.flush()
+            first = Certificate(site_id=site.id, certificate_type="GMP", latest_flag=True)
+            setup.add(first)
+            setup.flush()
+            setup.add(CertificateVersion(
+                certificate_id=first.id, version_no=1, is_latest_version=True,
+                certificate_number="BEFORE-SNAPSHOT",
+            ))
+            setup.commit()
+            site_id, first_id = site.id, first.id
+
+        injected = []
+        with Session(engine) as reader:
+            def insert_after_count(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                # Skip latest-version conflict preflight, which has HAVING.
+                # The legacy independent COUNT statement executes before the
+                # page SELECT, while the fixed statement contains both count
+                # and page and is already executing against one PG snapshot.
+                if not injected and "count(" in sql and "from certificate" in sql and "having" not in sql:
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        second = Certificate(
+                            site_id=site_id, certificate_type="GMP", latest_flag=True,
+                        )
+                        writer.add(second)
+                        writer.flush()
+                        writer.add(CertificateVersion(
+                            certificate_id=second.id, version_no=1,
+                            is_latest_version=True, certificate_number="AFTER-SNAPSHOT",
+                        ))
+                        writer.commit()
+                    injected.append(True)
+                    return result
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", insert_after_count, retval=True)
+            try:
+                report = CatalogReadService().get_certificate_report(
+                    reader, gxp_type="GMP", q=None, expiry_days=None,
+                    export=False, offset=0, limit=20,
+                )
+            finally:
+                event.remove(reader, "do_orm_execute", insert_after_count)
+            assert injected, "writer must commit immediately after the count SQL begins"
+            assert report["total_count"] == 1
+            assert [item["certificate_id"] for item in report["items"]] == [first_id]
+        with Session(engine) as verify:
+            assert verify.scalar(select(func.count()).select_from(Certificate)) == 2
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

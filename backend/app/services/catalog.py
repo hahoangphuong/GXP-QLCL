@@ -7,7 +7,7 @@ from functools import lru_cache
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import String, and_, cast, func, literal, or_, select, true
 from sqlalchemy.orm import Session
 
 from backend.app.auth import AuthenticatedUser
@@ -1751,15 +1751,32 @@ class CatalogReadService:
                     raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
                 total, limit = len(rows), 10000
             else:
-                total = session.scalar(
+                # COUNT and page must share the SAME PostgreSQL READ COMMITTED
+                # statement snapshot. A separate COUNT followed by a page
+                # SELECT could include a concurrent committed Certificate in
+                # the page while retaining the old count. A one-row anchor
+                # preserves total_count when the requested page is empty.
+                page = ordered.offset(offset).limit(limit).subquery("report_page")
+                count_at_page_snapshot = (
                     select(func.count())
                     .select_from(Certificate)
                     .join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id)
                     .join(Site, Site.id == Certificate.site_id)
                     .join(Company, Company.id == Site.company_id)
                     .where(*conditions)
-                ) or 0
-                rows = session.execute(ordered.offset(offset).limit(limit)).mappings().all()
+                    .scalar_subquery()
+                )
+                anchor = select(literal(1).label("anchor")).subquery("report_anchor")
+                counted_rows = session.execute(
+                    select(
+                        *page.c,
+                        count_at_page_snapshot.label("report_total_count"),
+                    )
+                    .select_from(anchor.outerjoin(page, true()))
+                    .order_by(page.c.certificate_id, page.c.version_id)
+                ).mappings().all()
+                total = counted_rows[0]["report_total_count"] if counted_rows else 0
+                rows = [row for row in counted_rows if row["certificate_id"] is not None]
 
         items = []
         for row in rows:

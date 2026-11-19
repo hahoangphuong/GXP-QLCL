@@ -1597,99 +1597,201 @@ class CatalogReadService:
 
     def get_certificate_report(
         self, session: Session, *, gxp_type: str | None, q: str | None,
-        expiry_days: int | None, export: bool, offset: int, limit: int, number: str | None = None,
+        expiry_days: int | None, export: bool, offset: int, limit: int,
+        number: str | None = None,
     ) -> dict[str, object]:
-        """One current Certificate and its explicitly current version per row."""
+        """One committed current Certificate and Version projection per report row.
+
+        Filter predicates and output fields must come from persisted values,
+        never dirty ORM identities. This read-only report cannot flush pending
+        operator drafts. Canonical integrity/quarantine remains owner-controlled.
+        """
         if expiry_days is not None and expiry_days not in (30, 60, 90):
             raise HTTPException(status_code=422, detail="Unsupported certificate expiry window.")
         if gxp_type is not None and gxp_type not in ("GMP", "GLP", "GMPbb", "GSP", "GDP"):
             raise HTTPException(status_code=422, detail="Invalid certificate GxP type.")
-        # Validate all Certificate→Case links before report filters/pagination.
-        # Only the three independently witnessed legacy source mismatches are
-        # quarantined from read projections; all other invalid links remain 409.
-        quarantined_ids, quarantined_legacy_ids = (
-            self._quarantined_historical_search_certificates(session)
-        )
-        conditions = [
-            Certificate.latest_flag.is_(True),
-            CertificateVersion.is_latest_version.is_(True),
-            Certificate.id.not_in(quarantined_ids),
-        ]
-        if gxp_type:
-            conditions.append(Certificate.certificate_type == gxp_type)
-        if q:
-            term = f"%{q}%"
-            conditions.append(or_(
-                Site.site_name.ilike(term), Company.legal_name.ilike(term),
-                CertificateVersion.certificate_number.ilike(term),
-            ))
-        if number:
-            conditions.append(CertificateVersion.certificate_number.ilike(f"%{number}%"))
-        if expiry_days is not None:
-            today = date.today()
-            conditions.extend((
-                CertificateVersion.expiry_date.is_not(None),
-                CertificateVersion.expiry_date >= today,
-                CertificateVersion.expiry_date <= today + timedelta(days=expiry_days),
-            ))
-        source = (
-            select(Certificate, CertificateVersion, Site, Company, ProductionLine)
-            .join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id)
-            .join(Site, Site.id == Certificate.site_id)
-            .join(Company, Company.id == Site.company_id)
-            .outerjoin(ProductionLine, ProductionLine.id == Certificate.production_line_id)
-            .where(*conditions)
-        )
-        # The flags are authoritative, but inconsistent data must not produce
-        # multiple report rows for the same Certificate.
-        matching = select(Certificate.id).join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id).join(Site, Site.id == Certificate.site_id).join(Company, Company.id == Site.company_id).where(*conditions)
-        conflicts = session.scalar(select(func.count()).select_from(
-            select(CertificateVersion.certificate_id).where(CertificateVersion.is_latest_version.is_(True),
-                CertificateVersion.certificate_id.in_(matching)).group_by(CertificateVersion.certificate_id)
-                .having(func.count() > 1).subquery())) or 0
-        if conflicts:
-            raise HTTPException(status_code=409, detail="Certificate has conflicting latest versions.")
-        if export:
-            if offset != 0:
-                raise HTTPException(status_code=422, detail="Export offset must be zero.")
-            rows = session.execute(source.order_by(Certificate.id, CertificateVersion.id).limit(10001)).all()
-            if len(rows) > 10000:
-                raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
-            total, limit = len(rows), 10000
-        else:
-            total = session.scalar(
-                select(func.count()).select_from(Certificate)
+        if export and offset != 0:
+            raise HTTPException(status_code=422, detail="Export offset must be zero.")
+
+        with session.no_autoflush:
+            # Preflight all linked Case owners before filters/pagination. The
+            # three independently witnessed legacy exceptions are quarantine
+            # only, never repaired or silently accepted.
+            quarantined_ids, quarantined_legacy_ids = (
+                self._quarantined_historical_search_certificates(session)
+            )
+            conditions = [
+                Certificate.latest_flag.is_(True),
+                CertificateVersion.is_latest_version.is_(True),
+                Certificate.id.not_in(quarantined_ids),
+            ]
+            if gxp_type:
+                conditions.append(Certificate.certificate_type == gxp_type)
+            if q:
+                term = f"%{q}%"
+                conditions.append(or_(
+                    Site.site_name.ilike(term),
+                    Company.legal_name.ilike(term),
+                    CertificateVersion.certificate_number.ilike(term),
+                ))
+            if number:
+                conditions.append(CertificateVersion.certificate_number.ilike(f"%{number}%"))
+            if expiry_days is not None:
+                today = date.today()
+                conditions.extend((
+                    CertificateVersion.expiry_date.is_not(None),
+                    CertificateVersion.expiry_date >= today,
+                    CertificateVersion.expiry_date <= today + timedelta(days=expiry_days),
+                ))
+
+            source = (
+                select(
+                    Certificate.id.label("certificate_id"),
+                    Certificate.site_id.label("root_site_id"),
+                    Certificate.case_id.label("root_case_id"),
+                    Certificate.production_line_id.label("root_line_id"),
+                    Certificate.certificate_type.label("root_type"),
+                    Certificate.line_code.label("root_line_code"),
+                    Certificate.latest_flag.label("root_latest_flag"),
+                    CertificateVersion.id.label("version_id"),
+                    CertificateVersion.certificate_number.label("version_number"),
+                    CertificateVersion.issue_date.label("version_issue_date"),
+                    CertificateVersion.expiry_date.label("version_expiry_date"),
+                    CertificateVersion.lifecycle_state.label("version_lifecycle"),
+                    Site.id.label("site_id"),
+                    Site.site_name.label("site_name"),
+                    Company.legal_name.label("company_name"),
+                    ProductionLine.id.label("line_id"),
+                    ProductionLine.site_id.label("line_site_id"),
+                    ProductionLine.code.label("line_code"),
+                    Case.id.label("case_id"),
+                    Case.site_id.label("case_site_id"),
+                    Case.gxp_type.label("case_type"),
+                    Case.scope_code.label("case_scope_code"),
+                )
+                .select_from(Certificate)
+                .join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id)
+                .join(Site, Site.id == Certificate.site_id)
+                .join(Company, Company.id == Site.company_id)
+                .outerjoin(ProductionLine, ProductionLine.id == Certificate.production_line_id)
+                .outerjoin(Case, Case.id == Certificate.case_id)
+                .where(*conditions)
+            )
+            # Preserve the global latest-version integrity check even when
+            # filters select a subset of the current versions.
+            matching = (
+                select(Certificate.id)
                 .join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id)
                 .join(Site, Site.id == Certificate.site_id)
                 .join(Company, Company.id == Site.company_id)
                 .where(*conditions)
-            ) or 0
-            rows = session.execute(source.order_by(Certificate.id, CertificateVersion.id).offset(offset).limit(limit)).all()
-        items = []
-        for certificate, version, site, company, line in rows:
-            linked_case = CaseWorkflowService._validate_certificate_linked_case(session, certificate)
-            line_id, line_code, identity = self._line_identity(
-                site_id=site.id, production_line_id=certificate.production_line_id,
-                raw_line_code=self._certificate_line_code(certificate, linked_case),
-                lines={} if line is None else {line.id: line},
             )
+            conflicts = session.scalar(
+                select(func.count()).select_from(
+                    select(CertificateVersion.certificate_id)
+                    .where(
+                        CertificateVersion.is_latest_version.is_(True),
+                        CertificateVersion.certificate_id.in_(matching),
+                    )
+                    .group_by(CertificateVersion.certificate_id)
+                    .having(func.count() > 1)
+                    .subquery()
+                )
+            ) or 0
+            if conflicts:
+                raise HTTPException(status_code=409, detail="Certificate has conflicting latest versions.")
+            ordered = source.order_by(Certificate.id, CertificateVersion.id)
+            if export:
+                rows = session.execute(ordered.limit(10001)).mappings().all()
+                if len(rows) > 10000:
+                    raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
+                total, limit = len(rows), 10000
+            else:
+                total = session.scalar(
+                    select(func.count())
+                    .select_from(Certificate)
+                    .join(CertificateVersion, CertificateVersion.certificate_id == Certificate.id)
+                    .join(Site, Site.id == Certificate.site_id)
+                    .join(Company, Company.id == Site.company_id)
+                    .where(*conditions)
+                ) or 0
+                rows = session.execute(ordered.offset(offset).limit(limit)).mappings().all()
+
+        items = []
+        for row in rows:
+            # These identity checks use the same SQL statement as the actual
+            # report row: cached Case or Line objects cannot override the
+            # committed Certificate identity or the current Version number.
+            if row["root_case_id"] is not None and (
+                row["case_id"] != row["root_case_id"]
+                or row["case_site_id"] != row["root_site_id"]
+                or row["case_type"] != row["root_type"]
+            ):
+                raise HTTPException(
+                    status_code=409, detail="Certificate references an invalid linked Case.",
+                )
+            if row["root_line_id"] is not None:
+                if row["line_id"] != row["root_line_id"]:
+                    raise HTTPException(
+                        status_code=409, detail="Canonical ProductionLine reference is missing.",
+                    )
+                if row["line_site_id"] != row["root_site_id"]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Canonical ProductionLine reference belongs to a different site.",
+                    )
+            certificate = SimpleNamespace(
+                certificate_type=row["root_type"],
+                line_code=row["root_line_code"],
+                latest_flag=row["root_latest_flag"],
+            )
+            linked_case = (
+                SimpleNamespace(scope_code=row["case_scope_code"])
+                if row["case_id"] is not None else None
+            )
+            resolved_line_code = self._certificate_line_code(certificate, linked_case)
+            line_id, line_code, identity = self._line_identity(
+                site_id=row["root_site_id"],
+                production_line_id=row["root_line_id"],
+                raw_line_code=resolved_line_code,
+                lines=(
+                    {
+                        row["line_id"]: SimpleNamespace(
+                            id=row["line_id"],
+                            site_id=row["line_site_id"],
+                            code=row["line_code"],
+                        )
+                    }
+                    if row["line_id"] is not None else {}
+                ),
+            )
+            version = SimpleNamespace(expiry_date=row["version_expiry_date"])
             items.append({
-                "certificate_id": certificate.id,
-                "result_key": self._build_search_result_key(site.id, gxp_type=certificate.certificate_type,
-                    identity_state=identity, production_line_id=line_id, line_code=line_code),
-                "certificate_version_id": version.id,
-                "site_id": site.id,
-                "case_id": certificate.case_id,
-                "production_line_id": certificate.production_line_id,
+                "certificate_id": row["certificate_id"],
+                "result_key": self._build_search_result_key(
+                    row["site_id"],
+                    gxp_type=row["root_type"],
+                    identity_state=identity,
+                    production_line_id=line_id,
+                    line_code=line_code,
+                ),
+                "certificate_version_id": row["version_id"],
+                "site_id": row["site_id"],
+                "case_id": row["root_case_id"],
+                "production_line_id": row["root_line_id"],
                 "line_code": line_code,
-                "facility_name": site.site_name,
-                "company_name": company.legal_name,
-                "gxp_type": certificate.certificate_type,
-                "certificate_number": version.certificate_number,
-                "issue_date": version.issue_date,
-                "expiry_date": version.expiry_date,
-                "lifecycle_state": version.lifecycle_state,
-                "status": self._derive_certificate_status(CertificateContextRow(certificate=certificate, version=version, line_code=line_code)),
+                "facility_name": row["site_name"],
+                "company_name": row["company_name"],
+                "gxp_type": row["root_type"],
+                "certificate_number": row["version_number"],
+                "issue_date": row["version_issue_date"],
+                "expiry_date": row["version_expiry_date"],
+                "lifecycle_state": row["version_lifecycle"],
+                "status": self._derive_certificate_status(
+                    CertificateContextRow(
+                        certificate=certificate, version=version, line_code=line_code,
+                    )
+                ),
             })
         return {
             "items": items, "total_count": total, "offset": offset, "limit": limit,

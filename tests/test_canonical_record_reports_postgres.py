@@ -565,8 +565,8 @@ def test_facility_workspace_certificate_number_and_scope_share_pg_snapshot():
                         result["current_certificate_number"],
                         result["certificate_scope_summary"],
                     ) in {
-                        ("BEFORE-NUMBER", "BEFORE-SCOPE\\nSTATIC-SCOPE"),
-                        ("AFTER-NUMBER", "AFTER-SCOPE\\nSTATIC-SCOPE"),
+                        ("BEFORE-NUMBER", "BEFORE-SCOPE\nSTATIC-SCOPE"),
+                        ("AFTER-NUMBER", "AFTER-SCOPE\nSTATIC-SCOPE"),
                     }, "Workspace mixed GCN number and Scope from different commits"
             finally:
                 event.remove(reader, "do_orm_execute", writer_after_version_read)

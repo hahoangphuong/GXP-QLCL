@@ -2231,9 +2231,9 @@ class CatalogReadService:
         # Keep the existing search/context algorithm but never feed it dirty
         # identity-map objects.
         with session.no_autoflush:
-            quarantined_ids, quarantined_legacy_ids = (
-                self._quarantined_historical_search_certificates(session)
-            )
+            # Certificate link integrity and current Certificate rows must
+            # share the same statement snapshot. A separate READ COMMITTED
+            # preflight can be invalidated by another committed Case writer.
 
             def committed_rows(model, *, where=None, order_by=()):
                 stmt = select(*model.__table__.columns)
@@ -2262,10 +2262,45 @@ class CatalogReadService:
                 )
                 if occurred_at is not None
             }
+            # Inspect all Certificate owners independently of Site/GxP
+            # filters and latest flags. One scalar SELECT joins the exact
+            # committed Certificate, linked Case, and Site; do not resurrect
+            # a stale Case owner after a separate preflight.
+            certificate_columns = tuple(Certificate.__table__.columns)
+            certificate_owner_rows = session.execute(
+                select(
+                    *(column.label("source_" + column.name)
+                      for column in certificate_columns),
+                    Certificate.id.label("cert_id"),
+                    Certificate.case_id.label("cert_case_id"),
+                    Certificate.site_id.label("cert_site_id"),
+                    Certificate.certificate_type.label("cert_type"),
+                    Certificate.issuance_basis.label("cert_basis"),
+                    Certificate.legacy_certificate_id.label("cert_legacy_id"),
+                    Case.id.label("case_id"),
+                    Case.site_id.label("case_site_id"),
+                    Case.gxp_type.label("case_gxp_type"),
+                    Case.legacy_inspection_id.label("case_legacy_id"),
+                    Site.id.label("site_id"),
+                    Site.legacy_site_id.label("site_legacy_id"),
+                )
+                .select_from(Certificate)
+                .outerjoin(Case, Case.id == Certificate.case_id)
+                .outerjoin(Site, Site.id == Certificate.site_id)
+            ).mappings().all()
+            quarantined_ids, quarantined_legacy_ids = (
+                self._quarantine_historical_projection_rows(
+                    row for row in certificate_owner_rows
+                    if row["cert_case_id"] is not None
+                )
+            )
             certificates = [
-                row for row in committed_rows(
-                    Certificate, where=Certificate.latest_flag.is_(True),
-                ) if row.id not in quarantined_ids
+                SimpleNamespace(**{
+                    column.name: row["source_" + column.name]
+                    for column in certificate_columns
+                })
+                for row in certificate_owner_rows
+                if row["source_latest_flag"] and row["cert_id"] not in quarantined_ids
             ]
             change_requests = committed_rows(ChangeRequest)
             latest_versions = committed_rows(

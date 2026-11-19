@@ -722,3 +722,146 @@ def test_facility_workspace_case_certificate_change_request_share_one_atomic_sna
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+@pytest.mark.parametrize("linked_kind", ["line", "inspection_event"])
+def test_facility_workspace_case_and_line_or_event_use_atomic_pg_snapshot(linked_kind):
+    """Separate line/event SELECT must not split a committed Case transition."""
+    from datetime import datetime, timezone
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState, InspectionEventType
+    from backend.app.db.models.phase1 import Case, InspectionEvent, ProductionLine
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "workspace_linked_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Atomic companion company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Atomic companion site")
+            seed.add(site)
+            seed.flush()
+            line = None
+            if linked_kind == "line":
+                line = ProductionLine(
+                    site_id=site.id, code="BEFORE-LINE", effective_from=date(2026, 1, 1),
+                )
+                seed.add(line)
+                seed.flush()
+            case = Case(
+                site_id=site.id, gxp_type="GMP", state=CaseState.PLANNED,
+                production_line_id=None if line is None else line.id,
+                legacy_inspection_code="ATOMIC-COMPANION",
+            )
+            seed.add(case)
+            seed.flush()
+            inspection_event = None
+            if linked_kind == "inspection_event":
+                inspection_event = InspectionEvent(
+                    case_id=case.id,
+                    event_type=InspectionEventType.INSPECTION_EXECUTED,
+                    occurred_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                )
+                seed.add(inspection_event)
+            seed.commit()
+            site_id, case_id = site.id, case.id
+            line_id = None if line is None else line.id
+            event_id = None if inspection_event is None else inspection_event.id
+
+        writer_commits = []
+        with Session(engine) as reader:
+            def atomic_writer_after_owner_statement(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                if (
+                    not writer_commits
+                    and "from site" in sql
+                    and "where site.id" in sql
+                    and "case_" in sql
+                ):
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(state=CaseState.CLOSED)
+                        )
+                        if linked_kind == "line":
+                            writer.execute(
+                                ProductionLine.__table__.update()
+                                .where(ProductionLine.id == line_id)
+                                .values(code="AFTER-LINE")
+                            )
+                        else:
+                            writer.execute(
+                                InspectionEvent.__table__.update()
+                                .where(InspectionEvent.id == event_id)
+                                .values(occurred_at=datetime(2026, 2, 3, tzinfo=timezone.utc))
+                            )
+                        writer.commit()
+                    writer_commits.append(True)
+                    return result
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", atomic_writer_after_owner_statement, retval=True)
+            try:
+                try:
+                    payload = CatalogReadService().get_facility_workspace(
+                        reader, site_id=site_id, gxp_type="GMP",
+                        line_code=None, production_line_id=line_id,
+                    )
+                except HTTPException as exc:
+                    assert exc.status_code == 409
+                else:
+                    summary = payload["summary"]
+                    history = next(
+                        row for row in payload["history"]
+                        if row["source_type"] == "case" and row["id"] == case_id
+                    )
+                    if linked_kind == "line":
+                        assert (
+                            history["state"], summary["selected_line_code"]
+                        ) in {
+                            ("planned", "BEFORE-LINE"), ("closed", "AFTER-LINE"),
+                        }, "workspace combined Case before commit with line after commit"
+                    else:
+                        assert (
+                            history["state"], history["occurred_on"]
+                        ) in {
+                            ("planned", date(2026, 1, 2)),
+                            ("closed", date(2026, 2, 3)),
+                        }, "workspace combined Case before commit with event date after commit"
+            finally:
+                event.remove(reader, "do_orm_execute", atomic_writer_after_owner_statement)
+            assert writer_commits, "writer never committed after owner SQL"
+
+        with Session(engine) as verify:
+            assert verify.scalar(select(Case.state).where(Case.id == case_id)) == CaseState.CLOSED
+            if linked_kind == "line":
+                assert verify.scalar(
+                    select(ProductionLine.code).where(ProductionLine.id == line_id)
+                ) == "AFTER-LINE"
+            else:
+                assert verify.scalar(
+                    select(InspectionEvent.occurred_at)
+                    .where(InspectionEvent.id == event_id)
+                ).date() == date(2026, 2, 3)
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

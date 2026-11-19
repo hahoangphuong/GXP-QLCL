@@ -868,8 +868,9 @@ def test_facility_workspace_case_and_line_or_event_use_atomic_pg_snapshot(linked
 
 
 @pytest.mark.parametrize("tamper", ["site", "gxp_type"])
-def test_workspace_detects_invalid_certificate_case_link_committed_after_quarantine_preflight(tamper):
-    """A concurrent owner change cannot escape workspace historical quarantine preflight."""
+@pytest.mark.parametrize("surface", ["workspace", "search"])
+def test_read_detects_invalid_certificate_case_link_committed_after_quarantine_preflight(tamper, surface):
+    """Concurrent owner corruption cannot escape workspace or search read owners."""
     from sqlalchemy import event, select
     from backend.app.db.enums import CaseState
     from backend.app.db.models.phase1 import Case
@@ -937,12 +938,18 @@ def test_workspace_detects_invalid_certificate_case_link_committed_after_quarant
                     "facility_workspace_atomic_read" in sql
                     and "from certificate" in sql
                 )
-                if not committed and (old_preflight or final_snapshot):
-                    # RED: writer after old separate preflight, before final SQL.
-                    # GREEN: there is no separate preflight; writer commits
-                    # before the single atomic source statement executes.
+                search_snapshot = (
+                    surface == "search"
+                    and "from certificate left outer join" in sql
+                    and "source_latest_flag" in sql
+                    and "cert_legacy_id" in sql
+                )
+                atomic_snapshot = final_snapshot or search_snapshot
+                if not committed and (old_preflight or atomic_snapshot):
+                    # RED: writer after the old separate preflight.
+                    # GREEN: writer before the one Certificate owner SQL.
                     result = (
-                        None if final_snapshot
+                        None if atomic_snapshot
                         else orm_execute_state.invoke_statement()
                     )
                     with Session(engine) as writer:
@@ -960,17 +967,22 @@ def test_workspace_detects_invalid_certificate_case_link_committed_after_quarant
                     committed.append(True)
                     return (
                         orm_execute_state.invoke_statement()
-                        if final_snapshot else result
+                        if atomic_snapshot else result
                     )
                 return orm_execute_state.invoke_statement()
 
             event.listen(reader, "do_orm_execute", mutate_after_quarantine_preflight, retval=True)
             try:
                 with pytest.raises(HTTPException) as exc:
-                    CatalogReadService().get_facility_workspace(
-                        reader, site_id=site_id, gxp_type="GMP",
-                        line_code=None, production_line_id=None,
-                    )
+                    if surface == "workspace":
+                        CatalogReadService().get_facility_workspace(
+                            reader, site_id=site_id, gxp_type="GMP",
+                            line_code=None, production_line_id=None,
+                        )
+                    else:
+                        CatalogReadService().search_facilities(
+                            reader, site_id=site_id, gxp_type="GMP",
+                        )
                 assert exc.value.status_code == 409
                 assert "linked Case" in str(exc.value.detail)
             finally:

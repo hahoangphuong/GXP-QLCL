@@ -2249,7 +2249,47 @@ class CatalogReadService:
             sites = committed_rows(Site, order_by=(Site.legacy_site_id, Site.id))
             companies = {row.id: row for row in committed_rows(Company)}
             lines = {row.id: row for row in committed_rows(ProductionLine)}
-            cases = committed_rows(Case)
+            # Case state and latest CertificateVersion are one Search read
+            # owner: under PostgreSQL READ COMMITTED, separate SELECTs can
+            # combine a Case before a writer commit with a GCN number after
+            # that same atomic commit. A tagged UNION keeps both grains
+            # without Case x Version fanout or ORM identity refresh.
+            case_columns = tuple(Case.__table__.columns)
+            version_columns = tuple(CertificateVersion.__table__.columns)
+            combined = union_all(
+                select(
+                    literal("case").label("source_kind"),
+                    *(column.label("case_" + column.name) for column in case_columns),
+                    *(cast(literal(None), column.type).label("version_" + column.name)
+                      for column in version_columns),
+                ).select_from(Case),
+                select(
+                    literal("version").label("source_kind"),
+                    *(cast(literal(None), column.type).label("case_" + column.name)
+                      for column in case_columns),
+                    *(column.label("version_" + column.name)
+                      for column in version_columns),
+                ).select_from(CertificateVersion).where(
+                    CertificateVersion.is_latest_version.is_(True)
+                ),
+            ).subquery("search_atomic_read")
+            cross_group_rows = session.execute(
+                select(*combined.c)
+            ).mappings().all()
+            cases = [
+                SimpleNamespace(**{
+                    column.name: row["case_" + column.name]
+                    for column in case_columns
+                })
+                for row in cross_group_rows if row["source_kind"] == "case"
+            ]
+            latest_versions = [
+                SimpleNamespace(**{
+                    column.name: row["version_" + column.name]
+                    for column in version_columns
+                })
+                for row in cross_group_rows if row["source_kind"] == "version"
+            ]
             outcomes_by_case_id = {
                 row.case_id: row for row in committed_rows(InspectionOutcome)
             }
@@ -2303,10 +2343,6 @@ class CatalogReadService:
                 if row["source_latest_flag"] and row["cert_id"] not in quarantined_ids
             ]
             change_requests = committed_rows(ChangeRequest)
-            latest_versions = committed_rows(
-                CertificateVersion,
-                where=CertificateVersion.is_latest_version.is_(True),
-            )
             # Last-write-wins dictionary construction would silently hide
             # two latest Versions of one current GCN. Fail closed for the
             # requested Site/GxP scope before selecting a current certificate.

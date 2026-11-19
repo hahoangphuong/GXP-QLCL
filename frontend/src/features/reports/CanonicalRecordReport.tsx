@@ -6,6 +6,8 @@ import type { CertificateReportItem, CertificateReportPage, ChangeRequestReportI
 import { csvCell } from "./facilityReportExport";
 import { EMPTY_CANONICAL_RECORD_REPORT_FILTERS, canonicalRecordReportParams, parseCanonicalRecordReportUrl, type CanonicalRecordReportFilters, type CanonicalRecordReportKind } from "./canonicalRecordReportUrl";
 
+type Page = CertificateReportPage | ChangeRequestReportPage;
+
 // Both report endpoints return a full slice at the requested default limit;
 // export returns one bounded, complete snapshot with limit 10000.
 function validatedPage(page: Page, kind: CanonicalRecordReportKind, filters: CanonicalRecordReportFilters, expectedOffset: number, isExport: boolean): Page {

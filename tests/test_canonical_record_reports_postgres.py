@@ -1800,3 +1800,116 @@ def test_search_case_state_and_inspected_on_share_postgres_snapshot():
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_search_case_state_and_inspection_event_date_share_postgres_snapshot():
+    """Case and executed InspectionEvent date must reflect one committed state."""
+    from datetime import datetime, timezone
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState, InspectionEventType
+    from backend.app.db.models.phase1 import Case, InspectionEvent
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "search_event_case_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Event Case snapshot company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Event Case snapshot site")
+            seed.add(site)
+            seed.flush()
+            case = Case(
+                site_id=site.id, gxp_type="GMP", state=CaseState.PLANNED,
+                legacy_inspection_code="EVENT-CASE-SNAPSHOT",
+            )
+            seed.add(case)
+            seed.flush()
+            inspection_event = InspectionEvent(
+                case_id=case.id,
+                event_type=InspectionEventType.INSPECTION_EXECUTED,
+                occurred_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+            seed.add(inspection_event)
+            seed.commit()
+            site_id, case_id, event_id = site.id, case.id, inspection_event.id
+
+        commits = []
+        with Session(engine) as reader:
+            def commit_at_case_event_boundary(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                atomic_source = (
+                    "search_atomic_read" in sql
+                    and "case_state" in sql
+                )
+                event_in_atomic = atomic_source and "event_occurred_at" in sql
+                if not commits and atomic_source:
+                    captured = (
+                        None if event_in_atomic
+                        else orm_execute_state.invoke_statement()
+                    )
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(state=CaseState.CLOSED)
+                        )
+                        writer.execute(
+                            InspectionEvent.__table__.update()
+                            .where(InspectionEvent.id == event_id)
+                            .values(occurred_at=datetime(2026, 2, 3, tzinfo=timezone.utc))
+                        )
+                        writer.commit()
+                    commits.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if event_in_atomic else captured
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", commit_at_case_event_boundary, retval=True)
+            try:
+                payload = CatalogReadService().search_facilities(
+                    reader, site_id=site_id, gxp_type="GMP",
+                )
+                rows = [
+                    row for row in payload["items"]
+                    if row["site_id"] == site_id and row["gxp_type"] == "GMP"
+                ]
+                assert len(rows) == 1
+                pair = (rows[0]["current_state"], rows[0]["last_inspection_on"])
+                assert pair in {
+                    ("planned", date(2026, 1, 2)),
+                    ("closed", date(2026, 2, 3)),
+                }, "Search combined Case BEFORE with InspectionEvent AFTER"
+            finally:
+                event.remove(reader, "do_orm_execute", commit_at_case_event_boundary)
+            assert commits, "independent writer never committed at Search read boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(Case.state).where(Case.id == case_id)
+            ) == CaseState.CLOSED
+            assert verify.scalar(
+                select(InspectionEvent.occurred_at)
+                .where(InspectionEvent.id == event_id)
+            ).date() == date(2026, 2, 3)
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

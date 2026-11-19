@@ -487,3 +487,61 @@ def test_dashboard_rejects_persisted_reparented_canonical_line_despite_cached_ow
     assert exc.value.status_code == 409
     assert "ProductionLine" in str(exc.value.detail)
     session.rollback()
+
+
+def test_facility_search_projects_committed_rows_without_flushing_operator_drafts(session):
+    """Facility search must be a persisted read, not a flush or ORM draft view."""
+    from sqlalchemy import event, inspect, select
+
+    service = CatalogReadService()
+    site = session.scalar(select(Site).limit(1))
+    company = session.get(Company, site.company_id)
+    version = session.scalar(
+        select(CertificateVersion).where(
+            CertificateVersion.certificate_number == "GCN-A"
+        )
+    )
+    request = session.scalar(select(ChangeRequest).where(
+        ChangeRequest.scope_label == "Đổi tên"
+    ))
+    baseline = service.search_facilities(session, site_id=site.id)
+    assert baseline["total_count"] == 1
+    assert baseline["items"][0]["current_certificate_number"] in ("GCN-A", "GCN-B")
+    old_site, old_company = site.site_name, company.legal_name
+
+    site.site_name = "UNSAVED-SEARCH-SITE"
+    company.legal_name = "UNSAVED-SEARCH-COMPANY"
+    version.certificate_number = "UNSAVED-SEARCH-CERTIFICATE"
+    request.state = ChangeRequestState.ACCEPTED
+    pending = Company(legal_name="UNSAVED-SEARCH-PENDING")
+    session.add(pending)
+    flush_calls = []
+
+    def forbid_flush(*_):
+        flush_calls.append(True)
+        raise AssertionError("Facility search flushed operator draft")
+
+    event.listen(session, "before_flush", forbid_flush)
+    try:
+        for q in (None, old_site):
+            result = service.search_facilities(session, site_id=site.id, q=q)
+            assert result["total_count"] == baseline["total_count"]
+            assert result["items"] == baseline["items"]
+        assert service.search_facilities(
+            session, site_id=site.id, q="UNSAVED-SEARCH"
+        )["total_count"] == 0
+        assert service.search_facilities(
+            session, site_id=site.id, change_request_states=["received"]
+        )["total_count"] == baseline["total_count"]
+        assert not flush_calls
+        assert site.site_name == "UNSAVED-SEARCH-SITE"
+        assert company.legal_name == "UNSAVED-SEARCH-COMPANY"
+        assert version.certificate_number == "UNSAVED-SEARCH-CERTIFICATE"
+        assert request.state == ChangeRequestState.ACCEPTED
+        assert inspect(pending).pending
+        assert site in session.dirty
+        assert company in session.dirty
+        assert version in session.dirty
+    finally:
+        event.remove(session, "before_flush", forbid_flush)
+        session.rollback()

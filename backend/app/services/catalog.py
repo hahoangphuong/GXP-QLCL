@@ -2215,32 +2215,60 @@ class CatalogReadService:
         offset: int,
         limit: int,
     ) -> dict[str, object]:
-        quarantined_ids, quarantined_legacy_ids = self._quarantined_historical_search_certificates(session)
-        sites = list(session.scalars(select(Site).order_by(Site.legacy_site_id, Site.id)))
-        companies = {row.id: row for row in session.scalars(select(Company))}
-        lines = {row.id: row for row in session.scalars(select(ProductionLine))}
-        cases = list(session.scalars(select(Case)))
-        outcomes_by_case_id = {row.case_id: row for row in session.scalars(select(InspectionOutcome))}
-        inspection_event_dates_by_case_id = {
-            case_id: occurred_at.date()
-            for case_id, occurred_at in session.execute(
-                select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
-                .where(InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED)
-                .group_by(InspectionEvent.case_id)
+        # All owner-side search inputs are persisted SQL projections. ORM
+        # entities from a reused Session can be stale or contain uncommitted
+        # operator drafts; an ordinary SELECT can also autoflush those edits.
+        # Keep the existing search/context algorithm but never feed it dirty
+        # identity-map objects.
+        with session.no_autoflush:
+            quarantined_ids, quarantined_legacy_ids = (
+                self._quarantined_historical_search_certificates(session)
             )
-            if occurred_at is not None
-        }
-        certificates = [
-            row for row in session.scalars(
-                select(Certificate).where(Certificate.latest_flag.is_(True))
-            ) if row.id not in quarantined_ids
-        ]
-        change_requests = list(session.scalars(select(ChangeRequest)))
+
+            def committed_rows(model, *, where=None, order_by=()):
+                stmt = select(*model.__table__.columns)
+                if where is not None:
+                    stmt = stmt.where(where)
+                if order_by:
+                    stmt = stmt.order_by(*order_by)
+                return [
+                    SimpleNamespace(**row)
+                    for row in session.execute(stmt).mappings().all()
+                ]
+
+            sites = committed_rows(Site, order_by=(Site.legacy_site_id, Site.id))
+            companies = {row.id: row for row in committed_rows(Company)}
+            lines = {row.id: row for row in committed_rows(ProductionLine)}
+            cases = committed_rows(Case)
+            outcomes_by_case_id = {
+                row.case_id: row for row in committed_rows(InspectionOutcome)
+            }
+            inspection_event_dates_by_case_id = {
+                case_id: occurred_at.date()
+                for case_id, occurred_at in session.execute(
+                    select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
+                    .where(InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED)
+                    .group_by(InspectionEvent.case_id)
+                )
+                if occurred_at is not None
+            }
+            certificates = [
+                row for row in committed_rows(
+                    Certificate, where=Certificate.latest_flag.is_(True),
+                ) if row.id not in quarantined_ids
+            ]
+            change_requests = committed_rows(ChangeRequest)
+            versions = {
+                row.certificate_id: row for row in committed_rows(
+                    CertificateVersion,
+                    where=CertificateVersion.is_latest_version.is_(True),
+                )
+            }
+            scopes: dict[str, list[CertificateScope]] = defaultdict(list)
+            for scope in committed_rows(CertificateScope):
+                scopes[scope.certificate_version_id].append(scope)
+
         case_by_id = {row.id: row for row in cases}
-        versions = {row.certificate_id: row for row in session.scalars(select(CertificateVersion).where(CertificateVersion.is_latest_version.is_(True)))}
-        scopes: dict[str, list[CertificateScope]] = defaultdict(list)
-        for scope in session.scalars(select(CertificateScope)):
-            scopes[scope.certificate_version_id].append(scope)
         cases_by_context: dict[tuple[str, str | None, str, str | None], list[Case]] = defaultdict(list)
         certificates_by_context: dict[tuple[str, str | None, str, str | None], list[CertificateContextRow]] = defaultdict(list)
 

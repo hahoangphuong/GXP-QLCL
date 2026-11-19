@@ -1730,23 +1730,38 @@ class CatalogReadService:
                 .join(Company, Company.id == Site.company_id)
                 .where(*conditions)
             )
-            conflicts = session.scalar(
-                select(func.count()).select_from(
-                    select(CertificateVersion.certificate_id)
-                    .where(
-                        CertificateVersion.is_latest_version.is_(True),
-                        CertificateVersion.certificate_id.in_(matching),
-                    )
-                    .group_by(CertificateVersion.certificate_id)
-                    .having(func.count() > 1)
-                    .subquery()
+            conflict_count_stmt = select(func.count()).select_from(
+                select(CertificateVersion.certificate_id)
+                .where(
+                    CertificateVersion.is_latest_version.is_(True),
+                    CertificateVersion.certificate_id.in_(matching),
                 )
-            ) or 0
+                .group_by(CertificateVersion.certificate_id)
+                .having(func.count() > 1)
+                .subquery()
+            )
+            conflicts = session.scalar(conflict_count_stmt) or 0
+            # A second owner writer can commit another latest Version AFTER
+            # the preflight above. Check the same conflict universe in the
+            # final row statement's PostgreSQL READ COMMITTED snapshot.
+            late_conflicts = conflict_count_stmt.scalar_subquery()
             if conflicts:
                 raise HTTPException(status_code=409, detail="Certificate has conflicting latest versions.")
             ordered = source.order_by(Certificate.id, CertificateVersion.id)
             if export:
-                rows = session.execute(ordered.limit(10001)).mappings().all()
+                export_page = ordered.limit(10001).subquery("report_export")
+                anchor = select(literal(1).label("anchor")).subquery("report_anchor")
+                export_snapshot = session.execute(
+                    select(
+                        *export_page.c,
+                        late_conflicts.label("report_conflict_count"),
+                    )
+                    .select_from(anchor.outerjoin(export_page, true()))
+                    .order_by(export_page.c.certificate_id, export_page.c.version_id)
+                ).mappings().all()
+                if export_snapshot and export_snapshot[0]["report_conflict_count"]:
+                    raise HTTPException(status_code=409, detail="Certificate has conflicting latest versions.")
+                rows = [row for row in export_snapshot if row["certificate_id"] is not None]
                 if len(rows) > 10000:
                     raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
                 total, limit = len(rows), 10000
@@ -1771,10 +1786,13 @@ class CatalogReadService:
                     select(
                         *page.c,
                         count_at_page_snapshot.label("report_total_count"),
+                        late_conflicts.label("report_conflict_count"),
                     )
                     .select_from(anchor.outerjoin(page, true()))
                     .order_by(page.c.certificate_id, page.c.version_id)
                 ).mappings().all()
+                if counted_rows and counted_rows[0]["report_conflict_count"]:
+                    raise HTTPException(status_code=409, detail="Certificate has conflicting latest versions.")
                 total = counted_rows[0]["report_total_count"] if counted_rows else 0
                 rows = [row for row in counted_rows if row["certificate_id"] is not None]
 

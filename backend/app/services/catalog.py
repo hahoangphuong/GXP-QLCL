@@ -1593,50 +1593,113 @@ class CatalogReadService:
             ))
         if opened_year is not None:
             conditions.append(Case.opened_year == opened_year)
-        base = (select(Case, Site, Company, ProductionLine, CaseCertificateNonissuanceDecision)
-                .join(Site, Site.id == Case.site_id).join(Company, Company.id == Site.company_id)
-                .outerjoin(ProductionLine, ProductionLine.id == Case.production_line_id)
-                .outerjoin(CaseCertificateNonissuanceDecision, CaseCertificateNonissuanceDecision.case_id == Case.id)
-                .where(*conditions)
-                # A reused Session can hold Case/Site/Company identities loaded
-                # before another write. SQL filters/counts use current rows;
-                # refresh those same ORM identities before serializing the
-                # report, or page status/name can contradict the SQL result.
-                .execution_options(populate_existing=True))
-        if export:
-            if offset != 0:
-                raise HTTPException(status_code=422, detail="Export offset must be zero.")
-            rows = session.execute(base.order_by(Case.id).limit(10001)).all()
-            if len(rows) > 10000:
-                raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
-            total = len(rows)
-            limit = 10000
-        else:
-            total = session.scalar(select(func.count()).select_from(Case).join(Site, Site.id == Case.site_id)
-                                   .join(Company, Company.id == Site.company_id)
-                                   .outerjoin(CaseCertificateNonissuanceDecision, CaseCertificateNonissuanceDecision.case_id == Case.id)
-                                   .where(*conditions)) or 0
-            rows = session.execute(base.order_by(Case.id).offset(offset).limit(limit)).all()
-        items = []
-        for case, site, company, line, decision in rows:
-            line_id, line_code, identity = self._line_identity(
-                site_id=case.site_id, production_line_id=case.production_line_id,
-                raw_line_code=case.scope_code, lines={} if line is None else {line.id: line},
+        # A report is a persisted read, not a mutable ORM entity refresh.
+        # SQL filters, counts and output columns must use the same committed
+        # values without flushing or replacing operator drafts in the Session.
+        base = (
+            select(
+                Case.id.label("case_id"),
+                Case.site_id.label("case_site_id"),
+                Case.production_line_id.label("case_line_id"),
+                Case.gxp_type.label("case_type"),
+                Case.scope_code.label("case_scope_code"),
+                Case.state.label("case_state"),
+                Case.legacy_inspection_code.label("case_reference_code"),
+                Case.opened_year.label("case_opened_year"),
+                Site.id.label("site_id"),
+                Site.site_name.label("site_name"),
+                Company.legal_name.label("company_name"),
+                ProductionLine.id.label("line_id"),
+                ProductionLine.site_id.label("line_site_id"),
+                ProductionLine.code.label("line_code"),
+                CaseCertificateNonissuanceDecision.id.label("decision_id"),
+                CaseCertificateNonissuanceDecision.decision_reference.label("decision_reference"),
+                CaseCertificateNonissuanceDecision.decided_on.label("decision_on"),
             )
-            items.append({"case_id": case.id, "site_id": site.id, "production_line_id": line_id,
-                          "result_key": self._build_search_result_key(site.id, gxp_type=case.gxp_type,
-                              identity_state=identity, production_line_id=line_id, line_code=line_code),
-                          "facility_name": site.site_name, "company_name": company.legal_name,
-                          "gxp_type": case.gxp_type, "state": case.state.value,
-                          "reference_code": case.legacy_inspection_code, "opened_year": case.opened_year,
-                          "certificate_decision_status": (
-                              "nonissuance_recorded" if decision is not None
-                              else "awaiting_decision" if case.state == CaseState.AWAITING_CERTIFICATE_DECISION
-                              else "not_at_decision_stage"
-                          ),
-                          "nonissuance_decision_id": None if decision is None else decision.id,
-                          "nonissuance_decision_reference": None if decision is None else decision.decision_reference,
-                          "nonissuance_decided_on": None if decision is None else decision.decided_on})
+            .select_from(Case)
+            .join(Site, Site.id == Case.site_id)
+            .join(Company, Company.id == Site.company_id)
+            .outerjoin(ProductionLine, ProductionLine.id == Case.production_line_id)
+            .outerjoin(
+                CaseCertificateNonissuanceDecision,
+                CaseCertificateNonissuanceDecision.case_id == Case.id,
+            )
+            .where(*conditions)
+        )
+        with session.no_autoflush:
+            if export:
+                if offset != 0:
+                    raise HTTPException(status_code=422, detail="Export offset must be zero.")
+                rows = session.execute(
+                    base.order_by(Case.id).limit(10001)
+                ).mappings().all()
+                if len(rows) > 10000:
+                    raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
+                total, limit = len(rows), 10000
+            else:
+                page = base.order_by(Case.id).offset(offset).limit(limit).subquery("case_report_page")
+                total_for_page = (
+                    select(func.count())
+                    .select_from(Case)
+                    .join(Site, Site.id == Case.site_id)
+                    .join(Company, Company.id == Site.company_id)
+                    .outerjoin(
+                        CaseCertificateNonissuanceDecision,
+                        CaseCertificateNonissuanceDecision.case_id == Case.id,
+                    )
+                    .where(*conditions)
+                    .scalar_subquery()
+                )
+                anchor = select(literal(1).label("anchor")).subquery("case_report_anchor")
+                counted_rows = session.execute(
+                    select(*page.c, total_for_page.label("report_total_count"))
+                    .select_from(anchor.outerjoin(page, true()))
+                    .order_by(page.c.case_id)
+                ).mappings().all()
+                total = counted_rows[0]["report_total_count"] if counted_rows else 0
+                rows = [row for row in counted_rows if row["case_id"] is not None]
+
+        items = []
+        for row in rows:
+            line_id, line_code, identity = self._line_identity(
+                site_id=row["case_site_id"],
+                production_line_id=row["case_line_id"],
+                raw_line_code=row["case_scope_code"],
+                lines=(
+                    {row["line_id"]: SimpleNamespace(
+                        id=row["line_id"], site_id=row["line_site_id"], code=row["line_code"],
+                    )} if row["line_id"] is not None else {}
+                ),
+            )
+            decision_id = row["decision_id"]
+            state_value = row["case_state"].value
+            items.append({
+                "case_id": row["case_id"],
+                "site_id": row["site_id"],
+                "production_line_id": line_id,
+                "result_key": self._build_search_result_key(
+                    row["site_id"], gxp_type=row["case_type"],
+                    identity_state=identity, production_line_id=line_id, line_code=line_code,
+                ),
+                "facility_name": row["site_name"],
+                "company_name": row["company_name"],
+                "gxp_type": row["case_type"],
+                "state": state_value,
+                "reference_code": row["case_reference_code"],
+                "opened_year": row["case_opened_year"],
+                "certificate_decision_status": (
+                    "nonissuance_recorded" if decision_id is not None
+                    else "awaiting_decision" if row["case_state"] == CaseState.AWAITING_CERTIFICATE_DECISION
+                    else "not_at_decision_stage"
+                ),
+                "nonissuance_decision_id": decision_id,
+                "nonissuance_decision_reference": (
+                    row["decision_reference"] if decision_id is not None else None
+                ),
+                "nonissuance_decided_on": (
+                    row["decision_on"] if decision_id is not None else None
+                ),
+            })
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 
     def get_certificate_report(

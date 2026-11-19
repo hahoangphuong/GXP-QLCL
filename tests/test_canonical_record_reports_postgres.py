@@ -1131,3 +1131,126 @@ def test_search_case_and_certificate_number_share_committed_postgres_snapshot():
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_search_certificate_number_and_scope_share_committed_postgres_snapshot():
+    """Search cannot combine a GCN number and Scope from opposite sides of one commit."""
+    from sqlalchemy import event, select
+    from backend.app.db.models.phase1 import CertificateScope
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "search_gcn_scope_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Scope snapshot company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Scope snapshot site")
+            seed.add(site)
+            seed.flush()
+            certificate = Certificate(
+                site_id=site.id, certificate_type="GMP", latest_flag=True,
+                issuance_basis="administrative_no_inspection",
+            )
+            seed.add(certificate)
+            seed.flush()
+            version = CertificateVersion(
+                certificate_id=certificate.id, version_no=1,
+                certificate_number="BEFORE-GCN", is_latest_version=True,
+            )
+            seed.add(version)
+            seed.flush()
+            scope = CertificateScope(
+                certificate_version_id=version.id,
+                scope_text="BEFORE-SCOPE", sort_order=0,
+            )
+            seed.add(scope)
+            seed.commit()
+            site_id, version_id, scope_id = site.id, version.id, scope.id
+
+        commits = []
+        with Session(engine) as reader:
+            def commit_at_version_scope_boundary(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                version_snapshot = (
+                    "search_atomic_read" in sql
+                    and "certificate_version" in sql
+                )
+                scope_in_same_snapshot = version_snapshot and "certificate_scope" in sql
+                if not commits and version_snapshot:
+                    # RED: capture old Version statement, commit, then read new
+                    # Scope in the later statement. GREEN: commit before the
+                    # single Version/Scope source statement executes.
+                    captured = (
+                        None if scope_in_same_snapshot
+                        else orm_execute_state.invoke_statement()
+                    )
+                    with Session(engine) as writer:
+                        writer.execute(
+                            CertificateVersion.__table__.update()
+                            .where(CertificateVersion.id == version_id)
+                            .values(certificate_number="AFTER-GCN")
+                        )
+                        writer.execute(
+                            CertificateScope.__table__.update()
+                            .where(CertificateScope.id == scope_id)
+                            .values(scope_text="AFTER-SCOPE")
+                        )
+                        writer.commit()
+                    commits.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if scope_in_same_snapshot else captured
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", commit_at_version_scope_boundary, retval=True)
+            try:
+                payload = CatalogReadService().search_facilities(
+                    reader, site_id=site_id, gxp_type="GMP",
+                )
+                rows = [
+                    row for row in payload["items"]
+                    if row["site_id"] == site_id and row["gxp_type"] == "GMP"
+                ]
+                assert len(rows) == 1
+                pair = (
+                    rows[0]["current_certificate_number"],
+                    rows[0]["certificate_scope_summary"],
+                )
+                assert pair in {
+                    ("BEFORE-GCN", "BEFORE-SCOPE"),
+                    ("AFTER-GCN", "AFTER-SCOPE"),
+                }, "Search combined GCN BEFORE with Scope AFTER one atomic commit"
+            finally:
+                event.remove(reader, "do_orm_execute", commit_at_version_scope_boundary)
+            assert commits, "writer never committed at the Version/Scope boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(CertificateVersion.certificate_number)
+                .where(CertificateVersion.id == version_id)
+            ) == "AFTER-GCN"
+            assert verify.scalar(
+                select(CertificateScope.scope_text)
+                .where(CertificateScope.id == scope_id)
+            ) == "AFTER-SCOPE"
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

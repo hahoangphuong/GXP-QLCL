@@ -2249,19 +2249,22 @@ class CatalogReadService:
             sites = committed_rows(Site, order_by=(Site.legacy_site_id, Site.id))
             companies = {row.id: row for row in committed_rows(Company)}
             lines = {row.id: row for row in committed_rows(ProductionLine)}
-            # Case state and latest CertificateVersion are one Search read
-            # owner: under PostgreSQL READ COMMITTED, separate SELECTs can
-            # combine a Case before a writer commit with a GCN number after
-            # that same atomic commit. A tagged UNION keeps both grains
-            # without Case x Version fanout or ORM identity refresh.
+            # Case, latest CertificateVersion and its Scope share one Search
+            # SQL statement snapshot. Separate READ COMMITTED SELECTs can
+            # combine a pre-commit GCN number with post-commit Scope text.
+            # Tagged branches preserve owner grain, including multiple
+            # legitimate Scope rows, without Case x Version x Scope fanout.
             case_columns = tuple(Case.__table__.columns)
             version_columns = tuple(CertificateVersion.__table__.columns)
+            scope_columns = tuple(CertificateScope.__table__.columns)
             combined = union_all(
                 select(
                     literal("case").label("source_kind"),
                     *(column.label("case_" + column.name) for column in case_columns),
                     *(cast(literal(None), column.type).label("version_" + column.name)
                       for column in version_columns),
+                    *(cast(literal(None), column.type).label("scope_" + column.name)
+                      for column in scope_columns),
                 ).select_from(Case),
                 select(
                     literal("version").label("source_kind"),
@@ -2269,9 +2272,20 @@ class CatalogReadService:
                       for column in case_columns),
                     *(column.label("version_" + column.name)
                       for column in version_columns),
+                    *(cast(literal(None), column.type).label("scope_" + column.name)
+                      for column in scope_columns),
                 ).select_from(CertificateVersion).where(
                     CertificateVersion.is_latest_version.is_(True)
                 ),
+                select(
+                    literal("scope").label("source_kind"),
+                    *(cast(literal(None), column.type).label("case_" + column.name)
+                      for column in case_columns),
+                    *(cast(literal(None), column.type).label("version_" + column.name)
+                      for column in version_columns),
+                    *(column.label("scope_" + column.name)
+                      for column in scope_columns),
+                ).select_from(CertificateScope),
             ).subquery("search_atomic_read")
             cross_group_rows = session.execute(
                 select(*combined.c)
@@ -2289,6 +2303,13 @@ class CatalogReadService:
                     for column in version_columns
                 })
                 for row in cross_group_rows if row["source_kind"] == "version"
+            ]
+            scope_rows = [
+                SimpleNamespace(**{
+                    column.name: row["scope_" + column.name]
+                    for column in scope_columns
+                })
+                for row in cross_group_rows if row["source_kind"] == "scope"
             ]
             outcomes_by_case_id = {
                 row.case_id: row for row in committed_rows(InspectionOutcome)
@@ -2363,7 +2384,7 @@ class CatalogReadService:
                 seen_latest_ids.add(version.certificate_id)
             versions = {row.certificate_id: row for row in latest_versions}
             scopes: dict[str, list[CertificateScope]] = defaultdict(list)
-            for scope in committed_rows(CertificateScope):
+            for scope in scope_rows:
                 scopes[scope.certificate_version_id].append(scope)
 
         case_by_id = {row.id: row for row in cases}

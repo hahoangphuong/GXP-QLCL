@@ -1230,31 +1230,75 @@ class CatalogReadService:
 
     @staticmethod
     def _quarantined_historical_search_certificates(
-        session: Session, *, site_id: str | None = None
+        session: Session, *, site_id: str | None = None,
     ) -> tuple[set[str], list[int]]:
-        """Read-only projection exclusion. Never changes authoritative Certificate rows.
+        """Read-only committed owner preflight before downstream filters.
 
-        Validate *all* linked rows before filters or pagination. Exactly three
-        independently witnessed cross-Site source identities may be quarantined;
-        every other invalid link must raise the existing 409.
+        Use one scalar Certificate/Case/Site projection rather than ORM
+        populate_existing: a GET may not flush, overwrite cached drafts,
+        or accept a stale Case owner from another transaction. The exact
+        independently witnessed legacy quarantine predicate is unchanged.
         """
-        statement = select(Certificate).where(Certificate.case_id.is_not(None))
+        statement = (
+            select(
+                Certificate.id.label("cert_id"),
+                Certificate.case_id.label("cert_case_id"),
+                Certificate.site_id.label("cert_site_id"),
+                Certificate.certificate_type.label("cert_type"),
+                Certificate.issuance_basis.label("cert_basis"),
+                Certificate.legacy_certificate_id.label("cert_legacy_id"),
+                Case.id.label("case_id"),
+                Case.site_id.label("case_site_id"),
+                Case.gxp_type.label("case_gxp_type"),
+                Case.legacy_inspection_id.label("case_legacy_id"),
+                Site.id.label("site_id"),
+                Site.legacy_site_id.label("site_legacy_id"),
+            )
+            .select_from(Certificate)
+            .outerjoin(Case, Case.id == Certificate.case_id)
+            .outerjoin(Site, Site.id == Certificate.site_id)
+            .where(Certificate.case_id.is_not(None))
+        )
         if site_id is not None:
             statement = statement.where(Certificate.site_id == site_id)
         quarantined: set[str] = set()
         legacy_ids: list[int] = []
-        for certificate in session.scalars(statement):
-            try:
-                CaseWorkflowService._validate_certificate_linked_case(session, certificate)
-            except HTTPException as error:
-                if error.status_code != 409:
-                    raise
-                case = session.get(Case, certificate.case_id)
-                site = session.get(Site, certificate.site_id)
-                if not is_witnessed_historical_search_quarantine(certificate, case, site):
-                    raise
-                quarantined.add(certificate.id)
-                legacy_ids.append(certificate.legacy_certificate_id)
+        with session.no_autoflush:
+            rows = session.execute(statement).mappings().all()
+        for row in rows:
+            if (
+                row["case_id"] == row["cert_case_id"]
+                and row["case_site_id"] == row["cert_site_id"]
+                and row["case_gxp_type"] == row["cert_type"]
+            ):
+                continue
+            cert = SimpleNamespace(
+                id=row["cert_id"], case_id=row["cert_case_id"],
+                site_id=row["cert_site_id"], certificate_type=row["cert_type"],
+                issuance_basis=row["cert_basis"],
+                legacy_certificate_id=row["cert_legacy_id"],
+            )
+            linked_case = (
+                SimpleNamespace(
+                    id=row["case_id"], site_id=row["case_site_id"],
+                    gxp_type=row["case_gxp_type"],
+                    legacy_inspection_id=row["case_legacy_id"],
+                )
+                if row["case_id"] is not None else None
+            )
+            site = (
+                SimpleNamespace(
+                    id=row["site_id"], legacy_site_id=row["site_legacy_id"],
+                )
+                if row["site_id"] is not None else None
+            )
+            if not is_witnessed_historical_search_quarantine(cert, linked_case, site):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate references an invalid linked Case.",
+                )
+            quarantined.add(row["cert_id"])
+            legacy_ids.append(row["cert_legacy_id"])
         return quarantined, sorted(legacy_ids)
 
     @staticmethod
@@ -2305,42 +2349,87 @@ class CatalogReadService:
             "history": history,
         }
 
-    def list_site_gxp_certificates(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None, production_line_id: str | None = None):
-        quarantined_ids, quarantined_legacy_ids = self._quarantined_historical_search_certificates(
-            session, site_id=site_id
-        )
-        self.get_site(session, site_id)
-        normalized_line_code = self._normalize_line_code(line_code)
-        lines = {row.id: row for row in session.scalars(select(ProductionLine).where(ProductionLine.site_id == site_id))}
-        selected_line_id, selected_line_code, identity_state = self._line_identity(site_id=site_id, production_line_id=production_line_id, raw_line_code=normalized_line_code, lines=lines)
-        if production_line_id is not None and normalized_line_code is not None and normalized_line_code != selected_line_code:
-            raise HTTPException(status_code=422, detail="line_code does not match the selected canonical ProductionLine.")
-        cases = list(session.scalars(select(Case).where(Case.site_id == site_id)))
-        case_by_id = {row.id: row for row in cases}
-        case_ids = list(case_by_id)
-        outcomes_by_case_id: dict[str, InspectionOutcome] = {}
-        if case_ids:
-            for outcome in session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id.in_(case_ids))):
-                outcomes_by_case_id[outcome.case_id] = outcome
-        inspection_event_dates_by_case_id: dict[str, date] = {}
-        if case_ids:
-            event_rows = session.execute(
-                select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
-                .where(
-                    InspectionEvent.case_id.in_(case_ids),
-                    InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED,
-                )
-                .group_by(InspectionEvent.case_id)
-            ).all()
-            inspection_event_dates_by_case_id = {
-                case_id: occurred_at.date()
-                for case_id, occurred_at in event_rows
-                if occurred_at is not None
-            }
+    def list_site_gxp_certificates(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        gxp_type: str | None,
+        line_code: str | None,
+        production_line_id: str | None = None,
+    ):
+        """Committed Site/line GxP list; no ORM cache or operator draft writes.
 
-        rows = list(
-            session.execute(
-                select(Certificate, CertificateVersion)
+        The selected canonical line is site-owned. Each Certificate, latest
+        Version, linked Case and canonical ProductionLine is read from one
+        persisted row, so filter matching and projection cannot disagree.
+        """
+        normalized_line_code = self._normalize_line_code(line_code)
+        with session.no_autoflush:
+            # Preflight includes historical rows independently of GxP/line
+            # filtering. Only exact witnessed source anomalies are excluded.
+            quarantined_ids, quarantined_legacy_ids = (
+                self._quarantined_historical_search_certificates(
+                    session, site_id=site_id,
+                )
+            )
+            if session.scalar(select(Site.id).where(Site.id == site_id)) is None:
+                raise HTTPException(status_code=404, detail="Site not found.")
+            selected = None
+            if production_line_id is not None:
+                selected = session.execute(
+                    select(
+                        ProductionLine.id, ProductionLine.site_id,
+                        ProductionLine.code,
+                    ).where(ProductionLine.id == production_line_id)
+                ).one_or_none()
+            lines = (
+                {
+                    production_line_id: SimpleNamespace(
+                        id=selected[0], site_id=selected[1], code=selected[2],
+                    )
+                }
+                if selected is not None else {}
+            )
+            selected_line_id, selected_line_code, identity_state = self._line_identity(
+                site_id=site_id,
+                production_line_id=production_line_id,
+                raw_line_code=normalized_line_code,
+                lines=lines,
+            )
+            if (
+                production_line_id is not None
+                and normalized_line_code is not None
+                and normalized_line_code != selected_line_code
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="line_code does not match the selected canonical ProductionLine.",
+                )
+            source = (
+                select(
+                    Certificate.id.label("cert_id"),
+                    Certificate.site_id.label("cert_site_id"),
+                    Certificate.case_id.label("cert_case_id"),
+                    Certificate.certificate_type.label("cert_type"),
+                    Certificate.production_line_id.label("cert_line_id"),
+                    Certificate.line_code.label("cert_line_text"),
+                    Certificate.latest_flag.label("cert_latest_flag"),
+                    CertificateVersion.id.label("version_id"),
+                    CertificateVersion.certificate_number.label("version_number"),
+                    CertificateVersion.issue_date.label("version_issue_date"),
+                    CertificateVersion.expiry_date.label("version_expiry_date"),
+                    CertificateVersion.applicable_standard.label("version_standard"),
+                    CertificateVersion.issuing_authority.label("version_authority"),
+                    Case.id.label("linked_case_id"),
+                    Case.site_id.label("linked_case_site_id"),
+                    Case.gxp_type.label("linked_case_type"),
+                    Case.scope_code.label("linked_case_scope"),
+                    ProductionLine.id.label("linked_line_id"),
+                    ProductionLine.site_id.label("linked_line_site_id"),
+                    ProductionLine.code.label("linked_line_code"),
+                )
+                .select_from(Certificate)
                 .join(
                     CertificateVersion,
                     and_(
@@ -2348,82 +2437,147 @@ class CatalogReadService:
                         CertificateVersion.is_latest_version.is_(True),
                     ),
                 )
+                .outerjoin(Case, Case.id == Certificate.case_id)
+                .outerjoin(
+                    ProductionLine,
+                    ProductionLine.id == Certificate.production_line_id,
+                )
                 .where(
                     Certificate.site_id == site_id,
                     Certificate.id.not_in(quarantined_ids),
-                    *( [Certificate.certificate_type == gxp_type] if gxp_type else [] ),
+                    *([Certificate.certificate_type == gxp_type] if gxp_type else []),
                 )
-            ).all()
-        )
-        certificate_ids = [certificate.id for certificate, _ in rows]
+            )
+            rows = session.execute(source).mappings().all()
+
+        certificate_ids = [row["cert_id"] for row in rows]
         if len(certificate_ids) != len(set(certificate_ids)):
-            raise HTTPException(status_code=409, detail="Certificate has ambiguous latest CertificateVersion identity.")
+            raise HTTPException(
+                status_code=409,
+                detail="Certificate has ambiguous latest CertificateVersion identity.",
+            )
         items = []
-        for certificate, version in rows:
-            linked_case = None if certificate.case_id is None else case_by_id.get(certificate.case_id)
+        for row in rows:
+            if row["cert_case_id"] is not None and (
+                row["linked_case_id"] != row["cert_case_id"]
+                or row["linked_case_site_id"] != row["cert_site_id"]
+                or row["linked_case_type"] != row["cert_type"]
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate references an invalid linked Case.",
+                )
+            if row["cert_line_id"] is not None:
+                if row["linked_line_id"] != row["cert_line_id"]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Canonical ProductionLine reference is missing.",
+                    )
+                if row["linked_line_site_id"] != row["cert_site_id"]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Canonical ProductionLine reference belongs to a different site.",
+                    )
+            certificate = SimpleNamespace(
+                site_id=row["cert_site_id"],
+                case_id=row["cert_case_id"],
+                certificate_type=row["cert_type"],
+                production_line_id=row["cert_line_id"],
+                line_code=row["cert_line_text"],
+                latest_flag=row["cert_latest_flag"],
+            )
+            linked_case = (
+                SimpleNamespace(scope_code=row["linked_case_scope"])
+                if row["linked_case_id"] is not None else None
+            )
             resolved_line_code = self._certificate_line_code(certificate, linked_case)
-            certificate_line_id, certificate_line_code, certificate_identity_state = self._line_identity(site_id=certificate.site_id, production_line_id=certificate.production_line_id, raw_line_code=resolved_line_code, lines=lines)
+            cert_line_id, cert_line_code, cert_identity = self._line_identity(
+                site_id=certificate.site_id,
+                production_line_id=certificate.production_line_id,
+                raw_line_code=resolved_line_code,
+                lines=(
+                    {
+                        row["linked_line_id"]: SimpleNamespace(
+                            id=row["linked_line_id"],
+                            site_id=row["linked_line_site_id"],
+                            code=row["linked_line_code"],
+                        )
+                    }
+                    if row["linked_line_id"] is not None else {}
+                ),
+            )
             if identity_state == "canonical" and not (
-                certificate_line_id == selected_line_id
-                or certificate_identity_state == "facility_wide"
+                cert_line_id == selected_line_id
+                or cert_identity == "facility_wide"
             ):
                 continue
             if identity_state == "legacy_unlinked" and not (
-                certificate_identity_state == "facility_wide"
+                cert_identity == "facility_wide"
                 or (
-                    certificate_line_id is None
-                    and certificate_identity_state == "legacy_unlinked"
-                    and certificate_line_code == selected_line_code
+                    cert_line_id is None
+                    and cert_identity == "legacy_unlinked"
+                    and cert_line_code == selected_line_code
                 )
             ):
                 continue
-            if identity_state == "facility_wide" and certificate_identity_state != "facility_wide":
+            if identity_state == "facility_wide" and cert_identity != "facility_wide":
                 continue
-            display_line_code = certificate_line_code if certificate_identity_state == "canonical" else resolved_line_code
+            display_line_code = (
+                cert_line_code if cert_identity == "canonical"
+                else resolved_line_code
+            )
             context_match_kind = (
                 "exact_line"
-                if identity_state == "canonical" and certificate_line_id == selected_line_id
+                if identity_state == "canonical" and cert_line_id == selected_line_id
                 else "facility_wide"
-                if identity_state == "canonical" and certificate_identity_state == "facility_wide"
+                if identity_state == "canonical" and cert_identity == "facility_wide"
                 else self._normalize_match_kind(normalized_line_code, display_line_code)
             )
-            certificate_context = CertificateContextRow(
-                certificate=certificate,
-                version=version,
-                line_code=resolved_line_code,
-                scope_summary=None,
+            version = SimpleNamespace(
+                expiry_date=row["version_expiry_date"],
+                issue_date=row["version_issue_date"],
             )
-            items.append(
-                {
-                    "certificate_id": certificate.id,
-                    "site_id": certificate.site_id,
-                    "case_id": certificate.case_id,
-                    "certificate_type": certificate.certificate_type,
-                    "line_code": display_line_code,
-                    "production_line_id": certificate_line_id,
-                    "production_line_code": certificate_line_code,
-                    "production_line_identity_state": certificate_identity_state,
-                    "context_match_kind": context_match_kind,
-                    "latest_flag": certificate.latest_flag,
-                    "certificate_number": version.certificate_number,
-                    "issue_date": version.issue_date,
-                    "expiry_date": version.expiry_date,
-                    "applicable_standard": version.applicable_standard,
-                    "issuing_authority": version.issuing_authority,
-                    "status": self._derive_certificate_status(certificate_context),
-                }
-            )
+            items.append({
+                "certificate_id": row["cert_id"],
+                "site_id": row["cert_site_id"],
+                "case_id": row["cert_case_id"],
+                "certificate_type": row["cert_type"],
+                "line_code": display_line_code,
+                "production_line_id": cert_line_id,
+                "production_line_code": cert_line_code,
+                "production_line_identity_state": cert_identity,
+                "context_match_kind": context_match_kind,
+                "latest_flag": row["cert_latest_flag"],
+                "certificate_number": row["version_number"],
+                "issue_date": row["version_issue_date"],
+                "expiry_date": row["version_expiry_date"],
+                "applicable_standard": row["version_standard"],
+                "issuing_authority": row["version_authority"],
+                "status": self._derive_certificate_status(
+                    CertificateContextRow(
+                        certificate=certificate,
+                        version=version,
+                        line_code=resolved_line_code,
+                        scope_summary=None,
+                    )
+                ),
+            })
         items.sort(
             key=lambda item: (
-                0 if item["context_match_kind"] == "exact_line" else 1 if item["context_match_kind"] == "facility_wide" else 2,
-                -(item["issue_date"].toordinal()) if item["issue_date"] is not None else float("inf"),
-                -(item["expiry_date"].toordinal()) if item["expiry_date"] is not None else float("inf"),
+                0 if item["context_match_kind"] == "exact_line"
+                else 1 if item["context_match_kind"] == "facility_wide" else 2,
+                -(item["issue_date"].toordinal())
+                if item["issue_date"] is not None else float("inf"),
+                -(item["expiry_date"].toordinal())
+                if item["expiry_date"] is not None else float("inf"),
                 item["certificate_number"] or "",
                 item["certificate_id"],
             )
         )
-        return {"items": items,
-                "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids}
+        return {
+            "items": items,
+            "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids,
+        }
 
     def get_gxp_certificate_version_history(
         self,

@@ -20,13 +20,14 @@ export function parseCanonicalRecordReportUrl(
   kind: CanonicalRecordReportKind,
   expiryDefault: string,
   returnQueue?: "change_requests",
+  options?: { strictKeys?: boolean },
 ): { filters: CanonicalRecordReportFilters; offset: number; valid: boolean } {
   const names = kind === "certificates"
     ? ["gxp_type", "expiry_days", "number", "q", "offset"]
     : ["state", "q", "offset"];
   const routeKeys = returnQueue ? ["queue"] : ["report"];
   const unique = names.every(name => params.getAll(name).length <= 1);
-  const known = [...params.keys()].every(name => [...names, ...routeKeys].includes(name));
+  const known = !options?.strictKeys || [...params.keys()].every(name => [...names, ...routeKeys].includes(name));
   const filters = {
     ...EMPTY_CANONICAL_RECORD_REPORT_FILTERS,
     expiry_days: expiryDefault,

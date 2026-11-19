@@ -2381,39 +2381,102 @@ class CatalogReadService:
                 "quarantined_historical_certificate_legacy_ids": quarantined_legacy_ids}
 
     def get_facility_workspace(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None, production_line_id: str | None = None):
-        quarantined_ids, quarantined_legacy_ids = self._quarantined_historical_search_certificates(
-            session, site_id=site_id
-        )
-        site = self.get_site(session, site_id)
-        company = self.get_company(session, site.company_id)
-        site_cases = list(session.scalars(select(Case).where(Case.site_id == site_id)))
-        normalized_line_code = self._normalize_line_code(line_code)
-        lines = {row.id: row for row in session.scalars(select(ProductionLine).where(ProductionLine.site_id == site_id))}
-        selected_line_id, selected_line_code, identity_state = self._line_identity(
-            site_id=site_id, production_line_id=production_line_id, raw_line_code=normalized_line_code, lines=lines
-        )
-        if production_line_id is not None and normalized_line_code is not None and selected_line_code != normalized_line_code:
-            raise HTTPException(status_code=422, detail="line_code does not match the selected canonical ProductionLine.")
-        scoped_cases = [row for row in site_cases if row.gxp_type == gxp_type] if gxp_type else site_cases
-        if identity_state == "canonical":
-            scoped_cases = [row for row in scoped_cases if row.production_line_id == selected_line_id]
-        elif identity_state == "legacy_unlinked":
-            scoped_cases = [row for row in scoped_cases if row.production_line_id is None and self._normalize_line_code(row.scope_code) == selected_line_code]
-        else:
-            scoped_cases = [row for row in scoped_cases if row.production_line_id is None and self._normalize_line_code(row.scope_code) is None]
-        case_ids = [item.id for item in site_cases]
-        event_dates = {}
-        if case_ids:
-            rows = session.execute(
-                select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
-                .where(InspectionEvent.case_id.in_(case_ids))
-                .group_by(InspectionEvent.case_id)
-            ).all()
-            event_dates = {case_id: occurred_at.date() if occurred_at is not None else None for case_id, occurred_at in rows}
-        change_requests = list(session.scalars(select(ChangeRequest).where(ChangeRequest.site_id == site_id)))
-        current_certificates = list(
-            session.execute(
-                select(Certificate, CertificateVersion)
+        # The Facility workspace is a persisted read boundary. Do not use
+        # tracked ORM entities: a reused Session may hold dirty operator
+        # drafts or stale identities from an earlier transaction. All source
+        # rows are column-projected without autoflush, and no identity is
+        # expired, refreshed or overwritten as a side effect of this GET.
+        with session.no_autoflush:
+            quarantined_ids, quarantined_legacy_ids = (
+                self._quarantined_historical_search_certificates(
+                    session, site_id=site_id,
+                )
+            )
+
+            def persisted_rows(model, *, where):
+                return [
+                    SimpleNamespace(**row)
+                    for row in session.execute(
+                        select(*model.__table__.columns).where(where)
+                    ).mappings().all()
+                ]
+
+            sites = persisted_rows(Site, where=Site.id == site_id)
+            if not sites:
+                raise HTTPException(status_code=404, detail="Site not found.")
+            site = sites[0]
+            companies = persisted_rows(Company, where=Company.id == site.company_id)
+            if not companies:
+                raise HTTPException(status_code=404, detail="Company not found.")
+            company = companies[0]
+            site_cases = persisted_rows(Case, where=Case.site_id == site_id)
+            normalized_line_code = self._normalize_line_code(line_code)
+            lines = {
+                row.id: row for row in persisted_rows(
+                    ProductionLine, where=ProductionLine.site_id == site_id,
+                )
+            }
+            selected_line_id, selected_line_code, identity_state = self._line_identity(
+                site_id=site_id, production_line_id=production_line_id,
+                raw_line_code=normalized_line_code, lines=lines,
+            )
+            if (
+                production_line_id is not None
+                and normalized_line_code is not None
+                and selected_line_code != normalized_line_code
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="line_code does not match the selected canonical ProductionLine.",
+                )
+            scoped_cases = [
+                row for row in site_cases if not gxp_type or row.gxp_type == gxp_type
+            ]
+            if identity_state == "canonical":
+                scoped_cases = [
+                    row for row in scoped_cases
+                    if row.production_line_id == selected_line_id
+                ]
+            elif identity_state == "legacy_unlinked":
+                scoped_cases = [
+                    row for row in scoped_cases
+                    if row.production_line_id is None
+                    and self._normalize_line_code(row.scope_code) == selected_line_code
+                ]
+            else:
+                scoped_cases = [
+                    row for row in scoped_cases
+                    if row.production_line_id is None
+                    and self._normalize_line_code(row.scope_code) is None
+                ]
+
+            case_ids = [item.id for item in site_cases]
+            event_dates = {}
+            if case_ids:
+                rows = session.execute(
+                    select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
+                    .where(InspectionEvent.case_id.in_(case_ids))
+                    .group_by(InspectionEvent.case_id)
+                ).all()
+                event_dates = {
+                    case_id: occurred_at.date() if occurred_at is not None else None
+                    for case_id, occurred_at in rows
+                }
+            change_requests = persisted_rows(
+                ChangeRequest, where=ChangeRequest.site_id == site_id,
+            )
+
+            # One joined scalar projection keeps each Certificate and the
+            # selected latest Version tied to the same SQL statement without
+            # relying on the Session identity map or inventing ownership.
+            cert_columns = tuple(Certificate.__table__.columns)
+            version_columns = tuple(CertificateVersion.__table__.columns)
+            cert_pairs = session.execute(
+                select(
+                    *(column.label("cert_" + column.name) for column in cert_columns),
+                    *(column.label("version_" + column.name) for column in version_columns),
+                )
+                .select_from(Certificate)
                 .join(
                     CertificateVersion,
                     and_(
@@ -2421,15 +2484,33 @@ class CatalogReadService:
                         CertificateVersion.is_latest_version.is_(True),
                     ),
                 )
-                .where(Certificate.site_id == site_id, Certificate.latest_flag.is_(True))
-                .where(Certificate.id.not_in(quarantined_ids))
-            ).all()
-        )
-        certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
-        version_ids = [version.id for _, version in current_certificates]
-        if version_ids:
-            for scope in session.scalars(select(CertificateScope).where(CertificateScope.certificate_version_id.in_(version_ids))):
-                certificate_scope_rows_by_version[scope.certificate_version_id].append(scope)
+                .where(
+                    Certificate.site_id == site_id,
+                    Certificate.latest_flag.is_(True),
+                    Certificate.id.not_in(quarantined_ids),
+                )
+            ).mappings().all()
+            current_certificates = [
+                (
+                    SimpleNamespace(**{
+                        column.name: row["cert_" + column.name]
+                        for column in cert_columns
+                    }),
+                    SimpleNamespace(**{
+                        column.name: row["version_" + column.name]
+                        for column in version_columns
+                    }),
+                )
+                for row in cert_pairs
+            ]
+            certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
+            version_ids = [version.id for _, version in current_certificates]
+            if version_ids:
+                for scope in persisted_rows(
+                    CertificateScope,
+                    where=CertificateScope.certificate_version_id.in_(version_ids),
+                ):
+                    certificate_scope_rows_by_version[scope.certificate_version_id].append(scope)
         case_by_id = {row.id: row for row in site_cases}
         certificate_context_rows = [
             CertificateContextRow(

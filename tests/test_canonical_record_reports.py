@@ -545,3 +545,69 @@ def test_facility_search_projects_committed_rows_without_flushing_operator_draft
     finally:
         event.remove(session, "before_flush", forbid_flush)
         session.rollback()
+
+
+def test_facility_workspace_reads_committed_history_without_flushing_operator_drafts(session):
+    """A workspace GET must not flush or replace Case, CR, Site or GCN drafts."""
+    from sqlalchemy import event, inspect, select
+
+    service = CatalogReadService()
+    site = session.scalar(select(Site).limit(1))
+    company = session.get(Company, site.company_id)
+    case = Case(
+        site_id=site.id, gxp_type="GMP", state=CaseState.PLANNED,
+        legacy_inspection_code="WORKSPACE-PERSISTED-CASE",
+    )
+    session.add(case)
+    session.commit()
+    baseline = service.get_facility_workspace(
+        session, site_id=site.id, gxp_type="GMP",
+        line_code=None, production_line_id=None,
+    )
+    assert baseline["summary"]["facility_name"] == "Cơ sở Thử"
+    assert baseline["summary"]["company_name"] == "Công ty thử nghiệm"
+    assert any(
+        x["id"] == case.id and x["state"] == "planned"
+        for x in baseline["history"]
+    )
+
+    version = session.scalar(
+        select(CertificateVersion).where(
+            CertificateVersion.certificate_number == "GCN-A"
+        )
+    )
+    request = session.scalar(select(ChangeRequest).where(
+        ChangeRequest.scope_label == "Đổi tên"
+    ))
+    site.site_name = "UNSAVED-WORKSPACE-SITE"
+    company.legal_name = "UNSAVED-WORKSPACE-COMPANY"
+    case.state = CaseState.CLOSED
+    case.legacy_inspection_code = "UNSAVED-WORKSPACE-CASE"
+    request.scope_label = "UNSAVED-WORKSPACE-CHANGE"
+    version.certificate_number = "UNSAVED-WORKSPACE-GCN"
+    pending = Company(legal_name="UNSAVED-WORKSPACE-PENDING")
+    session.add(pending)
+    flushes = []
+
+    def fail_flush(*_):
+        flushes.append(True)
+        raise AssertionError("Facility workspace autoflushed an operator draft")
+
+    event.listen(session, "before_flush", fail_flush)
+    try:
+        result = service.get_facility_workspace(
+            session, site_id=site.id, gxp_type="GMP",
+            line_code=None, production_line_id=None,
+        )
+        assert result == baseline
+        assert not flushes
+        assert site.site_name == "UNSAVED-WORKSPACE-SITE"
+        assert company.legal_name == "UNSAVED-WORKSPACE-COMPANY"
+        assert case.state == CaseState.CLOSED
+        assert request.scope_label == "UNSAVED-WORKSPACE-CHANGE"
+        assert version.certificate_number == "UNSAVED-WORKSPACE-GCN"
+        assert inspect(pending).pending
+        assert {case, site, company, request, version}.issubset(session.dirty)
+    finally:
+        event.remove(session, "before_flush", fail_flush)
+        session.rollback()

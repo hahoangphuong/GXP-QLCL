@@ -12,6 +12,7 @@ export function reportReturnLocation(state: unknown, kind: "certificates" | "cha
       kind,
       "90",
       "change_requests",
+      { strictKeys: true },
     ).valid ? value : null;
   }
   if (!value.startsWith("/reports?")) return null;
@@ -19,5 +20,7 @@ export function reportReturnLocation(state: unknown, kind: "certificates" | "cha
     new URLSearchParams(value.slice("/reports?".length)),
     kind,
     "90",
+    undefined,
+    { strictKeys: true },
   ).valid ? value : null;
 }

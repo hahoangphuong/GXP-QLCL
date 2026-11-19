@@ -1928,15 +1928,30 @@ class CatalogReadService:
                     raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
                 total, limit = len(rows), 10000
             else:
-                total = session.scalar(
+                # One PostgreSQL READ COMMITTED statement must own both the
+                # total and the visible page. A concurrent committed writer
+                # cannot appear only in the second SELECT. The anchor retains
+                # total_count even if the requested offset has no items.
+                page = (
+                    source.order_by(ChangeRequest.id)
+                    .offset(offset).limit(limit)
+                    .subquery("change_report_page")
+                )
+                count_at_page_snapshot = (
                     select(func.count()).select_from(ChangeRequest)
                     .join(Site, Site.id == ChangeRequest.site_id)
                     .join(Company, Company.id == Site.company_id)
                     .where(*conditions)
-                ) or 0
-                rows = session.execute(
-                    source.order_by(ChangeRequest.id).offset(offset).limit(limit)
+                    .scalar_subquery()
+                )
+                anchor = select(literal(1).label("anchor")).subquery("change_report_anchor")
+                counted_rows = session.execute(
+                    select(*page.c, count_at_page_snapshot.label("report_total_count"))
+                    .select_from(anchor.outerjoin(page, true()))
+                    .order_by(page.c.request_id)
                 ).mappings().all()
+                total = counted_rows[0]["report_total_count"] if counted_rows else 0
+                rows = [row for row in counted_rows if row["request_id"] is not None]
         items = [
             {
                 "change_request_id": row["request_id"],

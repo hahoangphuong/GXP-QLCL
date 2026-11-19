@@ -115,6 +115,12 @@ def test_certificate_report_paging_export_and_validation(session):
     whole = cert_report(session, export=True)
     assert a["total_count"] == b["total_count"] == whole["total_count"] == 2
     assert {x["certificate_id"] for x in a["items"] + b["items"]} == {x["certificate_id"] for x in whole["items"]}
+    # An offset past the end must still report the full matching count.
+    beyond = cert_report(session, offset=500, limit=1)
+    assert beyond["total_count"] == 2
+    assert beyond["items"] == []
+    assert beyond["offset"] == 500
+    assert beyond["limit"] == 1
     assert cert_report(session, gxp_type="GLP")["total_count"] == 0
     for bad in (7, 31):
         with pytest.raises(HTTPException) as exc:

@@ -1570,3 +1570,123 @@ def test_search_certificate_root_and_latest_version_share_postgres_snapshot():
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_search_production_line_code_and_case_state_share_postgres_snapshot():
+    """Search cannot combine a stale canonical Line code with a new Case state."""
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import Case, ProductionLine
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "search_line_case_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Line Case snapshot company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Line Case snapshot site")
+            seed.add(site)
+            seed.flush()
+            line = ProductionLine(
+                site_id=site.id, code="BEFORE-LINE",
+                effective_from=date(2026, 1, 1),
+            )
+            seed.add(line)
+            seed.flush()
+            case = Case(
+                site_id=site.id, production_line_id=line.id,
+                gxp_type="GMP", state=CaseState.PLANNED,
+                scope_code="L-001", legacy_inspection_code="LINE-CASE-SNAPSHOT",
+            )
+            seed.add(case)
+            seed.commit()
+            site_id, line_id, case_id = site.id, line.id, case.id
+
+        commits = []
+        with Session(engine) as reader:
+            def commit_at_line_case_boundary(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                # RED: line scalar SELECT has executed; subsequent tagged Case
+                # snapshot can see post-commit values from the same writer.
+                old_line = (
+                    "from production_line" in sql
+                    and "effective_from" in sql
+                    and "search_atomic_read" not in sql
+                )
+                # GREEN: line and Case are both in one tagged source SELECT.
+                new_atomic = (
+                    "search_atomic_read" in sql
+                    and "line_effective_from" in sql
+                    and "case_state" in sql
+                )
+                if not commits and (old_line or new_atomic):
+                    captured = (
+                        None if new_atomic else orm_execute_state.invoke_statement()
+                    )
+                    with Session(engine) as writer:
+                        writer.execute(
+                            ProductionLine.__table__.update()
+                            .where(ProductionLine.id == line_id)
+                            .values(code="AFTER-LINE")
+                        )
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(state=CaseState.CLOSED)
+                        )
+                        writer.commit()
+                    commits.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if new_atomic else captured
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", commit_at_line_case_boundary, retval=True)
+            try:
+                payload = CatalogReadService().search_facilities(
+                    reader, site_id=site_id, gxp_type="GMP",
+                )
+                rows = [
+                    row for row in payload["items"]
+                    if row["site_id"] == site_id
+                    and row["gxp_type"] == "GMP"
+                    and row["production_line_id"] == line_id
+                ]
+                assert len(rows) == 1
+                pair = (rows[0]["line_code"], rows[0]["current_state"])
+                assert pair in {
+                    ("BEFORE-LINE", "planned"),
+                    ("AFTER-LINE", "closed"),
+                }, "Search combined ProductionLine BEFORE with Case AFTER one commit"
+            finally:
+                event.remove(reader, "do_orm_execute", commit_at_line_case_boundary)
+            assert commits, "independent writer never committed at Search read boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(ProductionLine.code).where(ProductionLine.id == line_id)
+            ) == "AFTER-LINE"
+            assert verify.scalar(
+                select(Case.state).where(Case.id == case_id)
+            ) == CaseState.CLOSED
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

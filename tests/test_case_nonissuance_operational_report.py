@@ -272,12 +272,12 @@ def test_gcn_search_exists_prevents_duplicate_cases_when_many_certificates_match
         assert after["items"] == []
         assert [r["case_id"] for r in export["items"]] == [ids["pending"]]
 
-def test_report_refreshes_cached_case_and_site_after_sql_owner_change(seeded):
-    """SQL current classification/count and ORM-projected fields must agree.
+def test_report_reads_persisted_case_and_site_without_mutating_cached_identities(seeded):
+    """SQL filters and output agree without refreshing a tracked ORM identity.
 
-    A long-lived Session can contain earlier Case and Site ORM identities.
-    Bypass ORM synchronization to simulate another writer committing values;
-    the report SELECT must repopulate rather than serialize stale objects.
+    A reused Session can hold old Case and Site objects while SQL sees newer
+    persisted values. Read-only reports must project those SQL values but
+    never overwrite cached identities or pending operator drafts.
     """
     engine, ids = seeded
     with Session(engine) as db:
@@ -308,8 +308,9 @@ def test_report_refreshes_cached_case_and_site_after_sql_owner_change(seeded):
         assert by_id[ids["pending"]]["certificate_decision_status"] == "not_at_decision_stage"
         assert by_id[ids["pending"]]["facility_name"] == replacement_name
         assert by_id[ids["explicit"]]["certificate_decision_status"] == "nonissuance_recorded"
-        assert case.state == CaseState.PLANNED
-        assert site.site_name == replacement_name
+        # A report does not refresh or overwrite the Session identity map.
+        assert case.state == CaseState.AWAITING_CERTIFICATE_DECISION
+        assert site.site_name == original_name
         # Filters/counts must not disagree with projected Case state.
         assert report(db, certificate_decision_status="awaiting_decision")["total_count"] == 0
         changed = report(db, certificate_decision_status="not_at_decision_stage")

@@ -2432,6 +2432,9 @@ class CatalogReadService:
                 "version": tuple(CertificateVersion.__table__.columns),
                 "scope": tuple(CertificateScope.__table__.columns),
             }
+            cert_columns = snapshots["cert"]
+            version_columns = snapshots["version"]
+            scope_columns = snapshots["scope"]
 
             def tagged_columns(*present):
                 return [

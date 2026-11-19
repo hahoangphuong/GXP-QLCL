@@ -2549,7 +2549,24 @@ class CatalogReadService:
             # be omitted; unknown corrupted links always fail closed.
             quarantined_ids, quarantined_legacy_ids = (
                 self._quarantine_historical_projection_rows(
-                    row for row in persisted
+                    {
+                        # The atomic UNION source uses raw model column
+                        # labels, while the shared owner predicate consumes
+                        # the preflight's explicit canonical aliases.
+                        "cert_id": row["cert_id"],
+                        "cert_case_id": row["cert_case_id"],
+                        "cert_site_id": row["cert_site_id"],
+                        "cert_type": row["cert_certificate_type"],
+                        "cert_basis": row["cert_issuance_basis"],
+                        "cert_legacy_id": row["cert_legacy_certificate_id"],
+                        "case_id": row["case_id"],
+                        "case_site_id": row["case_site_id"],
+                        "case_gxp_type": row["case_gxp_type"],
+                        "case_legacy_id": row["case_legacy_inspection_id"],
+                        "site_id": row["site_id"],
+                        "site_legacy_id": row["site_legacy_site_id"],
+                    }
+                    for row in persisted
                     if row["source_kind"] == "certificate_owner"
                 )
             )

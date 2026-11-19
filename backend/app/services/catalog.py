@@ -7,7 +7,7 @@ from functools import lru_cache
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from sqlalchemy import String, and_, cast, func, literal, or_, select, true
+from sqlalchemy import String, and_, cast, func, literal, or_, select, true, union_all
 from sqlalchemy.orm import Session
 
 from backend.app.auth import AuthenticatedUser
@@ -2418,25 +2418,82 @@ class CatalogReadService:
                     ).mappings().all()
                 ]
 
-            # Site, its Company and every Case must be projected from ONE
-            # SQL statement snapshot. An independent writer may commit Site
-            # and Case together between separate READ COMMITTED statements;
-            # mixing them would invent a workspace state that never existed.
-            site_columns = tuple(Site.__table__.columns)
-            company_columns = tuple(Company.__table__.columns)
-            case_columns = tuple(Case.__table__.columns)
-            owner_rows = session.execute(
-                select(
-                    *(column.label("site_" + column.name) for column in site_columns),
-                    *(column.label("company_" + column.name) for column in company_columns),
-                    *(column.label("case_" + column.name) for column in case_columns),
-                )
+            # Read Site/Company/Case, ChangeRequest and GCN/Version/Scope
+            # from ONE PostgreSQL statement snapshot. The separate source
+            # branches avoid the multiplicative Case x CR x Scope join fanout.
+            # CAST(NULL AS field_type) preserves Postgres UNION column types
+            # (including UUID/enum/date) even when the first branch is empty.
+            snapshots = {
+                "site": tuple(Site.__table__.columns),
+                "company": tuple(Company.__table__.columns),
+                "case": tuple(Case.__table__.columns),
+                "change": tuple(ChangeRequest.__table__.columns),
+                "cert": tuple(Certificate.__table__.columns),
+                "version": tuple(CertificateVersion.__table__.columns),
+                "scope": tuple(CertificateScope.__table__.columns),
+            }
+
+            def tagged_columns(*present):
+                return [
+                    (
+                        column.label(f"{kind}_{column.name}")
+                        if kind in present
+                        else cast(literal(None), column.type).label(f"{kind}_{column.name}")
+                    )
+                    for kind, columns in snapshots.items()
+                    for column in columns
+                ]
+
+            owner_stmt = (
+                select(literal("owner").label("source_kind"), *tagged_columns("site", "company", "case"))
                 .select_from(Site)
                 .outerjoin(Company, Company.id == Site.company_id)
                 .outerjoin(Case, Case.site_id == Site.id)
                 .where(Site.id == site_id)
-                .order_by(Case.id)
+            )
+            change_stmt = (
+                select(literal("change").label("source_kind"), *tagged_columns("change"))
+                .select_from(ChangeRequest)
+                .where(ChangeRequest.site_id == site_id)
+            )
+            certificate_stmt = (
+                select(
+                    literal("certificate").label("source_kind"),
+                    *tagged_columns("cert", "version", "scope"),
+                )
+                .select_from(Certificate)
+                .join(
+                    CertificateVersion,
+                    and_(
+                        CertificateVersion.certificate_id == Certificate.id,
+                        CertificateVersion.is_latest_version.is_(True),
+                    ),
+                )
+                .outerjoin(
+                    CertificateScope,
+                    CertificateScope.certificate_version_id == CertificateVersion.id,
+                )
+                .where(
+                    Certificate.site_id == site_id,
+                    Certificate.latest_flag.is_(True),
+                    Certificate.id.not_in(quarantined_ids),
+                )
+            )
+            combined = union_all(owner_stmt, change_stmt, certificate_stmt).subquery(
+                "facility_workspace_atomic_read"
+            )
+            persisted = session.execute(
+                select(*combined.c).order_by(
+                    combined.c.source_kind,
+                    combined.c.case_id,
+                    combined.c.cert_id,
+                    combined.c.version_id,
+                    combined.c.scope_sort_order,
+                    combined.c.scope_created_at,
+                    combined.c.scope_id,
+                )
             ).mappings().all()
+            owner_rows = [row for row in persisted if row["source_kind"] == "owner"]
             if not owner_rows:
                 raise HTTPException(status_code=404, detail="Site not found.")
             owner = owner_rows[0]
@@ -2444,18 +2501,28 @@ class CatalogReadService:
                 raise HTTPException(status_code=404, detail="Company not found.")
             site = SimpleNamespace(**{
                 column.name: owner["site_" + column.name]
-                for column in site_columns
+                for column in snapshots["site"]
             })
             company = SimpleNamespace(**{
                 column.name: owner["company_" + column.name]
-                for column in company_columns
+                for column in snapshots["company"]
             })
             site_cases = [
                 SimpleNamespace(**{
                     column.name: row["case_" + column.name]
-                    for column in case_columns
+                    for column in snapshots["case"]
                 })
                 for row in owner_rows if row["case_id"] is not None
+            ]
+            change_requests = [
+                SimpleNamespace(**{
+                    column.name: row["change_" + column.name]
+                    for column in snapshots["change"]
+                })
+                for row in persisted if row["source_kind"] == "change"
+            ]
+            cert_pairs = [
+                row for row in persisted if row["source_kind"] == "certificate"
             ]
             normalized_line_code = self._normalize_line_code(line_code)
             lines = {
@@ -2509,48 +2576,8 @@ class CatalogReadService:
                     case_id: occurred_at.date() if occurred_at is not None else None
                     for case_id, occurred_at in rows
                 }
-            change_requests = persisted_rows(
-                ChangeRequest, where=ChangeRequest.site_id == site_id,
-            )
-
-            # Version identity and the exact Scope rows must be projected
-            # together. Under READ COMMITTED, a writer can atomically change
-            # the number and scope between two separate SELECT statements;
-            # the workspace must never combine those different snapshots.
-            cert_columns = tuple(Certificate.__table__.columns)
-            version_columns = tuple(CertificateVersion.__table__.columns)
-            scope_columns = tuple(CertificateScope.__table__.columns)
-            cert_pairs = session.execute(
-                select(
-                    *(column.label("cert_" + column.name) for column in cert_columns),
-                    *(column.label("version_" + column.name) for column in version_columns),
-                    *(column.label("scope_" + column.name) for column in scope_columns),
-                )
-                .select_from(Certificate)
-                .join(
-                    CertificateVersion,
-                    and_(
-                        CertificateVersion.certificate_id == Certificate.id,
-                        CertificateVersion.is_latest_version.is_(True),
-                    ),
-                )
-                .outerjoin(
-                    CertificateScope,
-                    CertificateScope.certificate_version_id == CertificateVersion.id,
-                )
-                .where(
-                    Certificate.site_id == site_id,
-                    Certificate.latest_flag.is_(True),
-                    Certificate.id.not_in(quarantined_ids),
-                )
-                .order_by(
-                    Certificate.id, CertificateVersion.id,
-                    CertificateScope.sort_order,
-                    CertificateScope.created_at,
-                    CertificateScope.id,
-                )
-            ).mappings().all()
-
+            # cert_pairs and change_requests were obtained from the same
+            # tagged UNION statement as Site/Company/Case above.
             # Scope fanout yields multiple rows for one valid latest Version.
             # Only distinct latest Version identities for the *same* current
             # Certificate are ambiguous; never reject repeated scope rows.

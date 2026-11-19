@@ -588,3 +588,137 @@ def test_facility_workspace_certificate_number_and_scope_share_pg_snapshot():
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_facility_workspace_case_certificate_change_request_share_one_atomic_snapshot():
+    """No mixed Case/GCN/CR values when writer commits all three together."""
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import Case
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "workspace_cross_owner_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Cross-owner company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Cross-owner site")
+            seed.add(site)
+            seed.flush()
+            case = Case(
+                site_id=site.id, gxp_type="GMP", state=CaseState.PLANNED,
+                legacy_inspection_code="CROSS-CASE",
+            )
+            certificate = Certificate(
+                site_id=site.id, certificate_type="GMP", latest_flag=True,
+            )
+            request = ChangeRequest(
+                site_id=site.id, state=ChangeRequestState.RECEIVED,
+                scope_label="BEFORE-CHANGE",
+            )
+            seed.add_all([case, certificate, request])
+            seed.flush()
+            version = CertificateVersion(
+                certificate_id=certificate.id, version_no=1,
+                is_latest_version=True, certificate_number="BEFORE-GCN",
+            )
+            seed.add(version)
+            seed.commit()
+            site_id, case_id, version_id, request_id = (
+                site.id, case.id, version.id, request.id,
+            )
+
+        writer_commits = []
+        with Session(engine) as reader:
+            def atomic_writer_after_owner_statement(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                # Interleave after the first Site+Case owner statement returns.
+                # An all-owner atomic projection may include CR and GCN here.
+                if (
+                    not writer_commits
+                    and "from site" in sql
+                    and "where site.id" in sql
+                    and "case_" in sql
+                ):
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(state=CaseState.CLOSED)
+                        )
+                        writer.execute(
+                            CertificateVersion.__table__.update()
+                            .where(CertificateVersion.id == version_id)
+                            .values(certificate_number="AFTER-GCN")
+                        )
+                        writer.execute(
+                            ChangeRequest.__table__.update()
+                            .where(ChangeRequest.id == request_id)
+                            .values(scope_label="AFTER-CHANGE")
+                        )
+                        writer.commit()
+                    writer_commits.append(True)
+                    return result
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", atomic_writer_after_owner_statement, retval=True)
+            try:
+                try:
+                    payload = CatalogReadService().get_facility_workspace(
+                        reader, site_id=site_id, gxp_type="GMP",
+                        line_code=None, production_line_id=None,
+                    )
+                except HTTPException as exc:
+                    assert exc.status_code == 409
+                else:
+                    summary = payload["summary"]
+                    case_history = next(
+                        item for item in payload["history"]
+                        if item["source_type"] == "case" and item["id"] == case_id
+                    )
+                    request_history = next(
+                        item for item in payload["history"]
+                        if item["source_type"] == "change_request" and item["id"] == request_id
+                    )
+                    assert (
+                        case_history["state"],
+                        summary["current_certificate_number"],
+                        request_history["standard"],
+                    ) in {
+                        ("planned", "BEFORE-GCN", "BEFORE-CHANGE"),
+                        ("closed", "AFTER-GCN", "AFTER-CHANGE"),
+                    }, "workspace projected Case, GCN, ChangeRequest from different commits"
+            finally:
+                event.remove(reader, "do_orm_execute", atomic_writer_after_owner_statement)
+            assert writer_commits, "atomic writer never committed after owner SQL"
+
+        with Session(engine) as verify:
+            assert verify.scalar(select(Case.state).where(Case.id == case_id)) == CaseState.CLOSED
+            assert verify.scalar(
+                select(CertificateVersion.certificate_number)
+                .where(CertificateVersion.id == version_id)
+            ) == "AFTER-GCN"
+            assert verify.scalar(
+                select(ChangeRequest.scope_label).where(ChangeRequest.id == request_id)
+            ) == "AFTER-CHANGE"
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

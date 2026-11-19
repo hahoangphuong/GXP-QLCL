@@ -2260,6 +2260,7 @@ class CatalogReadService:
             change_columns = tuple(ChangeRequest.__table__.columns)
             certificate_columns = tuple(Certificate.__table__.columns)
             line_columns = tuple(ProductionLine.__table__.columns)
+            outcome_columns = tuple(InspectionOutcome.__table__.columns)
             # The Certificate owner branch includes linked Case/Site values
             # required by the unchanged historical quarantine predicate.
             certificate_link_columns = (
@@ -2276,6 +2277,12 @@ class CatalogReadService:
                 ("site_id", Site.id),
                 ("site_legacy_id", Site.legacy_site_id),
             )
+
+            def empty_outcome_columns():
+                return [
+                    cast(literal(None), column.type).label("outcome_" + column.name)
+                    for column in outcome_columns
+                ]
 
             def empty_line_columns():
                 return [
@@ -2306,6 +2313,7 @@ class CatalogReadService:
                       for column in change_columns),
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
+                    *empty_outcome_columns(),
                 ).select_from(Site).outerjoin(Company, Company.id == Site.company_id),
                 select(
                     literal("case").label("source_kind"),
@@ -2322,6 +2330,7 @@ class CatalogReadService:
                       for column in change_columns),
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
+                    *empty_outcome_columns(),
                 ).select_from(Case),
                 select(
                     literal("version").label("source_kind"),
@@ -2339,6 +2348,7 @@ class CatalogReadService:
                       for column in change_columns),
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
+                    *empty_outcome_columns(),
                 ).select_from(CertificateVersion).where(
                     CertificateVersion.is_latest_version.is_(True)
                 ),
@@ -2358,6 +2368,7 @@ class CatalogReadService:
                       for column in change_columns),
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
+                    *empty_outcome_columns(),
                 ).select_from(CertificateScope),
                 select(
                     literal("change").label("source_kind"),
@@ -2375,6 +2386,7 @@ class CatalogReadService:
                       for column in change_columns),
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
+                    *empty_outcome_columns(),
                 ).select_from(ChangeRequest),
                 select(
                     literal("certificate_owner").label("source_kind"),
@@ -2395,6 +2407,7 @@ class CatalogReadService:
                     *(column.label("owner_" + label)
                       for label, column in certificate_link_columns),
                     *empty_line_columns(),
+                    *empty_outcome_columns(),
                 )
                 .select_from(Certificate)
                 .outerjoin(Case, Case.id == Certificate.case_id)
@@ -2419,7 +2432,30 @@ class CatalogReadService:
                     *empty_certificate_owner_columns(),
                     *(column.label("line_" + column.name)
                       for column in line_columns),
+                    *empty_outcome_columns(),
                 ).select_from(ProductionLine),
+                # InspectionOutcome dates and Case state are now projected
+                # from the same persisted statement. One Outcome row per
+                # Case, without multiplying Line/Scope/Certificate rows.
+                select(
+                    literal("outcome").label("source_kind"),
+                    *(cast(literal(None), column.type).label("site_" + column.name)
+                      for column in site_columns),
+                    *(cast(literal(None), column.type).label("company_" + column.name)
+                      for column in company_columns),
+                    *(cast(literal(None), column.type).label("case_" + column.name)
+                      for column in case_columns),
+                    *(cast(literal(None), column.type).label("version_" + column.name)
+                      for column in version_columns),
+                    *(cast(literal(None), column.type).label("scope_" + column.name)
+                      for column in scope_columns),
+                    *(cast(literal(None), column.type).label("change_" + column.name)
+                      for column in change_columns),
+                    *empty_certificate_owner_columns(),
+                    *empty_line_columns(),
+                    *(column.label("outcome_" + column.name)
+                      for column in outcome_columns),
+                ).select_from(InspectionOutcome),
             ).subquery("search_atomic_read")
             cross_group_rows = session.execute(
                 select(*combined.c)
@@ -2491,7 +2527,11 @@ class CatalogReadService:
                 if row["source_kind"] == "certificate_owner"
             ]
             outcomes_by_case_id = {
-                row.case_id: row for row in committed_rows(InspectionOutcome)
+                row["outcome_case_id"]: SimpleNamespace(**{
+                    column.name: row["outcome_" + column.name]
+                    for column in outcome_columns
+                })
+                for row in cross_group_rows if row["source_kind"] == "outcome"
             }
             inspection_event_dates_by_case_id = {
                 case_id: occurred_at.date()

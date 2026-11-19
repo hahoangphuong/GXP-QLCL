@@ -924,13 +924,23 @@ def test_workspace_detects_invalid_certificate_case_link_committed_after_quarant
         with Session(engine) as reader:
             def mutate_after_quarantine_preflight(orm_execute_state):
                 sql = str(orm_execute_state.statement).lower()
-                if (
-                    not committed
-                    and "from certificate left outer join" in sql
+                old_preflight = (
+                    "from certificate left outer join" in sql
                     and "case_legacy_id" in sql
                     and "cert_legacy_id" in sql
-                ):
-                    result = orm_execute_state.invoke_statement()
+                )
+                final_snapshot = (
+                    "facility_workspace_atomic_read" in sql
+                    and "certificate_owner" in sql
+                )
+                if not committed and (old_preflight or final_snapshot):
+                    # RED: writer after old separate preflight, before final SQL.
+                    # GREEN: there is no separate preflight; writer commits
+                    # before the single atomic source statement executes.
+                    result = (
+                        None if final_snapshot
+                        else orm_execute_state.invoke_statement()
+                    )
                     with Session(engine) as writer:
                         values = (
                             {"site_id": other_site_id}
@@ -944,7 +954,10 @@ def test_workspace_detects_invalid_certificate_case_link_committed_after_quarant
                         )
                         writer.commit()
                     committed.append(True)
-                    return result
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if final_snapshot else result
+                    )
                 return orm_execute_state.invoke_statement()
 
             event.listen(reader, "do_orm_execute", mutate_after_quarantine_preflight, retval=True)
@@ -958,7 +971,7 @@ def test_workspace_detects_invalid_certificate_case_link_committed_after_quarant
                 assert "linked Case" in str(exc.value.detail)
             finally:
                 event.remove(reader, "do_orm_execute", mutate_after_quarantine_preflight)
-            assert committed, "writer never committed between quarantine preflight and final workspace SQL"
+            assert committed, "writer never committed at the workspace snapshot boundary"
 
         with Session(engine) as verify:
             assert verify.scalar(

@@ -2247,8 +2247,8 @@ class CatalogReadService:
                 ]
 
             lines = {row.id: row for row in committed_rows(ProductionLine)}
-            # Search Site/Company, Case, latest CertificateVersion, Scope and
-            # ChangeRequest belong to one committed SQL statement snapshot. Independent
+            # Search Site/Company, Case, latest CertificateVersion, Scope,
+            # ChangeRequest and Certificate roots share one SQL snapshot. Independent
             # Site then Case SELECTs under READ COMMITTED may otherwise show
             # the old facility name with the new Case state from one writer.
             # Tagged branches preserve Site (including an empty Site), Case,
@@ -2259,6 +2259,32 @@ class CatalogReadService:
             version_columns = tuple(CertificateVersion.__table__.columns)
             scope_columns = tuple(CertificateScope.__table__.columns)
             change_columns = tuple(ChangeRequest.__table__.columns)
+            certificate_columns = tuple(Certificate.__table__.columns)
+            # The Certificate owner branch includes linked Case/Site values
+            # required by the unchanged historical quarantine predicate.
+            certificate_link_columns = (
+                ("cert_id", Certificate.id),
+                ("cert_case_id", Certificate.case_id),
+                ("cert_site_id", Certificate.site_id),
+                ("cert_type", Certificate.certificate_type),
+                ("cert_basis", Certificate.issuance_basis),
+                ("cert_legacy_id", Certificate.legacy_certificate_id),
+                ("case_id", Case.id),
+                ("case_site_id", Case.site_id),
+                ("case_gxp_type", Case.gxp_type),
+                ("case_legacy_id", Case.legacy_inspection_id),
+                ("site_id", Site.id),
+                ("site_legacy_id", Site.legacy_site_id),
+            )
+
+            def empty_certificate_owner_columns():
+                return [
+                    *(cast(literal(None), column.type).label("cert_source_" + column.name)
+                      for column in certificate_columns),
+                    *(cast(literal(None), column.type).label("owner_" + label)
+                      for label, column in certificate_link_columns),
+                ]
+
             combined = union_all(
                 select(
                     literal("site_company").label("source_kind"),
@@ -2272,6 +2298,7 @@ class CatalogReadService:
                       for column in scope_columns),
                     *(cast(literal(None), column.type).label("change_" + column.name)
                       for column in change_columns),
+                    *empty_certificate_owner_columns(),
                 ).select_from(Site).outerjoin(Company, Company.id == Site.company_id),
                 select(
                     literal("case").label("source_kind"),
@@ -2286,6 +2313,7 @@ class CatalogReadService:
                       for column in scope_columns),
                     *(cast(literal(None), column.type).label("change_" + column.name)
                       for column in change_columns),
+                    *empty_certificate_owner_columns(),
                 ).select_from(Case),
                 select(
                     literal("version").label("source_kind"),
@@ -2301,6 +2329,7 @@ class CatalogReadService:
                       for column in scope_columns),
                     *(cast(literal(None), column.type).label("change_" + column.name)
                       for column in change_columns),
+                    *empty_certificate_owner_columns(),
                 ).select_from(CertificateVersion).where(
                     CertificateVersion.is_latest_version.is_(True)
                 ),
@@ -2318,6 +2347,7 @@ class CatalogReadService:
                       for column in scope_columns),
                     *(cast(literal(None), column.type).label("change_" + column.name)
                       for column in change_columns),
+                    *empty_certificate_owner_columns(),
                 ).select_from(CertificateScope),
                 select(
                     literal("change").label("source_kind"),
@@ -2333,7 +2363,30 @@ class CatalogReadService:
                       for column in scope_columns),
                     *(column.label("change_" + column.name)
                       for column in change_columns),
+                    *empty_certificate_owner_columns(),
                 ).select_from(ChangeRequest),
+                select(
+                    literal("certificate_owner").label("source_kind"),
+                    *(cast(literal(None), column.type).label("site_" + column.name)
+                      for column in site_columns),
+                    *(cast(literal(None), column.type).label("company_" + column.name)
+                      for column in company_columns),
+                    *(cast(literal(None), column.type).label("case_" + column.name)
+                      for column in case_columns),
+                    *(cast(literal(None), column.type).label("version_" + column.name)
+                      for column in version_columns),
+                    *(cast(literal(None), column.type).label("scope_" + column.name)
+                      for column in scope_columns),
+                    *(cast(literal(None), column.type).label("change_" + column.name)
+                      for column in change_columns),
+                    *(column.label("cert_source_" + column.name)
+                      for column in certificate_columns),
+                    *(column.label("owner_" + label)
+                      for label, column in certificate_link_columns),
+                )
+                .select_from(Certificate)
+                .outerjoin(Case, Case.id == Certificate.case_id)
+                .outerjoin(Site, Site.id == Certificate.site_id),
             ).subquery("search_atomic_read")
             cross_group_rows = session.execute(
                 select(*combined.c)
@@ -2383,6 +2436,20 @@ class CatalogReadService:
                 })
                 for row in cross_group_rows if row["source_kind"] == "change"
             ]
+            certificate_owner_rows = [
+                {
+                    **{
+                        "source_" + column.name: row["cert_source_" + column.name]
+                        for column in certificate_columns
+                    },
+                    **{
+                        label: row["owner_" + label]
+                        for label, _ in certificate_link_columns
+                    },
+                }
+                for row in cross_group_rows
+                if row["source_kind"] == "certificate_owner"
+            ]
             outcomes_by_case_id = {
                 row.case_id: row for row in committed_rows(InspectionOutcome)
             }
@@ -2395,32 +2462,9 @@ class CatalogReadService:
                 )
                 if occurred_at is not None
             }
-            # Inspect all Certificate owners independently of Site/GxP
-            # filters and latest flags. One scalar SELECT joins the exact
-            # committed Certificate, linked Case, and Site; do not resurrect
-            # a stale Case owner after a separate preflight.
-            certificate_columns = tuple(Certificate.__table__.columns)
-            certificate_owner_rows = session.execute(
-                select(
-                    *(column.label("source_" + column.name)
-                      for column in certificate_columns),
-                    Certificate.id.label("cert_id"),
-                    Certificate.case_id.label("cert_case_id"),
-                    Certificate.site_id.label("cert_site_id"),
-                    Certificate.certificate_type.label("cert_type"),
-                    Certificate.issuance_basis.label("cert_basis"),
-                    Certificate.legacy_certificate_id.label("cert_legacy_id"),
-                    Case.id.label("case_id"),
-                    Case.site_id.label("case_site_id"),
-                    Case.gxp_type.label("case_gxp_type"),
-                    Case.legacy_inspection_id.label("case_legacy_id"),
-                    Site.id.label("site_id"),
-                    Site.legacy_site_id.label("site_legacy_id"),
-                )
-                .select_from(Certificate)
-                .outerjoin(Case, Case.id == Certificate.case_id)
-                .outerjoin(Site, Site.id == Certificate.site_id)
-            ).mappings().all()
+            # All Certificate roots, including nonlatest historical links,
+            # were projected with linked Case/Site in the same owner statement
+            # as the Case/Version/Scope/Change and Site/Company rows.
             quarantined_ids, quarantined_legacy_ids = (
                 self._quarantine_historical_projection_rows(
                     row for row in certificate_owner_rows

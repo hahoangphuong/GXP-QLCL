@@ -938,12 +938,18 @@ def test_read_detects_invalid_certificate_case_link_committed_after_quarantine_p
                     "facility_workspace_atomic_read" in sql
                     and "from certificate" in sql
                 )
-                if not committed and (old_preflight or final_snapshot):
-                    # RED: writer after old separate preflight, before final SQL.
-                    # GREEN: there is no separate preflight; writer commits
-                    # before the single atomic source statement executes.
+                search_snapshot = (
+                    surface == "search"
+                    and "from certificate left outer join" in sql
+                    and "source_latest_flag" in sql
+                    and "cert_legacy_id" in sql
+                )
+                atomic_snapshot = final_snapshot or search_snapshot
+                if not committed and (old_preflight or atomic_snapshot):
+                    # RED: writer after the old separate preflight.
+                    # GREEN: writer before the one Certificate owner SQL.
                     result = (
-                        None if final_snapshot
+                        None if atomic_snapshot
                         else orm_execute_state.invoke_statement()
                     )
                     with Session(engine) as writer:
@@ -961,7 +967,7 @@ def test_read_detects_invalid_certificate_case_link_committed_after_quarantine_p
                     committed.append(True)
                     return (
                         orm_execute_state.invoke_statement()
-                        if final_snapshot else result
+                        if atomic_snapshot else result
                     )
                 return orm_execute_state.invoke_statement()
 

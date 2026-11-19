@@ -678,3 +678,47 @@ def test_search_certificate_filter_selects_the_certificate_it_actually_matched(
         "ineligible current certificate in the same Facility context"
     )
     assert row["current_certificate_expiry"] == versions[expected].expiry_date
+
+
+@pytest.mark.parametrize("expiry_window,expected_count", [(None, 1), (30, 0)])
+def test_search_scope_and_expiry_filter_must_match_same_certificate(
+    session, expiry_window, expected_count,
+):
+    """Scope of GCN-A must not be paired with validity of GCN-B."""
+    from backend.app.db.models.phase1 import CertificateScope
+
+    today = date.today()
+    versions = {
+        row.certificate_number: row
+        for row in session.query(CertificateVersion)
+        .filter(CertificateVersion.is_latest_version.is_(True)).all()
+    }
+    versions["GCN-A"].issue_date = today - timedelta(days=30)
+    versions["GCN-A"].expiry_date = today + timedelta(days=120)
+    versions["GCN-B"].issue_date = today - timedelta(days=1)
+    versions["GCN-B"].expiry_date = today + timedelta(days=12)
+    session.add_all([
+        CertificateScope(
+            certificate_version_id=versions["GCN-A"].id,
+            scope_text="Scope A - sterile manufacture",
+        ),
+        CertificateScope(
+            certificate_version_id=versions["GCN-B"].id,
+            scope_text="Scope B - packaging",
+        ),
+    ])
+    session.commit()
+    result = CatalogReadService().search_facilities(
+        session, q=None, facility_name=None, site_id=None,
+        certificate_scope="sterile manufacture", gxp_type="GMP", province=None,
+        case_states=None, change_request_states=None, certificate_state=None,
+        certificate_expiring_within_days=expiry_window,
+        offset=0, limit=50,
+    )
+    assert result["total_count"] == expected_count
+    if expected_count:
+        assert len(result["items"]) == 1
+        assert result["items"][0]["current_certificate_number"] == "GCN-A"
+        assert "sterile manufacture" in result["items"][0]["certificate_scope_summary"]
+    else:
+        assert result["items"] == []

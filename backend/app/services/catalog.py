@@ -2706,17 +2706,43 @@ class CatalogReadService:
                 context_certificates = certificates_by_context[key]
                 if case_states and not any(row.state.value in case_states for row in context_cases):
                     continue
-                if certificate_scope and not any(certificate.scope_summary and certificate_scope.lower() in certificate.scope_summary.lower() for certificate in context_certificates):
-                    continue
+                # Filtering and choosing a displayed GCN must act on the
+                # SAME eligible owner identities. Otherwise one certificate
+                # can satisfy the scope/validity predicate while a different
+                # (ineligible) certificate appears in the returned row.
+                eligible_certificates = context_certificates
+                if certificate_scope:
+                    eligible_certificates = [
+                        row for row in eligible_certificates
+                        if row.scope_summary
+                        and certificate_scope.lower() in row.scope_summary.lower()
+                    ]
+                    if not eligible_certificates:
+                        continue
                 if certificate_state or certificate_expiring_within_days is not None:
                     today = date.today()
-                    eligible = [row for row in context_certificates if (certificate_state != "active" or row.version.expiry_date is None or row.version.expiry_date >= today) and (certificate_expiring_within_days is None or (row.version.expiry_date is not None and today <= row.version.expiry_date <= today + timedelta(days=certificate_expiring_within_days)))]
-                    if not eligible:
+                    eligible_certificates = [
+                        row for row in eligible_certificates
+                        if (
+                            certificate_state != "active"
+                            or row.version.expiry_date is None
+                            or row.version.expiry_date >= today
+                        )
+                        and (
+                            certificate_expiring_within_days is None
+                            or (
+                                row.version.expiry_date is not None
+                                and today <= row.version.expiry_date
+                                <= today + timedelta(days=certificate_expiring_within_days)
+                            )
+                        )
+                    ]
+                    if not eligible_certificates:
                         continue
                 line_id = discriminator if state == "canonical" else None
                 line_code = lines[line_id].code if line_id is not None else discriminator
                 latest_case = self._select_latest_case(context_cases)
-                certificate_context = self._select_current_certificate_context(context_certificates, regulatory)
+                certificate_context = self._select_current_certificate_context(eligible_certificates, regulatory)
                 result_key = self._build_search_result_key(
                     site.id,
                     gxp_type=regulatory,

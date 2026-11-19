@@ -354,3 +354,113 @@ def test_change_request_report_count_and_page_share_committed_postgres_snapshot(
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_facility_workspace_rejects_mixed_site_case_commits_between_statements():
+    """A writer changing Site and Case atomically may not yield a mixed workspace."""
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import Case
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "facility_workspace_race_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Consistent company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="BEFORE-ATOMIC-COMMIT")
+            seed.add(site)
+            seed.flush()
+            case = Case(
+                site_id=site.id, gxp_type="GMP", state=CaseState.PLANNED,
+                legacy_inspection_code="BEFORE-ATOMIC-CASE",
+            )
+            seed.add(case)
+            seed.commit()
+            site_id, case_id = site.id, case.id
+
+        inserted = []
+        with Session(engine) as reader:
+            def commit_after_site_read(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                # Execute the actual persisted Site SELECT first, then commit
+                # *both* changes in one independent transaction before the
+                # subsequent Case SELECT at PostgreSQL READ COMMITTED.
+                if (
+                    not inserted
+                    and "from site" in sql
+                    and "where site.id" in sql
+                    and "join " not in sql
+                ):
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Site.__table__.update()
+                            .where(Site.id == site_id)
+                            .values(site_name="AFTER-ATOMIC-COMMIT")
+                        )
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(
+                                state=CaseState.CLOSED,
+                                legacy_inspection_code="AFTER-ATOMIC-CASE",
+                            )
+                        )
+                        writer.commit()
+                    inserted.append(True)
+                    return result
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", commit_after_site_read, retval=True)
+            try:
+                try:
+                    payload = CatalogReadService().get_facility_workspace(
+                        reader, site_id=site_id, gxp_type="GMP",
+                        line_code=None, production_line_id=None,
+                    )
+                except HTTPException as exc:
+                    assert exc.status_code == 409
+                else:
+                    matching = next(
+                        item for item in payload["history"]
+                        if item["source_type"] == "case" and item["id"] == case_id
+                    )
+                    assert (
+                        payload["summary"]["facility_name"],
+                        matching["state"],
+                        matching["reference_code"],
+                    ) in {
+                        ("BEFORE-ATOMIC-COMMIT", "planned", "BEFORE-ATOMIC-CASE"),
+                        ("AFTER-ATOMIC-COMMIT", "closed", "AFTER-ATOMIC-CASE"),
+                    }, "workspace projected Site and Case from different committed snapshots"
+            finally:
+                event.remove(reader, "do_orm_execute", commit_after_site_read)
+            assert inserted, "writer never committed after the initial Site SQL"
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(Site.site_name).where(Site.id == site_id)
+            ) == "AFTER-ATOMIC-COMMIT"
+            assert verify.scalar(
+                select(Case.state).where(Case.id == case_id)
+            ) == CaseState.CLOSED
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

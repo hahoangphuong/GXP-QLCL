@@ -722,3 +722,43 @@ def test_search_scope_and_expiry_filter_must_match_same_certificate(
         assert "sterile manufacture" in result["items"][0]["certificate_scope_summary"]
     else:
         assert result["items"] == []
+
+
+def test_search_case_state_filter_displays_a_case_matching_its_own_filter(session):
+    """An older matching Case may not surface the newer unmatched Case state."""
+    site_id = cert_report(session)["items"][0]["site_id"]
+    session.add_all([
+        Case(
+            site_id=site_id, gxp_type="GMP", state=CaseState.PLANNED,
+            opened_year=2025, legacy_inspection_code="FILTER-OLD-CASE",
+        ),
+        Case(
+            site_id=site_id, gxp_type="GMP", state=CaseState.CLOSED,
+            opened_year=2026, legacy_inspection_code="FILTER-NEW-CASE",
+        ),
+    ])
+    session.commit()
+
+    def search(states):
+        return CatalogReadService().search_facilities(
+            session, q=None, facility_name=None, site_id=site_id,
+            certificate_scope=None, gxp_type="GMP", province=None,
+            case_states=states, change_request_states=None,
+            certificate_state=None, certificate_expiring_within_days=None,
+            offset=0, limit=50,
+        )
+
+    full = search(None)
+    assert full["total_count"] == 1
+    assert full["items"][0]["current_state"] == "closed"
+
+    filtered = search(["planned"])
+    assert filtered["total_count"] == 1
+    assert filtered["items"][0]["current_state"] == "planned", (
+        "Search matched an older planned Case but advertised the latest "
+        "closed Case as the displayed state of the filtered result"
+    )
+
+    multiple = search(["planned", "closed"])
+    assert multiple["total_count"] == 1
+    assert multiple["items"][0]["current_state"] == "closed"

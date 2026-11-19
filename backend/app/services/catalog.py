@@ -2704,7 +2704,14 @@ class CatalogReadService:
                 _, regulatory, state, discriminator = key
                 context_cases = cases_by_context[key]
                 context_certificates = certificates_by_context[key]
-                if case_states and not any(row.state.value in case_states for row in context_cases):
+                # A Case state filter must constrain the Case selected for
+                # current_state, not merely admit a context containing some
+                # different, newer Case with an unmatched state.
+                matching_cases = (
+                    [row for row in context_cases if row.state.value in case_states]
+                    if case_states else context_cases
+                )
+                if case_states and not matching_cases:
                     continue
                 # Filtering and choosing a displayed GCN must act on the
                 # SAME eligible owner identities. Otherwise one certificate
@@ -2741,7 +2748,7 @@ class CatalogReadService:
                         continue
                 line_id = discriminator if state == "canonical" else None
                 line_code = lines[line_id].code if line_id is not None else discriminator
-                latest_case = self._select_latest_case(context_cases)
+                latest_case = self._select_latest_case(matching_cases)
                 certificate_context = self._select_current_certificate_context(eligible_certificates, regulatory)
                 result_key = self._build_search_result_key(
                     site.id,

@@ -2329,20 +2329,28 @@ class CatalogReadService:
         *,
         certificate_id: str,
     ) -> dict[str, object]:
-        """Canonical committed historical CertificateVersion + own scopes.
+        """Committed Certificate/Case/Line, Version and Scope in one read snapshot.
 
-        The read must not flush unsaved operator work, or combine Version
-        metadata and Scope rows observed on opposite sides of another
-        writer's commit under PostgreSQL READ COMMITTED.
+        A Session may hold a cached or locally dirty Certificate, Case,
+        ProductionLine, Version or Scope. Recovery/history GET must not flush
+        those drafts, refresh them, or combine separate READ COMMITTED SQL
+        snapshots from concurrent owner and version updates.
         """
         with session.no_autoflush:
-            certificate = session.get(Certificate, certificate_id)
-            if certificate is None:
-                raise HTTPException(status_code=404, detail="Certificate not found")
-            # Preserve the current Certificate->Case / ProductionLine gate.
-            CaseWorkflowService._certificate_line_identity(session, certificate)
             snapshot = session.execute(
                 select(
+                    Certificate.id.label("root_id"),
+                    Certificate.site_id.label("root_site_id"),
+                    Certificate.case_id.label("root_case_id"),
+                    Certificate.certificate_type.label("root_type"),
+                    Certificate.issuance_basis.label("root_issuance_basis"),
+                    Certificate.latest_flag.label("root_latest_flag"),
+                    Certificate.production_line_id.label("root_line_id"),
+                    Case.id.label("linked_case_id"),
+                    Case.site_id.label("linked_case_site_id"),
+                    Case.gxp_type.label("linked_case_type"),
+                    ProductionLine.id.label("linked_line_id"),
+                    ProductionLine.site_id.label("linked_line_site_id"),
                     CertificateVersion.id.label("version_id"),
                     CertificateVersion.version_no,
                     CertificateVersion.row_version,
@@ -2360,12 +2368,20 @@ class CatalogReadService:
                     CertificateScope.sort_order,
                     CertificateScope.created_at.label("scope_created_at"),
                 )
-                .select_from(CertificateVersion)
+                .select_from(Certificate)
+                .outerjoin(Case, Case.id == Certificate.case_id)
+                .outerjoin(
+                    ProductionLine, ProductionLine.id == Certificate.production_line_id,
+                )
+                .outerjoin(
+                    CertificateVersion,
+                    CertificateVersion.certificate_id == Certificate.id,
+                )
                 .outerjoin(
                     CertificateScope,
                     CertificateScope.certificate_version_id == CertificateVersion.id,
                 )
-                .where(CertificateVersion.certificate_id == certificate.id)
+                .where(Certificate.id == certificate_id)
                 .order_by(
                     CertificateVersion.version_no.desc(),
                     CertificateVersion.id.asc(),
@@ -2374,13 +2390,36 @@ class CatalogReadService:
                     CertificateScope.id.asc(),
                 )
             ).mappings().all()
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Certificate not found")
+        root = snapshot[0]
+        # Preserve canonical linked Case and ProductionLine integrity gates.
+        # Evaluate against the committed root and its joined owners, never
+        # against ORM identity-map instances from an older transaction.
+        if root["root_case_id"] is not None and (
+            root["linked_case_id"] != root["root_case_id"]
+            or root["linked_case_site_id"] != root["root_site_id"]
+            or root["linked_case_type"] != root["root_type"]
+        ):
+            raise HTTPException(
+                status_code=409, detail="Certificate references an invalid linked Case.",
+            )
+        if root["root_line_id"] is not None and (
+            root["linked_line_id"] != root["root_line_id"]
+            or root["linked_line_site_id"] != root["root_site_id"]
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Certificate references an invalid canonical ProductionLine.",
+            )
 
-        # Build every historical version from the same committed statement.
-        # No ORM identity refresh or reuse of possibly dirty cached versions.
         versions: dict[str, dict[str, object]] = {}
         scoped: dict[str, list[SimpleNamespace]] = defaultdict(list)
         for row in snapshot:
             version_id = row["version_id"]
+            # Outer join retains Certificate root with no versions.
+            if version_id is None:
+                continue
             if version_id not in versions:
                 versions[version_id] = {
                     "certificate_version_id": version_id,
@@ -2414,12 +2453,12 @@ class CatalogReadService:
                 detail="Certificate has ambiguous latest CertificateVersion identity.",
             )
         return {
-            "certificate_id": certificate.id,
-            "site_id": certificate.site_id,
-            "case_id": certificate.case_id,
-            "certificate_type": certificate.certificate_type,
-            "issuance_basis": certificate.issuance_basis,
-            "aggregate_latest_flag": certificate.latest_flag,
+            "certificate_id": root["root_id"],
+            "site_id": root["root_site_id"],
+            "case_id": root["root_case_id"],
+            "certificate_type": root["root_type"],
+            "issuance_basis": root["root_issuance_basis"],
+            "aggregate_latest_flag": root["root_latest_flag"],
             "latest_version_id": latest_ids[0] if latest_ids else None,
             "versions": [
                 {

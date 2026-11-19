@@ -4,50 +4,11 @@ import type { ApiAccess } from "../../App";
 import { getCertificateReport, getChangeRequestReport } from "../../lib/api";
 import type { CertificateReportItem, CertificateReportPage, ChangeRequestReportItem, ChangeRequestReportPage } from "../../types";
 import { csvCell } from "./facilityReportExport";
-
-type Kind = "certificates" | "change_requests";
-type Filters = { gxp_type: string; expiry_days: string; state: string; q: string; number: string };
-type Page = CertificateReportPage | ChangeRequestReportPage;
-const EMPTY: Filters = { gxp_type: "", expiry_days: "90", state: "", q: "", number: "" };
-
-function parseReportUrl(params: URLSearchParams, kind: Kind, expiryDefault: string, returnQueue?: "change_requests"): { filters: Filters; offset: number; valid: boolean } {
-  const names = kind === "certificates" ? ["gxp_type", "expiry_days", "number", "q", "offset"] : ["state", "q", "offset"];
-  const unique = names.every(name => params.getAll(name).length <= 1);
-  const filters = { ...EMPTY, expiry_days: expiryDefault, q: params.get("q") ?? "" };
-  if (kind === "certificates") {
-    filters.gxp_type = params.get("gxp_type") ?? "";
-    filters.expiry_days = params.has("expiry_days") ? params.get("expiry_days")! : expiryDefault;
-    filters.number = params.get("number") ?? "";
-  } else filters.state = params.get("state") ?? "";
-  const rawOffset = params.get("offset") ?? "0";
-  const offset = Number(rawOffset);
-  const routeValid = returnQueue
-    ? kind === "change_requests" && params.getAll("queue").length === 1
-      && params.get("queue") === returnQueue && !params.has("report")
-    : params.getAll("report").length === 1 && params.get("report") === kind && !params.has("queue");
-  const valid = unique && routeValid && /^(0|[1-9]\d*)$/.test(rawOffset) && Number.isSafeInteger(offset) && offset % 100 === 0
-    && ["", "GMP", "GLP", "GMPbb", "GSP", "GDP"].includes(filters.gxp_type)
-    && ["", "30", "60", "90"].includes(filters.expiry_days)
-    && ["", "received", "under_review"].includes(filters.state)
-    && [filters.q, filters.number].every(value => value.length <= 200 && [...value].every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127));
-  return { filters, offset: valid ? offset : 0, valid };
-}
-
-function reportParams(kind: Kind, filters: Filters, offset: number, returnQueue?: "change_requests"): URLSearchParams {
-  const next = new URLSearchParams(returnQueue ? { queue: returnQueue } : { report: kind });
-  if (kind === "certificates") {
-    if (filters.gxp_type) next.set("gxp_type", filters.gxp_type);
-    next.set("expiry_days", filters.expiry_days);
-    if (filters.number) next.set("number", filters.number);
-  } else if (filters.state) next.set("state", filters.state);
-  if (filters.q) next.set("q", filters.q);
-  if (offset) next.set("offset", String(offset));
-  return next;
-}
+import { EMPTY_CANONICAL_RECORD_REPORT_FILTERS, canonicalRecordReportParams, parseCanonicalRecordReportUrl, type CanonicalRecordReportFilters, type CanonicalRecordReportKind } from "./canonicalRecordReportUrl";
 
 // Both report endpoints return a full slice at the requested default limit;
 // export returns one bounded, complete snapshot with limit 10000.
-function validatedPage(page: Page, kind: Kind, filters: Filters, expectedOffset: number, isExport: boolean): Page {
+function validatedPage(page: Page, kind: CanonicalRecordReportKind, filters: CanonicalRecordReportFilters, expectedOffset: number, isExport: boolean): Page {
   const expectedLimit = isExport ? 10000 : 100;
   if (!page || !Array.isArray(page.items) || page.offset !== expectedOffset
     || !Number.isSafeInteger(page.total_count) || page.total_count < 0
@@ -93,16 +54,16 @@ function certificateLocation(item: CertificateReportItem): string {
   return `/search?${params}`;
 }
 
-export function CanonicalRecordReport({ access, kind, showDocumentsLink = false, initialCertificateExpiryDays = "90", urlState = false, returnQueue }: { access: ApiAccess; kind: Kind; showDocumentsLink?: boolean; initialCertificateExpiryDays?: "90" | ""; urlState?: boolean; returnQueue?: "change_requests" }) {
+export function CanonicalRecordReport({ access, kind, showDocumentsLink = false, initialCertificateExpiryDays = "90", urlState = false, returnQueue }: { access: ApiAccess; kind: CanonicalRecordReportKind; showDocumentsLink?: boolean; initialCertificateExpiryDays?: "90" | ""; urlState?: boolean; returnQueue?: "change_requests" }) {
   const [params, setParams] = useSearchParams();
   const query = params.toString();
-  const parsed = useMemo(() => parseReportUrl(new URLSearchParams(query), kind, initialCertificateExpiryDays, returnQueue), [query, kind, initialCertificateExpiryDays, returnQueue]);
+  const parsed = useMemo(() => parseCanonicalRecordReportUrl(new URLSearchParams(query), kind, initialCertificateExpiryDays, returnQueue), [query, kind, initialCertificateExpiryDays, returnQueue]);
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const owner = useMemo(() => ({}), [auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration, kind]);
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const [draft, setDraft] = useState<Filters>(() => urlState && parsed.valid ? parsed.filters : { ...EMPTY, expiry_days: initialCertificateExpiryDays });
-  const [localActive, setActive] = useState<Filters>(() => ({ ...EMPTY, expiry_days: initialCertificateExpiryDays }));
+  const [draft, setDraft] = useState<CanonicalRecordReportFilters>(() => urlState && parsed.valid ? parsed.filters : { ...EMPTY_CANONICAL_RECORD_REPORT_FILTERS, expiry_days: initialCertificateExpiryDays });
+  const [localActive, setActive] = useState<CanonicalRecordReportFilters>(() => ({ ...EMPTY_CANONICAL_RECORD_REPORT_FILTERS, expiry_days: initialCertificateExpiryDays }));
   const [localOffset, setOffset] = useState(0);
   const active = urlState ? parsed.filters : localActive;
   const offset = urlState ? parsed.offset : localOffset;
@@ -115,7 +76,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
   const [exportError, setExportError] = useState<string | null>(null);
   const guard = useRef<object | null>(null);
   const current = record?.owner === requestOwner ? record : null;
-  const fetchPage = (filters: Filters, isExport: boolean, pageOffset: number): Promise<Page> =>
+  const fetchPage = (filters: CanonicalRecordReportFilters, isExport: boolean, pageOffset: number): Promise<Page> =>
     kind === "certificates"
       ? getCertificateReport({ ...filters, export: isExport, offset: pageOffset }, auth, useStubAuth, bearerToken)
       : getChangeRequestReport({ state: filters.state, q: filters.q, export: isExport, offset: pageOffset }, auth, useStubAuth, bearerToken);
@@ -143,8 +104,8 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
     return () => { live = false; };
   }, [active, offset, owner, requestOwner, auth, useStubAuth, bearerToken, canLoadSecureApi, kind, urlState, parsed.valid]);
 
-  function updateUrl(filters: Filters, nextOffset: number) {
-    setParams(reportParams(kind, filters, nextOffset, returnQueue));
+  function updateUrl(filters: CanonicalRecordReportFilters, nextOffset: number) {
+    setParams(canonicalRecordReportParams(kind, filters, nextOffset, returnQueue));
   }
 
   function apply(event: FormEvent) {
@@ -214,7 +175,7 @@ export function CanonicalRecordReport({ access, kind, showDocumentsLink = false,
   const rows = current?.page?.items ?? [];
   const total = current?.page?.total_count ?? 0;
   const originReturn = urlState
-    ? `${returnQueue ? "/workflow" : "/reports"}?${reportParams(kind, active, offset, returnQueue)}`
+    ? `${returnQueue ? "/workflow" : "/reports"}?${canonicalRecordReportParams(kind, active, offset, returnQueue)}`
     : null;
   return <>
     <section className="panel">

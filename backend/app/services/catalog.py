@@ -2580,14 +2580,17 @@ class CatalogReadService:
             raise HTTPException(
                 status_code=409, detail="Certificate references an invalid linked Case.",
             )
-        if root["cert_line_id"] is not None and (
-            root["line_id"] != root["cert_line_id"]
-            or root["line_site_id"] != root["cert_site_id"]
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="Certificate references an invalid canonical ProductionLine.",
-            )
+        if root["cert_line_id"] is not None:
+            if root["line_id"] != root["cert_line_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Canonical ProductionLine reference is missing.",
+                )
+            if root["line_site_id"] != root["cert_site_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Canonical ProductionLine reference belongs to a different site.",
+                )
         if root["site_id"] is None:
             raise HTTPException(status_code=404, detail="Site not found")
         if root["company_id"] is None:

@@ -52,6 +52,11 @@ def test_case_report_filters_paginates_and_exports_all(session):
     exported = report(session, export=True)
     assert page1["total_count"] == 3
     assert len(page1["items"]) == 2 and len(page2["items"]) == 1
+    beyond = report(session, offset=500, limit=1)
+    assert beyond["total_count"] == 3
+    assert beyond["items"] == []
+    assert beyond["offset"] == 500
+    assert beyond["limit"] == 1
     assert {x["case_id"] for x in exported["items"]} == {x["case_id"] for x in page1["items"] + page2["items"]}
     assert all(x["result_key"].startswith(x["site_id"] + ":GMP:") for x in exported["items"])
 
@@ -113,3 +118,51 @@ def test_http_read_permission_and_query_validation():
     actor = build_authenticated_user("viewer", "viewer")
     assert request(b"") == 403
     engine.dispose()
+
+
+def test_case_report_uses_committed_row_without_flushing_or_overwriting_drafts(session):
+    """A read-only report must not flush, refresh, or project cached operator edits."""
+    from sqlalchemy import event, inspect, select
+
+    baseline = report(session, export=True)
+    assert baseline["total_count"] == 3
+    selected = next(row for row in baseline["items"] if row["state"] == "planned")
+    case = session.get(Case, selected["case_id"])
+    site = session.get(Site, selected["site_id"])
+    company = session.get(Company, site.company_id)
+    assert selected["facility_name"] == "Cơ sở thử"
+
+    case.state = CaseState.CLOSED
+    case.gxp_type = "GLP"
+    case.legacy_inspection_code = "UNSAVED-CASE-REFERENCE"
+    site.site_name = "UNSAVED-SITE"
+    company.legal_name = "UNSAVED-COMPANY"
+    pending = Company(legal_name="UNSAVED-PENDING-COMPANY")
+    session.add(pending)
+    flush_calls = []
+
+    def prohibit_flush(*_):
+        flush_calls.append(True)
+        raise AssertionError("Read-only Case report autoflushed operator draft")
+
+    event.listen(session, "before_flush", prohibit_flush)
+    try:
+        for export in (False, True):
+            result = report(session, export=export, limit=100)
+            current = next(x for x in result["items"] if x["case_id"] == case.id)
+            assert result["total_count"] == 3
+            assert current == selected
+            assert report(session, q="UNSAVED-SITE", export=export)["total_count"] == 0
+            assert report(session, q="Cơ sở thử", export=export)["total_count"] == 3
+        assert not flush_calls
+        assert case.state == CaseState.CLOSED
+        assert case.gxp_type == "GLP"
+        assert site.site_name == "UNSAVED-SITE"
+        assert company.legal_name == "UNSAVED-COMPANY"
+        assert inspect(pending).pending
+        assert case in session.dirty
+        assert site in session.dirty
+        assert company in session.dirty
+    finally:
+        event.remove(session, "before_flush", prohibit_flush)
+        session.rollback()

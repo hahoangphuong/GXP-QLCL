@@ -1361,3 +1361,103 @@ def test_search_site_and_case_share_committed_postgres_snapshot():
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_search_site_and_change_request_filter_share_committed_postgres_snapshot():
+    """Search may not match a post-commit Change Request on a pre-commit Site."""
+    from sqlalchemy import event, select
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "search_site_change_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Site Change snapshot company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="BEFORE-SITE")
+            seed.add(site)
+            seed.flush()
+            request = ChangeRequest(
+                site_id=site.id, state=ChangeRequestState.RECEIVED,
+                scope_label="Tracked Change",
+            )
+            seed.add(request)
+            seed.commit()
+            site_id, request_id = site.id, request.id
+
+        commits = []
+        with Session(engine) as reader:
+            def writer_at_change_filter_boundary(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                owner_snapshot = (
+                    "search_atomic_read" in sql
+                    and "site_site_name" in sql
+                    and "case_state" in sql
+                )
+                change_in_snapshot = owner_snapshot and "change_state" in sql
+                if not commits and owner_snapshot:
+                    # RED: capture Site snapshot, then commit before the
+                    # separate Change Request SELECT. GREEN: writer commits
+                    # before the shared Site/Change statement executes.
+                    result = (
+                        None if change_in_snapshot
+                        else orm_execute_state.invoke_statement()
+                    )
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Site.__table__.update()
+                            .where(Site.id == site_id)
+                            .values(site_name="AFTER-SITE")
+                        )
+                        writer.execute(
+                            ChangeRequest.__table__.update()
+                            .where(ChangeRequest.id == request_id)
+                            .values(state=ChangeRequestState.ACCEPTED)
+                        )
+                        writer.commit()
+                    commits.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if change_in_snapshot else result
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", writer_at_change_filter_boundary, retval=True)
+            try:
+                payload = CatalogReadService().search_facilities(
+                    reader, site_id=site_id,
+                    change_request_states=["accepted"],
+                )
+                rows = [row for row in payload["items"] if row["site_id"] == site_id]
+                assert len(rows) <= 1
+                assert not rows or rows[0]["facility_name"] == "AFTER-SITE", (
+                    "Search matched post-commit ChangeRequest against pre-commit Site"
+                )
+            finally:
+                event.remove(reader, "do_orm_execute", writer_at_change_filter_boundary)
+            assert commits, "independent writer did not commit at Search statement boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(select(Site.site_name).where(Site.id == site_id)) == "AFTER-SITE"
+            assert verify.scalar(
+                select(ChangeRequest.state).where(ChangeRequest.id == request_id)
+            ) == ChangeRequestState.ACCEPTED
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

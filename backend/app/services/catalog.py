@@ -1261,10 +1261,20 @@ class CatalogReadService:
         )
         if site_id is not None:
             statement = statement.where(Certificate.site_id == site_id)
-        quarantined: set[str] = set()
-        legacy_ids: list[int] = []
         with session.no_autoflush:
             rows = session.execute(statement).mappings().all()
+        return CatalogReadService._quarantine_historical_projection_rows(rows)
+
+    @staticmethod
+    def _quarantine_historical_projection_rows(rows) -> tuple[set[str], list[int]]:
+        """Validate the exact witnessed historical links from one SQL snapshot.
+
+        This pure owner predicate is shared by report/search preflights and the
+        Facility workspace's atomic source projection. Any unrecognized link
+        corruption fails closed regardless of current filters or GCN status.
+        """
+        quarantined: set[str] = set()
+        legacy_ids: list[int] = []
         for row in rows:
             if (
                 row["case_id"] == row["cert_case_id"]
@@ -2404,11 +2414,9 @@ class CatalogReadService:
         # rows are column-projected without autoflush, and no identity is
         # expired, refreshed or overwritten as a side effect of this GET.
         with session.no_autoflush:
-            quarantined_ids, quarantined_legacy_ids = (
-                self._quarantined_historical_search_certificates(
-                    session, site_id=site_id,
-                )
-            )
+            # Quarantine and all workspace rows must share one SQL statement
+            # snapshot. A separate READ COMMITTED preflight is not a durable
+            # proof after an independent writer changes a linked Case.
 
             # Read Site/Company/Case, ChangeRequest, GCN/Version/Scope,
             # ProductionLine and aggregated inspection-event dates from ONE
@@ -2487,7 +2495,6 @@ class CatalogReadService:
                 .where(
                     Certificate.site_id == site_id,
                     Certificate.latest_flag.is_(True),
-                    Certificate.id.not_in(quarantined_ids),
                 )
             )
             line_stmt = (
@@ -2508,8 +2515,22 @@ class CatalogReadService:
                 )
                 .group_by(InspectionEvent.case_id)
             )
+            certificate_owner_stmt = (
+                select(
+                    literal("certificate_owner").label("source_kind"),
+                    *tagged_columns("cert", "case", "site"),
+                )
+                .select_from(Certificate)
+                .outerjoin(Case, Case.id == Certificate.case_id)
+                .outerjoin(Site, Site.id == Certificate.site_id)
+                .where(
+                    Certificate.site_id == site_id,
+                    Certificate.case_id.is_not(None),
+                )
+            )
             combined = union_all(
-                owner_stmt, change_stmt, certificate_stmt, line_stmt, event_stmt
+                owner_stmt, change_stmt, certificate_stmt, line_stmt,
+                event_stmt, certificate_owner_stmt,
             ).subquery("facility_workspace_atomic_read")
             persisted = session.execute(
                 select(*combined.c).order_by(
@@ -2522,6 +2543,16 @@ class CatalogReadService:
                     combined.c.scope_id,
                 )
             ).mappings().all()
+            # Validate both current and non-current Certificate links from
+            # exactly the same statement snapshot used by the workspace.
+            # Only the independently witnessed historical source pairs may
+            # be omitted; unknown corrupted links always fail closed.
+            quarantined_ids, quarantined_legacy_ids = (
+                self._quarantine_historical_projection_rows(
+                    row for row in persisted
+                    if row["source_kind"] == "certificate_owner"
+                )
+            )
             owner_rows = [row for row in persisted if row["source_kind"] == "owner"]
             if not owner_rows:
                 raise HTTPException(status_code=404, detail="Site not found.")
@@ -2551,7 +2582,9 @@ class CatalogReadService:
                 for row in persisted if row["source_kind"] == "change"
             ]
             cert_pairs = [
-                row for row in persisted if row["source_kind"] == "certificate"
+                row for row in persisted
+                if row["source_kind"] == "certificate"
+                and row["cert_id"] not in quarantined_ids
             ]
             normalized_line_code = self._normalize_line_code(line_code)
             lines = {

@@ -451,3 +451,147 @@ def test_history_fails_closed_on_committed_root_link_corruption_with_cached_owne
             reader.rollback()
     finally:
         engine.dispose()
+
+
+def test_current_certificate_detail_reads_one_committed_snapshot_despite_dirty_identity_map(tmp_path):
+    """Canonical detail cannot flush drafts or mix cached root/version/scope/Case."""
+    from sqlalchemy import event
+
+    engine, _, cert_id, case_id, (old_id, current_id) = _seed(tmp_path)
+    try:
+        with Session(engine, autoflush=True, expire_on_commit=False) as reader:
+            root = reader.get(Certificate, cert_id)
+            case = reader.get(Case, case_id)
+            version = reader.get(CertificateVersion, current_id)
+            scope = reader.scalar(select(CertificateScope).where(
+                CertificateScope.certificate_version_id == current_id
+            ))
+            site = reader.get(Site, root.site_id)
+            company = reader.get(Company, site.company_id)
+            root.latest_flag = False
+            root.certificate_type = "GLP"
+            case.gxp_type = "GLP"
+            version.certificate_number = "UNSAVED-CERTIFICATE-NUMBER"
+            scope.scope_text = "UNSAVED-CURRENT-SCOPE"
+            site.site_name = "UNSAVED-SITE"
+            company.legal_name = "UNSAVED-COMPANY"
+            pending = Company(legal_name="Unrelated new Company")
+            reader.add(pending)
+            queries, flushes = [], []
+
+            def on_sql(_conn, _cursor, statement, _params, _context, _many):
+                queries.append(statement.lstrip().split(None, 1)[0].upper())
+                assert len(queries) == 1, "Detail GET split into multiple SQL snapshots"
+
+            def on_flush(*_args):
+                flushes.append(True)
+                raise AssertionError("Detail GET flushed operator draft")
+
+            event.listen(engine, "before_cursor_execute", on_sql)
+            event.listen(reader, "before_flush", on_flush)
+            try:
+                data = CatalogReadService().get_gxp_certificate_detail(reader, certificate_id=cert_id)
+            finally:
+                event.remove(engine, "before_cursor_execute", on_sql)
+                event.remove(reader, "before_flush", on_flush)
+            assert queries == ["SELECT"]
+            assert not flushes
+            assert data["certificate_id"] == cert_id
+            assert data["certificate_number"] == "CURRENT-V2"
+            assert data["certificate_type"] == "GMP"
+            assert data["latest_flag"] is True
+            assert data["status"] == "active"
+            assert data["facility_name"] == "History Site"
+            assert data["company_name"] == "Test historical company"
+            assert [x["scope_key"] for x in data["scopes"]] == ["new-vi"]
+            assert data["scopes"][0]["scope_text"] == " Current scope "
+            assert "Current scope" in data["scope_summary"]
+            assert root.latest_flag is False and root.certificate_type == "GLP"
+            assert case.gxp_type == "GLP"
+            assert version.certificate_number == "UNSAVED-CERTIFICATE-NUMBER"
+            assert scope.scope_text == "UNSAVED-CURRENT-SCOPE"
+            assert site.site_name == "UNSAVED-SITE"
+            assert company.legal_name == "UNSAVED-COMPANY"
+            assert all(row in reader.dirty for row in (root, case, version, scope, site, company))
+            assert pending in reader.new
+            reader.rollback()
+        with Session(engine) as verify:
+            assert verify.get(Certificate, cert_id).latest_flag is True
+            assert verify.get(CertificateVersion, current_id).certificate_number == "CURRENT-V2"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("corruption", ["case_site", "case_type", "canonical_line_site"])
+def test_current_detail_rejects_committed_owner_corruption_with_cached_identity(tmp_path, corruption):
+    from sqlalchemy import update
+
+    engine, _, cert_id, case_id, _versions = _seed(tmp_path)
+    try:
+        with Session(engine) as setup:
+            cert = setup.get(Certificate, cert_id)
+            foreign_site_id = setup.scalar(select(Site.id).where(Site.id != cert.site_id))
+            line_id = None
+            if corruption == "canonical_line_site":
+                line = ProductionLine(site_id=cert.site_id, code="CURRENT-LINE",
+                                      effective_from=date(2021, 1, 1))
+                setup.add(line)
+                setup.flush()
+                cert.production_line_id = line.id
+                line_id = line.id
+            setup.commit()
+        with Session(engine, autoflush=False, expire_on_commit=False) as reader:
+            cached_cert = reader.get(Certificate, cert_id)
+            cached_case = reader.get(Case, case_id)
+            cached_line = reader.get(ProductionLine, line_id) if line_id else None
+            with Session(engine) as writer:
+                if corruption == "case_site":
+                    writer.execute(update(Case).where(Case.id == case_id).values(site_id=foreign_site_id))
+                elif corruption == "case_type":
+                    writer.execute(update(Case).where(Case.id == case_id).values(gxp_type="GLP"))
+                else:
+                    writer.execute(update(ProductionLine).where(ProductionLine.id == line_id)
+                                   .values(site_id=foreign_site_id))
+                writer.commit()
+            with pytest.raises(HTTPException) as blocked:
+                CatalogReadService().get_gxp_certificate_detail(reader, certificate_id=cert_id)
+            assert blocked.value.status_code == 409
+            assert cached_cert.id == cert_id
+            assert cached_case.id == case_id
+            if cached_line is not None:
+                assert cached_line.site_id != foreign_site_id
+            assert not reader.dirty and not reader.new
+            reader.rollback()
+    finally:
+        engine.dispose()
+
+
+def test_current_detail_rejects_ambiguous_latest_without_draft_flush(tmp_path):
+    from sqlalchemy import event, update
+
+    engine, _, cert_id, _, (old_id, _current_id) = _seed(tmp_path)
+    try:
+        with Session(engine) as writer:
+            writer.execute(update(CertificateVersion).where(
+                CertificateVersion.id == old_id
+            ).values(is_latest_version=True))
+            writer.commit()
+        with Session(engine, autoflush=True) as reader:
+            draft = Company(legal_name="Unsaved unrelated owner")
+            reader.add(draft)
+            flushes = []
+
+            def no_flush(*_args):
+                flushes.append(True)
+                raise AssertionError("Detail GET must never autoflush")
+            event.listen(reader, "before_flush", no_flush)
+            try:
+                with pytest.raises(HTTPException) as blocked:
+                    CatalogReadService().get_gxp_certificate_detail(reader, certificate_id=cert_id)
+            finally:
+                event.remove(reader, "before_flush", no_flush)
+            assert blocked.value.status_code == 409
+            assert not flushes and draft in reader.new
+            reader.rollback()
+    finally:
+        engine.dispose()

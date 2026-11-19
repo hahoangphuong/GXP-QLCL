@@ -52,6 +52,11 @@ def test_case_report_filters_paginates_and_exports_all(session):
     exported = report(session, export=True)
     assert page1["total_count"] == 3
     assert len(page1["items"]) == 2 and len(page2["items"]) == 1
+    beyond = report(session, offset=500, limit=1)
+    assert beyond["total_count"] == 3
+    assert beyond["items"] == []
+    assert beyond["offset"] == 500
+    assert beyond["limit"] == 1
     assert {x["case_id"] for x in exported["items"]} == {x["case_id"] for x in page1["items"] + page2["items"]}
     assert all(x["result_key"].startswith(x["site_id"] + ":GMP:") for x in exported["items"])
 

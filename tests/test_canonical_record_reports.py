@@ -611,3 +611,29 @@ def test_facility_workspace_reads_committed_history_without_flushing_operator_dr
     finally:
         event.remove(session, "before_flush", fail_flush)
         session.rollback()
+
+
+@pytest.mark.parametrize("surface", ["search", "workspace"])
+def test_facility_read_fails_closed_on_ambiguous_latest_certificate_version(session, surface):
+    """A GCN with two latest Versions must not be silently selected."""
+    row = cert_report(session, q="GCN-A")["items"][0]
+    session.add(CertificateVersion(
+        certificate_id=row["certificate_id"], version_no=3,
+        certificate_number="GCN-A-SECOND-LATEST",
+        expiry_date=date.today() + timedelta(days=365),
+        is_latest_version=True,
+    ))
+    session.commit()
+    service = CatalogReadService()
+    with pytest.raises(HTTPException) as exc:
+        if surface == "search":
+            service.search_facilities(
+                session, site_id=row["site_id"], gxp_type="GMP",
+            )
+        else:
+            service.get_facility_workspace(
+                session, site_id=row["site_id"], gxp_type="GMP",
+                line_code=None, production_line_id=None,
+            )
+    assert exc.value.status_code == 409
+    assert "latest" in str(exc.value.detail).lower()

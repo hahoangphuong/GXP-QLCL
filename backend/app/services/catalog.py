@@ -2258,12 +2258,29 @@ class CatalogReadService:
                 ) if row.id not in quarantined_ids
             ]
             change_requests = committed_rows(ChangeRequest)
-            versions = {
-                row.certificate_id: row for row in committed_rows(
-                    CertificateVersion,
-                    where=CertificateVersion.is_latest_version.is_(True),
-                )
+            latest_versions = committed_rows(
+                CertificateVersion,
+                where=CertificateVersion.is_latest_version.is_(True),
+            )
+            # Last-write-wins dictionary construction would silently hide
+            # two latest Versions of one current GCN. Fail closed for the
+            # requested Site/GxP scope before selecting a current certificate.
+            visible_certificate_ids = {
+                cert.id for cert in certificates
+                if (site_id is None or cert.site_id == site_id)
+                and (gxp_type is None or cert.certificate_type == gxp_type)
             }
+            seen_latest_ids = set()
+            for version in latest_versions:
+                if version.certificate_id not in visible_certificate_ids:
+                    continue
+                if version.certificate_id in seen_latest_ids:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate has ambiguous latest CertificateVersion identity.",
+                    )
+                seen_latest_ids.add(version.certificate_id)
+            versions = {row.certificate_id: row for row in latest_versions}
             scopes: dict[str, list[CertificateScope]] = defaultdict(list)
             for scope in committed_rows(CertificateScope):
                 scopes[scope.certificate_version_id].append(scope)
@@ -2490,6 +2507,19 @@ class CatalogReadService:
                     Certificate.id.not_in(quarantined_ids),
                 )
             ).mappings().all()
+            # Joined rows expose every latest-version candidate, not a
+            # dictionary that can overwrite an ambiguous identity. Honor
+            # the same 409 policy as Certificate detail and Site GxP list.
+            seen_current_ids = set()
+            for pair in cert_pairs:
+                if gxp_type is not None and pair["cert_certificate_type"] != gxp_type:
+                    continue
+                if pair["cert_id"] in seen_current_ids:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate has ambiguous latest CertificateVersion identity.",
+                    )
+                seen_current_ids.add(pair["cert_id"])
             current_certificates = [
                 (
                     SimpleNamespace(**{

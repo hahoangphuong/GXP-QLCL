@@ -1461,3 +1461,112 @@ def test_search_site_and_change_request_filter_share_committed_postgres_snapshot
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_search_certificate_root_and_latest_version_share_postgres_snapshot():
+    """Root line_code and latest GCN number must come from one committed state."""
+    from sqlalchemy import event, select
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "search_root_version_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Root Version snapshot company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Root Version snapshot site")
+            seed.add(site)
+            seed.flush()
+            cert = Certificate(
+                site_id=site.id, certificate_type="GMP", latest_flag=True,
+                line_code="BEFORE-LINE", issuance_basis="administrative_no_inspection",
+            )
+            seed.add(cert)
+            seed.flush()
+            version = CertificateVersion(
+                certificate_id=cert.id, version_no=1,
+                certificate_number="BEFORE-GCN", is_latest_version=True,
+            )
+            seed.add(version)
+            seed.commit()
+            site_id, certificate_id, version_id = site.id, cert.id, version.id
+
+        commits = []
+        with Session(engine) as reader:
+            def writer_at_root_version_boundary(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                atomic_source = (
+                    "search_atomic_read" in sql
+                    and "certificate_version" in sql
+                )
+                root_in_atomic = atomic_source and "cert_source_latest_flag" in sql
+                if not commits and atomic_source:
+                    # RED: Version statement completes before the writer;
+                    # subsequent Certificate root SELECT sees post-commit.
+                    # GREEN: writer commits BEFORE shared source statement.
+                    captured = (
+                        None if root_in_atomic
+                        else orm_execute_state.invoke_statement()
+                    )
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Certificate.__table__.update()
+                            .where(Certificate.id == certificate_id)
+                            .values(line_code="AFTER-LINE")
+                        )
+                        writer.execute(
+                            CertificateVersion.__table__.update()
+                            .where(CertificateVersion.id == version_id)
+                            .values(certificate_number="AFTER-GCN")
+                        )
+                        writer.commit()
+                    commits.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if root_in_atomic else captured
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", writer_at_root_version_boundary, retval=True)
+            try:
+                payload = CatalogReadService().search_facilities(
+                    reader, site_id=site_id, gxp_type="GMP",
+                )
+                rows = [row for row in payload["items"] if row["site_id"] == site_id]
+                assert len(rows) == 1
+                pair = (rows[0]["line_code"], rows[0]["current_certificate_number"])
+                assert pair in {
+                    ("BEFORE-LINE", "BEFORE-GCN"),
+                    ("AFTER-LINE", "AFTER-GCN"),
+                }, "Search combined Certificate root AFTER with latest Version BEFORE"
+            finally:
+                event.remove(reader, "do_orm_execute", writer_at_root_version_boundary)
+            assert commits, "independent writer never committed at Search read boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(Certificate.line_code).where(Certificate.id == certificate_id)
+            ) == "AFTER-LINE"
+            assert verify.scalar(
+                select(CertificateVersion.certificate_number)
+                .where(CertificateVersion.id == version_id)
+            ) == "AFTER-GCN"
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

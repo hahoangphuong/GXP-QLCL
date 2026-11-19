@@ -2247,8 +2247,8 @@ class CatalogReadService:
                 ]
 
             lines = {row.id: row for row in committed_rows(ProductionLine)}
-            # Search Site/Company, Case, latest CertificateVersion and Scope
-            # belong to one committed SQL statement snapshot. Independent
+            # Search Site/Company, Case, latest CertificateVersion, Scope and
+            # ChangeRequest belong to one committed SQL statement snapshot. Independent
             # Site then Case SELECTs under READ COMMITTED may otherwise show
             # the old facility name with the new Case state from one writer.
             # Tagged branches preserve Site (including an empty Site), Case,
@@ -2258,6 +2258,7 @@ class CatalogReadService:
             case_columns = tuple(Case.__table__.columns)
             version_columns = tuple(CertificateVersion.__table__.columns)
             scope_columns = tuple(CertificateScope.__table__.columns)
+            change_columns = tuple(ChangeRequest.__table__.columns)
             combined = union_all(
                 select(
                     literal("site_company").label("source_kind"),
@@ -2269,6 +2270,8 @@ class CatalogReadService:
                       for column in version_columns),
                     *(cast(literal(None), column.type).label("scope_" + column.name)
                       for column in scope_columns),
+                    *(cast(literal(None), column.type).label("change_" + column.name)
+                      for column in change_columns),
                 ).select_from(Site).outerjoin(Company, Company.id == Site.company_id),
                 select(
                     literal("case").label("source_kind"),
@@ -2281,6 +2284,8 @@ class CatalogReadService:
                       for column in version_columns),
                     *(cast(literal(None), column.type).label("scope_" + column.name)
                       for column in scope_columns),
+                    *(cast(literal(None), column.type).label("change_" + column.name)
+                      for column in change_columns),
                 ).select_from(Case),
                 select(
                     literal("version").label("source_kind"),
@@ -2294,6 +2299,8 @@ class CatalogReadService:
                       for column in version_columns),
                     *(cast(literal(None), column.type).label("scope_" + column.name)
                       for column in scope_columns),
+                    *(cast(literal(None), column.type).label("change_" + column.name)
+                      for column in change_columns),
                 ).select_from(CertificateVersion).where(
                     CertificateVersion.is_latest_version.is_(True)
                 ),
@@ -2309,7 +2316,24 @@ class CatalogReadService:
                       for column in version_columns),
                     *(column.label("scope_" + column.name)
                       for column in scope_columns),
+                    *(cast(literal(None), column.type).label("change_" + column.name)
+                      for column in change_columns),
                 ).select_from(CertificateScope),
+                select(
+                    literal("change").label("source_kind"),
+                    *(cast(literal(None), column.type).label("site_" + column.name)
+                      for column in site_columns),
+                    *(cast(literal(None), column.type).label("company_" + column.name)
+                      for column in company_columns),
+                    *(cast(literal(None), column.type).label("case_" + column.name)
+                      for column in case_columns),
+                    *(cast(literal(None), column.type).label("version_" + column.name)
+                      for column in version_columns),
+                    *(cast(literal(None), column.type).label("scope_" + column.name)
+                      for column in scope_columns),
+                    *(column.label("change_" + column.name)
+                      for column in change_columns),
+                ).select_from(ChangeRequest),
             ).subquery("search_atomic_read")
             cross_group_rows = session.execute(
                 select(*combined.c)
@@ -2351,6 +2375,13 @@ class CatalogReadService:
                     for column in scope_columns
                 })
                 for row in cross_group_rows if row["source_kind"] == "scope"
+            ]
+            change_requests = [
+                SimpleNamespace(**{
+                    column.name: row["change_" + column.name]
+                    for column in change_columns
+                })
+                for row in cross_group_rows if row["source_kind"] == "change"
             ]
             outcomes_by_case_id = {
                 row.case_id: row for row in committed_rows(InspectionOutcome)
@@ -2404,7 +2435,6 @@ class CatalogReadService:
                 for row in certificate_owner_rows
                 if row["source_latest_flag"] and row["cert_id"] not in quarantined_ids
             ]
-            change_requests = committed_rows(ChangeRequest)
             # Last-write-wins dictionary construction would silently hide
             # two latest Versions of one current GCN. Fail closed for the
             # requested Site/GxP scope before selecting a current certificate.

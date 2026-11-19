@@ -327,11 +327,14 @@ def test_certificate_report_export_reads_committed_latest_version_not_dirty_cach
     pending = Company(legal_name="Pending while exporting")
     session.add(pending)
     flushed = []
-    def on_flush(*_):\n        flushed.append(True)\n\n    event.listen(session, "before_flush", on_flush)
+    def on_flush(*_):
+        flushed.append(True)
+
+    event.listen(session, "before_flush", on_flush)
     try:
         report = cert_report(session, export=True, expiry_days=None, number="GCN-B")
     finally:
-        # listener above is isolated by rollback before the fixture is reused
+        event.remove(session, "before_flush", on_flush)
         session.rollback()
     assert not flushed
     assert report["total_count"] == 1

@@ -340,3 +340,47 @@ def test_certificate_report_export_reads_committed_latest_version_not_dirty_cach
     assert report["total_count"] == 1
     assert report["items"][0]["certificate_number"] == "GCN-B"
     assert report["items"][0]["certificate_version_id"] == version.id
+
+def test_change_report_uses_committed_rows_without_flushing_operator_drafts(session):
+    from sqlalchemy import event, inspect, select
+
+    original = change_report(session)
+    target = session.get(ChangeRequest, original["items"][0]["change_request_id"])
+    site = session.get(Site, target.site_id)
+    company = session.get(Company, site.company_id)
+    committed = next(item for item in original["items"] if item["change_request_id"] == target.id)
+
+    target.scope_label = "DRAFT-NOT-COMMITTED"
+    target.state = ChangeRequestState.ACCEPTED
+    site.site_name = "DRAFT-SITE-NOT-COMMITTED"
+    company.legal_name = "DRAFT-COMPANY-NOT-COMMITTED"
+    pending_company = Company(legal_name="PENDING-COMPANY")
+    session.add(pending_company)
+    flush_calls = []
+
+    def prohibit_flush(_session, _context, _instances):
+        flush_calls.append(True)
+        raise AssertionError("A read-only Change Request report flushed an operator draft")
+
+    event.listen(session, "before_flush", prohibit_flush)
+    try:
+        for export in (False, True):
+            result = change_report(session, export=export)
+            assert result["total_count"] == 2
+            item = next(x for x in result["items"] if x["change_request_id"] == target.id)
+            assert item["state"] == committed["state"]
+            assert item["scope_label"] == committed["scope_label"]
+            assert item["facility_name"] == committed["facility_name"]
+            assert item["company_name"] == committed["company_name"]
+            assert change_report(session, q="DRAFT-NOT-COMMITTED", export=export)["total_count"] == 0
+            assert change_report(session, q=committed["scope_label"], export=export)["total_count"] == 1
+        assert not flush_calls
+        assert target in session.dirty
+        assert site in session.dirty
+        assert company in session.dirty
+        assert inspect(pending_company).pending
+        assert target.scope_label == "DRAFT-NOT-COMMITTED"
+        assert site.site_name == "DRAFT-SITE-NOT-COMMITTED"
+    finally:
+        event.remove(session, "before_flush", prohibit_flush)
+        session.rollback()

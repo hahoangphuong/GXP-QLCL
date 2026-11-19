@@ -1846,10 +1846,18 @@ class CatalogReadService:
         self, session: Session, *, state: str | None, q: str | None,
         export: bool, offset: int, limit: int,
     ) -> dict[str, object]:
-        """Site-owned Change Requests. Never assign inferred GxP from other artifacts."""
+        """Committed Site-owned Change Request report without ORM draft flush.
+
+        Filter, count, and visible projection use persisted columns, not the
+        identity-map values of dirty cached ChangeRequest, Site or Company.
+        This does not claim a transaction-wide snapshot across count/page.
+        """
         allowed = {item.value: item for item in OPEN_CHANGE_REQUEST_STATES}
         if state is not None and state not in allowed:
             raise HTTPException(status_code=422, detail="Invalid open Change Request state.")
+        if export and offset != 0:
+            raise HTTPException(status_code=422, detail="Export offset must be zero.")
+
         conditions = [ChangeRequest.state.in_([allowed[state]] if state else OPEN_CHANGE_REQUEST_STATES)]
         if q:
             term = f"%{q}%"
@@ -1858,40 +1866,56 @@ class CatalogReadService:
                 ChangeRequest.scope_label.ilike(term), ChangeRequest.description.ilike(term),
             ))
         source = (
-            select(ChangeRequest, Site, Company)
+            select(
+                ChangeRequest.id.label("request_id"),
+                ChangeRequest.site_id.label("request_site_id"),
+                ChangeRequest.legacy_change_request_id.label("legacy_request_id"),
+                ChangeRequest.scope_label.label("request_scope_label"),
+                ChangeRequest.description.label("request_description"),
+                ChangeRequest.submitted_on.label("request_submitted_on"),
+                ChangeRequest.requester_name.label("request_requester_name"),
+                ChangeRequest.state.label("request_state"),
+                Site.id.label("site_id"),
+                Site.site_name.label("site_name"),
+                Company.legal_name.label("company_name"),
+            )
+            .select_from(ChangeRequest)
             .join(Site, Site.id == ChangeRequest.site_id)
             .join(Company, Company.id == Site.company_id)
             .where(*conditions)
         )
-        if export:
-            if offset != 0:
-                raise HTTPException(status_code=422, detail="Export offset must be zero.")
-            rows = session.execute(source.order_by(ChangeRequest.id).limit(10001)).all()
-            if len(rows) > 10000:
-                raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
-            total, limit = len(rows), 10000
-        else:
-            total = session.scalar(
-                select(func.count()).select_from(ChangeRequest)
-                .join(Site, Site.id == ChangeRequest.site_id)
-                .join(Company, Company.id == Site.company_id)
-                .where(*conditions)
-            ) or 0
-            rows = session.execute(source.order_by(ChangeRequest.id).offset(offset).limit(limit)).all()
+        with session.no_autoflush:
+            if export:
+                rows = session.execute(
+                    source.order_by(ChangeRequest.id).limit(10001)
+                ).mappings().all()
+                if len(rows) > 10000:
+                    raise HTTPException(status_code=413, detail="Report exceeds 10000 rows; narrow the filters.")
+                total, limit = len(rows), 10000
+            else:
+                total = session.scalar(
+                    select(func.count()).select_from(ChangeRequest)
+                    .join(Site, Site.id == ChangeRequest.site_id)
+                    .join(Company, Company.id == Site.company_id)
+                    .where(*conditions)
+                ) or 0
+                rows = session.execute(
+                    source.order_by(ChangeRequest.id).offset(offset).limit(limit)
+                ).mappings().all()
         items = [
             {
-                "change_request_id": change.id,
-                "site_id": site.id,
-                "legacy_change_request_id": change.legacy_change_request_id,
-                "facility_name": site.site_name,
-                "company_name": company.legal_name,
-                "scope_label": change.scope_label,
-                "description": change.description,
-                "submitted_on": change.submitted_on,
-                "requester_name": change.requester_name,
-                "state": change.state.value,
+                "change_request_id": row["request_id"],
+                "site_id": row["site_id"],
+                "legacy_change_request_id": row["legacy_request_id"],
+                "facility_name": row["site_name"],
+                "company_name": row["company_name"],
+                "scope_label": row["request_scope_label"],
+                "description": row["request_description"],
+                "submitted_on": row["request_submitted_on"],
+                "requester_name": row["request_requester_name"],
+                "state": row["request_state"].value,
             }
-            for change, site, company in rows
+            for row in rows
         ]
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 

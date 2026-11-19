@@ -1254,3 +1254,110 @@ def test_search_certificate_number_and_scope_share_committed_postgres_snapshot()
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_search_site_and_case_share_committed_postgres_snapshot():
+    """Search must not show Site BEFORE together with Case AFTER one commit."""
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import Case
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "search_site_case_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Site Case snapshot company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="BEFORE-SITE")
+            seed.add(site)
+            seed.flush()
+            case = Case(
+                site_id=site.id, gxp_type="GMP", state=CaseState.PLANNED,
+                legacy_inspection_code="SITE-CASE-SNAPSHOT",
+            )
+            seed.add(case)
+            seed.commit()
+            site_id, case_id = site.id, case.id
+
+        commits = []
+        with Session(engine) as reader:
+            def writer_at_site_case_boundary(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                # Legacy Search reads Site scalars separately before its
+                # Case/Version/Scope tagged statement.
+                old_site = (
+                    "from site" in sql
+                    and "site_name" in sql
+                    and "search_atomic_read" not in sql
+                )
+                new_atomic_source = (
+                    "search_atomic_read" in sql
+                    and "site_site_name" in sql
+                    and "case_state" in sql
+                )
+                if not commits and (old_site or new_atomic_source):
+                    result = (
+                        None if new_atomic_source
+                        else orm_execute_state.invoke_statement()
+                    )
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Site.__table__.update()
+                            .where(Site.id == site_id)
+                            .values(site_name="AFTER-SITE")
+                        )
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(state=CaseState.CLOSED)
+                        )
+                        writer.commit()
+                    commits.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if new_atomic_source else result
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", writer_at_site_case_boundary, retval=True)
+            try:
+                payload = CatalogReadService().search_facilities(
+                    reader, site_id=site_id, gxp_type="GMP",
+                )
+                matches = [
+                    row for row in payload["items"]
+                    if row["site_id"] == site_id and row["gxp_type"] == "GMP"
+                ]
+                assert len(matches) == 1
+                pair = (matches[0]["facility_name"], matches[0]["current_state"])
+                assert pair in {
+                    ("BEFORE-SITE", "planned"),
+                    ("AFTER-SITE", "closed"),
+                }, "Search combined persisted Site BEFORE with Case AFTER"
+            finally:
+                event.remove(reader, "do_orm_execute", writer_at_site_case_boundary)
+            assert commits, "independent writer did not commit at the Search owner boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(select(Site.site_name).where(Site.id == site_id)) == "AFTER-SITE"
+            assert verify.scalar(select(Case.state).where(Case.id == case_id)) == CaseState.CLOSED
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

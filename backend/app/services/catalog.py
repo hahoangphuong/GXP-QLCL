@@ -2246,20 +2246,36 @@ class CatalogReadService:
                     for row in session.execute(stmt).mappings().all()
                 ]
 
-            sites = committed_rows(Site, order_by=(Site.legacy_site_id, Site.id))
-            companies = {row.id: row for row in committed_rows(Company)}
             lines = {row.id: row for row in committed_rows(ProductionLine)}
-            # Case, latest CertificateVersion and its Scope share one Search
-            # SQL statement snapshot. Separate READ COMMITTED SELECTs can
-            # combine a pre-commit GCN number with post-commit Scope text.
-            # Tagged branches preserve owner grain, including multiple
-            # legitimate Scope rows, without Case x Version x Scope fanout.
+            # Search Site/Company, Case, latest CertificateVersion and Scope
+            # belong to one committed SQL statement snapshot. Independent
+            # Site then Case SELECTs under READ COMMITTED may otherwise show
+            # the old facility name with the new Case state from one writer.
+            # Tagged branches preserve Site (including an empty Site), Case,
+            # Version and multi-Scope owner grains without Cartesian fanout.
+            site_columns = tuple(Site.__table__.columns)
+            company_columns = tuple(Company.__table__.columns)
             case_columns = tuple(Case.__table__.columns)
             version_columns = tuple(CertificateVersion.__table__.columns)
             scope_columns = tuple(CertificateScope.__table__.columns)
             combined = union_all(
                 select(
+                    literal("site_company").label("source_kind"),
+                    *(column.label("site_" + column.name) for column in site_columns),
+                    *(column.label("company_" + column.name) for column in company_columns),
+                    *(cast(literal(None), column.type).label("case_" + column.name)
+                      for column in case_columns),
+                    *(cast(literal(None), column.type).label("version_" + column.name)
+                      for column in version_columns),
+                    *(cast(literal(None), column.type).label("scope_" + column.name)
+                      for column in scope_columns),
+                ).select_from(Site).outerjoin(Company, Company.id == Site.company_id),
+                select(
                     literal("case").label("source_kind"),
+                    *(cast(literal(None), column.type).label("site_" + column.name)
+                      for column in site_columns),
+                    *(cast(literal(None), column.type).label("company_" + column.name)
+                      for column in company_columns),
                     *(column.label("case_" + column.name) for column in case_columns),
                     *(cast(literal(None), column.type).label("version_" + column.name)
                       for column in version_columns),
@@ -2268,6 +2284,10 @@ class CatalogReadService:
                 ).select_from(Case),
                 select(
                     literal("version").label("source_kind"),
+                    *(cast(literal(None), column.type).label("site_" + column.name)
+                      for column in site_columns),
+                    *(cast(literal(None), column.type).label("company_" + column.name)
+                      for column in company_columns),
                     *(cast(literal(None), column.type).label("case_" + column.name)
                       for column in case_columns),
                     *(column.label("version_" + column.name)
@@ -2279,6 +2299,10 @@ class CatalogReadService:
                 ),
                 select(
                     literal("scope").label("source_kind"),
+                    *(cast(literal(None), column.type).label("site_" + column.name)
+                      for column in site_columns),
+                    *(cast(literal(None), column.type).label("company_" + column.name)
+                      for column in company_columns),
                     *(cast(literal(None), column.type).label("case_" + column.name)
                       for column in case_columns),
                     *(cast(literal(None), column.type).label("version_" + column.name)
@@ -2290,6 +2314,23 @@ class CatalogReadService:
             cross_group_rows = session.execute(
                 select(*combined.c)
             ).mappings().all()
+            site_company_rows = [
+                row for row in cross_group_rows if row["source_kind"] == "site_company"
+            ]
+            sites = [
+                SimpleNamespace(**{
+                    column.name: row["site_" + column.name]
+                    for column in site_columns
+                })
+                for row in site_company_rows
+            ]
+            companies = {
+                row["company_id"]: SimpleNamespace(**{
+                    column.name: row["company_" + column.name]
+                    for column in company_columns
+                })
+                for row in site_company_rows if row["company_id"] is not None
+            }
             cases = [
                 SimpleNamespace(**{
                     column.name: row["case_" + column.name]

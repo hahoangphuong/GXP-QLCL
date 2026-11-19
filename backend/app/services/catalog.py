@@ -2418,15 +2418,45 @@ class CatalogReadService:
                     ).mappings().all()
                 ]
 
-            sites = persisted_rows(Site, where=Site.id == site_id)
-            if not sites:
+            # Site, its Company and every Case must be projected from ONE
+            # SQL statement snapshot. An independent writer may commit Site
+            # and Case together between separate READ COMMITTED statements;
+            # mixing them would invent a workspace state that never existed.
+            site_columns = tuple(Site.__table__.columns)
+            company_columns = tuple(Company.__table__.columns)
+            case_columns = tuple(Case.__table__.columns)
+            owner_rows = session.execute(
+                select(
+                    *(column.label("site_" + column.name) for column in site_columns),
+                    *(column.label("company_" + column.name) for column in company_columns),
+                    *(column.label("case_" + column.name) for column in case_columns),
+                )
+                .select_from(Site)
+                .outerjoin(Company, Company.id == Site.company_id)
+                .outerjoin(Case, Case.site_id == Site.id)
+                .where(Site.id == site_id)
+                .order_by(Case.id)
+            ).mappings().all()
+            if not owner_rows:
                 raise HTTPException(status_code=404, detail="Site not found.")
-            site = sites[0]
-            companies = persisted_rows(Company, where=Company.id == site.company_id)
-            if not companies:
+            owner = owner_rows[0]
+            if owner["company_id"] is None:
                 raise HTTPException(status_code=404, detail="Company not found.")
-            company = companies[0]
-            site_cases = persisted_rows(Case, where=Case.site_id == site_id)
+            site = SimpleNamespace(**{
+                column.name: owner["site_" + column.name]
+                for column in site_columns
+            })
+            company = SimpleNamespace(**{
+                column.name: owner["company_" + column.name]
+                for column in company_columns
+            })
+            site_cases = [
+                SimpleNamespace(**{
+                    column.name: row["case_" + column.name]
+                    for column in case_columns
+                })
+                for row in owner_rows if row["case_id"] is not None
+            ]
             normalized_line_code = self._normalize_line_code(line_code)
             lines = {
                 row.id: row for row in persisted_rows(

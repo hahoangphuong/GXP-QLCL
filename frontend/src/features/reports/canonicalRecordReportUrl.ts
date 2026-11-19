@@ -32,7 +32,7 @@ export function parseCanonicalRecordReportUrl(
   };
   if (kind === "certificates") {
     filters.gxp_type = params.get("gxp_type") ?? "";
-    filters.expiry_days = params.has("expiry_days") ? params.get("expiry_days)! : expiryDefault;
+    filters.expiry_days = params.has("expiry_days") ? params.get("expiry_days")! : expiryDefault;
     filters.number = params.get("number") ?? "";
   } else {
     filters.state = params.get("state") ?? "";

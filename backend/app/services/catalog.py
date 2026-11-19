@@ -2513,15 +2513,18 @@ class CatalogReadService:
                 ChangeRequest, where=ChangeRequest.site_id == site_id,
             )
 
-            # One joined scalar projection keeps each Certificate and the
-            # selected latest Version tied to the same SQL statement without
-            # relying on the Session identity map or inventing ownership.
+            # Version identity and the exact Scope rows must be projected
+            # together. Under READ COMMITTED, a writer can atomically change
+            # the number and scope between two separate SELECT statements;
+            # the workspace must never combine those different snapshots.
             cert_columns = tuple(Certificate.__table__.columns)
             version_columns = tuple(CertificateVersion.__table__.columns)
+            scope_columns = tuple(CertificateScope.__table__.columns)
             cert_pairs = session.execute(
                 select(
                     *(column.label("cert_" + column.name) for column in cert_columns),
                     *(column.label("version_" + column.name) for column in version_columns),
+                    *(column.label("scope_" + column.name) for column in scope_columns),
                 )
                 .select_from(Certificate)
                 .join(
@@ -2531,46 +2534,57 @@ class CatalogReadService:
                         CertificateVersion.is_latest_version.is_(True),
                     ),
                 )
+                .outerjoin(
+                    CertificateScope,
+                    CertificateScope.certificate_version_id == CertificateVersion.id,
+                )
                 .where(
                     Certificate.site_id == site_id,
                     Certificate.latest_flag.is_(True),
                     Certificate.id.not_in(quarantined_ids),
                 )
-            ).mappings().all()
-            # Joined rows expose every latest-version candidate, not a
-            # dictionary that can overwrite an ambiguous identity. Honor
-            # the same 409 policy as Certificate detail and Site GxP list.
-            seen_current_ids = set()
-            for pair in cert_pairs:
-                if gxp_type is not None and pair["cert_certificate_type"] != gxp_type:
-                    continue
-                if pair["cert_id"] in seen_current_ids:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Certificate has ambiguous latest CertificateVersion identity.",
-                    )
-                seen_current_ids.add(pair["cert_id"])
-            current_certificates = [
-                (
-                    SimpleNamespace(**{
-                        column.name: row["cert_" + column.name]
-                        for column in cert_columns
-                    }),
-                    SimpleNamespace(**{
-                        column.name: row["version_" + column.name]
-                        for column in version_columns
-                    }),
+                .order_by(
+                    Certificate.id, CertificateVersion.id,
+                    CertificateScope.sort_order,
+                    CertificateScope.created_at,
+                    CertificateScope.id,
                 )
-                for row in cert_pairs
-            ]
+            ).mappings().all()
+
+            # Scope fanout yields multiple rows for one valid latest Version.
+            # Only distinct latest Version identities for the *same* current
+            # Certificate are ambiguous; never reject repeated scope rows.
+            current_version_ids = {}
+            current_certificates = []
             certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
-            version_ids = [version.id for _, version in current_certificates]
-            if version_ids:
-                for scope in persisted_rows(
-                    CertificateScope,
-                    where=CertificateScope.certificate_version_id.in_(version_ids),
-                ):
-                    certificate_scope_rows_by_version[scope.certificate_version_id].append(scope)
+            for pair in cert_pairs:
+                cert_id, version_id = pair["cert_id"], pair["version_id"]
+                previous_version_id = current_version_ids.get(cert_id)
+                if previous_version_id is not None and previous_version_id != version_id:
+                    if gxp_type is None or pair["cert_certificate_type"] == gxp_type:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Certificate has ambiguous latest CertificateVersion identity.",
+                        )
+                if previous_version_id is None:
+                    current_version_ids[cert_id] = version_id
+                    current_certificates.append((
+                        SimpleNamespace(**{
+                            column.name: pair["cert_" + column.name]
+                            for column in cert_columns
+                        }),
+                        SimpleNamespace(**{
+                            column.name: pair["version_" + column.name]
+                            for column in version_columns
+                        }),
+                    ))
+                if pair["scope_id"] is not None:
+                    certificate_scope_rows_by_version[version_id].append(
+                        SimpleNamespace(**{
+                            column.name: pair["scope_" + column.name]
+                            for column in scope_columns
+                        })
+                    )
         case_by_id = {row.id: row for row in site_cases}
         certificate_context_rows = [
             CertificateContextRow(

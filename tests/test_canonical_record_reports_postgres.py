@@ -464,3 +464,127 @@ def test_facility_workspace_rejects_mixed_site_case_commits_between_statements()
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_facility_workspace_certificate_number_and_scope_share_pg_snapshot():
+    """Atomic GCN Version + Scope edit cannot yield an impossible mixed pair."""
+    from sqlalchemy import event, select
+    from backend.app.db.models.phase1 import CertificateScope
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "facility_scope_race_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Scope company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Scope site")
+            seed.add(site)
+            seed.flush()
+            certificate = Certificate(
+                site_id=site.id, certificate_type="GMP", latest_flag=True,
+            )
+            seed.add(certificate)
+            seed.flush()
+            version = CertificateVersion(
+                certificate_id=certificate.id, version_no=1,
+                is_latest_version=True, certificate_number="BEFORE-NUMBER",
+            )
+            seed.add(version)
+            seed.flush()
+            scope = CertificateScope(
+                certificate_version_id=version.id,
+                scope_key="test", scope_text="BEFORE-SCOPE",
+            )
+            seed.add(scope)
+            # Two valid scopes fan out rows in the joined snapshot; they must
+            # not be mistaken for conflicting latest CertificateVersions.
+            seed.add(CertificateScope(
+                certificate_version_id=version.id,
+                scope_key="static", scope_text="STATIC-SCOPE", sort_order=1,
+            ))
+            seed.commit()
+            site_id, cert_id, version_id, scope_id = (
+                site.id, certificate.id, version.id, scope.id,
+            )
+
+        committed = []
+        with Session(engine) as reader:
+            def writer_after_version_read(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                # Both pre-fix pair SQL and a fixed GCN/Version/Scope join
+                # project cert_ and version_ column aliases. Commit *after*
+                # the actual statement executes, before later scope queries.
+                if (
+                    not committed
+                    and "from certificate join certificate_version" in sql
+                    and "cert_" in sql
+                    and "version_" in sql
+                ):
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.execute(
+                            CertificateVersion.__table__.update()
+                            .where(CertificateVersion.id == version_id)
+                            .values(certificate_number="AFTER-NUMBER")
+                        )
+                        writer.execute(
+                            CertificateScope.__table__.update()
+                            .where(CertificateScope.id == scope_id)
+                            .values(scope_text="AFTER-SCOPE")
+                        )
+                        writer.commit()
+                    committed.append(True)
+                    return result
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", writer_after_version_read, retval=True)
+            try:
+                try:
+                    payload = CatalogReadService().get_facility_workspace(
+                        reader, site_id=site_id, gxp_type="GMP",
+                        line_code=None, production_line_id=None,
+                    )
+                except HTTPException as exc:
+                    assert exc.status_code == 409
+                else:
+                    result = payload["summary"]
+                    assert (
+                        result["current_certificate_number"],
+                        result["certificate_scope_summary"],
+                    ) in {
+                        ("BEFORE-NUMBER", "BEFORE-SCOPE\nSTATIC-SCOPE"),
+                        ("AFTER-NUMBER", "AFTER-SCOPE\nSTATIC-SCOPE"),
+                    }, "Workspace mixed GCN number and Scope from different commits"
+            finally:
+                event.remove(reader, "do_orm_execute", writer_after_version_read)
+            assert committed, "atomic writer never ran after Certificate/Version SQL"
+
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(CertificateVersion.certificate_number)
+                .where(CertificateVersion.id == version_id)
+            ) == "AFTER-NUMBER"
+            assert verify.scalar(
+                select(CertificateScope.scope_text)
+                .where(CertificateScope.id == scope_id)
+            ) == "AFTER-SCOPE"
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

@@ -438,3 +438,40 @@ def test_dashboard_queue_reads_committed_case_site_company_and_line_without_flus
     finally:
         event.remove(session, "before_flush", prohibit_flush)
         session.rollback()
+
+
+def test_dashboard_rejects_persisted_reparented_canonical_line_despite_cached_owner(session):
+    from sqlalchemy import select, update
+    from backend.app.db.models.phase1 import ProductionLine
+
+    site = session.scalar(select(Site).limit(1))
+    second_site = Site(company_id=site.company_id, site_name="Other site")
+    session.add(second_site)
+    line = ProductionLine(site_id=site.id, code="LINE-OWNER", effective_from=date(2026, 1, 1))
+    session.add(line)
+    session.flush()
+    linked_case = Case(
+        site_id=site.id, production_line_id=line.id, gxp_type="GMP",
+        state=CaseState.DRAFT, opened_year=2026,
+    )
+    session.add(linked_case)
+    session.commit()
+    assert any(
+        row["case_id"] == linked_case.id
+        for row in CatalogReadService().get_dashboard_summary(session, queue_limit=10)["queue"]
+    )
+
+    # SQL DML deliberately bypasses cached ProductionLine; this simulates a
+    # committed owner change visible to the GET while the Session cache is stale.
+    session.execute(
+        update(ProductionLine)
+        .where(ProductionLine.id == line.id)
+        .values(site_id=second_site.id)
+        .execution_options(synchronize_session=False)
+    )
+    assert line.site_id == site.id
+    with pytest.raises(HTTPException) as exc:
+        CatalogReadService().get_dashboard_summary(session, queue_limit=10)
+    assert exc.value.status_code == 409
+    assert "ProductionLine" in str(exc.value.detail)
+    session.rollback()

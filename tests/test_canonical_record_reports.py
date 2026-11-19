@@ -461,6 +461,7 @@ def test_dashboard_rejects_persisted_reparented_canonical_line_despite_cached_ow
         for row in CatalogReadService().get_dashboard_summary(session, queue_limit=10)["queue"]
     )
 
+    assert line.site_id == site.id  # Materialize the old owner into the identity map.
     # SQL DML deliberately bypasses cached ProductionLine; this simulates a
     # committed owner change visible to the GET while the Session cache is stale.
     session.execute(

@@ -637,3 +637,44 @@ def test_facility_read_fails_closed_on_ambiguous_latest_certificate_version(sess
             )
     assert exc.value.status_code == 409
     assert "latest" in str(exc.value.detail).lower()
+
+
+@pytest.mark.parametrize(
+    "filter_state,expiry_window,issue_order,expiry_days,expected",
+    [
+        ("active", None, ("GCN-A", "GCN-B"), (-1, 90), "GCN-B"),
+        (None, 30, ("GCN-B", "GCN-A"), (12, 120), "GCN-A"),
+    ],
+)
+def test_search_certificate_filter_selects_the_certificate_it_actually_matched(
+    session, filter_state, expiry_window, issue_order, expiry_days, expected,
+):
+    """A qualifying certificate may not make another, ineligible GCN appear current."""
+    today = date.today()
+    versions = {
+        row.certificate_number: row
+        for row in session.query(CertificateVersion)
+        .filter(CertificateVersion.is_latest_version.is_(True)).all()
+    }
+    for name, days in zip(("GCN-A", "GCN-B"), expiry_days):
+        versions[name].expiry_date = today + timedelta(days=days)
+        versions[name].issue_date = (
+            today - timedelta(days=1) if name == issue_order[0]
+            else today - timedelta(days=30)
+        )
+    session.commit()
+    result = CatalogReadService().search_facilities(
+        session, q=None, facility_name=None, site_id=None,
+        certificate_scope=None, gxp_type="GMP", province=None,
+        case_states=None, change_request_states=None,
+        certificate_state=filter_state,
+        certificate_expiring_within_days=expiry_window,
+        offset=0, limit=50,
+    )
+    assert result["total_count"] == 1
+    row = result["items"][0]
+    assert row["current_certificate_number"] == expected, (
+        "Search matched one certificate but displayed a different, "
+        "ineligible current certificate in the same Facility context"
+    )
+    assert row["current_certificate_expiry"] == versions[expected].expiry_date

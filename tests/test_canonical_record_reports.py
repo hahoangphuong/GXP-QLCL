@@ -194,6 +194,11 @@ def test_change_report_is_per_request_site_owned_no_inferred_gxp(session):
     assert {x["state"] for x in page["items"]} == {"received", "under_review"}
     assert change_report(session, q="Đổi tên")["total_count"] == 1
     assert change_report(session, state="under_review")["total_count"] == 1
+    beyond = change_report(session, offset=500, limit=1)
+    assert beyond["total_count"] == 2
+    assert beyond["items"] == []
+    assert beyond["offset"] == 500
+    assert beyond["limit"] == 1
     with pytest.raises(HTTPException) as exc:
         change_report(session, state="accepted")
     assert exc.value.status_code == 422

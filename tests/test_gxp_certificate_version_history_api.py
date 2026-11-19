@@ -406,6 +406,7 @@ def test_history_fails_closed_on_committed_root_link_corruption_with_cached_owne
         with Session(engine) as seed:
             cert = seed.get(Certificate, cert_id)
             foreign_site = seed.scalar(select(Site).where(Site.id != cert.site_id))
+            foreign_site_id = foreign_site.id
             if corruption == "line_site":
                 line = ProductionLine(
                     site_id=cert.site_id, code="VALID-FIRST",
@@ -425,7 +426,7 @@ def test_history_fails_closed_on_committed_root_link_corruption_with_cached_owne
             with Session(engine) as writer:
                 if corruption == "case_site":
                     writer.execute(
-                        update(Case).where(Case.id == case_id).values(site_id=foreign_site.id)
+                        update(Case).where(Case.id == case_id).values(site_id=foreign_site_id)
                     )
                 elif corruption == "case_type":
                     writer.execute(
@@ -434,7 +435,7 @@ def test_history_fails_closed_on_committed_root_link_corruption_with_cached_owne
                 else:
                     writer.execute(
                         update(ProductionLine).where(ProductionLine.id == line_id)
-                        .values(site_id=foreign_site.id)
+                        .values(site_id=foreign_site_id)
                     )
                 writer.commit()
 
@@ -444,8 +445,8 @@ def test_history_fails_closed_on_committed_root_link_corruption_with_cached_owne
                 )
             assert denied.value.status_code == 409
             assert cached_cert.id == cert_id
-            assert cached_case.site_id != foreign_site.id if corruption == "case_site" else True
-            assert cached_line.site_id != foreign_site.id if corruption == "line_site" else True
+            assert cached_case.site_id != foreign_site_id if corruption == "case_site" else True
+            assert cached_line.site_id != foreign_site_id if corruption == "line_site" else True
             assert not reader.new and not reader.dirty
             reader.rollback()
     finally:

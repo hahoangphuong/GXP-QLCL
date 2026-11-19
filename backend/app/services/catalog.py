@@ -1920,87 +1920,123 @@ class CatalogReadService:
         return {"items": items, "total_count": total, "offset": offset, "limit": limit}
 
     def get_dashboard_summary(self, session: Session, *, queue_limit: int):
-        # Dashboard certificate counts and operator reports must project the
-        # same source-validated universe. Unknown corruption still fails 409.
-        quarantined_ids, quarantined_legacy_ids = (
-            self._quarantined_historical_search_certificates(session)
-        )
-        total_facilities = session.scalar(select(func.count()).select_from(Site)) or 0
-        total_cases = session.scalar(select(func.count()).select_from(Case)) or 0
-        active_cases = session.scalar(
-            select(func.count()).select_from(Site).where(
-                self._build_case_exists_clause(case_states=[state.value for state in ACTIVE_CASE_STATES])
-            )
-        ) or 0
-        waiting_inspection = session.scalar(
-            select(func.count()).select_from(Site).where(
-                self._build_case_exists_clause(case_states=[state.value for state in WAITING_INSPECTION_CASE_STATES])
-            )
-        ) or 0
-        waiting_certificate_decision = session.scalar(
-            select(func.count()).select_from(Site).where(
-                self._build_case_exists_clause(case_states=[CaseState.AWAITING_CERTIFICATE_DECISION.value])
-            )
-        ) or 0
-        active_certificates = session.scalar(
-            select(func.count()).select_from(Site).where(
-                self._build_current_certificate_exists_clause(
-                    certificate_state="active",
-                    excluded_certificate_ids=quarantined_ids,
-                )
-            )
-        ) or 0
-        expiring_certificates_90_days = session.scalar(
-            select(func.count()).select_from(Site).where(
-                self._build_current_certificate_exists_clause(
-                    certificate_expiring_within_days=90,
-                    excluded_certificate_ids=quarantined_ids,
-                )
-            )
-        ) or 0
-        incomplete_changes = session.scalar(
-            select(func.count()).select_from(Site).where(
-                self._build_change_request_exists_clause(
-                    change_request_states=[state.value for state in OPEN_CHANGE_REQUEST_STATES]
-                )
-            )
-        ) or 0
+        """Committed dashboard counts and Case queue without flushing drafts.
 
-        queue_rows = session.execute(
-            select(Case, Site, Company)
-            .join(Site, Site.id == Case.site_id)
-            .join(Company, Company.id == Site.company_id)
-            .where(Case.state.notin_([CaseState.CERTIFIED, CaseState.CLOSED, CaseState.CANCELLED]))
-            .order_by(Case.opened_year.desc(), Case.legacy_inspection_id.desc(), Site.legacy_site_id.asc())
-            .limit(queue_limit)
-        ).all()
-
-        lines = {row.id: row for row in session.scalars(select(ProductionLine))}
+        The queue's Case, Site, Company, and canonical ProductionLine fields
+        share one SQL row projection, independent of dirty identity-map state.
+        This does not promise one transaction snapshot across aggregate queries.
+        """
+        with session.no_autoflush:
+            # Source-validated quarantine is authoritative for certificate
+            # metrics. Unknown invalid Certificate/Case ownership fails closed.
+            quarantined_ids, quarantined_legacy_ids = (
+                self._quarantined_historical_search_certificates(session)
+            )
+            total_facilities = session.scalar(select(func.count()).select_from(Site)) or 0
+            total_cases = session.scalar(select(func.count()).select_from(Case)) or 0
+            active_cases = session.scalar(
+                select(func.count()).select_from(Site).where(
+                    self._build_case_exists_clause(case_states=[state.value for state in ACTIVE_CASE_STATES])
+                )
+            ) or 0
+            waiting_inspection = session.scalar(
+                select(func.count()).select_from(Site).where(
+                    self._build_case_exists_clause(case_states=[state.value for state in WAITING_INSPECTION_CASE_STATES])
+                )
+            ) or 0
+            waiting_certificate_decision = session.scalar(
+                select(func.count()).select_from(Site).where(
+                    self._build_case_exists_clause(case_states=[CaseState.AWAITING_CERTIFICATE_DECISION.value])
+                )
+            ) or 0
+            active_certificates = session.scalar(
+                select(func.count()).select_from(Site).where(
+                    self._build_current_certificate_exists_clause(
+                        certificate_state="active",
+                        excluded_certificate_ids=quarantined_ids,
+                    )
+                )
+            ) or 0
+            expiring_certificates_90_days = session.scalar(
+                select(func.count()).select_from(Site).where(
+                    self._build_current_certificate_exists_clause(
+                        certificate_expiring_within_days=90,
+                        excluded_certificate_ids=quarantined_ids,
+                    )
+                )
+            ) or 0
+            incomplete_changes = session.scalar(
+                select(func.count()).select_from(Site).where(
+                    self._build_change_request_exists_clause(
+                        change_request_states=[state.value for state in OPEN_CHANGE_REQUEST_STATES]
+                    )
+                )
+            ) or 0
+            queue_rows = session.execute(
+                select(
+                    Case.id.label("case_id"),
+                    Case.site_id.label("case_site_id"),
+                    Case.production_line_id.label("case_line_id"),
+                    Case.scope_code.label("case_scope_code"),
+                    Case.gxp_type.label("case_gxp_type"),
+                    Case.state.label("case_state"),
+                    Case.legacy_inspection_code.label("case_reference_code"),
+                    Case.opened_year.label("case_opened_year"),
+                    Site.id.label("site_id"),
+                    Site.site_name.label("site_name"),
+                    Company.legal_name.label("company_name"),
+                    ProductionLine.id.label("line_id"),
+                    ProductionLine.site_id.label("line_site_id"),
+                    ProductionLine.code.label("line_code"),
+                )
+                .select_from(Case)
+                .join(Site, Site.id == Case.site_id)
+                .join(Company, Company.id == Site.company_id)
+                .outerjoin(
+                    ProductionLine, ProductionLine.id == Case.production_line_id,
+                )
+                .where(Case.state.notin_([
+                    CaseState.CERTIFIED, CaseState.CLOSED, CaseState.CANCELLED,
+                ]))
+                .order_by(
+                    Case.opened_year.desc(), Case.legacy_inspection_id.desc(),
+                    Site.legacy_site_id.asc(),
+                )
+                .limit(queue_limit)
+            ).mappings().all()
 
         queue = []
-        for case, site, company in queue_rows:
+        for row in queue_rows:
             line_id, line_code, identity_state = self._line_identity(
-                site_id=case.site_id,
-                production_line_id=case.production_line_id,
-                raw_line_code=case.scope_code,
-                lines=lines,
+                site_id=row["case_site_id"],
+                production_line_id=row["case_line_id"],
+                raw_line_code=row["case_scope_code"],
+                lines=(
+                    {
+                        row["line_id"]: SimpleNamespace(
+                            id=row["line_id"], site_id=row["line_site_id"],
+                            code=row["line_code"],
+                        )
+                    }
+                    if row["line_id"] is not None else {}
+                ),
             )
             queue.append({
-                "case_id": case.id,
-                "site_id": site.id,
+                "case_id": row["case_id"],
+                "site_id": row["site_id"],
                 "result_key": self._build_search_result_key(
-                    site.id,
-                    gxp_type=case.gxp_type,
+                    row["site_id"],
+                    gxp_type=row["case_gxp_type"],
                     identity_state=identity_state,
                     production_line_id=line_id,
                     line_code=line_code,
                 ),
-                "facility_name": site.site_name,
-                "company_name": company.legal_name,
-                "gxp_type": case.gxp_type,
-                "state": case.state.value,
-                "reference_code": case.legacy_inspection_code,
-                "opened_year": case.opened_year,
+                "facility_name": row["site_name"],
+                "company_name": row["company_name"],
+                "gxp_type": row["case_gxp_type"],
+                "state": row["case_state"].value,
+                "reference_code": row["case_reference_code"],
+                "opened_year": row["case_opened_year"],
             })
 
         return {

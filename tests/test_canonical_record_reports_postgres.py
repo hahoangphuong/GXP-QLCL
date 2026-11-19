@@ -271,3 +271,86 @@ def test_certificate_report_detects_latest_conflict_committed_after_preflight(ex
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_change_request_report_count_and_page_share_committed_postgres_snapshot():
+    """An independent writer cannot split report count from page rows."""
+    from sqlalchemy import event, func, select
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "change_report_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as setup:
+            company = Company(legal_name="CR snapshot company")
+            setup.add(company)
+            setup.flush()
+            site = Site(company_id=company.id, site_name="CR snapshot site")
+            setup.add(site)
+            setup.flush()
+            first = ChangeRequest(
+                site_id=site.id, state=ChangeRequestState.RECEIVED,
+                scope_label="BEFORE-CR-SNAPSHOT",
+            )
+            setup.add(first)
+            setup.commit()
+            site_id, first_id = site.id, first.id
+
+        injected = []
+        with Session(engine) as reader:
+            def writer_after_count(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                if (not injected and "count(" in sql
+                        and "from change_request" in sql
+                        and "report_total_count" not in sql):
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.add(ChangeRequest(
+                            site_id=site_id, state=ChangeRequestState.UNDER_REVIEW,
+                            scope_label="AFTER-CR-SNAPSHOT",
+                        ))
+                        writer.commit()
+                    injected.append(True)
+                    return result
+                if not injected and "report_total_count" in sql and "change_request" in sql:
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.add(ChangeRequest(
+                            site_id=site_id, state=ChangeRequestState.UNDER_REVIEW,
+                            scope_label="AFTER-CR-SNAPSHOT",
+                        ))
+                        writer.commit()
+                    injected.append(True)
+                    return result
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", writer_after_count, retval=True)
+            try:
+                report = CatalogReadService().get_change_request_report(
+                    reader, state=None, q=None, export=False, offset=0, limit=20,
+                )
+            finally:
+                event.remove(reader, "do_orm_execute", writer_after_count)
+            assert injected, "writer must commit after count/page read"
+            assert report["total_count"] == 1
+            assert [item["change_request_id"] for item in report["items"]] == [first_id]
+        with Session(engine) as verify:
+            assert verify.scalar(select(func.count()).select_from(ChangeRequest)) == 2
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

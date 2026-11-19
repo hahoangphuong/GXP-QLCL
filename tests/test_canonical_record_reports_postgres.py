@@ -868,8 +868,9 @@ def test_facility_workspace_case_and_line_or_event_use_atomic_pg_snapshot(linked
 
 
 @pytest.mark.parametrize("tamper", ["site", "gxp_type"])
-def test_workspace_detects_invalid_certificate_case_link_committed_after_quarantine_preflight(tamper):
-    """A concurrent owner change cannot escape workspace historical quarantine preflight."""
+@pytest.mark.parametrize("surface", ["workspace", "search"])
+def test_read_detects_invalid_certificate_case_link_committed_after_quarantine_preflight(tamper, surface):
+    """Concurrent owner corruption cannot escape workspace or search read owners."""
     from sqlalchemy import event, select
     from backend.app.db.enums import CaseState
     from backend.app.db.models.phase1 import Case
@@ -967,10 +968,15 @@ def test_workspace_detects_invalid_certificate_case_link_committed_after_quarant
             event.listen(reader, "do_orm_execute", mutate_after_quarantine_preflight, retval=True)
             try:
                 with pytest.raises(HTTPException) as exc:
-                    CatalogReadService().get_facility_workspace(
-                        reader, site_id=site_id, gxp_type="GMP",
-                        line_code=None, production_line_id=None,
-                    )
+                    if surface == "workspace":
+                        CatalogReadService().get_facility_workspace(
+                            reader, site_id=site_id, gxp_type="GMP",
+                            line_code=None, production_line_id=None,
+                        )
+                    else:
+                        CatalogReadService().search_facilities(
+                            reader, site_id=site_id, gxp_type="GMP",
+                        )
                 assert exc.value.status_code == 409
                 assert "linked Case" in str(exc.value.detail)
             finally:

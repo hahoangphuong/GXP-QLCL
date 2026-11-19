@@ -147,11 +147,14 @@ def test_certificate_report_count_and_page_share_one_postgres_statement_snapshot
         with Session(engine) as reader:
             def insert_after_count(orm_execute_state):
                 sql = str(orm_execute_state.statement).lower()
-                # Skip latest-version conflict preflight, which has HAVING.
-                # The legacy independent COUNT statement executes before the
-                # page SELECT, while the fixed statement contains both count
-                # and page and is already executing against one PG snapshot.
-                if not injected and "count(" in sql and "from certificate" in sql and "having" not in sql:
+                # The final report SELECT now carries both total_count and
+                # latest-version HAVING conflict guard. Inject AFTER that
+                # statement executes: its rows/count must remain the original
+                # PostgreSQL statement snapshot despite a later writer commit.
+                # Preserve pre-fix COUNT identification for RED reproducibility.
+                final_report = "report_total_count" in sql and "from certificate" in sql
+                legacy_count = "count(" in sql and "from certificate" in sql and "having" not in sql
+                if not injected and (final_report or legacy_count):
                     result = orm_execute_state.invoke_statement()
                     with Session(engine) as writer:
                         second = Certificate(
@@ -176,7 +179,7 @@ def test_certificate_report_count_and_page_share_one_postgres_statement_snapshot
                 )
             finally:
                 event.remove(reader, "do_orm_execute", insert_after_count)
-            assert injected, "writer must commit immediately after the count SQL begins"
+            assert injected, "writer must commit after the report count/page statement executes"
             assert report["total_count"] == 1
             assert [item["certificate_id"] for item in report["items"]] == [first_id]
         with Session(engine) as verify:

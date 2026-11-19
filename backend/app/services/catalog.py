@@ -2261,6 +2261,7 @@ class CatalogReadService:
             certificate_columns = tuple(Certificate.__table__.columns)
             line_columns = tuple(ProductionLine.__table__.columns)
             outcome_columns = tuple(InspectionOutcome.__table__.columns)
+            event_columns = (InspectionEvent.__table__.c.case_id, InspectionEvent.__table__.c.occurred_at)
             # The Certificate owner branch includes linked Case/Site values
             # required by the unchanged historical quarantine predicate.
             certificate_link_columns = (
@@ -2277,6 +2278,12 @@ class CatalogReadService:
                 ("site_id", Site.id),
                 ("site_legacy_id", Site.legacy_site_id),
             )
+
+            def empty_event_columns():
+                return [
+                    cast(literal(None), column.type).label("event_" + column.name)
+                    for column in event_columns
+                ]
 
             def empty_outcome_columns():
                 return [
@@ -2314,6 +2321,7 @@ class CatalogReadService:
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
                     *empty_outcome_columns(),
+                    *empty_event_columns(),
                 ).select_from(Site).outerjoin(Company, Company.id == Site.company_id),
                 select(
                     literal("case").label("source_kind"),
@@ -2331,6 +2339,7 @@ class CatalogReadService:
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
                     *empty_outcome_columns(),
+                    *empty_event_columns(),
                 ).select_from(Case),
                 select(
                     literal("version").label("source_kind"),
@@ -2349,6 +2358,7 @@ class CatalogReadService:
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
                     *empty_outcome_columns(),
+                    *empty_event_columns(),
                 ).select_from(CertificateVersion).where(
                     CertificateVersion.is_latest_version.is_(True)
                 ),
@@ -2369,6 +2379,7 @@ class CatalogReadService:
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
                     *empty_outcome_columns(),
+                    *empty_event_columns(),
                 ).select_from(CertificateScope),
                 select(
                     literal("change").label("source_kind"),
@@ -2387,6 +2398,7 @@ class CatalogReadService:
                     *empty_certificate_owner_columns(),
                     *empty_line_columns(),
                     *empty_outcome_columns(),
+                    *empty_event_columns(),
                 ).select_from(ChangeRequest),
                 select(
                     literal("certificate_owner").label("source_kind"),
@@ -2408,6 +2420,7 @@ class CatalogReadService:
                       for label, column in certificate_link_columns),
                     *empty_line_columns(),
                     *empty_outcome_columns(),
+                    *empty_event_columns(),
                 )
                 .select_from(Certificate)
                 .outerjoin(Case, Case.id == Certificate.case_id)
@@ -2433,6 +2446,7 @@ class CatalogReadService:
                     *(column.label("line_" + column.name)
                       for column in line_columns),
                     *empty_outcome_columns(),
+                    *empty_event_columns(),
                 ).select_from(ProductionLine),
                 # InspectionOutcome dates and Case state are now projected
                 # from the same persisted statement. One Outcome row per
@@ -2455,7 +2469,33 @@ class CatalogReadService:
                     *empty_line_columns(),
                     *(column.label("outcome_" + column.name)
                       for column in outcome_columns),
+                    *empty_event_columns(),
                 ).select_from(InspectionOutcome),
+                # InspectionEvent execution dates are aggregated in the same
+                # statement snapshot as Case and Outcome. Keep exactly one
+                # event row per Case; do not multiply historical events.
+                select(
+                    literal("event").label("source_kind"),
+                    *(cast(literal(None), column.type).label("site_" + column.name)
+                      for column in site_columns),
+                    *(cast(literal(None), column.type).label("company_" + column.name)
+                      for column in company_columns),
+                    *(cast(literal(None), column.type).label("case_" + column.name)
+                      for column in case_columns),
+                    *(cast(literal(None), column.type).label("version_" + column.name)
+                      for column in version_columns),
+                    *(cast(literal(None), column.type).label("scope_" + column.name)
+                      for column in scope_columns),
+                    *(cast(literal(None), column.type).label("change_" + column.name)
+                      for column in change_columns),
+                    *empty_certificate_owner_columns(),
+                    *empty_line_columns(),
+                    *empty_outcome_columns(),
+                    InspectionEvent.case_id.label("event_case_id"),
+                    func.max(InspectionEvent.occurred_at).label("event_occurred_at"),
+                ).select_from(InspectionEvent)
+                .where(InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED)
+                .group_by(InspectionEvent.case_id),
             ).subquery("search_atomic_read")
             cross_group_rows = session.execute(
                 select(*combined.c)
@@ -2534,13 +2574,9 @@ class CatalogReadService:
                 for row in cross_group_rows if row["source_kind"] == "outcome"
             }
             inspection_event_dates_by_case_id = {
-                case_id: occurred_at.date()
-                for case_id, occurred_at in session.execute(
-                    select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
-                    .where(InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED)
-                    .group_by(InspectionEvent.case_id)
-                )
-                if occurred_at is not None
+                row["event_case_id"]: row["event_occurred_at"].date()
+                for row in cross_group_rows
+                if row["source_kind"] == "event" and row["event_occurred_at"] is not None
             }
             # All Certificate roots, including nonlatest historical links,
             # were projected with linked Case/Site in the same owner statement

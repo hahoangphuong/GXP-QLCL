@@ -509,6 +509,12 @@ def test_facility_workspace_certificate_number_and_scope_share_pg_snapshot():
                 scope_key="test", scope_text="BEFORE-SCOPE",
             )
             seed.add(scope)
+            # Two valid scopes fan out rows in the joined snapshot; they must
+            # not be mistaken for conflicting latest CertificateVersions.
+            seed.add(CertificateScope(
+                certificate_version_id=version.id,
+                scope_key="static", scope_text="STATIC-SCOPE", sort_order=1,
+            ))
             seed.commit()
             site_id, cert_id, version_id, scope_id = (
                 site.id, certificate.id, version.id, scope.id,
@@ -559,8 +565,8 @@ def test_facility_workspace_certificate_number_and_scope_share_pg_snapshot():
                         result["current_certificate_number"],
                         result["certificate_scope_summary"],
                     ) in {
-                        ("BEFORE-NUMBER", "BEFORE-SCOPE"),
-                        ("AFTER-NUMBER", "AFTER-SCOPE"),
+                        ("BEFORE-NUMBER", "BEFORE-SCOPE\\nSTATIC-SCOPE"),
+                        ("AFTER-NUMBER", "AFTER-SCOPE\\nSTATIC-SCOPE"),
                     }, "Workspace mixed GCN number and Scope from different commits"
             finally:
                 event.remove(reader, "do_orm_execute", writer_after_version_read)

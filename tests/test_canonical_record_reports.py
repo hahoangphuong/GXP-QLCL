@@ -462,8 +462,8 @@ def test_dashboard_rejects_persisted_reparented_canonical_line_despite_cached_ow
     )
 
     assert line.site_id == site.id  # Materialize the old owner into the identity map.
-    # SQL DML deliberately bypasses cached ProductionLine; this simulates a
-    # committed owner change visible to the GET while the Session cache is stale.
+    # SQL DML bypasses the cached ProductionLine and changes persisted values
+    # visible within this transaction while its ORM identity remains stale.
     session.execute(
         update(ProductionLine)
         .where(ProductionLine.id == line.id)

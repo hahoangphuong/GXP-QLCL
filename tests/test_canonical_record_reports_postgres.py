@@ -1006,3 +1006,128 @@ def test_read_detects_invalid_certificate_case_link_committed_after_quarantine_p
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_search_case_and_certificate_number_share_committed_postgres_snapshot():
+    """Search must not combine Case BEFORE with GCN AFTER one atomic commit."""
+    from sqlalchemy import event, select
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import Case
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+    schema = "search_case_gcn_snapshot_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as seed:
+            company = Company(legal_name="Cross-group snapshot company")
+            seed.add(company)
+            seed.flush()
+            site = Site(company_id=company.id, site_name="Cross-group snapshot site")
+            seed.add(site)
+            seed.flush()
+            case = Case(
+                site_id=site.id, gxp_type="GMP", state=CaseState.PLANNED,
+                legacy_inspection_code="CROSS-GROUP-CASE",
+            )
+            seed.add(case)
+            seed.flush()
+            cert = Certificate(
+                site_id=site.id, case_id=case.id, certificate_type="GMP",
+                latest_flag=True, issuance_basis="inspection_case",
+            )
+            seed.add(cert)
+            seed.flush()
+            version = CertificateVersion(
+                certificate_id=cert.id, version_no=1,
+                certificate_number="BEFORE-GCN", is_latest_version=True,
+            )
+            seed.add(version)
+            seed.commit()
+            site_id, case_id, version_id = site.id, case.id, version.id
+
+        writer_commits = []
+        with Session(engine) as reader:
+            def commit_after_legacy_case_select(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                # RED owner: Case scalar SELECT precedes independent Version SELECT.
+                # An atomic source owner can instead be caught before its final
+                # SQL, so the writer commits before one complete read snapshot.
+                legacy_case = (
+                    ('from "case"' in sql or 'from case' in sql)
+                    and "legacy_inspection_code" in sql
+                    and "certificate_version" not in sql
+                )
+                atomic_source = (
+                    "search_atomic_read" in sql
+                    and "certificate_version" in sql
+                )
+                if not writer_commits and (legacy_case or atomic_source):
+                    result = None if atomic_source else orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.execute(
+                            Case.__table__.update()
+                            .where(Case.id == case_id)
+                            .values(state=CaseState.CLOSED)
+                        )
+                        writer.execute(
+                            CertificateVersion.__table__.update()
+                            .where(CertificateVersion.id == version_id)
+                            .values(certificate_number="AFTER-GCN")
+                        )
+                        writer.commit()
+                    writer_commits.append(True)
+                    return (
+                        orm_execute_state.invoke_statement()
+                        if atomic_source else result
+                    )
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", commit_after_legacy_case_select, retval=True)
+            try:
+                try:
+                    payload = CatalogReadService().search_facilities(
+                        reader, site_id=site_id, gxp_type="GMP",
+                    )
+                except HTTPException as exc:
+                    assert exc.status_code == 409
+                else:
+                    rows = [
+                        row for row in payload["items"]
+                        if row["site_id"] == site_id and row["gxp_type"] == "GMP"
+                    ]
+                    assert len(rows) == 1
+                    pair = (rows[0]["current_state"], rows[0]["current_certificate_number"])
+                    assert pair in {
+                        ("planned", "BEFORE-GCN"),
+                        ("closed", "AFTER-GCN"),
+                    }, "Search combined Case BEFORE with CertificateVersion AFTER"
+            finally:
+                event.remove(reader, "do_orm_execute", commit_after_legacy_case_select)
+            assert writer_commits, "writer never committed at the Search read boundary"
+
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(Case.state).where(Case.id == case_id)
+            ) == CaseState.CLOSED
+            assert verify.scalar(
+                select(CertificateVersion.certificate_number)
+                .where(CertificateVersion.id == version_id)
+            ) == "AFTER-GCN"
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

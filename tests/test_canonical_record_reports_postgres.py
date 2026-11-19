@@ -188,3 +188,83 @@ def test_certificate_report_count_and_page_share_one_postgres_statement_snapshot
             with admin.begin() as connection:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+@pytest.mark.parametrize("export", [False, True])
+def test_certificate_report_detects_latest_conflict_committed_after_preflight(export):
+    """Conflicts committed between preflight and row snapshot fail closed."""
+    from sqlalchemy import event, func, select
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("requires disposable PostgreSQL gxp_qlcl_test")
+    if make_url(url).database != "gxp_qlcl_test":
+        pytest.fail("Only disposable PostgreSQL gxp_qlcl_test is permitted")
+
+    schema = "report_late_version_" + uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    created = False
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        created = True
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+        Base.metadata.create_all(engine)
+        with Session(engine) as setup:
+            company = Company(legal_name="Concurrent version company")
+            setup.add(company)
+            setup.flush()
+            site = Site(company_id=company.id, site_name="Concurrent version site")
+            setup.add(site)
+            setup.flush()
+            certificate = Certificate(site_id=site.id, certificate_type="GMP", latest_flag=True)
+            setup.add(certificate)
+            setup.flush()
+            setup.add(CertificateVersion(
+                certificate_id=certificate.id, version_no=1,
+                is_latest_version=True, certificate_number="BEFORE-CONFLICT",
+            ))
+            setup.commit()
+            certificate_id = certificate.id
+
+        injected = []
+        with Session(engine) as reader:
+            def insert_after_conflict_preflight(orm_execute_state):
+                sql = str(orm_execute_state.statement).lower()
+                if not injected and "having" in sql and "certificate_version" in sql:
+                    result = orm_execute_state.invoke_statement()
+                    with Session(engine) as writer:
+                        writer.add(CertificateVersion(
+                            certificate_id=certificate_id, version_no=2,
+                            is_latest_version=True, certificate_number="LATE-CONFLICT",
+                        ))
+                        writer.commit()
+                    injected.append(True)
+                    return result
+                return orm_execute_state.invoke_statement()
+
+            event.listen(reader, "do_orm_execute", insert_after_conflict_preflight, retval=True)
+            try:
+                with pytest.raises(HTTPException) as exc:
+                    CatalogReadService().get_certificate_report(
+                        reader, gxp_type="GMP", q=None, expiry_days=None,
+                        export=export, offset=0, limit=1,
+                    )
+                assert exc.value.status_code == 409
+                assert "latest" in str(exc.value.detail).lower()
+            finally:
+                event.remove(reader, "do_orm_execute", insert_after_conflict_preflight)
+            assert injected, "writer must commit between conflict preflight and report rows"
+        with Session(engine) as verify:
+            assert verify.scalar(
+                select(func.count()).select_from(CertificateVersion)
+                .where(CertificateVersion.certificate_id == certificate_id)
+            ) == 2
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if created:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

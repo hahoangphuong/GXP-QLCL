@@ -38,6 +38,13 @@ const FALLBACK_ACTIONS: WorkspaceActionReadiness[] = [
   },
 ];
 
+const CREATE_ACTION_KEYS = new Set([
+  "create_company",
+  "create_site",
+  "create_production_line",
+  "create_initial_case",
+]);
+
 export function ActionCard({
   actions = FALLBACK_ACTIONS,
   onActionSelect,
@@ -49,29 +56,39 @@ export function ActionCard({
   onActionButtonRef?: (actionKey: string, element: HTMLButtonElement | null) => void;
   selectedActionKey?: string | null;
 }) {
+  const createActions = actions.filter((action) => CREATE_ACTION_KEYS.has(action.action_key));
+  const contextualActions = actions.filter((action) => !CREATE_ACTION_KEYS.has(action.action_key));
+
+  const actionButton = (action: WorkspaceActionReadiness) => (
+    <button
+      aria-label={action.label}
+      aria-pressed={selectedActionKey === action.action_key}
+      data-readiness-status={action.readiness_status}
+      disabled={action.readiness_status !== "available"
+        && !(action.action_key === "create_initial_case" && (action.readiness_status === "unavailable" || action.readiness_status === "conflict"))}
+      key={action.action_key}
+      onClick={() => onActionSelect?.(action.action_key)}
+      ref={(element) => onActionButtonRef?.(action.action_key, element)}
+      title={action.detail}
+      type="button"
+    >
+      {action.label}
+    </button>
+  );
+
   return (
-    <section className="panel panel-tight action-panel">
-      <div className="action-grid" aria-label="Thao tác theo ngữ cảnh cơ sở">
-        {actions.map((action) => (
-          <button
-            aria-label={action.label}
-            aria-pressed={selectedActionKey === action.action_key}
-            data-readiness-status={action.readiness_status}
-            // This action opens a context-selection editor; "unavailable" may mean
-            // that GxP has not yet been selected, or the selected context is\n            // occupied but another context may be free. The editor rechecks the
-            // exact canonical context and never mutates on opening.
-            disabled={action.readiness_status !== "available"
-              && !(action.action_key === "create_initial_case" && (action.readiness_status === "unavailable" || action.readiness_status === "conflict"))}
-            key={action.action_key}
-            onClick={() => onActionSelect?.(action.action_key)}
-            ref={(element) => onActionButtonRef?.(action.action_key, element)}
-            title={action.detail}
-            type="button"
-          >
-            {action.label}
-          </button>
-        ))}
+    <section className="panel panel-tight action-panel action-toolbar">
+      <span className="action-toolbar-heading">Thao tác</span>
+      <div className="action-group" aria-label="Tạo mới">
+        <span className="action-group-label">Tạo mới</span>
+        <div className="action-grid">{createActions.map(actionButton)}</div>
       </div>
+      {contextualActions.length > 0 ? (
+        <div className="action-group" aria-label="Theo ngữ cảnh cơ sở">
+          <span className="action-group-label">Theo ngữ cảnh</span>
+          <div className="action-grid">{contextualActions.map(actionButton)}</div>
+        </div>
+      ) : null}
     </section>
   );
 }

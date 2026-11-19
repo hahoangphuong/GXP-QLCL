@@ -4,21 +4,22 @@ import { CASE_STATE_OPTIONS, formatStatusLabel } from "../../lib/presentation";
 
 type Filters = {
   query: string;
-  gxpType: string;
   province: string;
-  caseState: string;
+  caseStates: string[];
   certificateState: string;
   certificateExpiringWithinDays: string;
   changeRequestStates: string[];
 };
+
+type FilterChange = Exclude<keyof Filters, "caseStates"> | "caseState";
 
 function buildFilterChips(filters: Filters): string[] {
   const chips: string[] = [];
   if (filters.province.trim()) {
     chips.push(`Tỉnh/thành: ${filters.province.trim()}`);
   }
-  if (filters.caseState) {
-    chips.push(`Trạng thái hồ sơ: ${formatStatusLabel(filters.caseState)}`);
+  if (filters.caseStates.length > 0) {
+    chips.push(`Trạng thái hồ sơ: ${filters.caseStates.map((item) => formatStatusLabel(item)).join(", ")}`);
   } else if (filters.changeRequestStates.length > 0) {
     chips.push(`Thay đổi: ${filters.changeRequestStates.map((item) => formatStatusLabel(item)).join(", ")}`);
   }
@@ -35,32 +36,35 @@ export function SearchToolbar({
   filters,
   onChange,
   onClear,
+  gxpType,
+  loadedCount,
+  totalCount,
+  hasMasterFilters = false,
 }: {
   filters: Filters;
-  onChange: (field: keyof Filters, value: string) => void;
+  onChange: (field: FilterChange, value: string) => void;
   onClear: () => void;
+  gxpType: string;
+  loadedCount: number;
+  totalCount: number;
+  hasMasterFilters?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const chips = buildFilterChips(filters);
+  const hasMultipleCaseStates = filters.caseStates.length > 1;
 
   return (
     <section className="panel panel-tight search-toolbar">
       <div className="toolbar-primary toolbar-primary-compact">
         <div className="toolbar-heading">
           <span className="toolbar-label">Tra cứu</span>
+          <span className="toolbar-meta" aria-live="polite">
+            {loadedCount < totalCount ? `Đã tải ${loadedCount} / ${totalCount}` : `${totalCount} kết quả`}
+          </span>
         </div>
-        <div className="gxp-toggle" role="tablist" aria-label="Bộ lọc GxP">
-          {["ALL", "GMP", "GLP", "GMPbd"].map((option) => (
-            <button
-              className={filters.gxpType === option ? "toggle-chip active" : "toggle-chip"}
-              key={option}
-              onClick={() => onChange("gxpType", option)}
-              type="button"
-            >
-              {option === "ALL" ? "Tất cả" : option}
-            </button>
-          ))}
-        </div>
+        <span className="toolbar-gxp-context" aria-label={`Nhóm GxP đang chọn: ${gxpType}`}>
+          GMP / GLP / GMPbb · {gxpType}
+        </span>
         <label className="toolbar-search toolbar-search-primary">
           <span className="sr-only">Tìm nhanh</span>
           <input
@@ -72,7 +76,7 @@ export function SearchToolbar({
         <button className="secondary" onClick={() => setExpanded((current) => !current)} type="button">
           {expanded ? "Ẩn lọc" : "Bộ lọc"}
         </button>
-        <button className="secondary" onClick={onClear} type="button">
+        <button className="secondary" disabled={!hasMasterFilters && !filters.query && chips.length === 0} onClick={onClear} type="button">
           Xóa lọc
         </button>
       </div>
@@ -95,7 +99,8 @@ export function SearchToolbar({
           </label>
           <label>
             <span>Trạng thái hồ sơ</span>
-            <select value={filters.caseState} onChange={(event) => onChange("caseState", event.target.value)}>
+            <select value={filters.caseStates.length === 1 ? filters.caseStates[0] : ""} onChange={(event) => onChange("caseState", event.target.value)}>
+              {hasMultipleCaseStates ? <option disabled value="">Nhiều trạng thái (giữ theo liên kết)</option> : null}
               <option value="">Tất cả</option>
               {CASE_STATE_OPTIONS.map((option) => (
                 <option key={option} value={option}>

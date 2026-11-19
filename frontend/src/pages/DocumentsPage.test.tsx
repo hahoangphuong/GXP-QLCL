@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
@@ -116,6 +116,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Let React dispose effects before restoring API mocks. Otherwise a deferred
+  // workspace lookup from the previous test can observe a reset mock and make
+  // the deterministic document-return assertion flaky under CI parallelism.
+  cleanup();
   vi.restoreAllMocks();
 });
 

@@ -261,3 +261,79 @@ def test_site_filter_retains_pagination_and_gxp_combination(session):
     assert len(first["items"]) == 1
     assert later["items"] == []
     assert service.search_facilities(session, site_id=site_id, gxp_type="GLP")["total_count"] == 0
+
+
+def test_certificate_report_uses_committed_row_values_without_flushing_drafts(session):
+    """Search/report filter and result cannot disagree due to dirty cached ORM rows."""
+    from sqlalchemy import event, select
+
+    certificate = session.scalar(
+        select(Certificate).join(CertificateVersion).where(
+            CertificateVersion.certificate_number == "GCN-A"
+        )
+    )
+    version = session.scalar(select(CertificateVersion).where(
+        CertificateVersion.certificate_id == certificate.id,
+        CertificateVersion.is_latest_version.is_(True),
+    ))
+    site = session.get(Site, certificate.site_id)
+    company = session.get(Company, site.company_id)
+    certificate.latest_flag = False
+    certificate.certificate_type = "GLP"
+    version.certificate_number = "UNSAVED-OPERATOR-NUMBER"
+    version.expiry_date = date.today() - timedelta(days=10)
+    site.site_name = "UNSAVED-OPERATOR-SITE"
+    company.legal_name = "UNSAVED-OPERATOR-COMPANY"
+    pending = Company(legal_name="Unrelated pending Company")
+    session.add(pending)
+    observed_flushes = []
+
+    def forbid_flush(*_args):
+        observed_flushes.append(True)
+        raise AssertionError("Read-only certificate report autoflushed operator drafts")
+
+    event.listen(session, "before_flush", forbid_flush)
+    try:
+        report = cert_report(session, q="GCN-A", number="GCN-A", expiry_days=30)
+    finally:
+        event.remove(session, "before_flush", forbid_flush)
+    assert not observed_flushes
+    assert report["total_count"] == 1
+    assert len(report["items"]) == 1
+    item = report["items"][0]
+    assert item["certificate_id"] == certificate.id
+    assert item["certificate_version_id"] == version.id
+    assert item["certificate_number"] == "GCN-A"
+    assert item["gxp_type"] == "GMP"
+    assert item["status"] == "active"
+    assert item["facility_name"] == "Cơ sở Thử"
+    assert item["company_name"] == "Công ty thử nghiệm"
+    assert item["expiry_date"] == date.today() + timedelta(days=20)
+    assert certificate in session.dirty
+    assert version in session.dirty
+    assert site in session.dirty
+    assert company in session.dirty
+    assert pending in session.new
+    session.rollback()
+
+
+def test_certificate_report_export_reads_committed_latest_version_not_dirty_cache(session):
+    from sqlalchemy import event, select
+
+    version = session.scalar(select(CertificateVersion).where(
+        CertificateVersion.certificate_number == "GCN-B",
+    ))
+    version.certificate_number = "LOCAL-UNSAVED-NUMBER"
+    pending = Company(legal_name="Pending while exporting")
+    session.add(pending)
+    flushed = []
+    def on_flush(*_):\n        flushed.append(True)\n\n    event.listen(session, "before_flush", on_flush)
+    try:
+        report = cert_report(session, export=True, expiry_days=None, number="GCN-B")
+    finally:
+        # listener above is isolated by rollback before the fixture is reused
+        session.rollback()
+    assert not flushed
+    assert report["total_count"] == 1
+    assert report["items"][0]["certificate_number"] == "GCN-B"
+    assert report["items"][0]["certificate_version_id"] == version.id

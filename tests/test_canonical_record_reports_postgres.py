@@ -396,14 +396,14 @@ def test_facility_workspace_rejects_mixed_site_case_commits_between_statements()
         with Session(engine) as reader:
             def commit_after_site_read(orm_execute_state):
                 sql = str(orm_execute_state.statement).lower()
-                # Execute the actual persisted Site SELECT first, then commit
-                # *both* changes in one independent transaction before the
-                # subsequent Case SELECT at PostgreSQL READ COMMITTED.
+                # Commit after the first Site-owning SQL statement returns.
+                # Old source then read Case separately; fixed source joins
+                # Site, Company and Case in one statement snapshot, so its
+                # already-fetched values must remain mutually consistent.
                 if (
                     not inserted
                     and "from site" in sql
                     and "where site.id" in sql
-                    and "join " not in sql
                 ):
                     result = orm_execute_state.invoke_statement()
                     with Session(engine) as writer:

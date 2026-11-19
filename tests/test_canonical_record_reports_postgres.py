@@ -929,9 +929,13 @@ def test_workspace_detects_invalid_certificate_case_link_committed_after_quarant
                     and "case_legacy_id" in sql
                     and "cert_legacy_id" in sql
                 )
+                # SQLAlchemy binds literal("certificate_owner") as a
+                # parameter, so its value is NOT text in str(statement).
+                # The stable final-source subquery alias identifies the
+                # combined statement without inspecting a bound value.
                 final_snapshot = (
                     "facility_workspace_atomic_read" in sql
-                    and "certificate_owner" in sql
+                    and "from certificate" in sql
                 )
                 if not committed and (old_preflight or final_snapshot):
                     # RED: writer after old separate preflight, before final SQL.

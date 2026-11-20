@@ -2731,9 +2731,17 @@ class CatalogReadService:
                     eligible_certificates = [
                         row for row in eligible_certificates
                         if (
-                            certificate_state != "active"
-                            or row.version.expiry_date is None
-                            or row.version.expiry_date >= today
+                            certificate_state == "active"
+                            and (
+                                row.version.expiry_date is None
+                                or row.version.expiry_date >= today
+                            )
+                            or certificate_state == "expired"
+                            and (
+                                row.version.expiry_date is not None
+                                and row.version.expiry_date < today
+                            )
+                            or certificate_state is None
                         )
                         and (
                             certificate_expiring_within_days is None

@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, Certificate, CertificateVersion, Company, InspectionApprovalSubmission, InspectionOutcome, Site
+from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateVersion, Company, InspectionApprovalSubmission, InspectionOutcome, Site
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 from backend.app.main import create_app
@@ -1071,6 +1071,62 @@ def test_capa_mutation_refuses_pending_delete_before_autoflush(pg_engine, operat
                     select(func.count()).select_from(CapaCycle)
                     .where(CapaCycle.id == target["capa_cycle_id"])
                 ) == 1
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("issuance_basis", ["inspection_case", "administrative_no_inspection"])
+def test_case_issuance_refuses_pending_nonissuance_without_autoflush(pg_engine, issuance_basis):
+    """A staged legal refusal must not be persisted by a certificate mutation."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.commit()
+    with Session(pg_engine) as session:
+        actor_id = session.scalar(
+            select(AuditEvent.actor_user_id)
+            .where(AuditEvent.actor_user_id.is_not(None)).limit(1)
+        )
+        assert actor_id is not None
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        certificates_before = session.scalar(select(func.count()).select_from(Certificate))
+        pending = CaseCertificateNonissuanceDecision(
+            case_id=case_id, decided_on=DAY,
+            decision_reference="UNSAVED-LEGAL-REFUSAL",
+            explanation="Synthetic unsubmitted non-issuance decision",
+            recorded_by_user_id=actor_id,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Certificate issuance autoflushed a refusal draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.issue_certificate(
+                    session, site_id=site_id, case_id=case_id,
+                    certificate_type="GMP", issuance_basis=issuance_basis,
+                    certificate_number="SYNTH-REFUSAL-EXCLUSIVITY",
+                    issue_date=DAY, expiry_date=date(2027, 10, 1),
+                    scopes=[], reason="synthetic refusal draft guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CaseCertificateNonissuanceDecision)
+                    .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+                ) == 0
+                assert session.scalar(select(func.count()).select_from(Certificate)) == certificates_before
                 assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
         finally:
             event.remove(session, "before_flush", forbid_flush)

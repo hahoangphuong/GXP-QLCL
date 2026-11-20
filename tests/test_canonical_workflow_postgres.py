@@ -1242,3 +1242,64 @@ def test_competing_case_issuance_and_nonissuance_leave_single_decision(pg_engine
             select(func.count()).select_from(AuditEvent)
             .where(AuditEvent.action == "case_certificate_nonissuance_decision.record", AuditEvent.entity_id.in_(case_refuse_ids))
         ) == refused
+
+
+def test_nonissuance_refuses_pending_same_case_decision_before_autoflush(pg_engine):
+    """Duplicate refusal intent in one Session must not flush its first draft."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.add(InspectionOutcome(
+            case_id=case_id, final_evaluation="Synthetic final evaluation",
+        ))
+        setup.commit()
+    with Session(pg_engine) as session:
+        version = session.get(Case, case_id).row_version
+        actor_id = session.scalar(
+            select(AuditEvent.actor_user_id)
+            .where(AuditEvent.actor_user_id.is_not(None))
+            .limit(1)
+        )
+        assert actor_id is not None
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CaseCertificateNonissuanceDecision(
+            case_id=case_id, decided_on=DAY,
+            decision_reference="PENDING-REFUSAL-DRAFT",
+            explanation="Unsubmitted legal decision",
+            recorded_by_user_id=actor_id,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Second non-issuance operation flushed a first draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.record_case_nonissuance_decision(
+                    session, case_id=case_id, expected_case_version=version,
+                    decided_on=DAY, decision_reference="SECOND-REFUSAL-INTENT",
+                    explanation="Second legal decision intent",
+                    reason="synthetic duplicate draft", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            assert pending.decision_reference == "PENDING-REFUSAL-DRAFT"
+            with session.no_autoflush:
+                assert SERVICE.get_case_nonissuance_decision(
+                    session, case_id=case_id,
+                )["decision"] is None
+                assert session.scalar(
+                    select(func.count()).select_from(CaseCertificateNonissuanceDecision)
+                    .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+                ) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

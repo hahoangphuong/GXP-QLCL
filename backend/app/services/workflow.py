@@ -644,15 +644,27 @@ class CaseWorkflowService:
         """
         if NONISSUANCE_DECISION_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.approve.")
-        case = self._lock_case(session, case_id)
-        self._assert_expected_version(case, expected_case_version, label="case")
-        if not decision_reference or not decision_reference.strip() or len(decision_reference.strip()) > 255:
-            raise HTTPException(status_code=422, detail="Decision reference is required (up to 255 characters).")
-        if not explanation or not explanation.strip():
-            raise HTTPException(status_code=422, detail="Decision explanation is required.")
-        blocker = self._nonissuance_decision_blocker(session, case_id=case.id, case_state=case.state)
-        if blocker is not None:
-            raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))
+        # The Case lock uses populate_existing=True. Check the Session's
+        # operator draft first, without autoflush: locking must not silently
+        # persist or replace an uncommitted Case field edit.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before recording non-issuance.",
+                )
+            case = self._lock_case(session, case_id)
+            self._assert_expected_version(case, expected_case_version, label="case")
+            if not decision_reference or not decision_reference.strip() or len(decision_reference.strip()) > 255:
+                raise HTTPException(status_code=422, detail="Decision reference is required (up to 255 characters).")
+            if not explanation or not explanation.strip():
+                raise HTTPException(status_code=422, detail="Decision explanation is required.")
+            blocker = self._nonissuance_decision_blocker(session, case_id=case.id, case_state=case.state)
+            if blocker is not None:
+                raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))
         actor = self._get_or_create_app_user(session, user)
         decision = CaseCertificateNonissuanceDecision(
             case_id=case.id, decided_on=decided_on,

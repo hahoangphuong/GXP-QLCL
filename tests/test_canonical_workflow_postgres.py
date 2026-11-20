@@ -16,13 +16,13 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, event, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, Certificate, CertificateVersion, Company, InspectionApprovalSubmission, Site
+from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, Certificate, CertificateVersion, Company, InspectionApprovalSubmission, InspectionOutcome, Site
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 from backend.app.main import create_app
@@ -546,3 +546,51 @@ def test_certificate_version_edit_rejects_expiry_before_issue_date_without_write
         ).where(CertificateVersion.id == issued["latest_version_id"])).one()
         assert tuple(persisted) == original_dates
         session.rollback()
+
+
+def test_nonissuance_rejects_dirty_cached_case_before_refresh_or_audit(pg_engine):
+    """Non-issuance admission must not autoflush or discard an operator Case draft."""
+    case_id, _site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.add(InspectionOutcome(
+            case_id=case_id, final_evaluation="Synthetic final evaluation"
+        ))
+        setup.commit()
+
+    with Session(pg_engine) as session:
+        case = session.get(Case, case_id)
+        expected_version = case.row_version
+        original_scope = case.scope_code
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        case.scope_code = "UNSAVED-NONISSUANCE-CASE-DRAFT"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Non-issuance admission autoflushed a Case draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.record_case_nonissuance_decision(
+                    session, case_id=case_id,
+                    expected_case_version=expected_version,
+                    decided_on=DAY, decision_reference="SYNTH-NONISSUANCE",
+                    explanation="Synthetic decision",
+                    reason="synthetic dirty Case guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert case.scope_code == "UNSAVED-NONISSUANCE-CASE-DRAFT"
+            assert case in session.dirty
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(
+                    select(Case.scope_code).where(Case.id == case_id)
+                ) == original_scope
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

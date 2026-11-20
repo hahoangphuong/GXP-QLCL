@@ -876,3 +876,69 @@ def test_nonissuance_refuses_pending_capa_before_decision_or_audit(pg_engine):
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["create", "complete"])
+def test_approval_mutation_refuses_pending_capa_without_autoflush(pg_engine, operation):
+    """A PCT creation/completion must never persist a separate unsaved CAPA."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    existing = approval(pg_engine, case_id, "PCT") if operation == "complete" else None
+
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        approval_before = session.scalar(
+            select(func.count()).select_from(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case_id)
+        )
+        pending = CapaCycle(
+            case_id=case_id, round_no=1, status="requested",
+            requested_on=DAY, incoming_reference="UNSAVED-PCT-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Approval operation autoflushed an unaccepted CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "create":
+                    SERVICE.create_approval_submission(
+                        session, case_id=case_id, stage="PCT",
+                        reference="SYNTH-PCT-PENDING-CAPA",
+                        submitted_on=DAY, submitted_time=None,
+                        pct_submission_id=None, reason="pending CAPA admission",
+                        user=USER,
+                    )
+                else:
+                    SERVICE.complete_approval_submission(
+                        session,
+                        approval_submission_id=existing["approval_submission_id"],
+                        expected_version=existing["row_version"],
+                        completed_on=DAY, completed_time=None,
+                        reason="pending CAPA admission", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "capa" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle).where(CapaCycle.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.case_id == case_id)
+                ) == approval_before
+                if existing is not None:
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.completed_on)
+                        .where(InspectionApprovalSubmission.id == existing["approval_submission_id"])
+                    ) is None
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

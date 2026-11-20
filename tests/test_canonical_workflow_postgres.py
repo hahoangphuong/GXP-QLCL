@@ -1131,3 +1131,122 @@ def test_case_issuance_refuses_pending_nonissuance_without_autoflush(pg_engine, 
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_nonissuance_rejects_pending_case_certificate_before_any_flush(pg_engine):
+    """Refusal must not insert a separately staged same-Case certificate."""
+    case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.add(InspectionOutcome(
+            case_id=case_id, final_evaluation="Synthetic final evaluation",
+        ))
+        setup.commit()
+    with Session(pg_engine) as session:
+        version = session.get(Case, case_id).row_version
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        staged = Certificate(
+            case_id=case_id, site_id=site_id, certificate_type="GMP",
+            issuance_basis="inspection_case", latest_flag=False,
+        )
+        session.add(staged)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Non-issuance autoflushed an unissued Certificate draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.record_case_nonissuance_decision(
+                    session, case_id=case_id, expected_case_version=version,
+                    decided_on=DAY, decision_reference="SYNTH-NONISSUANCE-EXCLUSIVITY",
+                    explanation="Synthetic refusal decision", reason=None, user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert staged in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(Certificate)
+                    .where(Certificate.case_id == case_id)
+                ) == 0
+                assert SERVICE.get_case_nonissuance_decision(
+                    session, case_id=case_id,
+                )["decision"] is None
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_competing_case_issuance_and_nonissuance_leave_single_decision(pg_engine):
+    """Two real transactions on the same Case cannot both issue and refuse."""
+    case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.add(InspectionOutcome(
+            case_id=case_id, final_evaluation="Synthetic final evaluation",
+        ))
+        setup.commit()
+        expected_version = case.row_version
+
+    gate = Barrier(2)
+
+    def attempt(kind):
+        gate.wait()
+        try:
+            if kind == "issue":
+                result = issue(pg_engine, case_id, site_id)
+            else:
+                result = write(
+                    pg_engine, SERVICE.record_case_nonissuance_decision,
+                    case_id=case_id, expected_case_version=expected_version,
+                    decided_on=DAY, decision_reference="SYNTH-COMPETING-REFUSAL",
+                    explanation="Synthetic competing decision", reason=None,
+                )
+            return "ok", kind, result
+        except HTTPException as exc:
+            return "rejected", kind, exc.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(attempt, ("issue", "refuse")))
+    assert sorted(x[0] for x in outcomes) == ["ok", "rejected"]
+    assert next(x[2] for x in outcomes if x[0] == "rejected") == 409
+    with Session(pg_engine) as session:
+        issued = session.scalar(
+            select(func.count()).select_from(Certificate)
+            .where(Certificate.case_id == case_id)
+        )
+        refused = session.scalar(
+            select(func.count()).select_from(CaseCertificateNonissuanceDecision)
+            .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+        )
+        assert issued + refused == 1
+        issue_audits = session.scalar(
+            select(func.count()).select_from(AuditEvent)
+            .where(AuditEvent.action == "certificate.issue")
+        )
+        refuse_audits = session.scalar(
+            select(func.count()).select_from(AuditEvent)
+            .where(AuditEvent.action == "case_certificate_nonissuance_decision.record")
+        )
+        # These action types originate only from this test's Case in its
+        # isolated schema, except for other synthetic cases from this module.
+        case_issue_ids = session.scalars(select(Certificate.id).where(Certificate.case_id == case_id)).all()
+        case_refuse_ids = session.scalars(
+            select(CaseCertificateNonissuanceDecision.id)
+            .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+        ).all()
+        assert session.scalar(
+            select(func.count()).select_from(AuditEvent)
+            .where(AuditEvent.action == "certificate.issue", AuditEvent.entity_id.in_(case_issue_ids))
+        ) == issued
+        assert session.scalar(
+            select(func.count()).select_from(AuditEvent)
+            .where(AuditEvent.action == "case_certificate_nonissuance_decision.record", AuditEvent.entity_id.in_(case_refuse_ids))
+        ) == refused

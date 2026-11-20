@@ -490,3 +490,59 @@ def test_certificate_link_rejects_cross_gxp_case_for_every_issuance_basis(
             select(func.count()).select_from(AuditEvent)
         ) == before_events
         session.rollback()
+
+
+def test_certificate_issue_rejects_expiry_before_issue_date_without_writes(pg_engine):
+    """An issued certificate candidate cannot expire before its issue date."""
+    _case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as session:
+        certs_before = session.scalar(select(func.count()).select_from(Certificate))
+        events_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.issue_certificate(
+                session, site_id=site_id, case_id=None,
+                certificate_type="GMP",
+                issuance_basis="administrative_no_inspection",
+                certificate_number="INVALID-DATE-ORDER-ISSUE",
+                issue_date=date(2028, 1, 1),
+                expiry_date=date(2027, 12, 31),
+                scopes=[], reason="synthetic date-order guard", user=USER,
+            )
+        assert blocked.value.status_code == 422
+        assert session.scalar(select(func.count()).select_from(Certificate)) == certs_before
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == events_before
+        session.rollback()
+
+
+def test_certificate_version_edit_rejects_expiry_before_issue_date_without_writes(pg_engine):
+    """Editing a latest Version cannot turn a coherent date pair backwards."""
+    _case_id, site_id = seed(pg_engine)
+    issued = write(
+        pg_engine, SERVICE.issue_certificate, site_id=site_id, case_id=None,
+        certificate_type="GMP",
+        issuance_basis="administrative_no_inspection",
+        certificate_number="VALID-DATE-ORDER-ISSUE",
+        issue_date=date(2027, 1, 1),
+        expiry_date=date(2028, 1, 1),
+        scopes=[], reason="synthetic candidate", 
+    )
+    with Session(pg_engine) as session:
+        events_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        version_before = session.get(CertificateVersion, issued["latest_version_id"])
+        original_dates = (version_before.issue_date, version_before.expiry_date)
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.upsert_certificate_latest_version(
+                session, certificate_id=issued["certificate_id"],
+                expected_version=issued["row_version"],
+                certificate_number="INVALID-DATE-ORDER-EDIT",
+                issue_date=date(2029, 1, 1),
+                expiry_date=date(2028, 12, 31),
+                scopes=[], reason="synthetic invalid date edit", user=USER,
+            )
+        assert blocked.value.status_code == 422
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == events_before
+        persisted = session.execute(select(
+            CertificateVersion.issue_date, CertificateVersion.expiry_date
+        ).where(CertificateVersion.id == issued["latest_version_id"])).one()
+        assert tuple(persisted) == original_dates
+        session.rollback()

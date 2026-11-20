@@ -662,6 +662,15 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=422, detail="Decision reference is required (up to 255 characters).")
             if not explanation or not explanation.strip():
                 raise HTTPException(status_code=422, detail="Decision explanation is required.")
+            # A requested CAPA draft is not yet persisted and is absent from
+            # the canonical SQL blocker. The subsequent actor/audit flush must
+            # not insert it alongside a legal non-issuance decision.
+            for pending in tuple(session.new):
+                if isinstance(pending, CapaCycle) and pending.case_id == case.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before non-issuance decision.",
+                    )
             blocker = self._nonissuance_decision_blocker(session, case_id=case.id, case_state=case.state)
             if blocker is not None:
                 raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))

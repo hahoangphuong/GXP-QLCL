@@ -825,3 +825,54 @@ def test_case_linked_issuance_refuses_pending_capa_without_autoflush(pg_engine, 
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_nonissuance_refuses_pending_capa_before_decision_or_audit(pg_engine):
+    """An in-memory requested CAPA must not accompany an explicit non-issuance decision."""
+    case_id, _site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.add(InspectionOutcome(
+            case_id=case_id, final_evaluation="Synthetic final non-issuance evaluation",
+        ))
+        setup.commit()
+
+    with Session(pg_engine) as session:
+        version = session.get(Case, case_id).row_version
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=case_id, round_no=1, status="requested",
+            requested_on=DAY, incoming_reference="UNSAVED-NONISSUANCE-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Non-issuance decision autoflushed an unaccepted CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.record_case_nonissuance_decision(
+                    session, case_id=case_id, expected_case_version=version,
+                    decided_on=DAY, decision_reference="SYNTH-NONISSUANCE-PENDING",
+                    explanation="Synthetic explicit refusal",
+                    reason="synthetic pending CAPA guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "capa" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert SERVICE.get_case_nonissuance_decision(
+                    session, case_id=case_id,
+                )["decision"] is None
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle).where(CapaCycle.case_id == case_id)
+                ) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

@@ -5242,6 +5242,15 @@ class CaseWorkflowService:
                     validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
                 except InspectionContractViolation as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
+            # This approval creation may flush the caller's whole Session.
+            # A separate unsubmitted CAPA round for this Case is an operator
+            # draft, not an implicit side effect of the PCT/CT mutation.
+            for pending in tuple(session.new):
+                if isinstance(pending, CapaCycle) and pending.case_id == row.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before approval creation.",
+                    )
             # The post-admission INSERT flushes pending objects as well as
             # dirty ones. A separately staged round for this same Case must
             # not be silently inserted as a side effect of this mutation.
@@ -5325,6 +5334,15 @@ class CaseWorkflowService:
             if row.case_id != parent.id:
                 raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
             self._assert_expected_version(row, expected_version, label="approval_submission")
+            # This approval completion may flush the caller's whole Session.
+            # A separate unsubmitted CAPA round for this Case is an operator
+            # draft, not an implicit side effect of the PCT/CT mutation.
+            for pending in tuple(session.new):
+                if isinstance(pending, CapaCycle) and pending.case_id == parent.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before approval completion.",
+                    )
             # A completion flush also writes other pending/dirty PCT/CT rows.
             # Do not persist a staged sibling round as an accidental side effect.
             for pending in tuple(session.new):

@@ -3679,6 +3679,15 @@ class CaseWorkflowService:
             # treated as absent.
             row = self._lock_case(session, case_id)
             self._assert_expected_version(row, expected_version, label="case")
+            # After this block the latest CAPA SELECT may autoflush new
+            # objects. Refuse an in-memory unsubmitted round for this Case
+            # before it can be persisted as a transition side effect.
+            for pending in tuple(session.new):
+                if isinstance(pending, CapaCycle) and pending.case_id == row.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before Case transition.",
+                    )
         try:
             parsed_target_state = CaseState(target_state)
         except ValueError as exc:

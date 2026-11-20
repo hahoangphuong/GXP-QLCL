@@ -732,3 +732,49 @@ def test_final_evaluation_rejects_pending_capa_round_before_audit_or_flush(pg_en
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_case_transition_rejects_pending_capa_without_flushing_or_transitioning(pg_engine):
+    """CAPA pending in the caller Session cannot be implicitly saved by transition."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    with Session(pg_engine) as session:
+        case = session.get(Case, case_id)
+        token = case.row_version
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=case_id, round_no=1, status="requested",
+            requested_on=DAY, incoming_reference="UNSAVED-TRANSITION-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Case transition autoflushed an unaccepted CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.transition_case(
+                    session, case_id=case_id,
+                    target_state=CaseState.AWAITING_CERTIFICATE_DECISION.value,
+                    expected_version=token, reason="synthetic pending CAPA", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "capa" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            assert case.state == CaseState.INSPECTION_COMPLETED
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(Case.state).where(Case.id == case_id)
+                ) == CaseState.INSPECTION_COMPLETED
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

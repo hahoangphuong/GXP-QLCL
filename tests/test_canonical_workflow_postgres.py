@@ -1303,3 +1303,58 @@ def test_nonissuance_refuses_pending_same_case_decision_before_autoflush(pg_engi
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_case_transition_refuses_pending_nonissuance_before_autoflush(pg_engine):
+    """A state transition cannot implicitly persist a staged legal refusal."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    with Session(pg_engine) as session:
+        case = session.get(Case, case_id)
+        version = case.row_version
+        actor_id = session.scalar(
+            select(AuditEvent.actor_user_id)
+            .where(AuditEvent.actor_user_id.is_not(None))
+            .limit(1)
+        )
+        assert actor_id is not None
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CaseCertificateNonissuanceDecision(
+            case_id=case_id, decided_on=DAY,
+            decision_reference="UNSAVED-TRANSITION-REFUSAL",
+            explanation="Synthetic unsubmitted decision",
+            recorded_by_user_id=actor_id,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Case transition autoflushed a legal refusal draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.transition_case(
+                    session, case_id=case_id,
+                    target_state=CaseState.AWAITING_CERTIFICATE_DECISION.value,
+                    expected_version=version, reason="synthetic pending refusal",
+                    user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            assert case.state == CaseState.INSPECTION_COMPLETED
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(Case.state).where(Case.id == case_id)
+                ) == CaseState.INSPECTION_COMPLETED
+                assert session.scalar(
+                    select(func.count()).select_from(CaseCertificateNonissuanceDecision)
+                    .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+                ) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

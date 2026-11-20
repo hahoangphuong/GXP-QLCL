@@ -1334,10 +1334,13 @@ class CaseWorkflowService:
                 status_code=422,
                 detail="inspection_case issuance requires a backing case_id.",
             )
-        if case is not None and issuance_basis == "inspection_case" and certificate_type != case.gxp_type:
+        # Every Case-linked Certificate must preserve the canonical Case GxP.
+        # Administrative issuance is not an exemption: read owners validate
+        # Case/Certificate GxP identity regardless of issuance_basis.
+        if case is not None and certificate_type != case.gxp_type:
             raise HTTPException(
                 status_code=422,
-                detail="inspection_case certificate_type must match the backing case gxp_type.",
+                detail="Case-linked certificate_type must match the backing case gxp_type.",
             )
         if case is not None and case.site_id != site_id:
             raise HTTPException(

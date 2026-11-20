@@ -443,3 +443,50 @@ def test_http_approval_write_and_workspace_read_use_same_canonical_identity(pg_e
     asyncio.run(scenario())
     with Session(pg_engine) as session:
         assert session.scalar(select(func.count()).select_from(InspectionApprovalSubmission).where(InspectionApprovalSubmission.case_id == case_id)) == 1
+
+
+@pytest.mark.parametrize("issuance_basis", [
+    "administrative_no_inspection", "inspection_case",
+])
+def test_certificate_link_rejects_cross_gxp_case_for_every_issuance_basis(
+    pg_engine, issuance_basis,
+):
+    """A linked Certificate must use the Case's canonical GxP, not merely its Site.
+
+    Administrative issuance cannot create a cross-GxP Case/Certificate link
+    that the read model immediately rejects as corrupt historical ownership.
+    Failed admission must not create a Certificate or an audit event.
+    """
+    case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.commit()
+
+    with Session(pg_engine) as session:
+        before_certs = session.scalar(
+            select(func.count()).select_from(Certificate).where(
+                Certificate.case_id == case_id,
+            )
+        )
+        before_events = session.scalar(
+            select(func.count()).select_from(AuditEvent)
+        )
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.issue_certificate(
+                session, site_id=site_id, case_id=case_id,
+                certificate_type="GLP", issuance_basis=issuance_basis,
+                certificate_number="SYNTH-CROSS-GXP",
+                issue_date=DAY, expiry_date=date(2027, 10, 1),
+                scopes=[], reason="cross-gxp synthetic guard", user=USER,
+            )
+        assert blocked.value.status_code == 422
+        assert session.scalar(
+            select(func.count()).select_from(Certificate).where(
+                Certificate.case_id == case_id,
+            )
+        ) == before_certs
+        assert session.scalar(
+            select(func.count()).select_from(AuditEvent)
+        ) == before_events
+        session.rollback()

@@ -762,3 +762,42 @@ def test_search_case_state_filter_displays_a_case_matching_its_own_filter(sessio
     multiple = search(["planned", "closed"])
     assert multiple["total_count"] == 1
     assert multiple["items"][0]["current_state"] == "closed"
+
+
+@pytest.mark.parametrize("expire_a,expire_b,expected", [
+    (True, False, "GCN-A"),
+    (False, False, None),
+])
+def test_search_expired_certificate_state_only_admits_expired_current_gcn(
+    session, expire_a, expire_b, expected,
+):
+    """'expired' cannot display an active GCN or admit an all-active context.
+
+    The filter is a public Search query parameter, and the canonical
+    certificate status owner derives 'expired' from expiry_date < today.
+    """
+    versions = {
+        row.certificate_number: row
+        for row in session.query(CertificateVersion)
+        .filter(CertificateVersion.is_latest_version.is_(True)).all()
+    }
+    today = date.today()
+    versions["GCN-A"].expiry_date = today + timedelta(days=-2 if expire_a else 10)
+    versions["GCN-A"].issue_date = today - timedelta(days=60)
+    versions["GCN-B"].expiry_date = today + timedelta(days=-3 if expire_b else 90)
+    versions["GCN-B"].issue_date = today - timedelta(days=1)
+    session.commit()
+
+    result = CatalogReadService().search_facilities(
+        session, site_id=cert_report(session)["items"][0]["site_id"],
+        gxp_type="GMP", certificate_state="expired",
+    )
+    assert result["total_count"] == (1 if expected else 0)
+    assert [row["current_certificate_number"] for row in result["items"]] == (
+        [expected] if expected else []
+    )
+    assert all(
+        row["current_certificate_expiry"] is not None
+        and row["current_certificate_expiry"] < today
+        for row in result["items"]
+    )

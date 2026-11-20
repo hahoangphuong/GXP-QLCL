@@ -5782,6 +5782,13 @@ class CaseWorkflowService:
             "audit_event_id": audit_event.id,
         }
 
+    @staticmethod
+    def _assert_certificate_date_order(*, issue_date: date | None, expiry_date: date | None) -> None:
+        # Unknown dates remain permitted for drafts and legacy provenance.
+        # Explicit new dates must represent a chronologically valid period.
+        if issue_date is not None and expiry_date is not None and expiry_date < issue_date:
+            raise HTTPException(status_code=422, detail="Certificate expiry_date cannot precede issue_date.")
+
     def _create_certificate_candidate(
         self,
         session: Session,
@@ -5799,6 +5806,7 @@ class CaseWorkflowService:
         applicable_standard: str | None = None,
         issuing_authority: str | None = None,
     ) -> tuple[Certificate, CertificateVersion, list[CertificateScope]]:
+        self._assert_certificate_date_order(issue_date=issue_date, expiry_date=expiry_date)
         certificate = Certificate(
             site_id=site.id,
             case_id=None if case is None else case.id,
@@ -5851,6 +5859,7 @@ class CaseWorkflowService:
         # actor, issue a certificate candidate, or write audit without it.
         if CERTIFICATE_ISSUE_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.issue.")
+        self._assert_certificate_date_order(issue_date=issue_date, expiry_date=expiry_date)
         # An operator may reuse a Session with an unsaved Case draft.
         # _lock_case(populate_existing=True) would overwrite that cached draft;
         # even the preceding Site lookup must not autoflush unrelated drafts.
@@ -5983,6 +5992,7 @@ class CaseWorkflowService:
         # resolving Site/Certificate identity, locking or writing audit.
         if CERTIFICATE_EDIT_PERMISSION not in user.permissions:
             raise HTTPException(status_code=403, detail="Missing required permission: certificate.edit.")
+        self._assert_certificate_date_order(issue_date=issue_date, expiry_date=expiry_date)
         # A long-lived operator Session may cache unsaved Certificate/Version
         # edits. Refreshing either identity would discard that draft, while a
         # preliminary SELECT could autoflush it. Inspect both owners inside a

@@ -4100,6 +4100,16 @@ class CaseWorkflowService:
             self._assert_case_not_terminal(row, operation="CAPA create")
             self._assert_expected_version(row, expected_case_version, label="case")
             self._assert_case_allows_capa_request(row)
+            # The first actor/round-allocation SELECT outside this admission
+            # block will autoflush the entire Session. An operator may already
+            # have staged a CAPA round for this Case without submitting it.
+            # Never persist that separate draft as a side effect of creation.
+            for pending in tuple(session.new):
+                if isinstance(pending, CapaCycle) and pending.case_id == row.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before CAPA creation.",
+                    )
             # Latest-round lookup refreshes the cached CapaCycle identity.
             # Refuse a locally edited cycle before that refresh, including a
             # rejected historical round from which a new round is allowed.

@@ -635,3 +635,46 @@ def test_transition_case_rejects_dirty_owner_without_autoflush_or_audit(pg_engin
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_capa_create_rejects_pending_round_without_flushing_operator_draft(pg_engine):
+    """A second CAPA create must not persist another in-memory unsubmitted round."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    with Session(pg_engine) as session:
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        staged = CapaCycle(
+            case_id=case_id, round_no=1, status="requested",
+            requested_on=DAY, incoming_reference="UNSAVED-CAPA-ROUND",
+        )
+        session.add(staged)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA creation autoflushed a pending cycle")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.create_capa_cycle(
+                    session, case_id=case_id, requested_on=DAY,
+                    incoming_reference="SECOND-REQUEST", notes=None,
+                    reason="synthetic pending-CAPA guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert staged in session.new
+            assert staged.incoming_reference == "UNSAVED-CAPA-ROUND"
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(func.count()).select_from(AuditEvent)
+                ) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

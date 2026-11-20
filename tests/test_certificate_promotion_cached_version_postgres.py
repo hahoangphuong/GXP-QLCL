@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, select, text, update
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -97,7 +97,7 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
             edit_result = service.upsert_certificate_latest_version(
                 editor, certificate_id=agg_id, expected_version=original_token,
                 certificate_number="VALID-GXP" if kind == "gxp_invalid_date_interval" else None,
-                issue_date=date(2028, 9, 1) if kind == "gxp_invalid_date_interval" else date(2026, 9, 1),
+                issue_date=date(2027, 9, 1) if kind == "gxp_invalid_date_interval" else date(2026, 9, 1),
                 expiry_date=date(2027, 9, 1), scopes=[],
                 reason="synthetic invalidate candidate", user=actor,
             )
@@ -112,6 +112,18 @@ def test_promotion_refreshes_cached_candidate_version_after_committed_edit(kind)
             )
         editor.commit()
         assert edit_result["row_version"] != original_token
+        if kind == "gxp_invalid_date_interval":
+            # New canonical writes reject inverted dates. Preserve the
+            # promotion regression's adversarial historical/external-writer
+            # scenario by committing a synthetic invalid source row directly.
+            # The contender still holds its stale, previously valid Version.
+            with engine.begin() as connection:
+                changed = connection.execute(
+                    update(CertificateVersion)
+                    .where(CertificateVersion.id == version_id)
+                    .values(issue_date=date(2028, 9, 1))
+                )
+                assert changed.rowcount == 1
 
         with pytest.raises(HTTPException) as denied:
             if kind in {"gxp", "gxp_invalid_date_interval"}:

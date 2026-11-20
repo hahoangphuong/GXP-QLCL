@@ -3735,6 +3735,17 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="CAPA cycle has uncommitted changes; resolve draft before Case transition.",
                     )
+                # The persisted decision SELECT below cannot see a staged
+                # legal refusal. Reject before CAPA/decision queries may
+                # autoflush that separate operator intent.
+                if (
+                    isinstance(pending, CaseCertificateNonissuanceDecision)
+                    and pending.case_id == row.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Non-issuance decision has uncommitted changes; resolve draft before Case transition.",
+                    )
         try:
             parsed_target_state = CaseState(target_state)
         except ValueError as exc:

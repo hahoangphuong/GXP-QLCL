@@ -1227,16 +1227,8 @@ def test_competing_case_issuance_and_nonissuance_leave_single_decision(pg_engine
             .where(CaseCertificateNonissuanceDecision.case_id == case_id)
         )
         assert issued + refused == 1
-        issue_audits = session.scalar(
-            select(func.count()).select_from(AuditEvent)
-            .where(AuditEvent.action == "certificate.issue")
-        )
-        refuse_audits = session.scalar(
-            select(func.count()).select_from(AuditEvent)
-            .where(AuditEvent.action == "case_certificate_nonissuance_decision.record")
-        )
-        # These action types originate only from this test's Case in its
-        # isolated schema, except for other synthetic cases from this module.
+        # Match audit IDs to exactly this Case's legal decision, not
+        # other synthetic cases in the module's disposable schema.
         case_issue_ids = session.scalars(select(Certificate.id).where(Certificate.case_id == case_id)).all()
         case_refuse_ids = session.scalars(
             select(CaseCertificateNonissuanceDecision.id)

@@ -3662,11 +3662,23 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, str | None]:
         require_permissions(user, {"case.edit"})
-        # CAPA creation/assessment uses the Case owner lock. Acquire it before
-        # reading the latest CAPA gate or mutating the transition state; an
-        # uncommitted new cycle must not be treated as absent.
-        row = self._lock_case(session, case_id)
-        self._assert_expected_version(row, expected_version, label="case")
+        # _lock_case uses populate_existing and a SELECT that may autoflush
+        # a reused operator Session. Refuse a dirty Case draft before it can
+        # be persisted or overwritten as part of a state transition.
+        with session.no_autoflush:
+            cached_case = session.get(Case, case_id)
+            if cached_case is not None and session.is_modified(
+                cached_case, include_collections=False,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case has uncommitted changes; resolve draft before transitioning.",
+                )
+            # CAPA creation/assessment uses the Case owner lock. Acquire it
+            # before reading eligibility; an uncommitted new cycle cannot be
+            # treated as absent.
+            row = self._lock_case(session, case_id)
+            self._assert_expected_version(row, expected_version, label="case")
         try:
             parsed_target_state = CaseState(target_state)
         except ValueError as exc:

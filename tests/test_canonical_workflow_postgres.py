@@ -778,3 +778,50 @@ def test_case_transition_rejects_pending_capa_without_flushing_or_transitioning(
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("issuance_basis", ["inspection_case", "administrative_no_inspection"])
+def test_case_linked_issuance_refuses_pending_capa_without_autoflush(pg_engine, issuance_basis):
+    """A staged, unaccepted CAPA cannot be inserted as an issuance side effect."""
+    case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        case = setup.get(Case, case_id)
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        setup.commit()
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        certificate_before = session.scalar(select(func.count()).select_from(Certificate))
+        pending = CapaCycle(
+            case_id=case_id, round_no=1, status="requested",
+            requested_on=DAY, incoming_reference="UNSAVED-ISSUANCE-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Certificate issuance autoflushed an unaccepted CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.issue_certificate(
+                    session, site_id=site_id, case_id=case_id,
+                    certificate_type="GMP", issuance_basis=issuance_basis,
+                    certificate_number="SYNTH-ISSUANCE-PENDING-CAPA",
+                    issue_date=DAY, expiry_date=date(2027, 10, 1),
+                    scopes=[], reason="synthetic pending CAPA admission", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "capa" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(Certificate)) == certificate_before
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle).where(CapaCycle.case_id == case_id)
+                ) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

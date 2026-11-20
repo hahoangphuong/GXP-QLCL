@@ -5995,6 +5995,17 @@ class CaseWorkflowService:
                             status_code=409,
                             detail="CAPA cycle has uncommitted changes; resolve draft before certificate issuance.",
                         )
+                    # A pending non-issuance decision is a separate legal
+                    # mutation, not something the GMP-issued or eligibility
+                    # SELECT may flush while preparing a certificate.
+                    if (
+                        isinstance(pending, CaseCertificateNonissuanceDecision)
+                        and pending.case_id == case.id
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Non-issuance decision has uncommitted changes; resolve draft before certificate issuance.",
+                        )
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,

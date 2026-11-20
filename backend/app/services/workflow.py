@@ -1620,6 +1620,16 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="CAPA cycle has uncommitted changes; resolve draft before mutation.",
                     )
+            # A pending DELETE of this or another CAPA round must not be
+            # flushed along with update/submit/assess. Preserving the
+            # historical cycle is more important than accepting a mutation
+            # while the operator Session contains an uncommitted deletion.
+            for deleted in tuple(session.deleted):
+                if isinstance(deleted, CapaCycle) and deleted.case_id == case_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before mutation.",
+                    )
             # A different cached cycle may also be dirty: protect that draft
             # before populate_existing, even when the target is older.
             for cached in tuple(session.dirty):

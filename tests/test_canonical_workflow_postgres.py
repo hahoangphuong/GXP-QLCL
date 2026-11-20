@@ -1013,3 +1013,65 @@ def test_capa_mutation_rejects_pending_sibling_round_without_autoflush(pg_engine
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["update", "submit", "assess"])
+def test_capa_mutation_refuses_pending_delete_before_autoflush(pg_engine, operation):
+    """A caller-staged CAPA deletion must not be committed by a separate mutation."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    target = create_cycle(pg_engine, case_id)
+    if operation == "assess":
+        target = write(
+            pg_engine, SERVICE.submit_capa_cycle,
+            capa_cycle_id=target["capa_cycle_id"],
+            expected_version=target["row_version"],
+            submitted_on=DAY, notes="synthetic submission", reason=None,
+        )
+    with Session(pg_engine) as session:
+        cycle = session.get(CapaCycle, target["capa_cycle_id"])
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        session.delete(cycle)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA mutation flushed a pending deletion")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "update":
+                    SERVICE.update_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        requested_on=DAY, incoming_reference="SYNTH-DELETE-GUARD",
+                        notes="Synthetic update", reason=None, user=USER,
+                    )
+                elif operation == "submit":
+                    SERVICE.submit_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        submitted_on=DAY, notes="Synthetic submit",
+                        reason=None, user=USER,
+                    )
+                else:
+                    SERVICE.assess_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        assessed_on=DAY, assessor_name=None, result="accepted",
+                        notes="Synthetic assessment", reason=None, user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert cycle in session.deleted
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.id == target["capa_cycle_id"])
+                ) == 1
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

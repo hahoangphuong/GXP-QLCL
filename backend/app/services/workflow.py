@@ -671,6 +671,14 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="CAPA cycle has uncommitted changes; resolve draft before non-issuance decision.",
                     )
+                # An unsubmitted Certificate is absent from the persisted
+                # blocker. The subsequent actor lookup would otherwise
+                # autoflush it alongside the opposite legal decision.
+                if isinstance(pending, Certificate) and pending.case_id == case.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate has uncommitted changes; resolve draft before non-issuance decision.",
+                    )
             blocker = self._nonissuance_decision_blocker(session, case_id=case.id, case_state=case.state)
             if blocker is not None:
                 raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))

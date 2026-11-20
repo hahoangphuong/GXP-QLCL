@@ -679,6 +679,17 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Certificate has uncommitted changes; resolve draft before non-issuance decision.",
                     )
+                # The persisted refusal blocker cannot see an unsubmitted
+                # decision in this Session. A second intent must not flush
+                # the first draft or fall through to a unique-key error.
+                if (
+                    isinstance(pending, CaseCertificateNonissuanceDecision)
+                    and pending.case_id == case.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Non-issuance decision has uncommitted changes; resolve draft before recording another decision.",
+                    )
             blocker = self._nonissuance_decision_blocker(session, case_id=case.id, case_state=case.state)
             if blocker is not None:
                 raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))

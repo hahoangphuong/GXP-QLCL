@@ -1610,9 +1610,18 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Case has uncommitted changes; resolve draft before CAPA mutation.",
                 )
-            # Update/submit/assess subsequently resolve the latest CAPA round
-            # with populate_existing. A different cached cycle may be dirty:
-            # protect that draft too, even when the requested target is older.
+            # Update/submit/assess subsequently query the latest CAPA round
+            # outside this no-autoflush admission. A separate new, unsubmitted
+            # cycle for the same Case would otherwise be flushed by that
+            # query, silently persisting the operator's pending draft.
+            for pending in tuple(session.new):
+                if isinstance(pending, CapaCycle) and pending.case_id == case_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CAPA cycle has uncommitted changes; resolve draft before mutation.",
+                    )
+            # A different cached cycle may also be dirty: protect that draft
+            # before populate_existing, even when the target is older.
             for cached in tuple(session.dirty):
                 if (
                     isinstance(cached, CapaCycle)

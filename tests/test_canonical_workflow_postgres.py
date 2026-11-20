@@ -942,3 +942,74 @@ def test_approval_mutation_refuses_pending_capa_without_autoflush(pg_engine, ope
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["update", "submit", "assess"])
+def test_capa_mutation_rejects_pending_sibling_round_without_autoflush(pg_engine, operation):
+    """A separate pending CAPA round cannot be flushed by update/submit/assess."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    target = create_cycle(pg_engine, case_id)
+    if operation == "assess":
+        target = write(
+            pg_engine, SERVICE.submit_capa_cycle,
+            capa_cycle_id=target["capa_cycle_id"],
+            expected_version=target["row_version"],
+            submitted_on=DAY, notes="synthetic submission", reason=None,
+        )
+    with Session(pg_engine) as session:
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=case_id, round_no=2, status="requested",
+            requested_on=DAY, incoming_reference="UNSAVED-SIBLING-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA mutation autoflushed a pending sibling")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "update":
+                    SERVICE.update_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        requested_on=DAY, incoming_reference="SYNTH-UPDATE",
+                        notes="Synthetic update", reason=None, user=USER,
+                    )
+                elif operation == "submit":
+                    SERVICE.submit_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        submitted_on=DAY, notes="Synthetic submit",
+                        reason=None, user=USER,
+                    )
+                else:
+                    SERVICE.assess_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        assessed_on=DAY, assessor_name=None,
+                        result="accepted", notes="Synthetic accept",
+                        reason=None, user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == 1
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+                assert session.scalar(
+                    select(CapaCycle.status).where(
+                        CapaCycle.id == target["capa_cycle_id"]
+                    )
+                ) == ("submitted" if operation == "assess" else "requested")
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

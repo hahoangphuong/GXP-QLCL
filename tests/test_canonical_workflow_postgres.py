@@ -594,3 +594,44 @@ def test_nonissuance_rejects_dirty_cached_case_before_refresh_or_audit(pg_engine
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_transition_case_rejects_dirty_owner_without_autoflush_or_audit(pg_engine):
+    """Changing Case state must not commit an independent operator Case draft."""
+    case_id, _site_id = seed(pg_engine)
+    with Session(pg_engine) as session:
+        case = session.get(Case, case_id)
+        original_state = case.state
+        original_scope = case.scope_code
+        expected_version = case.row_version
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        case.scope_code = "UNSAVED-TRANSITION-CASE-DRAFT"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Case transition autoflushed an operator draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.transition_case(
+                    session, case_id=case_id,
+                    target_state=CaseState.INSPECTION_COMPLETED.value,
+                    expected_version=expected_version,
+                    reason="synthetic transition draft guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert case.scope_code == "UNSAVED-TRANSITION-CASE-DRAFT"
+            assert case.state == original_state
+            assert case in session.dirty
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.execute(
+                    select(Case.scope_code, Case.state).where(Case.id == case_id)
+                ).one() == (original_scope, original_state)
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

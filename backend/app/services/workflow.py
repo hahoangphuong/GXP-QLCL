@@ -5938,6 +5938,17 @@ class CaseWorkflowService:
             # before reading eligibility; a terminal transition cannot race with
             # a non-GMP certificate insert or audit.
             case = None if case_id is None else self._lock_case(session, case_id)
+            # After admission, the GMP already-issued/Case eligibility
+            # queries may autoflush all pending objects. A new, unsubmitted
+            # CAPA for this Case cannot be silently persisted or ignored by
+            # a separate certificate issuance mutation.
+            if case is not None:
+                for pending in tuple(session.new):
+                    if isinstance(pending, CapaCycle) and pending.case_id == case.id:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="CAPA cycle has uncommitted changes; resolve draft before certificate issuance.",
+                        )
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,

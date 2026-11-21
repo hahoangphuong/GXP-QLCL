@@ -1661,6 +1661,28 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="CAPA cycle has uncommitted changes; resolve draft before mutation.",
                     )
+            # A separate, unsubmitted InspectionOutcome intent must not be
+            # flushed by the latest-round SELECT or CAPA audit. Match both
+            # pending rows and edited rows, including an original Case owner
+            # when the operator locally changed the foreign key.
+            for pending in tuple(session.new):
+                if isinstance(pending, InspectionOutcome) and pending.case_id == case_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection outcome has uncommitted changes; resolve draft before CAPA mutation.",
+                    )
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionOutcome):
+                    continue
+                original_cases = inspect(cached).attrs.case_id.history.deleted
+                if (
+                    (cached.case_id == case_id or case_id in original_cases)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection outcome has uncommitted changes; resolve draft before CAPA mutation.",
+                    )
             parent = self._lock_case(session, case_id)
             self._assert_case_not_terminal(parent, operation=operation)
             cycle = session.scalars(

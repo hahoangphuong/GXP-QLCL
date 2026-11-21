@@ -1456,3 +1456,75 @@ def test_concurrent_final_evaluation_commit_fences_later_capa_creation(pg_engine
             .where(CapaCycle.case_id == case_id)
         ) == 0
         assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before + 1
+
+
+@pytest.mark.parametrize("draft_mode", ["new", "dirty"])
+def test_capa_creation_refuses_uncommitted_inspection_outcome_draft(pg_engine, draft_mode):
+    """A separate outcome draft must not be persisted by CAPA creation."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    if draft_mode == "dirty":
+        write(
+            pg_engine, SERVICE.upsert_inspection_outcome,
+            case_id=case_id, inspected_on=DAY, inspected_to_on=DAY,
+            decision_reference=None, bbkt_reference=None,
+            outcome_result="Committed observation", reason=None,
+        )
+
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        outcome_before = session.scalar(
+            select(func.count()).select_from(InspectionOutcome)
+            .where(InspectionOutcome.case_id == case_id)
+        )
+        if draft_mode == "new":
+            pending = InspectionOutcome(
+                case_id=case_id, outcome_result="Unsaved draft",
+                final_evaluation="Unapproved final evaluation",
+            )
+            session.add(pending)
+        else:
+            pending = session.scalars(
+                select(InspectionOutcome)
+                .where(InspectionOutcome.case_id == case_id)
+            ).one()
+            pending.final_evaluation = "Unapproved final evaluation"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA creation autoflushed an unrelated inspection outcome draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.create_capa_cycle(
+                    session, case_id=case_id, requested_on=DAY,
+                    incoming_reference="UNSENT-OUTCOME-CAPA",
+                    notes="separate mutation", reason=None, user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending.final_evaluation == "Unapproved final evaluation"
+            if draft_mode == "new":
+                assert pending in session.new
+            else:
+                assert pending in session.dirty
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionOutcome)
+                    .where(InspectionOutcome.case_id == case_id)
+                ) == outcome_before
+                assert session.scalar(
+                    select(InspectionOutcome.final_evaluation)
+                    .where(InspectionOutcome.case_id == case_id)
+                ) is None
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

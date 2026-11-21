@@ -4156,6 +4156,27 @@ class CaseWorkflowService:
             self._assert_case_not_terminal(row, operation="CAPA create")
             self._assert_expected_version(row, expected_case_version, label="case")
             self._assert_case_allows_capa_request(row)
+            # A reused Session may carry an unsubmitted outcome mutation.
+            # Neither the committed final-evaluation query nor the subsequent
+            # CAPA actor/INSERT flush may persist that separate operator draft.
+            for pending in tuple(session.new):
+                if isinstance(pending, InspectionOutcome) and pending.case_id == row.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection outcome has uncommitted changes; resolve draft before CAPA creation.",
+                    )
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionOutcome):
+                    continue
+                original_cases = inspect(cached).attrs.case_id.history.deleted
+                if (
+                    (cached.case_id == row.id or row.id in original_cases)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inspection outcome has uncommitted changes; resolve draft before CAPA creation.",
+                    )
             # A separate writer may have finalized the InspectionOutcome while
             # retaining inspection_completed until an explicit Case transition.
             # Both mutations serialize on Case; after acquiring that lock, read

@@ -5289,6 +5289,17 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="CAPA cycle has uncommitted changes; resolve draft before approval creation.",
                     )
+            # PCT/CT is independent from a legal refusal. Do not implicitly
+            # insert an unsubmitted same-Case non-issuance decision at flush.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, CaseCertificateNonissuanceDecision)
+                    and pending.case_id == row.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Non-issuance decision has uncommitted changes; resolve draft before approval creation.",
+                    )
             # The post-admission INSERT flushes pending objects as well as
             # dirty ones. A separately staged round for this same Case must
             # not be silently inserted as a side effect of this mutation.
@@ -5380,6 +5391,17 @@ class CaseWorkflowService:
                     raise HTTPException(
                         status_code=409,
                         detail="CAPA cycle has uncommitted changes; resolve draft before approval completion.",
+                    )
+            # Completion flush must not turn a separate legal refusal draft
+            # into a recorded decision as a side effect of PCT/CT completion.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, CaseCertificateNonissuanceDecision)
+                    and pending.case_id == parent.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Non-issuance decision has uncommitted changes; resolve draft before approval completion.",
                     )
             # A completion flush also writes other pending/dirty PCT/CT rows.
             # Do not persist a staged sibling round as an accidental side effect.

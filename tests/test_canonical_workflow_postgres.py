@@ -1303,3 +1303,75 @@ def test_nonissuance_refuses_pending_same_case_decision_before_autoflush(pg_engi
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["create", "complete"])
+def test_approval_mutation_refuses_pending_nonissuance_without_autoflush(pg_engine, operation):
+    """PCT creation/completion must not persist a separate unsigned legal refusal."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    existing = approval(pg_engine, case_id, "PCT") if operation == "complete" else None
+    with Session(pg_engine) as session:
+        actor_id = session.scalar(
+            select(AuditEvent.actor_user_id)
+            .where(AuditEvent.actor_user_id.is_not(None)).limit(1)
+        )
+        assert actor_id is not None
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        approvals_before = session.scalar(
+            select(func.count()).select_from(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case_id)
+        )
+        pending = CaseCertificateNonissuanceDecision(
+            case_id=case_id, decided_on=DAY,
+            decision_reference="UNSAVED-PCT-LEGAL-REFUSAL",
+            explanation="Separate operator draft not approved for recording",
+            recorded_by_user_id=actor_id,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("PCT mutation autoflushed a separate legal refusal draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "create":
+                    SERVICE.create_approval_submission(
+                        session, case_id=case_id, stage="PCT",
+                        reference="SYNTH-PCT-REFUSAL", submitted_on=DAY,
+                        submitted_time=None, pct_submission_id=None,
+                        reason="pending refusal admission", user=USER,
+                    )
+                else:
+                    SERVICE.complete_approval_submission(
+                        session, approval_submission_id=existing["approval_submission_id"],
+                        expected_version=existing["row_version"],
+                        completed_on=DAY, completed_time=None,
+                        reason="pending refusal admission", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            assert pending.decision_reference == "UNSAVED-PCT-LEGAL-REFUSAL"
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CaseCertificateNonissuanceDecision)
+                    .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.case_id == case_id)
+                ) == approvals_before
+                if existing is not None:
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.completed_on)
+                        .where(InspectionApprovalSubmission.id == existing["approval_submission_id"])
+                    ) is None
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

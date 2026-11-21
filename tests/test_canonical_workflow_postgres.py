@@ -1614,3 +1614,77 @@ def test_capa_mutation_refuses_pending_inspection_outcome_draft(pg_engine, opera
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["update", "submit", "assess"])
+def test_capa_mutation_refuses_pending_nonissuance_decision(pg_engine, operation):
+    """An unsubmitted legal refusal is not a side effect of CAPA mutation."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    target = create_cycle(pg_engine, case_id)
+    if operation == "assess":
+        target = write(
+            pg_engine, SERVICE.submit_capa_cycle,
+            capa_cycle_id=target["capa_cycle_id"],
+            expected_version=target["row_version"],
+            submitted_on=DAY, notes="synthetic submission", reason=None,
+        )
+    with Session(pg_engine) as session:
+        actor_id = session.scalar(
+            select(AuditEvent.actor_user_id)
+            .where(AuditEvent.actor_user_id.is_not(None)).limit(1)
+        )
+        assert actor_id is not None
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CaseCertificateNonissuanceDecision(
+            case_id=case_id, decided_on=DAY,
+            decision_reference="UNSUBMITTED-REFUSAL-DURING-CAPA",
+            explanation="Separate legal intent not yet approved",
+            recorded_by_user_id=actor_id,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA mutation autoflushed a separate legal refusal")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "update":
+                    SERVICE.update_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"], requested_on=DAY,
+                        incoming_reference="UPDATED-CAPA", notes="updated",
+                        reason=None, user=USER,
+                    )
+                elif operation == "submit":
+                    SERVICE.submit_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"], submitted_on=DAY,
+                        notes="submitted", reason=None, user=USER,
+                    )
+                else:
+                    SERVICE.assess_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"], assessed_on=DAY,
+                        assessor_name=None, result="accepted",
+                        notes="assessed", reason=None, user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CaseCertificateNonissuanceDecision)
+                    .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(CapaCycle.status).where(CapaCycle.id == target["capa_cycle_id"])
+                ) == ("submitted" if operation == "assess" else "requested")
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

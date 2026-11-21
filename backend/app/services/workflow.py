@@ -1695,6 +1695,14 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Non-issuance decision has uncommitted changes; resolve draft before CAPA mutation.",
                     )
+            # An unsubmitted certificate candidate is a separate legal
+            # issuance intent, not a side effect of CAPA update/submit/assess.
+            for pending in tuple(session.new):
+                if isinstance(pending, Certificate) and pending.case_id == case_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate has uncommitted changes; resolve draft before CAPA mutation.",
+                    )
             parent = self._lock_case(session, case_id)
             self._assert_case_not_terminal(parent, operation=operation)
             cycle = session.scalars(

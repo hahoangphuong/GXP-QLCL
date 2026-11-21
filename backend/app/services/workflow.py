@@ -4156,6 +4156,18 @@ class CaseWorkflowService:
             self._assert_case_not_terminal(row, operation="CAPA create")
             self._assert_expected_version(row, expected_case_version, label="case")
             self._assert_case_allows_capa_request(row)
+            # A separate writer may have finalized the InspectionOutcome while
+            # retaining inspection_completed until an explicit Case transition.
+            # Both mutations serialize on Case; after acquiring that lock, read
+            # the committed final evaluation and refuse a new CAPA round.
+            if session.scalar(
+                select(InspectionOutcome.final_evaluation)
+                .where(InspectionOutcome.case_id == row.id)
+            ) is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Inspection final evaluation is already recorded; CAPA creation is no longer allowed.",
+                )
             # The first actor/round-allocation SELECT outside this admission
             # block will autoflush the entire Session. An operator may already
             # have staged a CAPA round for this Case without submitting it.

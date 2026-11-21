@@ -1375,3 +1375,84 @@ def test_approval_mutation_refuses_pending_nonissuance_without_autoflush(pg_engi
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_concurrent_final_evaluation_commit_fences_later_capa_creation(pg_engine):
+    """Two transactions: a finalized outcome must not admit a new CAPA round.
+
+    The first writer holds the canonical Case lock until the other writer
+    starts its operation. The second must revalidate the committed final
+    evaluation after acquiring that lock, not rely only on Case state.
+    No sleep, implicit retry, or shared SQLAlchemy Session is used.
+    """
+    from threading import Event
+
+    case_id, _site_id = seed(pg_engine)
+    write(
+        pg_engine, SERVICE.upsert_inspection_outcome,
+        case_id=case_id, inspected_on=DAY, inspected_to_on=DAY,
+        decision_reference=None, bbkt_reference=None,
+        outcome_result="Synthetic inspection complete", reason=None,
+    )
+    transition(pg_engine, case_id, "inspection_completed")
+    with Session(pg_engine) as lookup:
+        outcome_id, version = lookup.execute(
+            select(InspectionOutcome.id, InspectionOutcome.row_version)
+            .where(InspectionOutcome.case_id == case_id)
+        ).one()
+        audit_before = lookup.scalar(select(func.count()).select_from(AuditEvent))
+
+    first_flushed = Event()
+    second_started = Event()
+
+    def final_writer():
+        with Session(pg_engine) as session:
+            try:
+                SERVICE.finalize_inspection_outcome(
+                    session, case_id=case_id, expected_version=version,
+                    final_evaluation="Final evaluation explicitly committed",
+                    reason="independent transaction", user=USER,
+                )
+                session.flush()
+                first_flushed.set()
+                assert second_started.wait(20), "Second independent writer did not start"
+                session.commit()
+                return "finalized"
+            finally:
+                first_flushed.set()
+
+    def capa_writer():
+        assert first_flushed.wait(20), "First independent writer did not flush"
+        with Session(pg_engine) as session:
+            second_started.set()
+            try:
+                SERVICE.create_capa_cycle(
+                    session, case_id=case_id, requested_on=DAY,
+                    incoming_reference="CONCURRENT-AFTER-FINAL",
+                    notes="should be rejected", reason="separate request",
+                    user=USER,
+                )
+                session.commit()
+                return "incorrectly_created"
+            except HTTPException as exc:
+                session.rollback()
+                return ("rejected", exc.status_code, str(exc.detail))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(final_writer)
+        second = pool.submit(capa_writer)
+        assert first.result(timeout=40) == "finalized"
+        outcome = second.result(timeout=40)
+
+    assert outcome[0:2] == ("rejected", 409)
+    assert "final" in outcome[2].lower()
+    with Session(pg_engine) as session:
+        assert session.scalar(
+            select(InspectionOutcome.final_evaluation)
+            .where(InspectionOutcome.id == outcome_id)
+        ) == "Final evaluation explicitly committed"
+        assert session.scalar(
+            select(func.count()).select_from(CapaCycle)
+            .where(CapaCycle.case_id == case_id)
+        ) == 0
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before + 1

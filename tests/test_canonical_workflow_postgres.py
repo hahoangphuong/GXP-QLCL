@@ -2601,3 +2601,97 @@ def test_capa_mutation_refuses_pending_certificate_scope(pg_engine, operation, d
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["issue", "edit_version"])
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+@pytest.mark.parametrize("draft_mode", ["new", "dirty"])
+def test_certificate_mutation_refuses_pending_approval_round(
+    pg_engine, operation, stage, draft_mode,
+):
+    """GCN issuance/edit must not persist an independent PCT/CT operator draft."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    pct = complete(pg_engine, approval(pg_engine, case_id, "PCT"))
+    ct = complete(pg_engine, approval(pg_engine, case_id, "CT", pct["approval_submission_id"]))
+    candidate = issue(pg_engine, case_id, site_id) if operation == "edit_version" else None
+    existing = pct if stage == "PCT" else ct
+
+    with Session(pg_engine) as session:
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        certificates_before = session.scalar(
+            select(func.count()).select_from(Certificate)
+            .where(Certificate.case_id == case_id)
+        )
+        if draft_mode == "new":
+            pending = InspectionApprovalSubmission(
+                case_id=case_id, stage=stage, round_no=2,
+                reference="UNSUBMITTED-APPROVAL-DURING-GCN",
+                submitted_on=DAY,
+                pct_submission_id=pct["approval_submission_id"] if stage == "CT" else None,
+            )
+            session.add(pending)
+        else:
+            pending = session.get(
+                InspectionApprovalSubmission, existing["approval_submission_id"]
+            )
+            pending.reference = "UNSUBMITTED-PCT-CT-EDIT-DURING-GCN"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("GCN mutation autoflushed an unsubmitted approval draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "issue":
+                    SERVICE.issue_certificate(
+                        session, site_id=site_id, case_id=case_id,
+                        certificate_type="GMP", issuance_basis="inspection_case",
+                        certificate_number="UNRELATED-GCN-ISSUE", issue_date=DAY,
+                        expiry_date=date(2027, 10, 1),
+                        scopes=[], reason="synthetic approval draft guard", user=USER,
+                    )
+                else:
+                    SERVICE.upsert_certificate_latest_version(
+                        session, certificate_id=candidate["certificate_id"],
+                        expected_version=candidate["row_version"],
+                        certificate_number="UNRELATED-GCN-VERSION-EDIT",
+                        issue_date=DAY, expiry_date=date(2027, 10, 1),
+                        scopes=[], reason="synthetic approval draft guard", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            if draft_mode == "new":
+                assert pending in session.new
+            else:
+                assert pending in session.dirty
+                assert pending.reference == "UNSUBMITTED-PCT-CT-EDIT-DURING-GCN"
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(Certificate)
+                    .where(Certificate.case_id == case_id)
+                ) == certificates_before
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.case_id == case_id)
+                ) == 2
+                if draft_mode == "dirty":
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.reference).where(
+                            InspectionApprovalSubmission.id == existing["approval_submission_id"]
+                        )
+                    ) == existing["reference"]
+                if candidate is not None:
+                    assert session.scalar(
+                        select(CertificateVersion.certificate_number).where(
+                            CertificateVersion.id == candidate["latest_version_id"]
+                        )
+                    ) == candidate["certificate_number"]
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

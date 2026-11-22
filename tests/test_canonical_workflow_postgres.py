@@ -4253,3 +4253,54 @@ def test_change_request_mutation_refuses_foreign_pending_capa(pg_engine, operati
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["header_update", "detail_create", "transition"])
+def test_change_request_mutation_allows_foreign_noop_marker(pg_engine, operation):
+    """No-op ORM dirty markers on unrelated Cases are not independent mutations."""
+    _, site_id = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    cr = write(
+        pg_engine, SERVICE.create_change_request,
+        site_id=site_id, scope_label="Synthetic original",
+        description="Target change", submitted_on=DAY,
+        requester_name="Synthetic operator", reason="seed",
+    )
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original = foreign.scope_code
+        foreign.scope_code = original
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        if operation == "header_update":
+            receipt = SERVICE.update_change_request(
+                session, change_request_id=cr["change_request_id"],
+                expected_version=cr["row_version"],
+                scope_label="Updated synthetic scope", description=None,
+                submitted_on=None, requester_name=None,
+                fields_set={"scope_label"}, reason="no-op control", user=USER,
+            )
+            action = "change_request.update"
+        elif operation == "detail_create":
+            receipt = SERVICE.create_change_request_detail(
+                session, change_request_id=cr["change_request_id"],
+                expected_version=cr["row_version"],
+                classification_id=None, classification_label="Synthetic class",
+                approval_status=None, old_value="old", new_value="new",
+                note=None, reason="no-op control", user=USER,
+            )
+            action = "change_request_detail.create"
+        else:
+            receipt = SERVICE.transition_change_request(
+                session, change_request_id=cr["change_request_id"],
+                target_state="under_review", expected_version=cr["row_version"],
+                reason="no-op control", user=USER,
+            )
+            action = "change_request.transition"
+        assert receipt["change_request_id"] == cr["change_request_id"]
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == action,
+        )) >= 1

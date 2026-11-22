@@ -2789,3 +2789,60 @@ def test_certificate_mutation_refuses_pending_capa_draft(
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_certificate_version_edit_refuses_pending_nonissuance_before_autoflush(pg_engine):
+    """Editing a certificate version must not commit an independent legal refusal."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    pct = complete(pg_engine, approval(pg_engine, case_id, "PCT"))
+    complete(pg_engine, approval(pg_engine, case_id, "CT", pct["approval_submission_id"]))
+    candidate = issue(pg_engine, case_id, site_id)
+    with Session(pg_engine) as session:
+        actor_id = session.scalar(
+            select(AuditEvent.actor_user_id)
+            .where(AuditEvent.actor_user_id.is_not(None)).limit(1)
+        )
+        assert actor_id is not None
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CaseCertificateNonissuanceDecision(
+            case_id=case_id, decided_on=DAY,
+            decision_reference="UNSUBMITTED-REFUSAL-DURING-VERSION-EDIT",
+            explanation="Independent operator draft must survive",
+            recorded_by_user_id=actor_id,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Certificate version edit autoflushed legal refusal draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.upsert_certificate_latest_version(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    certificate_number="UNRELATED-VERSION-EDIT",
+                    issue_date=DAY, expiry_date=date(2027, 10, 1),
+                    scopes=[], reason="synthetic legal refusal draft guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CaseCertificateNonissuanceDecision)
+                    .where(CaseCertificateNonissuanceDecision.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(CertificateVersion.certificate_number)
+                    .where(CertificateVersion.id == candidate["latest_version_id"])
+                ) == candidate["certificate_number"]
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

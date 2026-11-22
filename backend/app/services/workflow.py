@@ -3712,6 +3712,10 @@ class CaseWorkflowService:
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
         require_permissions(user, {CHANGE_REQUEST_APPROVE_PERMISSION})
+        # The initial FOR UPDATE owner SELECT may autoflush foreign operator
+        # drafts before the approval root can even be admitted.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="change approval upsert")
         # Serialize approval create-vs-create on the Change Request owner.
         # Lock before reading the optional approval; otherwise two writers
         # can both see no approval and attempt a duplicate INSERT.

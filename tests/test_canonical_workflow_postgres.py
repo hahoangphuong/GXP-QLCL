@@ -2364,3 +2364,120 @@ def test_capa_mutation_refuses_dirty_legal_intent(pg_engine, intent, operation):
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "submit", "assess"])
+@pytest.mark.parametrize("draft_mode", ["new", "dirty"])
+def test_capa_mutation_refuses_pending_certificate_version(pg_engine, operation, draft_mode):
+    """A CAPA transaction may not write an unrelated same-Case GCN version draft."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    target = create_cycle(pg_engine, case_id) if operation != "create" else None
+    if operation == "assess":
+        target = write(
+            pg_engine, SERVICE.submit_capa_cycle,
+            capa_cycle_id=target["capa_cycle_id"],
+            expected_version=target["row_version"],
+            submitted_on=DAY, notes="ready for assessment", reason=None,
+        )
+    with Session(pg_engine) as setup:
+        certificate = Certificate(
+            case_id=case_id, site_id=site_id, certificate_type="GMP",
+            issuance_basis="inspection_case", latest_flag=False,
+        )
+        setup.add(certificate)
+        setup.flush()
+        certificate_id = certificate.id
+        if draft_mode == "dirty":
+            version = CertificateVersion(
+                certificate_id=certificate_id, version_no=1,
+                certificate_number="GCN-COMMITTED-ORIGINAL",
+                lifecycle_state="DRAFT", is_latest_version=False,
+            )
+            setup.add(version)
+            setup.flush()
+            version_id = version.id
+        setup.commit()
+    with Session(pg_engine) as session:
+        case_version = session.get(Case, case_id).row_version
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        cycles_before = session.scalar(
+            select(func.count()).select_from(CapaCycle)
+            .where(CapaCycle.case_id == case_id)
+        )
+        if draft_mode == "new":
+            staged = CertificateVersion(
+                certificate_id=certificate_id, version_no=1,
+                certificate_number="GCN-UNSUBMITTED-NEW",
+                lifecycle_state="DRAFT", is_latest_version=False,
+            )
+            session.add(staged)
+        else:
+            staged = session.get(CertificateVersion, version_id)
+            staged.certificate_number = "GCN-UNSUBMITTED-EDIT"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA mutation autoflushed a separate CertificateVersion draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "create":
+                    SERVICE.create_capa_cycle(
+                        session, case_id=case_id, expected_case_version=case_version,
+                        requested_on=DAY, incoming_reference="CAPA-VERSION",
+                        notes="independent CAPA", reason=None, user=USER,
+                    )
+                elif operation == "update":
+                    SERVICE.update_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        requested_on=DAY, incoming_reference="CAPA-VERSION-EDIT",
+                        notes="updated", reason=None, user=USER,
+                    )
+                elif operation == "submit":
+                    SERVICE.submit_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"],
+                        submitted_on=DAY, notes="submitted", reason=None, user=USER,
+                    )
+                else:
+                    SERVICE.assess_capa_cycle(
+                        session, capa_cycle_id=target["capa_cycle_id"],
+                        expected_version=target["row_version"], assessed_on=DAY,
+                        assessor_name=None, result="accepted", notes="assessed",
+                        reason=None, user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            if draft_mode == "new":
+                assert staged in session.new
+            else:
+                assert staged in session.dirty
+                assert staged.certificate_number == "GCN-UNSUBMITTED-EDIT"
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CertificateVersion)
+                    .where(CertificateVersion.certificate_id == certificate_id)
+                ) == (1 if draft_mode == "dirty" else 0)
+                if draft_mode == "dirty":
+                    assert session.scalar(
+                        select(CertificateVersion.certificate_number)
+                        .where(CertificateVersion.id == version_id)
+                    ) == "GCN-COMMITTED-ORIGINAL"
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == cycles_before
+                if target is not None:
+                    assert session.scalar(
+                        select(CapaCycle.status)
+                        .where(CapaCycle.id == target["capa_cycle_id"])
+                    ) == ("submitted" if operation == "assess" else "requested")
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

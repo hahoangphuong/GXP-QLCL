@@ -1,11 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../App";
 import { getCaseWorkspace, getChangeRequestWorkspace, getDocumentDetail, listSiteBusinessEligibilityCertificates, openCaseDocumentCurrentContent, openCapaCycleDocumentCurrentContent } from "../lib/api";
 import type { ContextualDocumentAction, DocumentChecklistItem } from "../types";
 import { DocumentsPage, DocumentRegister } from "./DocumentsPage";
+import { CaseDirectOpen } from "./CaseDirectOpen";
 
 vi.mock("../lib/api", () => ({
   getCaseWorkspace: vi.fn(),
@@ -28,7 +29,7 @@ const access: ApiAccess = {
   auth: { username: "reader", role: "reader" },
   bearerToken: null, useStubAuth: true, canLoadSecureApi: true, accessGeneration: 1,
 };
-const caseDocument: DocumentChecklistItem = {
+const caseDocument = {
   checklist_key: "case:case-1:INSPECTION_REPORT",
   label: "Biên bản kiểm tra",
   family_code: "INSPECTION_REPORT",
@@ -41,8 +42,8 @@ const caseDocument: DocumentChecklistItem = {
   original_filename: "bien-ban.docx",
   issued_on: "2026-01-15",
   available_variant_types: ["editable_docx"], detail_available: true,
-};
-const missingDocument: DocumentChecklistItem = {
+} satisfies DocumentChecklistItem;
+const missingDocument = {
   ...caseDocument,
   checklist_key: "case:case-1:INSPECTION_QD_KT",
   label: "Quyết định kiểm tra",
@@ -50,7 +51,7 @@ const missingDocument: DocumentChecklistItem = {
   status: "missing",
   document_id: null, original_filename: null, issued_on: null,
   detail_available: false, available_variant_types: [],
-};
+} satisfies DocumentChecklistItem;
 
 function casePayload(id = "case-1") {
   return {
@@ -120,6 +121,59 @@ afterEach(() => {
 });
 
 describe("document report return navigation", () => {
+  it.each([
+    ["Mở Case trong workspace", null],
+    ["Đến workspace tài liệu", caseDocument.checklist_key],
+    ["Đến workspace để tạo", missingDocument.checklist_key],
+  ])("keeps the originating workflow queue through %s and history traversal", async (label, documentKey) => {
+    const source = "/workflow?queue=inspection&gxp_type=GMP&state=planned&q=site&offset=100";
+    const workspace = casePayload();
+    vi.mocked(getCaseWorkspace).mockResolvedValue({
+      ...workspace,
+      case_summary: { ...workspace.case_summary, state: "planned", production_line_id: null,
+        production_line_code: null, production_line_identity_state: "facility_wide" },
+      contextual_document_actions: [
+        { ...caseDocument, workflow_step: "Kiểm tra", actions: [
+          { action_key: "history", label: "Lịch sử", available: true, disabled_reason: null, required_permissions: [] },
+        ] },
+        { ...missingDocument, workflow_step: "Kiểm tra", actions: [
+          { action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [] },
+        ] },
+      ],
+    });
+    function History() {
+      const navigate = useNavigate();
+      return <><button onClick={() => navigate(-1)}>Back</button><button onClick={() => navigate(1)}>Forward</button></>;
+    }
+    function Destination() {
+      const location = useLocation();
+      const params = new URLSearchParams(location.search);
+      return <output data-testid="case-queue-handoff">{JSON.stringify({
+        caseId: params.get("history_id"), siteId: params.get("site_id"), queue: params.get("return_queue"),
+        documentKey: params.get("document_key"), state: location.state,
+      })}</output>;
+    }
+    render(<MemoryRouter initialEntries={[{ pathname: "/documents/cases/case-1", state: { caseReportReturn: source } }]}>
+      <History />
+      <Routes>
+        <Route path="/documents/cases/:caseId" element={<DocumentRegister kind="cases" access={access} />} />
+        <Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} />
+        <Route path="/search" element={<Destination />} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: label }));
+    const expected = { caseId: "case-1", siteId: "site-1", queue: "inspection", documentKey,
+      state: { caseReportReturn: source, caseReportCaseId: "case-1" } };
+    expect(JSON.parse((await screen.findByTestId("case-queue-handoff")).textContent!)).toEqual(expected);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("link", { name: label })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Quay lại báo cáo hồ sơ" })).toHaveAttribute("href", source);
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+    expect(JSON.parse((await screen.findByTestId("case-queue-handoff")).textContent!)).toEqual(expected);
+    expect(getDocumentDetail).not.toHaveBeenCalled();
+    expect(openCaseDocumentCurrentContent).not.toHaveBeenCalled();
+  });
+
   it("returns from the Change Request checklist to the originating workflow queue", async () => {
     const source = "/workflow?queue=change_requests&state=received&q=facility&offset=100";
     render(<MemoryRouter initialEntries={[{ pathname: "/documents/change-requests/change-1", state: { reportReturn: source } }]}>
@@ -254,8 +308,9 @@ describe("document binary action and readiness", () => {
   it("links an eligible missing document to its specific canonical Case intent", async () => {
     const value = casePayload();
     value.contextual_document_actions = [{ ...missingDocument, workflow_step: "Kiểm tra", actions: [
-      { action_key: "create", available: true, create_input_readiness: "CANONICAL_INPUT_READY" },
-    ] } as ContextualDocumentAction];
+      { action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [],
+        create_input_readiness: "CANONICAL_INPUT_READY" },
+    ] }];
     vi.mocked(getCaseWorkspace).mockResolvedValue(value);
     mount("/documents/cases/case-1");
     const link = await screen.findByRole("link", { name: "Đến workspace để tạo" });

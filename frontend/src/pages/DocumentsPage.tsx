@@ -148,6 +148,8 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
   const requestedKey = kind === "change-requests" && documentHintValid ? hints[0] ?? null : null;
   const reportReturn = kind === "cases" ? caseReportReturn(location.state)
     : reportReturnLocation(location.state, "change_requests");
+  const returnQueue = kind === "cases" && reportReturn?.startsWith("/workflow?")
+    ? new URLSearchParams(reportReturn.slice("/workflow?".length)).get("queue") : null;
   const { caseId, changeRequestId } = useParams();
   const id = kind === "cases" ? caseId : changeRequestId;
   const { auth, bearerToken, useStubAuth, canLoadSecureApi, accessGeneration } = access;
@@ -279,6 +281,13 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
   if (!canLoadSecureApi) return <EmptyState title="Cần đăng nhập" description="Đăng nhập để đọc checklist tài liệu theo hồ sơ." />;
   if (!id) return <p role="alert">Thiếu định danh hồ sơ.</p>;
   if (!documentHintValid) return <p role="alert">Tham số mục tài liệu không hợp lệ.</p>;
+  function caseWorkspaceLocation(caseId: string, documentKey?: string) {
+    const params = new URLSearchParams();
+    if (documentKey) params.set("document_key", documentKey);
+    if (returnQueue) params.set("return_queue", returnQueue);
+    const query = params.toString();
+    return `/cases/${encodeURIComponent(caseId)}${query ? `?${query}` : ""}`;
+  }
   const items = (context?.items ?? []).filter(item =>
     (!requestedKey || item.checklist_key === requestedKey)
     && (filter === "all" || item.status === filter)
@@ -301,7 +310,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
           <h3>{context.name}</h3>
           <p className="muted-copy">{context.subtitle}</p>
           <p>{context.items.length} mục trong checklist · {available} đã có · {missing} chưa có</p>
-          {kind === "cases" && <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={`/cases/${encodeURIComponent(id)}`}>Mở Case trong workspace</Link>}
+          {kind === "cases" && <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={caseWorkspaceLocation(id)}>Mở Case trong workspace</Link>}
           {kind === "change-requests" && <Link className="text-link" state={reportReturn ? { reportReturn } : undefined} to={`/reports/change-requests/${encodeURIComponent(id)}?section=documents`}>Xem yêu cầu thay đổi</Link>}
           {kind === "change-requests" && requestedKey && <p><Link className="text-link"
             state={reportReturn ? { reportReturn } : undefined}
@@ -333,7 +342,7 @@ export function DocumentRegister({ access, kind }: { access: ApiAccess; kind: Sc
                     onClick={() => { setSelection(current => current?.owner === owner && current.key === item.checklist_key && current.id === item.document_id ? current : { owner, key: item.checklist_key, id: item.document_id! }); setDownloadError(null); }}>Xem chi tiết</button> : "—"}</td>
                 <td>{kind === "cases" && context.workspace ? (() => {
                   const target = resolveDocumentWorkspace(context.workspace!, id, item.checklist_key);
-                  const location = target ? `/cases/${encodeURIComponent(id)}?${new URLSearchParams({ document_key: target.checklist_key })}` : `/cases/${encodeURIComponent(id)}`;
+                  const location = caseWorkspaceLocation(id, target?.checklist_key);
                   if (item.status === "available") return target ? <Link className="text-link" state={reportReturn ? { caseReportReturn: reportReturn } : undefined} to={location}>Đến workspace tài liệu</Link> : "—";
                   const readiness = resolveDocumentCreation(context.actions, item);
                   if (!readiness) return "Chưa có thao tác tạo được xác nhận";

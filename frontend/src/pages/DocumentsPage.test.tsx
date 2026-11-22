@@ -29,7 +29,7 @@ const access: ApiAccess = {
   auth: { username: "reader", role: "reader" },
   bearerToken: null, useStubAuth: true, canLoadSecureApi: true, accessGeneration: 1,
 };
-const caseDocument: DocumentChecklistItem = {
+const caseDocument = {
   checklist_key: "case:case-1:INSPECTION_REPORT",
   label: "Biên bản kiểm tra",
   family_code: "INSPECTION_REPORT",
@@ -42,8 +42,8 @@ const caseDocument: DocumentChecklistItem = {
   original_filename: "bien-ban.docx",
   issued_on: "2026-01-15",
   available_variant_types: ["editable_docx"], detail_available: true,
-};
-const missingDocument: DocumentChecklistItem = {
+} satisfies DocumentChecklistItem;
+const missingDocument = {
   ...caseDocument,
   checklist_key: "case:case-1:INSPECTION_QD_KT",
   label: "Quyết định kiểm tra",
@@ -51,7 +51,7 @@ const missingDocument: DocumentChecklistItem = {
   status: "missing",
   document_id: null, original_filename: null, issued_on: null,
   detail_available: false, available_variant_types: [],
-};
+} satisfies DocumentChecklistItem;
 
 function casePayload(id = "case-1") {
   return {

@@ -3724,3 +3724,54 @@ def test_capa_approval_allows_foreign_noop_dirty_marker(pg_engine, operation):
                 select(func.count()).select_from(InspectionApprovalSubmission)
                 .where(InspectionApprovalSubmission.case_id == case_id)
             ) == 1
+
+
+@pytest.mark.parametrize("operation", ["application", "assessment"])
+def test_case_intake_stage_mutation_rejects_foreign_pending_capa(pg_engine, operation):
+    """A Case intake/assessment flush must not save another Case's CAPA draft."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        foreign_before = session.scalar(select(func.count()).select_from(CapaCycle).where(
+            CapaCycle.case_id == foreign_case_id
+        ))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="FOREIGN-UNCOMMITTED-CAPA", notes="separate Case draft",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Case application/assessment flushed a foreign CAPA draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "application":
+                    SERVICE.upsert_case_application(
+                        session, case_id=case_id, submitted_on=DAY,
+                        dossier_code="INTAKE-CASE", dossier_reference=None,
+                        applicant_name="Synthetic applicant", reason="intake",
+                        user=USER,
+                    )
+                else:
+                    SERVICE.upsert_case_assessment(
+                        session, case_id=case_id, assessed_on=DAY,
+                        assessor_name="Synthetic assessor", assessment_result="eligible",
+                        notes="synthetic assessment", reason="assessment", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == foreign_before
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

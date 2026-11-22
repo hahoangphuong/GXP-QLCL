@@ -4389,3 +4389,101 @@ def test_change_request_detail_update_allows_foreign_noop_marker(pg_engine):
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "change_request_detail.update",
         )) >= 1
+
+
+def _change_approval_session_fixture(pg_engine, *, existing: bool):
+    _, site_id = seed(pg_engine)
+    cr = write(
+        pg_engine, SERVICE.create_change_request,
+        site_id=site_id, scope_label="Synthetic approval workflow",
+        description="Approval mutation session test", submitted_on=DAY,
+        requester_name="Synthetic operator", reason="seed",
+    )
+    cr = write(
+        pg_engine, SERVICE.transition_change_request,
+        change_request_id=cr["change_request_id"], target_state="under_review",
+        expected_version=cr["row_version"], reason="open review",
+    )
+    if existing:
+        cr = write(
+            pg_engine, SERVICE.upsert_change_approval,
+            change_request_id=cr["change_request_id"], expected_version=cr["row_version"],
+            handled_on=DAY, handled_by_name="Synthetic approver",
+            result_label="under consideration", effective_on=None,
+            approval_reference="SYNTH-APPROVAL-EXISTING", reason="seed approval",
+        )
+    return cr
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["create", "update"])
+def test_change_approval_upsert_rejects_foreign_pending_capa(pg_engine, existing):
+    """Approval insertion/update must not flush foreign pending Case drafts."""
+    cr = _change_approval_session_fixture(pg_engine, existing=existing)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="UNCOMMITTED-FOREIGN-CHANGE-APPROVAL-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Change approval upsert attempted a foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.upsert_change_approval(
+                    session, change_request_id=cr["change_request_id"],
+                    expected_version=cr["row_version"],
+                    handled_on=DAY, handled_by_name="Updated approver",
+                    result_label="under consideration", effective_on=None,
+                    approval_reference="SYNTH-FOREIGN-UPSET-REF",
+                    fields_set={"handled_by_name", "approval_reference"},
+                    reason="synthetic independent approval", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["create", "update"])
+def test_change_approval_upsert_allows_foreign_noop_marker(pg_engine, existing):
+    """No-op foreign Case dirtiness does not block approval mutation."""
+    cr = _change_approval_session_fixture(pg_engine, existing=existing)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original = foreign.scope_code
+        foreign.scope_code = original
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        receipt = SERVICE.upsert_change_approval(
+            session, change_request_id=cr["change_request_id"],
+            expected_version=cr["row_version"],
+            handled_on=DAY, handled_by_name="Updated approver",
+            result_label="under consideration", effective_on=None,
+            approval_reference="SYNTH-APPROVAL-NOOP",
+            fields_set={"handled_by_name", "approval_reference"},
+            reason="no-op marker control", user=USER,
+        )
+        assert receipt["change_request_id"] == cr["change_request_id"]
+        assert receipt["change_approval_id"]
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == ("change_approval.update" if existing else "change_approval.create"),
+        )) >= 1

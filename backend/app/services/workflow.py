@@ -1657,6 +1657,43 @@ class CaseWorkflowService:
                     status_code=409,
                     detail=f"Certificate version has uncommitted changes; resolve draft before CAPA {operation}.",
                 )
+        # GCN scopes are owned by a version, then its Certificate, then Case.
+        # Resolve committed canonical UUID lineage; never infer from labels or
+        # let a CAPA flush save an independent scope edit.
+        certificate_by_version: dict[str, str | None] = {}
+
+        def scope_belongs_to_case(version_id: str | None) -> bool:
+            if not version_id:
+                return False
+            if version_id not in certificate_by_version:
+                certificate_by_version[version_id] = session.scalar(
+                    select(CertificateVersion.certificate_id)
+                    .where(CertificateVersion.id == version_id)
+                )
+            return belongs_to_case(certificate_by_version[version_id])
+
+        for pending in tuple(session.new):
+            if (
+                isinstance(pending, CertificateScope)
+                and scope_belongs_to_case(pending.certificate_version_id)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Certificate scope has uncommitted changes; resolve draft before CAPA {operation}.",
+                )
+        for cached in tuple(session.dirty):
+            if not isinstance(cached, CertificateScope):
+                continue
+            if not session.is_modified(cached, include_collections=False):
+                continue
+            original_versions = inspect(cached).attrs.certificate_version_id.history.deleted
+            if scope_belongs_to_case(cached.certificate_version_id) or any(
+                scope_belongs_to_case(parent) for parent in original_versions
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Certificate scope has uncommitted changes; resolve draft before CAPA {operation}.",
+                )
 
     def _lock_capa_parent_then_refresh(
         self, session: Session, *, capa_cycle_id: str, operation: str,

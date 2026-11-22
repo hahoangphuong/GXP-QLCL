@@ -3535,6 +3535,10 @@ class CaseWorkflowService:
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
         require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
+        # The initial owner SELECT/refresh can autoflush a foreign Case draft.
+        # Reject independent writes before acquiring the canonical root.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="change request header update")
         row = self._get_change_request(session, change_request_id)
         # Serialize header writes and refresh any cached aggregate root before
         # validating the optimistic token from the caller.
@@ -3583,6 +3587,9 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
+        # Creating a detail may flush another Case's pending operator intent.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="change request detail creation")
         row = self._get_change_request(session, change_request_id)
         # The Change Request owns the detail mutation token. Refresh and lock
         # its committed version before any detail or audit write.
@@ -3769,6 +3776,10 @@ class CaseWorkflowService:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"Unsupported change request state: {target_state}") from exc
         require_permissions(user, {change_request_transition_permission(permission_target)})
+        # The owner read and transition/audit flush must be isolated from
+        # independent uncommitted changes on foreign Cases and Sites.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="change request transition")
         row = self._get_change_request(session, change_request_id)
         # Transition gates must use the committed owner state and version,
         # never the Session's stale ChangeRequest identity.

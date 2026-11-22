@@ -1847,3 +1847,74 @@ def test_approval_mutation_refuses_pending_inspection_outcome(pg_engine, stage, 
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+@pytest.mark.parametrize("operation", ["create", "complete"])
+def test_approval_mutation_refuses_pending_certificate_draft(pg_engine, stage, operation):
+    """PCT/CT cannot issue a staged certificate as an unrelated flush side effect."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    parent = complete(pg_engine, approval(pg_engine, case_id, "PCT")) if stage == "CT" else None
+    existing = approval(
+        pg_engine, case_id, stage,
+        parent["approval_submission_id"] if parent else None,
+    ) if operation == "complete" else None
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        approval_before = session.scalar(
+            select(func.count()).select_from(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case_id)
+        )
+        pending = Certificate(
+            case_id=case_id, site_id=site_id,
+            certificate_type="GMP", issuance_basis="inspection_case",
+            latest_flag=False,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("PCT/CT mutation autoflushed a separate Certificate draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "create":
+                    SERVICE.create_approval_submission(
+                        session, case_id=case_id, stage=stage,
+                        reference=f"SYNTH-{stage}-PENDING-CERT",
+                        submitted_on=DAY, submitted_time=None,
+                        pct_submission_id=parent["approval_submission_id"] if parent else None,
+                        reason="synthetic pending Certificate guard", user=USER,
+                    )
+                else:
+                    SERVICE.complete_approval_submission(
+                        session, approval_submission_id=existing["approval_submission_id"],
+                        expected_version=existing["row_version"],
+                        completed_on=DAY, completed_time=None,
+                        reason="synthetic pending Certificate guard", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(Certificate)
+                    .where(Certificate.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.case_id == case_id)
+                ) == approval_before
+                if existing is not None:
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.completed_on)
+                        .where(InspectionApprovalSubmission.id == existing["approval_submission_id"])
+                    ) is None
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

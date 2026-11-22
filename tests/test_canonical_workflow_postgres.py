@@ -4036,3 +4036,43 @@ def test_legal_outcome_mutation_accepts_foreign_noop_dirty_marker(pg_engine, ope
             assert verify.scalar(select(func.count()).select_from(
                 CaseCertificateNonissuanceDecision
             ).where(CaseCertificateNonissuanceDecision.case_id == case_id)) == 1
+
+
+def test_change_request_create_refuses_foreign_case_draft_before_flush(pg_engine):
+    """A new Site Change Request cannot commit another Case's pending CAPA."""
+    _, site_id = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="UNCOMMITTED-FOREIGN-CR-CAPA", notes="independent draft",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Change Request creation attempted a foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.create_change_request(
+                    session, site_id=site_id, scope_label="Synthetic change",
+                    description="Separate Site change request", submitted_on=DAY,
+                    requester_name="Synthetic requester", reason="isolated change request",
+                    user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

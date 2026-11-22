@@ -3865,3 +3865,40 @@ def test_inspection_stage_refuses_foreign_capa_draft_without_flush(pg_engine, op
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["plan", "outcome"])
+def test_inspection_stage_allows_unmodified_foreign_dirty_marker(pg_engine, operation):
+    """A harmless ORM dirty marker in a different Case cannot block a stage write."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original_scope = foreign.scope_code
+        foreign.scope_code = original_scope
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        if operation == "plan":
+            result = SERVICE.upsert_inspection_plan(
+                session, case_id=case_id, plan_start_on=DAY, plan_end_on=DAY,
+                planning_sheet_name="Synthetic plan",
+                decision_document_hint=None, reason="no-op foreign Case", user=USER,
+            )
+            audit_action = "inspection_plan.upsert"
+        else:
+            result = SERVICE.upsert_inspection_outcome(
+                session, case_id=case_id,
+                inspected_on=DAY, inspected_to_on=DAY,
+                decision_reference=None, bbkt_reference=None,
+                outcome_result="Synthetic outcome",
+                reason="no-op foreign Case", user=USER,
+            )
+            audit_action = "inspection_outcome.upsert"
+        assert result["case_id"] == case_id
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original_scope
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == case_id,
+            AuditEvent.action == audit_action,
+        )) == 1

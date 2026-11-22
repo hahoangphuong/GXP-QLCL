@@ -1918,3 +1918,218 @@ def test_approval_mutation_refuses_pending_certificate_draft(pg_engine, stage, o
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+@pytest.mark.parametrize("operation", ["update", "submit", "assess"])
+@pytest.mark.parametrize("draft_mode", ["new", "dirty"])
+def test_capa_mutation_refuses_unsubmitted_approval_draft(pg_engine, stage, operation, draft_mode):
+    """CAPA mutation cannot flush or overwrite a separate same-Case PCT/CT intent."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    cycle = create_cycle(pg_engine, case_id)
+    if operation == "assess":
+        cycle = write(
+            pg_engine, SERVICE.submit_capa_cycle,
+            capa_cycle_id=cycle["capa_cycle_id"],
+            expected_version=cycle["row_version"],
+            submitted_on=DAY, notes="received", reason=None,
+        )
+    parent = complete(pg_engine, approval(pg_engine, case_id, "PCT")) if stage == "CT" else None
+    saved = approval(
+        pg_engine, case_id, stage,
+        parent["approval_submission_id"] if parent else None,
+    ) if draft_mode == "dirty" else None
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        approval_before = session.scalar(
+            select(func.count()).select_from(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case_id)
+        )
+        if draft_mode == "new":
+            pending = InspectionApprovalSubmission(
+                case_id=case_id, stage=stage, round_no=1,
+                reference="UNSUBMITTED-APPROVAL-INTENT",
+                submitted_on=DAY,
+                pct_submission_id=parent["approval_submission_id"] if parent else None,
+            )
+            session.add(pending)
+        else:
+            pending = session.get(
+                InspectionApprovalSubmission, saved["approval_submission_id"]
+            )
+            pending.reference = "UNSUBMITTED-APPROVAL-EDIT"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA mutation autoflushed an independent PCT/CT draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "update":
+                    SERVICE.update_capa_cycle(
+                        session, capa_cycle_id=cycle["capa_cycle_id"],
+                        expected_version=cycle["row_version"], requested_on=DAY,
+                        incoming_reference="CAPA-EDIT", notes="edited",
+                        reason=None, user=USER,
+                    )
+                elif operation == "submit":
+                    SERVICE.submit_capa_cycle(
+                        session, capa_cycle_id=cycle["capa_cycle_id"],
+                        expected_version=cycle["row_version"],
+                        submitted_on=DAY, notes="received",
+                        reason=None, user=USER,
+                    )
+                else:
+                    SERVICE.assess_capa_cycle(
+                        session, capa_cycle_id=cycle["capa_cycle_id"],
+                        expected_version=cycle["row_version"], assessed_on=DAY,
+                        assessor_name=None, result="accepted", notes="assessed",
+                        reason=None, user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            if draft_mode == "new":
+                assert pending in session.new
+            else:
+                assert pending in session.dirty
+                assert pending.reference == "UNSUBMITTED-APPROVAL-EDIT"
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.case_id == case_id)
+                ) == approval_before
+                if saved is not None:
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.reference).where(
+                            InspectionApprovalSubmission.id == saved["approval_submission_id"]
+                        )
+                    ) == saved["reference"]
+                assert session.scalar(
+                    select(CapaCycle.status).where(
+                        CapaCycle.id == cycle["capa_cycle_id"]
+                    )
+                ) == ("submitted" if operation == "assess" else "requested")
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+@pytest.mark.parametrize("first_writer", ["capa_assess", "approval_complete"])
+def test_independent_capa_assessment_and_approval_completion_serialize(pg_engine, stage, first_writer):
+    """Two independent PostgreSQL writers serialize on Case and preserve both audits."""
+    from threading import Event
+
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    cycle = create_cycle(pg_engine, case_id)
+    cycle = write(
+        pg_engine, SERVICE.submit_capa_cycle,
+        capa_cycle_id=cycle["capa_cycle_id"],
+        expected_version=cycle["row_version"],
+        submitted_on=DAY, notes="synthetic submission", reason=None,
+    )
+    parent = complete(pg_engine, approval(pg_engine, case_id, "PCT")) if stage == "CT" else None
+    submission = approval(
+        pg_engine, case_id, stage,
+        parent["approval_submission_id"] if parent else None,
+    )
+    with Session(pg_engine) as lookup:
+        audit_before = lookup.scalar(select(func.count()).select_from(AuditEvent))
+    first_flushed, second_started = Event(), Event()
+
+    def execute(owner):
+        with Session(pg_engine) as session:
+            if owner == "capa_assess":
+                result = SERVICE.assess_capa_cycle(
+                    session, capa_cycle_id=cycle["capa_cycle_id"],
+                    expected_version=cycle["row_version"], assessed_on=DAY,
+                    assessor_name=None, result="accepted", notes="independent assess",
+                    reason="concurrent assess", user=USER,
+                )
+            else:
+                result = SERVICE.complete_approval_submission(
+                    session, approval_submission_id=submission["approval_submission_id"],
+                    expected_version=submission["row_version"], completed_on=DAY,
+                    completed_time=None, reason="concurrent completion", user=USER,
+                )
+            session.flush()
+            return session, result
+
+    def first():
+        with Session(pg_engine) as session:
+            if first_writer == "capa_assess":
+                SERVICE.assess_capa_cycle(
+                    session, capa_cycle_id=cycle["capa_cycle_id"],
+                    expected_version=cycle["row_version"], assessed_on=DAY,
+                    assessor_name=None, result="accepted", notes="first assess",
+                    reason="concurrent assess", user=USER,
+                )
+            else:
+                SERVICE.complete_approval_submission(
+                    session, approval_submission_id=submission["approval_submission_id"],
+                    expected_version=submission["row_version"],
+                    completed_on=DAY, completed_time=None,
+                    reason="concurrent completion", user=USER,
+                )
+            session.flush()
+            first_flushed.set()
+            assert second_started.wait(20), "Second independent writer did not start"
+            session.commit()
+            return first_writer
+
+    def second():
+        assert first_flushed.wait(20), "First independent writer did not flush"
+        second_started.set()
+        other = "approval_complete" if first_writer == "capa_assess" else "capa_assess"
+        with Session(pg_engine) as session:
+            if other == "capa_assess":
+                SERVICE.assess_capa_cycle(
+                    session, capa_cycle_id=cycle["capa_cycle_id"],
+                    expected_version=cycle["row_version"], assessed_on=DAY,
+                    assessor_name=None, result="accepted", notes="second assess",
+                    reason="concurrent assess", user=USER,
+                )
+            else:
+                SERVICE.complete_approval_submission(
+                    session, approval_submission_id=submission["approval_submission_id"],
+                    expected_version=submission["row_version"], completed_on=DAY,
+                    completed_time=None, reason="concurrent completion", user=USER,
+                )
+            session.commit()
+            return other
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a = pool.submit(first)
+        b = pool.submit(second)
+        assert a.result(timeout=40) == first_writer
+        assert b.result(timeout=40) != first_writer
+    with Session(pg_engine) as session:
+        assert session.scalar(
+            select(CapaCycle.status).where(CapaCycle.id == cycle["capa_cycle_id"])
+        ) == "accepted"
+        assert session.scalar(
+            select(InspectionApprovalSubmission.completed_on).where(
+                InspectionApprovalSubmission.id == submission["approval_submission_id"]
+            )
+        ) == DAY
+        assert session.scalar(
+            select(func.count()).select_from(AuditEvent)
+            .where(
+                AuditEvent.entity_id == cycle["capa_cycle_id"],
+                AuditEvent.action == "capa_cycle.assess",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count()).select_from(AuditEvent)
+            .where(
+                AuditEvent.entity_id == submission["approval_submission_id"],
+                AuditEvent.action == "inspection_approval_submission.complete",
+            )
+        ) == 1
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before + 2

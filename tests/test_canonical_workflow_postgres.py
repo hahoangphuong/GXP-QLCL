@@ -3035,3 +3035,59 @@ def test_certificate_promotion_refuses_unsubmitted_same_case_version(pg_engine):
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("draft_mode", ["dirty", "deleted"])
+def test_certificate_promotion_refuses_nonlatest_version_operator_draft(pg_engine, draft_mode):
+    """A separate committed version's pending edit/delete cannot ride promotion."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+    with Session(pg_engine) as setup:
+        historical = CertificateVersion(
+            certificate_id=candidate["certificate_id"], version_no=2,
+            certificate_number="COMMITTED-NONLATEST-VERSION",
+            lifecycle_state="DRAFT", is_latest_version=False,
+        )
+        setup.add(historical)
+        setup.flush()
+        historical_id = historical.id
+        setup.commit()
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = session.get(CertificateVersion, historical_id)
+        if draft_mode == "dirty":
+            pending.certificate_number = "UNSUBMITTED-HISTORICAL-EDIT"
+        else:
+            session.delete(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Promotion autoflushed another version draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.promote_certificate_current(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    reason="synthetic historical version draft guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in (session.dirty if draft_mode == "dirty" else session.deleted)
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(CertificateVersion.certificate_number)
+                    .where(CertificateVersion.id == historical_id)
+                ) == "COMMITTED-NONLATEST-VERSION"
+                assert session.scalar(
+                    select(Certificate.latest_flag).where(Certificate.id == candidate["certificate_id"])
+                ) is False
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

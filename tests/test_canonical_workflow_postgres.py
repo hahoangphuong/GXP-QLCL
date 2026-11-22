@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, InspectionApprovalSubmission, InspectionOutcome, Site
+from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, InspectionApprovalSubmission, InspectionApprovalDocumentLink, InspectionOutcome, Document, Site
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 from backend.app.main import create_app
@@ -4100,4 +4100,95 @@ def test_change_request_create_accepts_foreign_noop_dirty_marker(pg_engine):
         assert verify.get(Case, foreign_case_id).scope_code == original_scope
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "change_request.create"
+        )) >= 1
+
+
+def _approval_binding_fixture(pg_engine):
+    case_id, _ = seed(pg_engine)
+    submission = approval(pg_engine, case_id, "PCT")
+    with Session(pg_engine) as setup:
+        doc = Document(
+            case_id=case_id,
+            family_code="INSPECTION_PT_PCT",
+            document_type_code="SYNTHETIC_PCT",
+            title="Synthetic PCT for binding",
+        )
+        setup.add(doc)
+        setup.commit()
+        return case_id, submission, doc.id
+
+
+def test_bind_approval_document_rejects_foreign_pending_capa_before_flush(pg_engine):
+    """Binding a PCT document cannot save another Case's unfinished CAPA."""
+    case_id, submission, document_id = _approval_binding_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        binding_before = session.scalar(select(func.count()).select_from(InspectionApprovalDocumentLink))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="PENDING-FOREIGN-APPROVAL-BINDING-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Approval document binding attempted foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.bind_approval_document(
+                    session,
+                    approval_submission_id=submission["approval_submission_id"],
+                    document_id=document_id,
+                    expected_version=submission["row_version"],
+                    reason="synthetic foreign Session isolation", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(InspectionApprovalDocumentLink)) == binding_before
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(InspectionApprovalSubmission.row_version).where(
+                    InspectionApprovalSubmission.id == submission["approval_submission_id"]
+                )) == submission["row_version"]
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_bind_approval_document_allows_foreign_noop_dirty_marker(pg_engine):
+    """A no-op cached foreign Case must not prevent a valid binding."""
+    case_id, submission, document_id = _approval_binding_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original_scope = foreign.scope_code
+        foreign.scope_code = original_scope
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        receipt = SERVICE.bind_approval_document(
+            session,
+            approval_submission_id=submission["approval_submission_id"],
+            document_id=document_id,
+            expected_version=submission["row_version"],
+            reason="synthetic no-op dirty control", user=USER,
+        )
+        assert receipt["created"] is True
+        assert receipt["document_id"] == document_id
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original_scope
+        assert verify.scalar(select(func.count()).select_from(InspectionApprovalDocumentLink).where(
+            InspectionApprovalDocumentLink.document_id == document_id
+        )) == 1
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "inspection_approval_document_link.create",
         )) >= 1

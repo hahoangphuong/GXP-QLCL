@@ -3648,6 +3648,10 @@ class CaseWorkflowService:
         fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
         require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
+        # The initial detail/parent owner reads may autoflush another Case's
+        # pending operator draft. Fence before identity access and mutation.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="change request detail update")
         detail = session.get(ChangeRequestDetail, change_detail_id)
         if detail is None:
             raise HTTPException(status_code=404, detail="Change request detail not found.")

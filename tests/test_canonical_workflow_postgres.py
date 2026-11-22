@@ -3667,3 +3667,59 @@ def test_capa_approval_mutations_refuse_foreign_case_session_drafts(pg_engine, o
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["capa_create", "capa_update", "approval_create", "approval_complete"])
+def test_capa_approval_allows_foreign_noop_dirty_marker(pg_engine, operation):
+    """Session-wide admission must ignore an ORM identity with no real edit."""
+    case_id, _ = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    target_capa = create_cycle(pg_engine, case_id) if operation == "capa_update" else None
+    target_approval = approval(pg_engine, case_id, "PCT") if operation == "approval_complete" else None
+    foreign_case_id, _ = seed(pg_engine)
+
+    with Session(pg_engine) as session:
+        foreign_case = session.get(Case, foreign_case_id)
+        foreign_case.scope_code = foreign_case.scope_code
+        assert foreign_case in session.dirty
+        assert not session.is_modified(foreign_case, include_collections=True)
+        if operation == "capa_create":
+            result = SERVICE.create_capa_cycle(
+                session, case_id=case_id, requested_on=DAY,
+                incoming_reference="POSITIVE-CAPA", notes="valid independent round",
+                reason="no-op foreign Case", user=USER,
+            )
+        elif operation == "capa_update":
+            result = SERVICE.update_capa_cycle(
+                session, capa_cycle_id=target_capa["capa_cycle_id"],
+                expected_version=target_capa["row_version"], requested_on=DAY,
+                incoming_reference="POSITIVE-UPDATE", notes="valid update",
+                reason="no-op foreign Case", user=USER,
+            )
+        elif operation == "approval_create":
+            result = SERVICE.create_approval_submission(
+                session, case_id=case_id, stage="PCT", reference="POSITIVE-PCT",
+                submitted_on=DAY, submitted_time=None, pct_submission_id=None,
+                reason="no-op foreign Case", user=USER,
+            )
+        else:
+            result = SERVICE.complete_approval_submission(
+                session, approval_submission_id=target_approval["approval_submission_id"],
+                expected_version=target_approval["row_version"],
+                completed_on=DAY, completed_time=None,
+                reason="no-op foreign Case", user=USER,
+            )
+        assert result
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == foreign_case.scope_code
+        if operation.startswith("capa"):
+            assert verify.scalar(
+                select(func.count()).select_from(CapaCycle)
+                .where(CapaCycle.case_id == case_id)
+            ) == 1
+        else:
+            assert verify.scalar(
+                select(func.count()).select_from(InspectionApprovalSubmission)
+                .where(InspectionApprovalSubmission.case_id == case_id)
+            ) == 1

@@ -1756,3 +1756,94 @@ def test_capa_mutation_refuses_pending_certificate_draft(pg_engine, operation):
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+@pytest.mark.parametrize("operation", ["create", "complete"])
+@pytest.mark.parametrize("draft_mode", ["new", "dirty"])
+def test_approval_mutation_refuses_pending_inspection_outcome(pg_engine, stage, operation, draft_mode):
+    """PCT/CT cannot accidentally persist an unsubmitted inspection outcome."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    parent = None
+    if stage == "CT":
+        parent = complete(pg_engine, approval(pg_engine, case_id, "PCT"))
+    existing = approval(
+        pg_engine, case_id, stage,
+        parent["approval_submission_id"] if parent else None,
+    ) if operation == "complete" else None
+    if draft_mode == "dirty":
+        write(
+            pg_engine, SERVICE.upsert_inspection_outcome,
+            case_id=case_id, inspected_on=DAY, inspected_to_on=DAY,
+            decision_reference=None, bbkt_reference=None,
+            outcome_result="Committed inspection observation", reason=None,
+        )
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        approval_before = session.scalar(
+            select(func.count()).select_from(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case_id)
+        )
+        if draft_mode == "new":
+            pending = InspectionOutcome(
+                case_id=case_id,
+                outcome_result="Unsubmitted inspection outcome",
+                final_evaluation="Unsubmitted final evaluation",
+            )
+            session.add(pending)
+        else:
+            pending = session.scalars(
+                select(InspectionOutcome).where(InspectionOutcome.case_id == case_id)
+            ).one()
+            pending.final_evaluation = "Unsubmitted final evaluation"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("PCT/CT mutation autoflushed a separate inspection outcome")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "create":
+                    SERVICE.create_approval_submission(
+                        session, case_id=case_id, stage=stage,
+                        reference=f"SYNTH-{stage}-OUTCOME-DRAFT",
+                        submitted_on=DAY, submitted_time=None,
+                        pct_submission_id=parent["approval_submission_id"] if parent else None,
+                        reason="synthetic draft guard", user=USER,
+                    )
+                else:
+                    SERVICE.complete_approval_submission(
+                        session, approval_submission_id=existing["approval_submission_id"],
+                        expected_version=existing["row_version"],
+                        completed_on=DAY, completed_time=None,
+                        reason="synthetic draft guard", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending.final_evaluation == "Unsubmitted final evaluation"
+            if draft_mode == "new":
+                assert pending in session.new
+            else:
+                assert pending in session.dirty
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(InspectionOutcome.final_evaluation)
+                    .where(InspectionOutcome.case_id == case_id)
+                ) is None
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.case_id == case_id)
+                ) == approval_before
+                if existing is not None:
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.completed_on)
+                        .where(InspectionApprovalSubmission.id == existing["approval_submission_id"])
+                    ) is None
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

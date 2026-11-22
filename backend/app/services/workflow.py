@@ -4643,6 +4643,13 @@ class CaseWorkflowService:
             fields_set is None and dossier_reference is not None
         ):
             raise HTTPException(status_code=422, detail="dossier_reference is a read-only compatibility field.")
+        # SQLAlchemy can autoflush every Case/Site's pending drafts on the
+        # first Case lock. Fence actual Session changes before owner retrieval;
+        # a no-op dirty marker is not an independent write intent.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(
+                session, operation="application update",
+            )
         # The Case lock must refresh the ORM identity before terminal-state
         # eligibility; a SELECT of Case.id alone leaves an older cached state.
         row = self._lock_case(session, case_id)
@@ -4749,6 +4756,12 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         require_permissions(user, {"case.edit"})
         provided = self._provided_fields(fields_set, {"assessed_on", "assessor_name", "assessment_result", "notes"})
+        # Resolve the persisted owner only after excluding foreign pending
+        # writes: the Case FOR UPDATE lookup otherwise autoflushes the Session.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(
+                session, operation="assessment update",
+            )
         # Serialize null-token create/update on a freshly locked Case owner.
         row = self._lock_case(session, case_id)
         self._assert_case_not_terminal(row, operation="assessment update")

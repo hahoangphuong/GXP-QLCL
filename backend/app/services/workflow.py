@@ -6283,6 +6283,30 @@ class CaseWorkflowService:
         )
         return certificate, version, created_scopes
 
+    @staticmethod
+    def _assert_certificate_mutation_session_clean(
+        session: Session, *, operation: str,
+    ) -> None:
+        """Fence residual independent intents before a certificate Session flush.
+
+        SQLAlchemy's flush writes every pending row in the Session, even
+        across unrelated Case/Site aggregates. The caller's no-autoflush
+        admission must reject material drafts after domain-specific guards.
+        A no-op ORM dirty marker alone is not an actual mutation.
+        """
+        if (
+            session.new
+            or session.deleted
+            or any(
+                session.is_modified(item, include_collections=True)
+                for item in session.dirty
+            )
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session has uncommitted changes; resolve other drafts before certificate {operation}.",
+            )
+
     def _assert_certificate_mutation_has_no_pending_approvals(
         self, session: Session, *, case_id: str | None, operation: str,
     ) -> None:
@@ -6484,6 +6508,9 @@ class CaseWorkflowService:
                 self._assert_certificate_mutation_has_no_pending_nonissuance(
                     session, case_id=case.id, operation="issuance",
                 )
+            self._assert_certificate_mutation_session_clean(
+                session, operation="issuance",
+            )
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,
@@ -6672,6 +6699,9 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
                 )
+            self._assert_certificate_mutation_session_clean(
+                session, operation="version editing",
+            )
         actor = self._get_or_create_app_user(session, user)
         before = {
             "certificate_number": version.certificate_number,
@@ -6912,23 +6942,9 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
                 )
-            # A subsequent SQLAlchemy autoflush/final flush writes the whole
-            # Session, not just this Certificate/Case aggregate. Domain-scoped
-            # guards above retain their specific conflict messages; fence any
-            # remaining independent operator intent (including another Site or
-            # Case) before leaving this no-autoflush mutation admission.
-            if (
-                session.new
-                or session.deleted
-                or any(
-                    session.is_modified(item, include_collections=True)
-                    for item in session.dirty
-                )
-            ):
-                raise HTTPException(
-                    status_code=409,
-                    detail="Session has uncommitted changes; resolve other drafts before certificate promotion.",
-                )
+            self._assert_certificate_mutation_session_clean(
+                session, operation="promotion",
+            )
         blocker = self._get_certificate_promotion_blocker(
             session,
             certificate=certificate,

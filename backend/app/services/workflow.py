@@ -5301,6 +5301,33 @@ class CaseWorkflowService:
         session.flush()
         return self._serialize_inspection_outcome(stage, audit_event_id=audit.id, inspection_event_id=None)
 
+    def _assert_approval_has_no_pending_inspection_outcome(
+        self, session: Session, *, case_id: str, operation: str,
+    ) -> None:
+        """Reject a separate unsubmitted outcome before PCT/CT mutation flush.
+
+        Caller holds the Case lock and session.no_autoflush. Check original
+        owner for locally reparented dirty outcomes, not just cached case_id.
+        """
+        for pending in tuple(session.new):
+            if isinstance(pending, InspectionOutcome) and pending.case_id == case_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Inspection outcome has uncommitted changes; resolve draft before approval {operation}.",
+                )
+        for cached in tuple(session.dirty):
+            if not isinstance(cached, InspectionOutcome):
+                continue
+            original_cases = inspect(cached).attrs.case_id.history.deleted
+            if (
+                (cached.case_id == case_id or case_id in original_cases)
+                and session.is_modified(cached, include_collections=False)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Inspection outcome has uncommitted changes; resolve draft before approval {operation}.",
+                )
+
     def create_approval_submission(self, session: Session, *, case_id: str, stage: str, reference: str | None, submitted_on: date | None, submitted_time, pct_submission_id: str | None, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
         # Enforce HTTP-equivalent RBAC at the canonical mutation owner
         # before checking resource identity, locks, version or audit.
@@ -5355,6 +5382,9 @@ class CaseWorkflowService:
                     validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
                 except InspectionContractViolation as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
+            self._assert_approval_has_no_pending_inspection_outcome(
+                session, case_id=row.id, operation="creation",
+            )
             # This approval creation may flush the caller's whole Session.
             # A separate unsubmitted CAPA round for this Case is an operator
             # draft, not an implicit side effect of the PCT/CT mutation.
@@ -5458,6 +5488,9 @@ class CaseWorkflowService:
             if row.case_id != parent.id:
                 raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
             self._assert_expected_version(row, expected_version, label="approval_submission")
+            self._assert_approval_has_no_pending_inspection_outcome(
+                session, case_id=parent.id, operation="completion",
+            )
             # This approval completion may flush the caller's whole Session.
             # A separate unsubmitted CAPA round for this Case is an operator
             # draft, not an implicit side effect of the PCT/CT mutation.

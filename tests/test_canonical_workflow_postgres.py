@@ -4076,3 +4076,28 @@ def test_change_request_create_refuses_foreign_case_draft_before_flush(pg_engine
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_change_request_create_accepts_foreign_noop_dirty_marker(pg_engine):
+    """Unchanged Case fields must not block an independent valid Site request."""
+    _, site_id = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original_scope = foreign.scope_code
+        foreign.scope_code = original_scope
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        result = SERVICE.create_change_request(
+            session, site_id=site_id, scope_label="Synthetic no-op control",
+            description="Site change request unaffected by another Case marker",
+            submitted_on=DAY, requester_name="Synthetic requester",
+            reason="synthetic no-op control", user=USER,
+        )
+        assert result
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original_scope
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "change_request.create"
+        )) >= 1

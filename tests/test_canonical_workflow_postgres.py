@@ -3902,3 +3902,78 @@ def test_inspection_stage_allows_unmodified_foreign_dirty_marker(pg_engine, oper
             AuditEvent.entity_id == case_id,
             AuditEvent.action == audit_action,
         )) == 1
+
+
+@pytest.mark.parametrize("operation", ["finalize", "nonissuance"])
+def test_legal_outcome_mutation_refuses_foreign_session_draft(pg_engine, operation):
+    """A valid target mutation cannot implicitly persist another Case's CAPA."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        if operation == "finalize":
+            setup.add(InspectionOutcome(
+                case_id=case_id, outcome_result="Synthetic completed inspection",
+            ))
+        else:
+            case = setup.get(Case, case_id)
+            case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+            setup.add(InspectionOutcome(
+                case_id=case_id, final_evaluation="Synthetic legal determination",
+            ))
+        setup.commit()
+
+    with Session(pg_engine) as session:
+        target_case = session.get(Case, case_id)
+        expected_case_version = target_case.row_version
+        outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id))
+        expected_outcome_version = outcome.row_version
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="UNSUBMITTED-FOREIGN-CAPA", notes="independent draft",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Legal outcome mutation flushed a foreign Case draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "finalize":
+                    SERVICE.finalize_inspection_outcome(
+                        session, case_id=case_id,
+                        expected_version=expected_outcome_version,
+                        final_evaluation="Synthetic finalized",
+                        reason="isolated finalization", user=USER,
+                    )
+                else:
+                    SERVICE.record_case_nonissuance_decision(
+                        session, case_id=case_id,
+                        expected_case_version=expected_case_version,
+                        decided_on=DAY, decision_reference="SYNTH-REFUSAL-ISOLATED",
+                        explanation="Synthetic non-issuance rationale",
+                        reason="isolated legal decision", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                if operation == "finalize":
+                    assert session.scalar(select(InspectionOutcome.final_evaluation).where(
+                        InspectionOutcome.case_id == case_id
+                    )) is None
+                else:
+                    assert session.scalar(select(func.count()).select_from(
+                        CaseCertificateNonissuanceDecision
+                    ).where(CaseCertificateNonissuanceDecision.case_id == case_id)) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

@@ -2846,3 +2846,142 @@ def test_certificate_version_edit_refuses_pending_nonissuance_before_autoflush(p
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("intent", ["capa", "approval_pct", "approval_ct", "legal_refusal"])
+def test_certificate_promotion_rejects_pending_same_case_workflow_intent(pg_engine, intent):
+    """Promotion must not autoflush separately staged legal or workflow intents."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    pct = complete(pg_engine, approval(pg_engine, case_id, "PCT"))
+    complete(pg_engine, approval(pg_engine, case_id, "CT", pct["approval_submission_id"]))
+    candidate = issue(pg_engine, case_id, site_id)
+
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        if intent == "capa":
+            pending = CapaCycle(
+                case_id=case_id, round_no=1, requested_on=DAY,
+                incoming_reference="UNSUBMITTED-CAPA-PROMOTION", notes="independent draft",
+            )
+            model = CapaCycle
+        elif intent in {"approval_pct", "approval_ct"}:
+            stage = "PCT" if intent == "approval_pct" else "CT"
+            pending = InspectionApprovalSubmission(
+                case_id=case_id, stage=stage, round_no=2,
+                reference="UNSUBMITTED-APPROVAL-PROMOTION", submitted_on=DAY,
+                pct_submission_id=pct["approval_submission_id"] if stage == "CT" else None,
+            )
+            model = InspectionApprovalSubmission
+        else:
+            actor_id = session.scalar(
+                select(AuditEvent.actor_user_id)
+                .where(AuditEvent.actor_user_id.is_not(None)).limit(1)
+            )
+            assert actor_id is not None
+            pending = CaseCertificateNonissuanceDecision(
+                case_id=case_id, decided_on=DAY,
+                decision_reference="UNSUBMITTED-REFUSAL-PROMOTION",
+                explanation="independent legal refusal draft",
+                recorded_by_user_id=actor_id,
+            )
+            model = CaseCertificateNonissuanceDecision
+        count_before = session.scalar(
+            select(func.count()).select_from(model).where(model.case_id == case_id)
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Certificate promotion autoflushed an independent Case draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.promote_certificate_current(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    reason="synthetic pending intent guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(model).where(model.case_id == case_id)
+                ) == count_before
+                assert session.scalar(
+                    select(Certificate.latest_flag).where(Certificate.id == candidate["certificate_id"])
+                ) is False
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("draft_kind", ["capa_dirty", "pct_dirty", "ct_dirty", "capa_deleted"])
+def test_certificate_promotion_refuses_dirty_or_deleted_case_workflow_draft(pg_engine, draft_kind):
+    """Promotion must not flush changed persisted workflow rows or local CAPA delete."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    cycle = create_cycle(pg_engine, case_id)
+    assessed = assess_cycle(pg_engine, cycle, "accepted")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    pct = complete(pg_engine, approval(pg_engine, case_id, "PCT"))
+    ct = complete(pg_engine, approval(pg_engine, case_id, "CT", pct["approval_submission_id"]))
+    candidate = issue(pg_engine, case_id, site_id)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        if draft_kind.startswith("capa"):
+            pending = session.get(CapaCycle, assessed["capa_cycle_id"])
+            if draft_kind == "capa_deleted":
+                session.delete(pending)
+            else:
+                pending.notes = "UNSUBMITTED-CAPA-DRAFT-DURING-PROMOTION"
+        else:
+            approval_id = pct["approval_submission_id"] if draft_kind == "pct_dirty" else ct["approval_submission_id"]
+            pending = session.get(InspectionApprovalSubmission, approval_id)
+            original_reference = pending.reference
+            pending.reference = "UNSUBMITTED-APPROVAL-DRAFT-DURING-PROMOTION"
+
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Certificate promotion autoflushed a dirty workflow row")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.promote_certificate_current(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    reason="synthetic dirty workflow guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            if draft_kind == "capa_deleted":
+                assert pending in session.deleted
+            else:
+                assert pending in session.dirty
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(Certificate.latest_flag).where(Certificate.id == candidate["certificate_id"])
+                ) is False
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                if draft_kind.startswith("capa"):
+                    assert session.scalar(
+                        select(CapaCycle.status).where(CapaCycle.id == assessed["capa_cycle_id"])
+                    ) == "accepted"
+                else:
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.reference)
+                        .where(InspectionApprovalSubmission.id == pending.id)
+                    ) == original_reference
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

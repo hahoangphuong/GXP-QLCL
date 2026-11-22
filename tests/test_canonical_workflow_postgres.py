@@ -3433,3 +3433,33 @@ def test_certificate_promotion_preserves_foreign_dirty_or_deleted_draft(pg_engin
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_certificate_promotion_accepts_foreign_case_noop_dirty_identity(pg_engine):
+    """A harmless ORM dirty marker is not a separately flushable operator change."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+    foreign_case_id, _ = seed(pg_engine)
+
+    with Session(pg_engine) as session:
+        foreign_case = session.get(Case, foreign_case_id)
+        foreign_case.scope_code = foreign_case.scope_code
+        assert foreign_case in session.dirty
+        assert not session.is_modified(foreign_case, include_collections=True)
+        result = SERVICE.promote_certificate_current(
+            session, certificate_id=candidate["certificate_id"],
+            expected_version=candidate["row_version"],
+            reason="synthetic no-op ORM marker", user=USER,
+        )
+        assert result["latest_flag"] is True
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Certificate, candidate["certificate_id"]).latest_flag is True
+        assert verify.scalar(
+            select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.entity_id == candidate["certificate_id"],
+                AuditEvent.action == "certificate.promote_current",
+            )
+        ) == 1

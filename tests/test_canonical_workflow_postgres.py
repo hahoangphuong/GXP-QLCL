@@ -3189,3 +3189,83 @@ def test_competing_peer_certificate_promotions_preserve_single_current(pg_engine
             result["audit_event_id"] for result in successes
         }
         assert current[0].id in {result["certificate_id"] for result in successes}
+
+
+@pytest.mark.parametrize("draft_mode", ["new", "dirty", "deleted"])
+def test_certificate_promotion_refuses_nonlatest_scope_draft(pg_engine, draft_mode):
+    """Promotion cannot flush scopes attached to nonlatest candidate versions."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+    with Session(pg_engine) as setup:
+        old_version = CertificateVersion(
+            certificate_id=candidate["certificate_id"], version_no=2,
+            certificate_number="HISTORICAL-NONLATEST",
+            lifecycle_state="DRAFT", is_latest_version=False,
+        )
+        setup.add(old_version)
+        setup.flush()
+        old_version_id = old_version.id
+        if draft_mode != "new":
+            old_scope = CertificateScope(
+                certificate_version_id=old_version_id, scope_key="SCOPE-OLD",
+                scope_text="Committed historical scope", language_code="vi", sort_order=1,
+            )
+            setup.add(old_scope)
+            setup.flush()
+            old_scope_id = old_scope.id
+        setup.commit()
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        if draft_mode == "new":
+            pending = CertificateScope(
+                certificate_version_id=old_version_id, scope_key="SCOPE-NEW",
+                scope_text="Unsubmitted historical scope", language_code="vi", sort_order=2,
+            )
+            session.add(pending)
+        else:
+            pending = session.get(CertificateScope, old_scope_id)
+            if draft_mode == "dirty":
+                pending.scope_text = "Unsubmitted historical scope edit"
+            else:
+                session.delete(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Promotion autoflushed a historical scope draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.promote_certificate_current(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    reason="synthetic nonlatest scope admission", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in {
+                "new": session.new, "dirty": session.dirty,
+                "deleted": session.deleted,
+            }[draft_mode]
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(Certificate.latest_flag)
+                    .where(Certificate.id == candidate["certificate_id"])
+                ) is False
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(
+                    select(func.count()).select_from(CertificateScope)
+                    .where(CertificateScope.certificate_version_id == old_version_id)
+                ) == (0 if draft_mode == "new" else 1)
+                if draft_mode != "new":
+                    assert session.scalar(
+                        select(CertificateScope.scope_text)
+                        .where(CertificateScope.id == old_scope_id)
+                    ) == "Committed historical scope"
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

@@ -6353,6 +6353,41 @@ class CaseWorkflowService:
                     detail=f"Non-issuance decision has uncommitted changes; resolve draft before certificate {operation}.",
                 )
 
+    def _assert_certificate_promotion_has_no_pending_versions(
+        self, session: Session, *, certificate_ids: set[str],
+    ) -> None:
+        """Fence uncommitted GCN version drafts in the promotion graph.
+
+        The committed candidate and current peers are the only certificate
+        aggregates whose flags may be changed by this promotion.
+        """
+        if not certificate_ids:
+            return
+        for pending in tuple(session.new) + tuple(session.deleted):
+            if (
+                isinstance(pending, CertificateVersion)
+                and pending.certificate_id in certificate_ids
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate version has uncommitted changes; resolve draft before promotion.",
+                )
+        for cached in tuple(session.dirty):
+            if not isinstance(cached, CertificateVersion):
+                continue
+            original_parents = inspect(cached).attrs.certificate_id.history.deleted
+            if (
+                session.is_modified(cached, include_collections=False)
+                and (
+                    cached.certificate_id in certificate_ids
+                    or any(parent in certificate_ids for parent in original_parents)
+                )
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Certificate version has uncommitted changes; resolve draft before promotion.",
+                )
+
     def _assert_certificate_mutation_has_no_pending_capa(
         self, session: Session, *, case_id: str | None, operation: str,
     ) -> None:
@@ -6783,6 +6818,9 @@ class CaseWorkflowService:
                     Certificate.latest_flag.is_(True),
                 )
             ).all()
+            self._assert_certificate_promotion_has_no_pending_versions(
+                session, certificate_ids={certificate.id, *current_peer_ids},
+            )
             for peer_id in current_peer_ids:
                 peer = session.get(Certificate, peer_id)
                 if peer is None:

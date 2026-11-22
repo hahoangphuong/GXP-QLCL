@@ -693,6 +693,9 @@ class CaseWorkflowService:
             blocker = self._nonissuance_decision_blocker(session, case_id=case.id, case_state=case.state)
             if blocker is not None:
                 raise HTTPException(status_code=409, detail=self._nonissuance_blocker_detail(blocker))
+            # The legal decision/audit flush must not persist an unrelated
+            # uncommitted intent from another Case or Site in this Session.
+            self._assert_mutation_session_clean(session, operation="recording non-issuance")
         actor = self._get_or_create_app_user(session, user)
         decision = CaseCertificateNonissuanceDecision(
             case_id=case.id, decided_on=decided_on,
@@ -5510,6 +5513,9 @@ class CaseWorkflowService:
                 session, row.id,
                 blocked_detail="Latest CAPA cycle must be accepted before final evaluation.",
             )
+            # A successful evaluation/audit flush is Session-wide. Do not
+            # accidentally save an unrelated Case/Site operator draft.
+            self._assert_mutation_session_clean(session, operation="inspection final evaluation")
         before = self._snapshot_fields(stage, ["outcome_result", "final_evaluation"])
         stage.final_evaluation = final_evaluation
         actor = self._get_or_create_app_user(session, user)

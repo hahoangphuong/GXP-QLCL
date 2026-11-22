@@ -3463,3 +3463,87 @@ def test_certificate_promotion_accepts_foreign_case_noop_dirty_identity(pg_engin
                 AuditEvent.action == "certificate.promote_current",
             )
         ) == 1
+
+
+@pytest.mark.parametrize("operation", ["issue", "edit"])
+@pytest.mark.parametrize("foreign_draft", ["capa", "certificate_version"])
+def test_certificate_issue_and_edit_preserve_foreign_case_operator_intent(pg_engine, operation, foreign_draft):
+    """A different Case/Site's pending legal data must not ride issue/edit Session flush."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    target = issue(pg_engine, case_id, site_id) if operation == "edit" else None
+    foreign_case_id, foreign_site_id = seed(pg_engine)
+    transition(pg_engine, foreign_case_id, "inspection_completed")
+    transition(pg_engine, foreign_case_id, "awaiting_certificate_decision")
+    foreign = issue(pg_engine, foreign_case_id, foreign_site_id)
+
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        count_before = session.scalar(
+            select(func.count()).select_from(Certificate).where(Certificate.case_id == case_id)
+        )
+        if foreign_draft == "capa":
+            pending = CapaCycle(
+                case_id=foreign_case_id, round_no=1, requested_on=DAY,
+                incoming_reference="UNSUBMITTED-FOREIGN-CAPA-ISSUE-EDIT",
+                notes="independent foreign Case intent",
+            )
+            model, owner, owner_id = CapaCycle, CapaCycle.case_id, foreign_case_id
+        else:
+            pending = CertificateVersion(
+                certificate_id=foreign["certificate_id"], version_no=2,
+                certificate_number="UNSUBMITTED-FOREIGN-GCN-ISSUE-EDIT",
+                lifecycle_state="DRAFT", is_latest_version=False,
+            )
+            model, owner, owner_id = CertificateVersion, CertificateVersion.certificate_id, foreign["certificate_id"]
+        foreign_count = session.scalar(
+            select(func.count()).select_from(model).where(owner == owner_id)
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Issue/edit autoflushed an independent foreign Case draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "issue":
+                    SERVICE.issue_certificate(
+                        session, site_id=site_id, case_id=case_id,
+                        certificate_type="GMP", issuance_basis="inspection_case",
+                        certificate_number="SYNTH-ISSUE-FOREIGN-DRAFT",
+                        issue_date=DAY, expiry_date=date(2027, 10, 1),
+                        scopes=[], reason="independent issuance", user=USER,
+                    )
+                else:
+                    SERVICE.upsert_certificate_latest_version(
+                        session, certificate_id=target["certificate_id"],
+                        expected_version=target["row_version"],
+                        certificate_number="SYNTH-EDIT-FOREIGN-DRAFT",
+                        issue_date=DAY, expiry_date=date(2027, 10, 1),
+                        scopes=[], reason="independent version edit", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(model).where(owner == owner_id)
+                ) == foreign_count
+                assert session.scalar(
+                    select(func.count()).select_from(Certificate).where(Certificate.case_id == case_id)
+                ) == count_before
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                if target is not None:
+                    assert session.scalar(
+                        select(CertificateVersion.certificate_number).where(
+                            CertificateVersion.id == target["latest_version_id"]
+                        )
+                    ) == target["certificate_number"]
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

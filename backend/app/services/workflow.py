@@ -6316,6 +6316,43 @@ class CaseWorkflowService:
                     detail=f"Approval submission has uncommitted changes; resolve draft before certificate {operation}.",
                 )
 
+    def _assert_certificate_mutation_has_no_pending_nonissuance(
+        self, session: Session, *, case_id: str | None, operation: str,
+    ) -> None:
+        """Keep an independent legal refusal draft out of certificate writes."""
+        if case_id is None:
+            return
+        for pending in tuple(session.new):
+            if (
+                isinstance(pending, CaseCertificateNonissuanceDecision)
+                and pending.case_id == case_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Non-issuance decision has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+        for pending in tuple(session.deleted):
+            if (
+                isinstance(pending, CaseCertificateNonissuanceDecision)
+                and pending.case_id == case_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Non-issuance decision has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+        for pending in tuple(session.dirty):
+            if not isinstance(pending, CaseCertificateNonissuanceDecision):
+                continue
+            old_cases = inspect(pending).attrs.case_id.history.deleted
+            if (
+                (pending.case_id == case_id or case_id in old_cases)
+                and session.is_modified(pending, include_collections=False)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Non-issuance decision has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+
     def _assert_certificate_mutation_has_no_pending_capa(
         self, session: Session, *, case_id: str | None, operation: str,
     ) -> None:
@@ -6409,18 +6446,9 @@ class CaseWorkflowService:
                 self._assert_certificate_mutation_has_no_pending_capa(
                     session, case_id=case.id, operation="issuance",
                 )
-                for pending in tuple(session.new):
-                    # A pending non-issuance decision is a separate legal
-                    # mutation, not something the GMP-issued or eligibility
-                    # SELECT may flush while preparing a certificate.
-                    if (
-                        isinstance(pending, CaseCertificateNonissuanceDecision)
-                        and pending.case_id == case.id
-                    ):
-                        raise HTTPException(
-                            status_code=409,
-                            detail="Non-issuance decision has uncommitted changes; resolve draft before certificate issuance.",
-                        )
+                self._assert_certificate_mutation_has_no_pending_nonissuance(
+                    session, case_id=case.id, operation="issuance",
+                )
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,
@@ -6556,6 +6584,9 @@ class CaseWorkflowService:
                 session, case_id=certificate.case_id, operation="version editing",
             )
             self._assert_certificate_mutation_has_no_pending_capa(
+                session, case_id=certificate.case_id, operation="version editing",
+            )
+            self._assert_certificate_mutation_has_no_pending_nonissuance(
                 session, case_id=certificate.case_id, operation="version editing",
             )
             # Replacing scopes deletes persisted children. Guard their cached

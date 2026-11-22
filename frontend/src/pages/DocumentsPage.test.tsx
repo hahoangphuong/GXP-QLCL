@@ -308,8 +308,9 @@ describe("document binary action and readiness", () => {
   it("links an eligible missing document to its specific canonical Case intent", async () => {
     const value = casePayload();
     value.contextual_document_actions = [{ ...missingDocument, workflow_step: "Kiểm tra", actions: [
-      { action_key: "create", available: true, create_input_readiness: "CANONICAL_INPUT_READY" },
-    ] } as ContextualDocumentAction];
+      { action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [],
+        create_input_readiness: "CANONICAL_INPUT_READY" },
+    ] }];
     vi.mocked(getCaseWorkspace).mockResolvedValue(value);
     mount("/documents/cases/case-1");
     const link = await screen.findByRole("link", { name: "Đến workspace để tạo" });

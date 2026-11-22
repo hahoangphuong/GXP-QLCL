@@ -3091,3 +3091,101 @@ def test_certificate_promotion_refuses_nonlatest_version_operator_draft(pg_engin
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_competing_same_certificate_promotions_keep_single_audit(pg_engine):
+    """Two independent PostgreSQL Sessions cannot both promote one GCN."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+    gate = Barrier(2)
+
+    def attempt():
+        gate.wait()
+        try:
+            return ("ok", write(
+                pg_engine, SERVICE.promote_certificate_current,
+                certificate_id=candidate["certificate_id"],
+                expected_version=candidate["row_version"],
+                reason="synthetic parallel promotion",
+            ))
+        except HTTPException as exc:
+            return ("rejected", exc.status_code)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: attempt(), range(2)))
+    assert sorted(x[0] for x in outcomes) == ["ok", "rejected"]
+    assert next(x[1] for x in outcomes if x[0] == "rejected") == 409
+    successful = next(x[1] for x in outcomes if x[0] == "ok")
+    with Session(pg_engine) as session:
+        row = session.get(Certificate, candidate["certificate_id"])
+        assert row.latest_flag is True
+        assert row.row_version == successful["row_version"]
+        audits = list(session.scalars(
+            select(AuditEvent).where(
+                AuditEvent.entity_id == row.id,
+                AuditEvent.action == "certificate.promote_current",
+            )
+        ))
+        assert len(audits) == 1
+        assert audits[0].id == successful["audit_event_id"]
+
+
+def test_competing_peer_certificate_promotions_preserve_single_current(pg_engine):
+    """Site owner lock linearizes two different candidate promotions in one context."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    with Session(pg_engine) as setup:
+        sibling = Case(
+            site_id=site_id, gxp_type="GMP",
+            state=CaseState.AWAITING_CERTIFICATE_DECISION,
+        )
+        setup.add(sibling)
+        setup.flush()
+        sibling_id = sibling.id
+        setup.commit()
+    first = issue(pg_engine, case_id, site_id)
+    second = issue(pg_engine, sibling_id, site_id)
+    ids = {first["certificate_id"], second["certificate_id"]}
+    gate = Barrier(2)
+
+    def attempt(candidate):
+        gate.wait()
+        try:
+            result = write(
+                pg_engine, SERVICE.promote_certificate_current,
+                certificate_id=candidate["certificate_id"],
+                expected_version=candidate["row_version"],
+                reason="synthetic competing contextual promotion",
+            )
+            return ("ok", result)
+        except HTTPException as exc:
+            return ("rejected", exc.status_code)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(attempt, candidate) for candidate in (first, second)]
+        outcomes = [future.result() for future in futures]
+    assert all(result[0] in {"ok", "rejected"} for result in outcomes)
+    assert all(result[0] == "ok" or result[1] == 409 for result in outcomes)
+    assert any(result[0] == "ok" for result in outcomes)
+    with Session(pg_engine) as session:
+        rows = list(session.scalars(
+            select(Certificate).where(Certificate.id.in_(ids))
+        ))
+        assert len(rows) == 2
+        current = [row for row in rows if row.latest_flag]
+        assert len(current) == 1
+        audits = list(session.scalars(
+            select(AuditEvent).where(
+                AuditEvent.entity_id.in_(ids),
+                AuditEvent.action == "certificate.promote_current",
+            )
+        ))
+        successes = [result[1] for result in outcomes if result[0] == "ok"]
+        assert len(audits) == len(successes)
+        assert {audit.id for audit in audits} == {
+            result["audit_event_id"] for result in successes
+        }
+        assert current[0].id in {result["certificate_id"] for result in successes}

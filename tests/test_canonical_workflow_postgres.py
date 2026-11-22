@@ -3590,3 +3590,137 @@ def test_certificate_issue_edit_allows_harmless_foreign_noop_marker(pg_engine, o
                 AuditEvent.action == audit_action,
             )
         ) == 1
+
+
+@pytest.mark.parametrize("operation", ["capa_create", "capa_update", "approval_create", "approval_complete"])
+def test_capa_approval_mutations_refuse_foreign_case_session_drafts(pg_engine, operation):
+    """Do not flush another Case's unsubmitted CAPA during a distinct owner's mutation."""
+    case_id, _ = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    capa = create_cycle(pg_engine, case_id) if operation == "capa_update" else None
+    submission = approval(pg_engine, case_id, "PCT") if operation == "approval_complete" else None
+    foreign_case_id, _ = seed(pg_engine)
+
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        target_count = session.scalar(
+            select(func.count()).select_from(CapaCycle)
+            .where(CapaCycle.case_id == case_id)
+        )
+        foreign_count = session.scalar(
+            select(func.count()).select_from(CapaCycle)
+            .where(CapaCycle.case_id == foreign_case_id)
+        )
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="UNSUBMITTED-FOREIGN-CAPA", notes="independent operator draft",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA/approval mutation autoflushed foreign Case draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "capa_create":
+                    SERVICE.create_capa_cycle(
+                        session, case_id=case_id, requested_on=DAY,
+                        incoming_reference="ISOLATION-CAPA", notes="target round",
+                        reason="separate operation", user=USER,
+                    )
+                elif operation == "capa_update":
+                    SERVICE.update_capa_cycle(
+                        session, capa_cycle_id=capa["capa_cycle_id"],
+                        expected_version=capa["row_version"],
+                        requested_on=DAY, incoming_reference="ISOLATION-UPDATE",
+                        notes="target update", reason="separate operation", user=USER,
+                    )
+                elif operation == "approval_create":
+                    SERVICE.create_approval_submission(
+                        session, case_id=case_id, stage="PCT", reference="ISOLATION-PCT",
+                        submitted_on=DAY, submitted_time=None, pct_submission_id=None,
+                        reason="separate operation", user=USER,
+                    )
+                else:
+                    SERVICE.complete_approval_submission(
+                        session, approval_submission_id=submission["approval_submission_id"],
+                        expected_version=submission["row_version"], completed_on=DAY,
+                        completed_time=None, reason="separate operation", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == foreign_case_id)
+                ) == foreign_count
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == target_count
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["capa_create", "capa_update", "approval_create", "approval_complete"])
+def test_capa_approval_allows_foreign_noop_dirty_marker(pg_engine, operation):
+    """Session-wide admission must ignore an ORM identity with no real edit."""
+    case_id, _ = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    target_capa = create_cycle(pg_engine, case_id) if operation == "capa_update" else None
+    target_approval = approval(pg_engine, case_id, "PCT") if operation == "approval_complete" else None
+    foreign_case_id, _ = seed(pg_engine)
+
+    with Session(pg_engine) as session:
+        foreign_case = session.get(Case, foreign_case_id)
+        original_foreign_scope = foreign_case.scope_code
+        foreign_case.scope_code = original_foreign_scope
+        assert foreign_case in session.dirty
+        assert not session.is_modified(foreign_case, include_collections=True)
+        if operation == "capa_create":
+            result = SERVICE.create_capa_cycle(
+                session, case_id=case_id, requested_on=DAY,
+                incoming_reference="POSITIVE-CAPA", notes="valid independent round",
+                reason="no-op foreign Case", user=USER,
+            )
+        elif operation == "capa_update":
+            result = SERVICE.update_capa_cycle(
+                session, capa_cycle_id=target_capa["capa_cycle_id"],
+                expected_version=target_capa["row_version"], requested_on=DAY,
+                incoming_reference="POSITIVE-UPDATE", notes="valid update",
+                reason="no-op foreign Case", user=USER,
+            )
+        elif operation == "approval_create":
+            result = SERVICE.create_approval_submission(
+                session, case_id=case_id, stage="PCT", reference="POSITIVE-PCT",
+                submitted_on=DAY, submitted_time=None, pct_submission_id=None,
+                reason="no-op foreign Case", user=USER,
+            )
+        else:
+            result = SERVICE.complete_approval_submission(
+                session, approval_submission_id=target_approval["approval_submission_id"],
+                expected_version=target_approval["row_version"],
+                completed_on=DAY, completed_time=None,
+                reason="no-op foreign Case", user=USER,
+            )
+        assert result
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original_foreign_scope
+        if operation.startswith("capa"):
+            assert verify.scalar(
+                select(func.count()).select_from(CapaCycle)
+                .where(CapaCycle.case_id == case_id)
+            ) == 1
+        else:
+            assert verify.scalar(
+                select(func.count()).select_from(InspectionApprovalSubmission)
+                .where(InspectionApprovalSubmission.case_id == case_id)
+            ) == 1

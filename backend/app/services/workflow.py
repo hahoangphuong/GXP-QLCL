@@ -4435,6 +4435,7 @@ class CaseWorkflowService:
                 session, case_id=row.id, operation="creation",
             )
             self._assert_case_has_no_open_capa_cycle(session, row.id)
+            self._assert_mutation_session_clean(session, operation="CAPA creation")
         actor = self._get_or_create_app_user(session, user)
         capa_cycle = CapaCycle(
             case_id=row.id,
@@ -4488,6 +4489,9 @@ class CaseWorkflowService:
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA update",
         )
+        # The read-only parent admission allows unrelated Session drafts;
+        # the actual mutation must fence them before its first autoflush.
+        self._assert_mutation_session_clean(session, operation="CAPA update")
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
@@ -4533,6 +4537,9 @@ class CaseWorkflowService:
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA submit",
         )
+        # The read-only parent admission allows unrelated Session drafts;
+        # the actual mutation must fence them before its first autoflush.
+        self._assert_mutation_session_clean(session, operation="CAPA submit")
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
@@ -4574,6 +4581,9 @@ class CaseWorkflowService:
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA assess",
         )
+        # The read-only parent admission allows unrelated Session drafts;
+        # the actual mutation must fence them before its first autoflush.
+        self._assert_mutation_session_clean(session, operation="CAPA assess")
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         normalized_result = (result or "").strip().lower()
@@ -5633,6 +5643,7 @@ class CaseWorkflowService:
                 round_no = next_approval_round(rounds)
             except InspectionContractViolation as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
+            self._assert_mutation_session_clean(session, operation="approval creation")
         submission = InspectionApprovalSubmission(case_id=row.id, stage=normalized_stage, round_no=round_no, reference=reference, submitted_on=submitted_on, submitted_time=submitted_time, pct_submission_id=pct_submission_id)
         session.add(submission)
         session.flush()
@@ -5755,6 +5766,7 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Approval document link has uncommitted changes; resolve draft before completion.",
                     )
+            self._assert_mutation_session_clean(session, operation="approval completion")
         try:
             validate_approval_completion(
                 existing_completed_on=row.completed_on,
@@ -6284,10 +6296,10 @@ class CaseWorkflowService:
         return certificate, version, created_scopes
 
     @staticmethod
-    def _assert_certificate_mutation_session_clean(
+    def _assert_mutation_session_clean(
         session: Session, *, operation: str,
     ) -> None:
-        """Fence residual independent intents before a certificate Session flush.
+        """Fence residual independent intents before an owner Session flush.
 
         SQLAlchemy's flush writes every pending row in the Session, even
         across unrelated Case/Site aggregates. The caller's no-autoflush
@@ -6304,7 +6316,7 @@ class CaseWorkflowService:
         ):
             raise HTTPException(
                 status_code=409,
-                detail=f"Session has uncommitted changes; resolve other drafts before certificate {operation}.",
+                detail=f"Session has uncommitted changes; resolve other drafts before {operation}.",
             )
 
     def _assert_certificate_mutation_has_no_pending_approvals(
@@ -6508,7 +6520,7 @@ class CaseWorkflowService:
                 self._assert_certificate_mutation_has_no_pending_nonissuance(
                     session, case_id=case.id, operation="issuance",
                 )
-            self._assert_certificate_mutation_session_clean(
+            self._assert_mutation_session_clean(
                 session, operation="issuance",
             )
         self._validate_certificate_case_link(
@@ -6699,7 +6711,7 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Certificate scope has uncommitted changes; resolve draft before editing version.",
                 )
-            self._assert_certificate_mutation_session_clean(
+            self._assert_mutation_session_clean(
                 session, operation="version editing",
             )
         actor = self._get_or_create_app_user(session, user)
@@ -6942,7 +6954,7 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
                 )
-            self._assert_certificate_mutation_session_clean(
+            self._assert_mutation_session_clean(
                 session, operation="promotion",
             )
         blocker = self._get_certificate_promotion_blocker(

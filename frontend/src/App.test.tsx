@@ -1544,7 +1544,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).not.toHaveBeenCalled();
   });
 
-  it("keeps only master column filters and removes the redundant facility context summary", async () => {
+  it("keeps the compact toolbar, master/history split, and removes the redundant facility context summary", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-p2", production_line_id: "line-uuid-2", production_line_code: "A", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [{ id: "case-2", source_type: "case", title: "Case two", occurred_on: "2026-01-02", state: "planned" }] }));
@@ -1556,16 +1556,16 @@ describe("App Slice A.4 search workspace", () => {
     expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Phạm vi" })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Tìm nhanh" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Tìm nhanh" })).toBeInTheDocument();
     expect(container.querySelector(".legacy-search-filters")).toBeNull();
     expect(container.querySelector(".facility-context-bar")).toBeNull();
     expect(screen.queryByLabelText("Trạng thái hồ sơ")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Tỉnh/thành")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Cơ sở/dây chuyền" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Xóa lọc" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Đã tải \d+ \/ \d+/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Cơ sở/dây chuyền" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xóa lọc" })).toBeDisabled();
+    expect(screen.getByText("1 kết quả")).toBeInTheDocument();
     const tableHead = container.querySelector(".facility-table thead") as HTMLElement;
     expect(container.querySelector(".search-page-header")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Điều hướng chính" })).toBeInTheDocument();
@@ -1593,7 +1593,7 @@ describe("App Slice A.4 search workspace", () => {
     });
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
-    expect(container.querySelector(".search-toolbar")).toBeNull();
+    expect(container.querySelector(".search-toolbar")).not.toBeNull();
     expect(container.querySelector(".search-master-history > .history-panel")).not.toBeNull();
     expect(container.querySelector(".facility-workspace-panel .history-panel")).toBeNull();
     expect(container.querySelectorAll(".history-table")).toHaveLength(1);
@@ -2141,9 +2141,10 @@ describe("App Slice A.4 search workspace", () => {
       "Loại",
       "Tiêu chuẩn",
       "Ngày",
+      "Trạng thái",
     ]);
     expect(historyTable?.querySelector("tbody tr")).toHaveAttribute("title", "Đã hoàn tất kiểm tra");
-    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(3);
+    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(4);
     await waitFor(() => {
       expect(
         within(historyTable as HTMLElement)
@@ -2253,7 +2254,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
 
     expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
-    expect(screen.queryByText("Đã tải 2 / 3")).not.toBeInTheDocument();
+    expect(screen.getByText("Đã tải 2 / 3")).toBeInTheDocument();
     const scrollRegion = screen.getByTestId("facility-table-scroll");
     Object.defineProperty(scrollRegion, "scrollTop", { configurable: true, value: 260 });
     Object.defineProperty(scrollRegion, "clientHeight", { configurable: true, value: 200 });

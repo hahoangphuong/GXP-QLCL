@@ -71,17 +71,19 @@ export function HistoryTable({
             <col className="col-event-type" />
             <col className="col-standard" />
             <col className="col-date" />
+            <col className="col-state" />
           </colgroup>
           <thead>
             <tr>
               <th scope="col" className="col-event-type">Loại</th>
               <th scope="col" className="col-standard">Tiêu chuẩn</th>
               <th scope="col" className="col-date">Ngày</th>
+              <th scope="col" className="col-state">Trạng thái</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td className="history-empty" colSpan={3}>Chưa có lịch sử kiểm tra hoặc thay đổi trong ngữ cảnh đang chọn.</td></tr>
+              <tr><td className="history-empty" colSpan={4}>Chưa có lịch sử kiểm tra hoặc thay đổi trong ngữ cảnh đang chọn.</td></tr>
             ) : null}
             {rows.map((row, index) => (
               <tr
@@ -126,6 +128,7 @@ export function HistoryTable({
                 <td title={row.event_type}>{formatHistoryEventType(row.event_type)}</td>
                 <td title={row.standard ?? ""}>{row.standard ?? "Chưa có"}</td>
                 <td>{formatCompactDate(row.occurred_on)}</td>
+                <td>{formatStatusLabel(row.state)}</td>
               </tr>
             ))}
           </tbody>

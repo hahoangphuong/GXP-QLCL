@@ -47,6 +47,7 @@ export function FacilityTable({
   onReachEnd,
   onSelect,
   selectedGxpType,
+  totalCount = rows.length,
 }: {
   rows: FacilitySearchResult[];
   selectedResultKey: string | null;
@@ -63,6 +64,7 @@ export function FacilityTable({
   onReachEnd: () => void;
   onSelect: (resultKey: string) => void;
   selectedGxpType: string;
+  totalCount?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
@@ -159,6 +161,10 @@ export function FacilityTable({
           ))}
         </nav>
         <div className="facility-table-frame">
+          <header className="panel-header facility-table-header">
+            <h2>Cơ sở/dây chuyền</h2>
+            <span className="panel-meta">{rows.length < totalCount ? `${rows.length} / ${totalCount}` : `${totalCount}`}</span>
+          </header>
           {!error ? (
             <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">{searchStatus}</p>
           ) : null}

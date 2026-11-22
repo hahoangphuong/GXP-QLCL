@@ -4904,11 +4904,6 @@ class CaseWorkflowService:
                 select(InspectionPlan).where(InspectionPlan.case_id == row.id)
                 .with_for_update().execution_options(populate_existing=True)
             ).first()
-            # The plan mutation will flush all Session objects, not just this
-            # Case. Reject independent drafts before leaving read-only admission.
-            self._assert_mutation_session_clean(
-                session, operation="inspection plan update",
-            )
         if stage is None:
             if expected_version is not None:
                 raise HTTPException(status_code=409, detail="Inspection plan does not exist for supplied expected_version.")
@@ -4926,6 +4921,13 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=422, detail="Inspection plan end date requires a start date.")
             if effective_start is not None and effective_end is not None and effective_start > effective_end:
                 raise HTTPException(status_code=422, detail="Inspection plan start date must not be after its end date.")
+        # The SELECT-only admission preserves 404/409/422 precedence, including
+        # invalid schedule dates, without flushing foreign operator drafts.
+        # Fence the whole Session only at the actual mutation boundary.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(
+                session, operation="inspection plan update",
+            )
         actor = self._get_or_create_app_user(session, user)
         if stage is None:
             stage = InspectionPlan(case_id=row.id)

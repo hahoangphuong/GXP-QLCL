@@ -41,8 +41,12 @@ describe("canonical record report workflow", () => {
       total_count: 101, limit: 100, offset: 100,
     });
     vi.mocked(getGxpCertificateDetail).mockReset().mockResolvedValue({
-      ...cert, certificate_type: gxp, scopes: [],
-    } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+      ...cert, certificate_type: gxp, row_version: 1, production_line_code: null,
+      production_line_identity_state: "facility_wide", issuance_basis: "legacy_import",
+      latest_flag: true, applicable_standard: null, issuing_authority: null,
+      address: null, company_legal_address: null, scope_summary: null, scopes: [],
+      limitation_text: null, source_description: null, action_readiness: [],
+    });
     vi.mocked(getGxpCertificateVersionHistory).mockReset().mockRejectedValue(new Error("Fixture has no version history"));
     render(<MemoryRouter initialEntries={[origin]}><Routes>
       <Route path="/reports" element={<CanonicalRecordReport access={access} kind="certificates" urlState />} />

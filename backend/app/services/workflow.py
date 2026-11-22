@@ -6051,6 +6051,11 @@ class CaseWorkflowService:
                 "created": False,
                 "row_version": submission.row_version,
             }
+        # Creating a new binding and audit flushes the entire Session, not
+        # only the selected PCT/CT. Fence independent foreign Case/Site drafts
+        # after idempotency admission, before any owner version/write.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="approval document binding")
         binding = InspectionApprovalDocumentLink(
             approval_submission_id=submission.id, document_id=document.id,
         )

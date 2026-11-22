@@ -3269,3 +3269,197 @@ def test_certificate_promotion_refuses_nonlatest_scope_draft(pg_engine, draft_mo
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize(
+    "draft_kind",
+    ["other_case_capa", "other_case_pct", "other_case_refusal", "other_certificate_version", "other_certificate_scope"],
+)
+def test_certificate_promotion_never_autoflushes_foreign_case_operator_draft(pg_engine, draft_kind):
+    """The Session flush is global even when the source draft belongs to another Case/Site."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+
+    foreign_case_id, foreign_site_id = seed(pg_engine)
+    transition(pg_engine, foreign_case_id, "inspection_completed")
+    transition(pg_engine, foreign_case_id, "awaiting_certificate_decision")
+    foreign_certificate = issue(pg_engine, foreign_case_id, foreign_site_id)
+
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        if draft_kind == "other_case_capa":
+            pending = CapaCycle(
+                case_id=foreign_case_id, round_no=1, requested_on=DAY,
+                incoming_reference="UNSUBMITTED-OTHER-CAPA", notes="independent operator draft",
+            )
+            model, owner_key, owner_id = CapaCycle, CapaCycle.case_id, foreign_case_id
+        elif draft_kind == "other_case_pct":
+            pending = InspectionApprovalSubmission(
+                case_id=foreign_case_id, stage="PCT", round_no=1,
+                submitted_on=DAY, reference="UNSUBMITTED-OTHER-PCT",
+            )
+            model, owner_key, owner_id = InspectionApprovalSubmission, InspectionApprovalSubmission.case_id, foreign_case_id
+        elif draft_kind == "other_case_refusal":
+            actor_id = session.scalar(
+                select(AuditEvent.actor_user_id)
+                .where(AuditEvent.actor_user_id.is_not(None)).limit(1)
+            )
+            assert actor_id is not None
+            pending = CaseCertificateNonissuanceDecision(
+                case_id=foreign_case_id, decided_on=DAY,
+                decision_reference="UNSUBMITTED-OTHER-REFUSAL",
+                explanation="separate case legal draft", recorded_by_user_id=actor_id,
+            )
+            model, owner_key, owner_id = CaseCertificateNonissuanceDecision, CaseCertificateNonissuanceDecision.case_id, foreign_case_id
+        elif draft_kind == "other_certificate_version":
+            pending = CertificateVersion(
+                certificate_id=foreign_certificate["certificate_id"], version_no=2,
+                certificate_number="UNSUBMITTED-OTHER-VERSION",
+                lifecycle_state="DRAFT", is_latest_version=False,
+            )
+            model, owner_key, owner_id = CertificateVersion, CertificateVersion.certificate_id, foreign_certificate["certificate_id"]
+        else:
+            pending = CertificateScope(
+                certificate_version_id=foreign_certificate["latest_version_id"],
+                scope_key="FOREIGN-SCOPE", scope_text="unsubmitted foreign scope",
+                language_code="vi", sort_order=22,
+            )
+            model, owner_key, owner_id = CertificateScope, CertificateScope.certificate_version_id, foreign_certificate["latest_version_id"]
+        count_before = session.scalar(
+            select(func.count()).select_from(model).where(owner_key == owner_id)
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Promotion attempted a global Session flush of another Case draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.promote_certificate_current(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    reason="synthetic other Case draft isolation", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(model).where(owner_key == owner_id)
+                ) == count_before
+                assert session.scalar(
+                    select(Certificate.latest_flag).where(Certificate.id == candidate["certificate_id"])
+                ) is False
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("draft_kind", ["other_case_dirty", "other_version_dirty", "other_scope_deleted"])
+def test_certificate_promotion_preserves_foreign_dirty_or_deleted_draft(pg_engine, draft_kind):
+    """A distinct Case/Site's changed or deleted record cannot ride promotion flush."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+    foreign_case_id, foreign_site_id = seed(pg_engine)
+    transition(pg_engine, foreign_case_id, "inspection_completed")
+    transition(pg_engine, foreign_case_id, "awaiting_certificate_decision")
+    foreign = issue(pg_engine, foreign_case_id, foreign_site_id)
+
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        if draft_kind == "other_case_dirty":
+            pending = session.get(Case, foreign_case_id)
+            original = pending.scope_code
+            pending.scope_code = "UNSUBMITTED-FOREIGN-CASE"
+            column, owner_id = Case.scope_code, foreign_case_id
+        elif draft_kind == "other_version_dirty":
+            pending = session.get(CertificateVersion, foreign["latest_version_id"])
+            original = pending.certificate_number
+            pending.certificate_number = "UNSUBMITTED-FOREIGN-VERSION"
+            column, owner_id = CertificateVersion.certificate_number, pending.id
+        else:
+            scope_id = session.scalar(
+                select(CertificateScope.id).where(
+                    CertificateScope.certificate_version_id == foreign["latest_version_id"]
+                ).limit(1)
+            )
+            assert scope_id is not None
+            pending = session.get(CertificateScope, scope_id)
+            original = pending.scope_text
+            session.delete(pending)
+            column, owner_id = CertificateScope.scope_text, scope_id
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Promotion attempted to save unrelated changed/deleted record")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.promote_certificate_current(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    reason="synthetic foreign draft edit isolation", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in (
+                session.deleted if draft_kind == "other_scope_deleted" else session.dirty
+            )
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(column).where(
+                        (Case.id if draft_kind == "other_case_dirty"
+                         else CertificateVersion.id if draft_kind == "other_version_dirty"
+                         else CertificateScope.id) == owner_id
+                    )
+                ) == original
+                assert session.scalar(
+                    select(Certificate.latest_flag)
+                    .where(Certificate.id == candidate["certificate_id"])
+                ) is False
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_certificate_promotion_accepts_foreign_case_noop_dirty_identity(pg_engine):
+    """A harmless ORM dirty marker is not a separately flushable operator change."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+    foreign_case_id, _ = seed(pg_engine)
+
+    with Session(pg_engine) as session:
+        foreign_case = session.get(Case, foreign_case_id)
+        foreign_case.scope_code = foreign_case.scope_code
+        assert foreign_case in session.dirty
+        assert not session.is_modified(foreign_case, include_collections=True)
+        result = SERVICE.promote_certificate_current(
+            session, certificate_id=candidate["certificate_id"],
+            expected_version=candidate["row_version"],
+            reason="synthetic no-op ORM marker", user=USER,
+        )
+        assert result["latest_flag"] is True
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Certificate, candidate["certificate_id"]).latest_flag is True
+        assert verify.scalar(
+            select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.entity_id == candidate["certificate_id"],
+                AuditEvent.action == "certificate.promote_current",
+            )
+        ) == 1

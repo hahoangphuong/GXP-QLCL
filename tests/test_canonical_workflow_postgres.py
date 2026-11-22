@@ -3547,3 +3547,46 @@ def test_certificate_issue_and_edit_preserve_foreign_case_operator_intent(pg_eng
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["issue", "edit"])
+def test_certificate_issue_edit_allows_harmless_foreign_noop_marker(pg_engine, operation):
+    """Do not reject a no-op ORM dirty identity as a separate draft."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    target = issue(pg_engine, case_id, site_id) if operation == "edit" else None
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign_case = session.get(Case, foreign_case_id)
+        foreign_case.scope_code = foreign_case.scope_code
+        assert foreign_case in session.dirty
+        assert not session.is_modified(foreign_case, include_collections=True)
+        if operation == "issue":
+            result = SERVICE.issue_certificate(
+                session, site_id=site_id, case_id=case_id,
+                certificate_type="GMP", issuance_basis="inspection_case",
+                certificate_number="SYNTH-NOOP-ISSUE", issue_date=DAY,
+                expiry_date=date(2027, 10, 1), scopes=[],
+                reason="positive no-op marker", user=USER,
+            )
+            audit_action = "certificate.issue"
+            audit_owner = result["certificate_id"]
+        else:
+            result = SERVICE.upsert_certificate_latest_version(
+                session, certificate_id=target["certificate_id"],
+                expected_version=target["row_version"],
+                certificate_number="SYNTH-NOOP-EDIT", issue_date=DAY,
+                expiry_date=date(2027, 10, 1), scopes=[],
+                reason="positive no-op marker", user=USER,
+            )
+            audit_action = "certificate.latest_version.upsert"
+            audit_owner = result["latest_version_id"]
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.scalar(
+            select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.entity_id == audit_owner,
+                AuditEvent.action == audit_action,
+            )
+        ) == 1

@@ -3680,7 +3680,8 @@ def test_capa_approval_allows_foreign_noop_dirty_marker(pg_engine, operation):
 
     with Session(pg_engine) as session:
         foreign_case = session.get(Case, foreign_case_id)
-        foreign_case.scope_code = foreign_case.scope_code
+        original_foreign_scope = foreign_case.scope_code
+        foreign_case.scope_code = original_foreign_scope
         assert foreign_case in session.dirty
         assert not session.is_modified(foreign_case, include_collections=True)
         if operation == "capa_create":
@@ -3712,7 +3713,7 @@ def test_capa_approval_allows_foreign_noop_dirty_marker(pg_engine, operation):
         assert result
         session.commit()
     with Session(pg_engine) as verify:
-        assert verify.get(Case, foreign_case_id).scope_code == foreign_case.scope_code
+        assert verify.get(Case, foreign_case_id).scope_code == original_foreign_scope
         if operation.startswith("capa"):
             assert verify.scalar(
                 select(func.count()).select_from(CapaCycle)

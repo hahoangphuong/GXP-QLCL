@@ -2115,3 +2115,77 @@ def test_independent_capa_assessment_and_approval_completion_serialize(pg_engine
             )
         ) == 1
         assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before + 2
+
+
+@pytest.mark.parametrize("stage", ["PCT", "CT"])
+@pytest.mark.parametrize("draft_mode", ["new", "dirty"])
+def test_capa_creation_refuses_unsubmitted_approval_draft(pg_engine, stage, draft_mode):
+    """A new CAPA round must not persist a staged PCT/CT intent."""
+    case_id, _site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    parent = complete(pg_engine, approval(pg_engine, case_id, "PCT")) if stage == "CT" else None
+    existing = approval(
+        pg_engine, case_id, stage,
+        parent["approval_submission_id"] if parent else None,
+    ) if draft_mode == "dirty" else None
+    with Session(pg_engine) as session:
+        case_version = session.get(Case, case_id).row_version
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        approval_before = session.scalar(
+            select(func.count()).select_from(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case_id)
+        )
+        if draft_mode == "new":
+            pending = InspectionApprovalSubmission(
+                case_id=case_id, stage=stage, round_no=1,
+                reference="UNSUBMITTED-APPROVAL-CAPA-CREATE",
+                submitted_on=DAY,
+                pct_submission_id=parent["approval_submission_id"] if parent else None,
+            )
+            session.add(pending)
+        else:
+            pending = session.get(
+                InspectionApprovalSubmission, existing["approval_submission_id"]
+            )
+            pending.reference = "UNSUBMITTED-APPROVAL-EDIT-BEFORE-CAPA"
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA creation autoflushed a staged PCT/CT intent")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.create_capa_cycle(
+                    session, case_id=case_id, expected_case_version=case_version,
+                    requested_on=DAY, incoming_reference="CAPA-CREATE-REF",
+                    notes="new CAPA", reason="independent intent", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            if draft_mode == "new":
+                assert pending in session.new
+            else:
+                assert pending in session.dirty
+                assert pending.reference == "UNSUBMITTED-APPROVAL-EDIT-BEFORE-CAPA"
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(InspectionApprovalSubmission)
+                    .where(InspectionApprovalSubmission.case_id == case_id)
+                ) == approval_before
+                if existing is not None:
+                    assert session.scalar(
+                        select(InspectionApprovalSubmission.reference).where(
+                            InspectionApprovalSubmission.id == existing["approval_submission_id"]
+                        )
+                    ) == existing["reference"]
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

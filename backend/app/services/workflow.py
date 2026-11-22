@@ -4278,6 +4278,30 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="CAPA cycle has uncommitted changes; resolve draft before CAPA creation.",
                     )
+            # A CAPA create also flushes the entire caller Session while
+            # allocating a new round. Never commit an independent staged
+            # PCT/CT round or overwrite its locally edited operator draft.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, InspectionApprovalSubmission)
+                    and pending.case_id == row.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before CAPA creation.",
+                    )
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionApprovalSubmission):
+                    continue
+                original_cases = inspect(cached).attrs.case_id.history.deleted
+                if (
+                    (cached.case_id == row.id or row.id in original_cases)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before CAPA creation.",
+                    )
             self._assert_case_has_no_open_capa_cycle(session, row.id)
         actor = self._get_or_create_app_user(session, user)
         capa_cycle = CapaCycle(

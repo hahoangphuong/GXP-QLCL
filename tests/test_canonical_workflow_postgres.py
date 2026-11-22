@@ -2189,3 +2189,69 @@ def test_capa_creation_refuses_unsubmitted_approval_draft(pg_engine, stage, draf
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("intent", ["legal_refusal", "certificate"])
+@pytest.mark.parametrize("prior_round", ["none", "rejected"])
+def test_capa_creation_refuses_pending_legal_intent(pg_engine, intent, prior_round):
+    """CAPA create cannot commit an unsubmitted legal decision or certificate."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    if prior_round == "rejected":
+        assess_cycle(pg_engine, create_cycle(pg_engine, case_id), "rejected")
+    with Session(pg_engine) as session:
+        case_version = session.get(Case, case_id).row_version
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        cycles_before = session.scalar(
+            select(func.count()).select_from(CapaCycle).where(CapaCycle.case_id == case_id)
+        )
+        if intent == "legal_refusal":
+            actor_id = session.scalar(
+                select(AuditEvent.actor_user_id)
+                .where(AuditEvent.actor_user_id.is_not(None)).limit(1)
+            )
+            assert actor_id is not None
+            pending = CaseCertificateNonissuanceDecision(
+                case_id=case_id, decided_on=DAY,
+                decision_reference="UNSUBMITTED-LEGAL-REFUSAL-CAPA-CREATE",
+                explanation="A separate unapproved refusal intent",
+                recorded_by_user_id=actor_id,
+            )
+            model = CaseCertificateNonissuanceDecision
+        else:
+            pending = Certificate(
+                case_id=case_id, site_id=site_id, certificate_type="GMP",
+                issuance_basis="inspection_case", latest_flag=False,
+            )
+            model = Certificate
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("CAPA creation autoflushed a separate legal intent")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.create_capa_cycle(
+                    session, case_id=case_id, expected_case_version=case_version,
+                    requested_on=DAY, incoming_reference="ANOTHER-CAPA-ROUND",
+                    notes="new CAPA independent of legal decision", reason=None, user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(model).where(model.case_id == case_id)
+                ) == 0
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle)
+                    .where(CapaCycle.case_id == case_id)
+                ) == cycles_before
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

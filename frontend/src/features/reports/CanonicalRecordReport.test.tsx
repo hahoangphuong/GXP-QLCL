@@ -3,10 +3,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiAccess } from "../../App";
-import { getCertificateReport, getChangeRequestReport } from "../../lib/api";
+import { getCertificateReport, getChangeRequestReport, getGxpCertificateDetail, getGxpCertificateVersionHistory } from "../../lib/api";
 import { CanonicalRecordReport } from "./CanonicalRecordReport";
+import { ReportRecordDetail } from "./ReportRecordDetail";
 
-vi.mock("../../lib/api", () => ({ getCertificateReport: vi.fn(), getChangeRequestReport: vi.fn() }));
+vi.mock("../../lib/api", () => ({
+  getCertificateReport: vi.fn(), getChangeRequestReport: vi.fn(),
+  getGxpCertificateDetail: vi.fn(), getGxpCertificateVersionHistory: vi.fn(),
+}));
 
 const access: ApiAccess = {
   auth: { username: "reader", role: "reader" }, useStubAuth: true,
@@ -30,6 +34,32 @@ beforeEach(() => {
 });
 
 describe("canonical record report workflow", () => {
+  it.each(["GSP", "GDP"])("returns from %s detail to the applied report filters and page", async gxp => {
+    const origin = `/reports?report=certificates&gxp_type=${gxp}&expiry_days=30&q=facility&offset=100`;
+    vi.mocked(getCertificateReport).mockResolvedValue({
+      items: [{ ...cert, gxp_type: gxp, result_key: `site-uuid:${gxp}:facility_wide:` }],
+      total_count: 101, limit: 100, offset: 100,
+    });
+    vi.mocked(getGxpCertificateDetail).mockReset().mockResolvedValue({
+      ...cert, certificate_type: gxp, scopes: [],
+    } as Awaited<ReturnType<typeof getGxpCertificateDetail>>);
+    vi.mocked(getGxpCertificateVersionHistory).mockReset().mockRejectedValue(new Error("Fixture has no version history"));
+    render(<MemoryRouter initialEntries={[origin]}><Routes>
+      <Route path="/reports" element={<CanonicalRecordReport access={access} kind="certificates" urlState />} />
+      <Route path="/reports/certificates/:certificateId" element={<ReportRecordDetail access={access} kind="certificates" />} />
+    </Routes></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "GCN-123" }));
+    expect(await screen.findByRole("heading", { name: `Chi tiết GCN ${gxp}` })).toBeInTheDocument();
+    expect(getGxpCertificateDetail).toHaveBeenCalledExactlyOnceWith("cert-uuid", access.auth, true, null);
+    const back = screen.getByRole("link", { name: "Quay lại Báo cáo" });
+    expect(back).toHaveAttribute("href", origin);
+    fireEvent.click(back);
+    expect(await screen.findByRole("link", { name: "GCN-123" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Loại GxP")).toHaveValue(gxp);
+    expect(screen.getByText("Trang 2 / 2")).toBeInTheDocument();
+    expect(getCertificateReport).toHaveBeenCalledTimes(2);
+  });
+
   it("passes applied certificate filters through metadata navigation without a new request", async () => {
     function Destination() {
       const location = useLocation();

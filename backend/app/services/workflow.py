@@ -4302,6 +4302,24 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Approval submission has uncommitted changes; resolve draft before CAPA creation.",
                     )
+            # An operator's separately staged non-issuance decision or
+            # certificate candidate is a legal intent, not a CAPA create
+            # side effect. Refuse both before round allocation and audit
+            # can flush the entire reused Session.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, CaseCertificateNonissuanceDecision)
+                    and pending.case_id == row.id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Non-issuance decision has uncommitted changes; resolve draft before CAPA creation.",
+                    )
+                if isinstance(pending, Certificate) and pending.case_id == row.id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Certificate has uncommitted changes; resolve draft before CAPA creation.",
+                    )
             self._assert_case_has_no_open_capa_cycle(session, row.id)
         actor = self._get_or_create_app_user(session, user)
         capa_cycle = CapaCycle(

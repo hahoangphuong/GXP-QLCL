@@ -4192,3 +4192,64 @@ def test_bind_approval_document_allows_foreign_noop_dirty_marker(pg_engine):
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "inspection_approval_document_link.create",
         )) >= 1
+
+
+@pytest.mark.parametrize("operation", ["header_update", "detail_create", "transition"])
+def test_change_request_mutation_refuses_foreign_pending_capa(pg_engine, operation):
+    """A Change Request mutation cannot save pending CAPA from a foreign Case."""
+    _, site_id = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    cr = write(
+        pg_engine, SERVICE.create_change_request,
+        site_id=site_id, scope_label="Synthetic scope",
+        description="Target change", submitted_on=DAY,
+        requester_name="Synthetic operator", reason="seed",
+    )
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="PENDING-FOREIGN-CR-EDIT",
+        )
+        session.add(pending)
+        flushes = []
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Change Request mutation attempted foreign CAPA flush")
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "header_update":
+                    SERVICE.update_change_request(
+                        session, change_request_id=cr["change_request_id"],
+                        expected_version=cr["row_version"],
+                        scope_label="Updated synthetic scope", description=None,
+                        submitted_on=None, requester_name=None,
+                        fields_set={"scope_label"}, reason="synthetic update", user=USER,
+                    )
+                elif operation == "detail_create":
+                    SERVICE.create_change_request_detail(
+                        session, change_request_id=cr["change_request_id"],
+                        expected_version=cr["row_version"],
+                        classification_id=None, classification_label="Synthetic class",
+                        approval_status=None, old_value="old", new_value="new",
+                        note=None, reason="synthetic detail", user=USER,
+                    )
+                else:
+                    SERVICE.transition_change_request(
+                        session, change_request_id=cr["change_request_id"],
+                        target_state="under_review", expected_version=cr["row_version"],
+                        reason="synthetic transition", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

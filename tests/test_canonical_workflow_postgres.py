@@ -3977,3 +3977,62 @@ def test_legal_outcome_mutation_refuses_foreign_session_draft(pg_engine, operati
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["finalize", "nonissuance"])
+def test_legal_outcome_mutation_accepts_foreign_noop_dirty_marker(pg_engine, operation):
+    """No-op foreign Case identity markers are not independent SQL writes."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        if operation == "finalize":
+            setup.add(InspectionOutcome(
+                case_id=case_id, outcome_result="Synthetic completed inspection",
+            ))
+        else:
+            setup.get(Case, case_id).state = CaseState.AWAITING_CERTIFICATE_DECISION
+            setup.add(InspectionOutcome(
+                case_id=case_id, final_evaluation="Synthetic final legal assessment",
+            ))
+        setup.commit()
+
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original_scope = foreign.scope_code
+        foreign.scope_code = original_scope
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        target = session.get(Case, case_id)
+        if operation == "finalize":
+            outcome = session.scalar(select(InspectionOutcome).where(
+                InspectionOutcome.case_id == case_id
+            ))
+            result = SERVICE.finalize_inspection_outcome(
+                session, case_id=case_id, expected_version=outcome.row_version,
+                final_evaluation="Synthetic approved determination",
+                reason="synthetic no-op control", user=USER,
+            )
+            assert result["final_evaluation"] == "Synthetic approved determination"
+        else:
+            result = SERVICE.record_case_nonissuance_decision(
+                session, case_id=case_id, expected_case_version=target.row_version,
+                decided_on=DAY, decision_reference="SYNTH-NONISSUANCE-NOOP",
+                explanation="Synthetic legal rationale",
+                reason="synthetic no-op control", user=USER,
+            )
+            assert result["decision"] is not None
+        session.commit()
+
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original_scope
+        if operation == "finalize":
+            assert verify.scalar(select(InspectionOutcome.final_evaluation).where(
+                InspectionOutcome.case_id == case_id
+            )) == "Synthetic approved determination"
+            assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.action == "inspection_outcome.finalize"
+            )) >= 1
+        else:
+            assert verify.scalar(select(func.count()).select_from(
+                CaseCertificateNonissuanceDecision
+            ).where(CaseCertificateNonissuanceDecision.case_id == case_id)) == 1

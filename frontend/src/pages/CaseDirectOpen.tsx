@@ -8,7 +8,10 @@ import { resolveDocumentWorkspace } from "../features/documents/documentNavigati
 import { caseReportReturn } from "../features/reports/caseReportUrl";
 import { reportReturnLocation } from "../features/reports/reportReturnLocation";
 
-type Resolved = { owner: object; location: string | null; error: string | null };
+type Resolved = { owner: object; location: string; error?: never; documentUnavailable?: never }
+  | { owner: object; location?: never; error: string; documentUnavailable: boolean };
+
+class CaseDocumentUnavailable extends Error {}
 
 function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: CaseWorkflowQueue | null, documentKey: string | null, sourceCertificate: { id: string; siteId: string } | null): string {
   const summary = workspace.case_summary;
@@ -49,7 +52,7 @@ function caseSearchLocation(caseId: string, workspace: CaseWorkspace, queue: Cas
   if (documentKey && !documentTarget) {
     // An exact document deep link must not silently open a different Case pane.
     // The canonical checklist/action owner decides if the target still exists.
-    throw new Error("Mục tài liệu không còn khớp checklist và thao tác canonical của Case.");
+    throw new CaseDocumentUnavailable("Mục tài liệu không còn khớp checklist và thao tác canonical của Case.");
   }
   if (documentTarget) {
     params.set("document_key", documentTarget.checklist_key);
@@ -88,9 +91,13 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   const { caseId } = useParams();
   const location = useLocation();
   const [params] = useSearchParams();
-  const queue = caseWorkflowQueue(params.get("return_queue"));
+  const queue = params.getAll("return_queue").length === 1 ? caseWorkflowQueue(params.get("return_queue")) : null;
   const returnHint = caseReportReturn(location.state);
-  const reportReturn = returnHint?.startsWith("/workflow?") && new URLSearchParams(returnHint.slice("/workflow?".length)).get("queue") !== queue ? null : returnHint;
+  const boundCaseId = location.state?.caseReportCaseId;
+  const reportQueueMismatch = returnHint?.startsWith("/workflow?")
+    && new URLSearchParams(returnHint.slice("/workflow?".length)).get("queue") !== queue;
+  const caseReturnState = returnHint && !reportQueueMismatch && (boundCaseId === undefined || boundCaseId === caseId)
+    ? { caseReportReturn: returnHint, caseReportCaseId: caseId } : undefined;
   const keys = params.getAll("document_key");
   const documentKey = keys[0] ?? null;
   const validDocumentHint = keys.length <= 1 && (documentKey === null || (documentKey.length > 0 && documentKey.length <= 1024 && documentKey === documentKey.trim()));
@@ -118,9 +125,10 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
         const workspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
         if (!live) return;
         const location = caseSearchLocation(caseId, workspace, queue, documentKey, sourceCertificate);
-        setResult({ owner, location, error: null });
+        setResult({ owner, location });
       } catch (error) {
-        if (live) setResult({ owner, location: null, error: error instanceof Error ? error.message : "Không mở được hồ sơ." });
+        if (live) setResult({ owner, error: error instanceof Error ? error.message : "Không mở được hồ sơ.",
+          documentUnavailable: error instanceof CaseDocumentUnavailable });
       }
     })();
     return () => { live = false; };
@@ -130,11 +138,11 @@ export function CaseDirectOpen({ access }: { access: ApiAccess }) {
   if (!caseId) return <p>Thiếu Case UUID.</p>;
   if (!validSourceHint) return <p role="alert">Tham số Certificate/Site liên kết không hợp lệ.</p>;
   if (!validIntent) return <p role="alert">Tham số mục tài liệu không hợp lệ hoặc xung đột với Certificate nguồn.</p>;
-  if (current?.location) return <Navigate to={current.location} replace state={reportReturn ? { caseReportReturn: reportReturn, caseReportCaseId: caseId } : sourceCertificate && certificateReportReturn && !documentKey ? { certificateReportReturn, certificateReportCaseId: caseId } : undefined} />;
+  if (current?.location) return <Navigate to={current.location} replace state={caseReturnState ?? (sourceCertificate && certificateReportReturn && !documentKey ? { certificateReportReturn, certificateReportCaseId: caseId } : undefined)} />;
   return <section className="page-section">
     <h2>Định vị hồ sơ</h2>
     {current?.error ? <p role="alert">{current.error}</p> : <p role="status">Đang xác minh Case UUID và ngữ cảnh cơ sở...</p>}
-    {documentKey && current?.error?.startsWith("Mục tài liệu không còn khớp") && <Link className="text-link" to={`/cases/${encodeURIComponent(caseId)}${queue ? `?return_queue=${encodeURIComponent(queue)}` : ""}`}>Mở Case không chọn mục tài liệu</Link>}
+    {current?.documentUnavailable && <Link className="text-link" state={caseReturnState} to={`/cases/${encodeURIComponent(caseId)}${queue ? `?return_queue=${encodeURIComponent(queue)}` : ""}`}>Mở Case không chọn mục tài liệu</Link>}
     <Link className="text-link" to={queue ? `/workflow?queue=${queue}` : "/workflow"}>Quay lại Bàn công việc</Link>
   </section>;
 }

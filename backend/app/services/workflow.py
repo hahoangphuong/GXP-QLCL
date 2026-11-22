@@ -1615,6 +1615,49 @@ class CaseWorkflowService:
                     detail=f"{label} has uncommitted changes; resolve draft before CAPA {operation}.",
                 )
 
+    def _assert_capa_has_no_pending_certificate_versions(
+        self, session: Session, *, case_id: str, operation: str,
+    ) -> None:
+        """Never flush a separate GCN version draft through a CAPA mutation.
+
+        The Case owner belongs to the Certificate, not the CertificateVersion.
+        Inspect both original and current version parent when locally edited;
+        query committed Certificate ownership inside caller's no_autoflush.
+        """
+        owner_by_certificate: dict[str, str | None] = {}
+
+        def belongs_to_case(certificate_id: str | None) -> bool:
+            if not certificate_id:
+                return False
+            if certificate_id not in owner_by_certificate:
+                owner_by_certificate[certificate_id] = session.scalar(
+                    select(Certificate.case_id).where(Certificate.id == certificate_id)
+                )
+            return owner_by_certificate[certificate_id] == case_id
+
+        for pending in tuple(session.new):
+            if (
+                isinstance(pending, CertificateVersion)
+                and belongs_to_case(pending.certificate_id)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Certificate version has uncommitted changes; resolve draft before CAPA {operation}.",
+                )
+        for cached in tuple(session.dirty):
+            if not isinstance(cached, CertificateVersion):
+                continue
+            if not session.is_modified(cached, include_collections=False):
+                continue
+            original_parents = inspect(cached).attrs.certificate_id.history.deleted
+            if belongs_to_case(cached.certificate_id) or any(
+                belongs_to_case(parent) for parent in original_parents
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Certificate version has uncommitted changes; resolve draft before CAPA {operation}.",
+                )
+
     def _lock_capa_parent_then_refresh(
         self, session: Session, *, capa_cycle_id: str, operation: str,
     ) -> CapaCycle:
@@ -1750,6 +1793,9 @@ class CaseWorkflowService:
                         detail="Approval submission has uncommitted changes; resolve draft before CAPA mutation.",
                     )
             self._assert_capa_has_no_dirty_legal_intents(
+                session, case_id=case_id, operation="mutation",
+            )
+            self._assert_capa_has_no_pending_certificate_versions(
                 session, case_id=case_id, operation="mutation",
             )
             parent = self._lock_case(session, case_id)
@@ -4346,6 +4392,9 @@ class CaseWorkflowService:
                         detail="Certificate has uncommitted changes; resolve draft before CAPA creation.",
                     )
             self._assert_capa_has_no_dirty_legal_intents(
+                session, case_id=row.id, operation="creation",
+            )
+            self._assert_capa_has_no_pending_certificate_versions(
                 session, case_id=row.id, operation="creation",
             )
             self._assert_case_has_no_open_capa_cycle(session, row.id)

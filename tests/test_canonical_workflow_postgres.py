@@ -2043,24 +2043,6 @@ def test_independent_capa_assessment_and_approval_completion_serialize(pg_engine
         audit_before = lookup.scalar(select(func.count()).select_from(AuditEvent))
     first_flushed, second_started = Event(), Event()
 
-    def execute(owner):
-        with Session(pg_engine) as session:
-            if owner == "capa_assess":
-                result = SERVICE.assess_capa_cycle(
-                    session, capa_cycle_id=cycle["capa_cycle_id"],
-                    expected_version=cycle["row_version"], assessed_on=DAY,
-                    assessor_name=None, result="accepted", notes="independent assess",
-                    reason="concurrent assess", user=USER,
-                )
-            else:
-                result = SERVICE.complete_approval_submission(
-                    session, approval_submission_id=submission["approval_submission_id"],
-                    expected_version=submission["row_version"], completed_on=DAY,
-                    completed_time=None, reason="concurrent completion", user=USER,
-                )
-            session.flush()
-            return session, result
-
     def first():
         with Session(pg_engine) as session:
             if first_writer == "capa_assess":

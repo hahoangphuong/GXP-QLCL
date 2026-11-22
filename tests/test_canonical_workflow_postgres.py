@@ -2985,3 +2985,53 @@ def test_certificate_promotion_refuses_dirty_or_deleted_case_workflow_draft(pg_e
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_certificate_promotion_refuses_unsubmitted_same_case_version(pg_engine):
+    """Promotion must not autoflush a different unsubmitted GCN version."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    candidate = issue(pg_engine, case_id, site_id)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        version_count = session.scalar(
+            select(func.count()).select_from(CertificateVersion)
+            .where(CertificateVersion.certificate_id == candidate["certificate_id"])
+        )
+        pending = CertificateVersion(
+            certificate_id=candidate["certificate_id"], version_no=2,
+            certificate_number="UNSUBMITTED-SECOND-VERSION",
+            lifecycle_state="DRAFT", is_latest_version=False,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("Certificate promotion autoflushed an unsubmitted version")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.promote_certificate_current(
+                    session, certificate_id=candidate["certificate_id"],
+                    expected_version=candidate["row_version"],
+                    reason="synthetic pending version guard", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CertificateVersion)
+                    .where(CertificateVersion.certificate_id == candidate["certificate_id"])
+                ) == version_count
+                assert session.scalar(
+                    select(Certificate.latest_flag).where(Certificate.id == candidate["certificate_id"])
+                ) is False
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

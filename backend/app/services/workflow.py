@@ -5328,6 +5328,17 @@ class CaseWorkflowService:
                     detail=f"Inspection outcome has uncommitted changes; resolve draft before approval {operation}.",
                 )
 
+    def _assert_approval_has_no_pending_certificate(
+        self, session: Session, *, case_id: str, operation: str,
+    ) -> None:
+        """A PCT/CT flush may not insert a separately staged Certificate."""
+        for pending in tuple(session.new):
+            if isinstance(pending, Certificate) and pending.case_id == case_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Certificate has uncommitted changes; resolve draft before approval {operation}.",
+                )
+
     def create_approval_submission(self, session: Session, *, case_id: str, stage: str, reference: str | None, submitted_on: date | None, submitted_time, pct_submission_id: str | None, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
         # Enforce HTTP-equivalent RBAC at the canonical mutation owner
         # before checking resource identity, locks, version or audit.
@@ -5383,6 +5394,9 @@ class CaseWorkflowService:
                 except InspectionContractViolation as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
             self._assert_approval_has_no_pending_inspection_outcome(
+                session, case_id=row.id, operation="creation",
+            )
+            self._assert_approval_has_no_pending_certificate(
                 session, case_id=row.id, operation="creation",
             )
             # This approval creation may flush the caller's whole Session.
@@ -5489,6 +5503,9 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=409, detail="Approval submission Case owner changed; reload canonical submission.")
             self._assert_expected_version(row, expected_version, label="approval_submission")
             self._assert_approval_has_no_pending_inspection_outcome(
+                session, case_id=parent.id, operation="completion",
+            )
+            self._assert_approval_has_no_pending_certificate(
                 session, case_id=parent.id, operation="completion",
             )
             # This approval completion may flush the caller's whole Session.

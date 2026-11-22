@@ -3775,3 +3775,39 @@ def test_case_intake_stage_mutation_rejects_foreign_pending_capa(pg_engine, oper
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["application", "assessment"])
+def test_case_intake_stage_accepts_foreign_noop_dirty_marker(pg_engine, operation):
+    """A separate Case's no-op ORM dirty marker cannot block valid intake."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original_scope = foreign.scope_code
+        foreign.scope_code = original_scope
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        if operation == "application":
+            result = SERVICE.upsert_case_application(
+                session, case_id=case_id, submitted_on=DAY,
+                dossier_code="NOOP-INTAKE", dossier_reference=None,
+                applicant_name="Synthetic applicant", reason="no-op foreign Case",
+                user=USER,
+            )
+            audit_action = "case_application.upsert"
+        else:
+            result = SERVICE.upsert_case_assessment(
+                session, case_id=case_id, assessed_on=DAY,
+                assessor_name="Synthetic assessor", assessment_result="eligible",
+                notes="synthetic assessment", reason="no-op foreign Case",
+                user=USER,
+            )
+            audit_action = "case_assessment.upsert"
+        assert result["case_id"] == case_id
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original_scope
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == case_id, AuditEvent.action == audit_action
+        )) == 1

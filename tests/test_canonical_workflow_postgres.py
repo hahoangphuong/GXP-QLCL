@@ -3811,3 +3811,57 @@ def test_case_intake_stage_accepts_foreign_noop_dirty_marker(pg_engine, operatio
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.entity_id == case_id, AuditEvent.action == audit_action
         )) == 1
+
+
+@pytest.mark.parametrize("operation", ["plan", "outcome"])
+def test_inspection_stage_refuses_foreign_capa_draft_without_flush(pg_engine, operation):
+    """Inspection plan/outcome must not persist a pending CAPA of another Case."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        before_audit = session.scalar(select(func.count()).select_from(AuditEvent))
+        before_foreign = session.scalar(select(func.count()).select_from(CapaCycle).where(
+            CapaCycle.case_id == foreign_case_id
+        ))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="UNCOMMITTED-OTHER-CAPA", notes="unsubmitted",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Inspection stage attempted foreign CAPA autoflush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as ex:
+                if operation == "plan":
+                    SERVICE.upsert_inspection_plan(
+                        session, case_id=case_id,
+                        plan_start_on=DAY, plan_end_on=DAY,
+                        planning_sheet_name="Synthetic schedule",
+                        decision_document_hint=None, reason="synthetic plan",
+                        user=USER,
+                    )
+                else:
+                    SERVICE.upsert_inspection_outcome(
+                        session, case_id=case_id,
+                        inspected_on=DAY, inspected_to_on=DAY,
+                        decision_reference=None, bbkt_reference=None,
+                        outcome_result="Synthetic inspected result",
+                        reason="synthetic outcome", user=USER,
+                    )
+            assert ex.value.status_code == 409
+            assert "uncommitted" in str(ex.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == before_foreign
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == before_audit
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

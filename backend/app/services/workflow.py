@@ -1703,6 +1703,30 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Certificate has uncommitted changes; resolve draft before CAPA mutation.",
                     )
+            # CAPA update/submit/assess may flush the entire Session.
+            # A staged or edited PCT/CT round is a separate operator intent;
+            # do not persist it through CAPA or overwrite a cached draft.
+            for pending in tuple(session.new):
+                if (
+                    isinstance(pending, InspectionApprovalSubmission)
+                    and pending.case_id == case_id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before CAPA mutation.",
+                    )
+            for cached in tuple(session.dirty):
+                if not isinstance(cached, InspectionApprovalSubmission):
+                    continue
+                original_cases = inspect(cached).attrs.case_id.history.deleted
+                if (
+                    (cached.case_id == case_id or case_id in original_cases)
+                    and session.is_modified(cached, include_collections=False)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Approval submission has uncommitted changes; resolve draft before CAPA mutation.",
+                    )
             parent = self._lock_case(session, case_id)
             self._assert_case_not_terminal(parent, operation=operation)
             cycle = session.scalars(

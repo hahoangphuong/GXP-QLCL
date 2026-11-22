@@ -122,13 +122,16 @@ afterEach(() => {
 
 describe("document report return navigation", () => {
   it.each([
-    ["Mở Case trong workspace", null],
-    ["Đến workspace tài liệu", caseDocument.checklist_key],
-    ["Đến workspace để tạo", missingDocument.checklist_key],
-  ])("keeps the originating workflow queue through %s and history traversal", async (label, documentKey) => {
-    const source = "/workflow?queue=inspection&gxp_type=GMP&state=planned&q=site&offset=100";
+    ["Case workspace", "Mở Case trong workspace", null, false, "inspection"],
+    ["available document", "Đến workspace tài liệu", caseDocument.checklist_key, false, "inspection"],
+    ["eligible creation slot", "Đến workspace để tạo", missingDocument.checklist_key, false, "inspection"],
+    ["revoked document from report", "Đến workspace tài liệu", null, true, null],
+    ["revoked document from queue", "Đến workspace tài liệu", null, true, "inspection"],
+  ])("keeps the originating Case return through %s and history traversal", async (_scenario, label, documentKey, revoked, queue) => {
+    const source = (queue ? "/workflow?queue=inspection" : "/reports?report=cases")
+      + "&gxp_type=GMP&state=planned&q=site&offset=100";
     const workspace = casePayload();
-    vi.mocked(getCaseWorkspace).mockResolvedValue({
+    const availableWorkspace = {
       ...workspace,
       case_summary: { ...workspace.case_summary, state: "planned", production_line_id: null,
         production_line_code: null, production_line_identity_state: "facility_wide" },
@@ -140,7 +143,13 @@ describe("document report return navigation", () => {
           { action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [] },
         ] },
       ],
-    });
+    } satisfies Awaited<ReturnType<typeof getCaseWorkspace>>;
+    if (revoked) {
+      const revokedWorkspace = { ...availableWorkspace, contextual_document_actions: [] };
+      vi.mocked(getCaseWorkspace).mockResolvedValue(revokedWorkspace).mockResolvedValueOnce(availableWorkspace);
+    } else {
+      vi.mocked(getCaseWorkspace).mockResolvedValue(availableWorkspace);
+    }
     function History() {
       const navigate = useNavigate();
       return <><button onClick={() => navigate(-1)}>Back</button><button onClick={() => navigate(1)}>Forward</button></>;
@@ -162,12 +171,25 @@ describe("document report return navigation", () => {
       </Routes>
     </MemoryRouter>);
     fireEvent.click(await screen.findByRole("link", { name: label }));
-    const expected = { caseId: "case-1", siteId: "site-1", queue: "inspection", documentKey,
+    if (revoked) {
+      expect(await screen.findByRole("alert")).toHaveTextContent("Mục tài liệu không còn khớp");
+      expect(screen.queryByTestId("case-queue-handoff")).not.toBeInTheDocument();
+      const fallback = screen.getByRole("link", { name: "Mở Case không chọn mục tài liệu" });
+      expect(fallback).toHaveAttribute("href", queue ? "/cases/case-1?return_queue=inspection" : "/cases/case-1");
+      expect(getCaseWorkspace).toHaveBeenCalledTimes(2);
+      fireEvent.click(fallback);
+    }
+    const expected = { caseId: "case-1", siteId: "site-1", queue, documentKey,
       state: { caseReportReturn: source, caseReportCaseId: "case-1" } };
     expect(JSON.parse((await screen.findByTestId("case-queue-handoff")).textContent!)).toEqual(expected);
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(await screen.findByRole("link", { name: label })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Quay lại báo cáo hồ sơ" })).toHaveAttribute("href", source);
+    if (revoked) {
+      expect(await screen.findByRole("alert")).toHaveTextContent("Mục tài liệu không còn khớp");
+      expect(screen.queryByTestId("case-queue-handoff")).not.toBeInTheDocument();
+    } else {
+      expect(await screen.findByRole("link", { name: label })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Quay lại báo cáo hồ sơ" })).toHaveAttribute("href", source);
+    }
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
     expect(JSON.parse((await screen.findByTestId("case-queue-handoff")).textContent!)).toEqual(expected);
     expect(getDocumentDetail).not.toHaveBeenCalled();

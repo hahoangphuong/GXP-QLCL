@@ -26,9 +26,110 @@ function workspace(id: string, site = "site-uuid", state = "planned") {
   } as Awaited<ReturnType<typeof getCaseWorkspace>>;
 }
 
-beforeEach(() => vi.mocked(getCaseWorkspace).mockReset());
+beforeEach(() => { vi.mocked(getCaseWorkspace).mockReset(); });
 
 describe("canonical Case UUID entry", () => {
+  it.each([
+    ["duplicate filters", "/reports?report=cases&q=a&q=b", "", undefined],
+    ["unsupported offset", "/reports?report=cases&offset=99", "", undefined],
+    ["foreign Site key", "/reports?report=cases&site_id=other-site", "", undefined],
+    ["unknown key", "/reports?report=cases&other=1", "", undefined],
+    ["external target", "https://example.invalid/reports?report=cases", "", undefined],
+    ["mismatching queue", "/workflow?queue=active", "&return_queue=inspection", undefined],
+    ["duplicate queue", "/workflow?queue=inspection", "&return_queue=inspection&return_queue=active", undefined],
+    ["wrong Case binding", "/reports?report=cases&offset=100", "", "other-case"],
+  ])("drops an invalid fallback return hint (%s)", async (_label, hint, query, boundCase) => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/cases/case-uuid", search: "?document_key=revoked" + query,
+      state: { caseReportReturn: hint, caseReportCaseId: boundCase },
+    }]}><Routes>
+      <Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} />
+      <Route path="/search" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    const fallback = await screen.findByRole("link", { name: "Mở Case không chọn mục tài liệu" });
+    expect(fallback).toHaveAttribute("href", query === "&return_queue=inspection"
+      ? "/cases/case-uuid?return_queue=inspection" : "/cases/case-uuid");
+    fireEvent.click(fallback);
+    expect(await screen.findByTestId("resolved-url")).not.toHaveTextContent("document_key=");
+    expect(screen.getByTestId("return-hint")).toBeEmptyDOMElement();
+  });
+
+  it("exposes the Case-only fallback only after authoritative Case and Site resolution", async () => {
+    vi.mocked(getCaseWorkspace).mockRejectedValue(new Error("Mục tài liệu không còn khớp"));
+    mount("/cases/case-uuid?document_key=revoked");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Mục tài liệu không còn khớp");
+    expect(screen.queryByRole("link", { name: "Mở Case không chọn mục tài liệu" })).not.toBeInTheDocument();
+  });
+
+  it.each([["other-case", "site-uuid"], ["case-uuid", ""]])(
+    "suppresses fallback on an unresolved Case/Site identity (%s, %s)", async (id, site) => {
+      vi.mocked(getCaseWorkspace).mockResolvedValue(workspace(id, site));
+      mount("/cases/case-uuid?document_key=revoked");
+      expect(await screen.findByRole("alert")).toHaveTextContent("Hồ sơ trả về không khớp định danh hoặc thiếu ngữ cảnh");
+      expect(screen.queryByRole("link", { name: "Mở Case không chọn mục tài liệu" })).not.toBeInTheDocument();
+    },
+  );
+
+  it("retains a Case report and independent queue while discarding Certificate provenance without a verified source", async () => {
+    vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
+    const source = "/reports?report=cases&gxp_type=GMP&q=site&offset=100";
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/cases/case-uuid", search: "?document_key=revoked&return_queue=inspection",
+      state: { caseReportReturn: source, reportReturn: "/reports?report=certificates&expiry_days=30" },
+    }]}><Routes>
+      <Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} />
+      <Route path="/search" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("link", { name: "Mở Case không chọn mục tài liệu" }));
+    expect(await screen.findByTestId("resolved-url")).toHaveTextContent("return_queue=inspection");
+    expect(screen.getByTestId("return-hint")).toHaveTextContent(source);
+    expect(screen.getByTestId("certificate-report-return")).toBeEmptyDOMElement();
+  });
+
+  it("uses the newest A return context and rejects old document readbacks during A → B → A", async () => {
+    type Workspace = Awaited<ReturnType<typeof getCaseWorkspace>>;
+    let resolveA!: (value: Workspace) => void;
+    let resolveB!: (value: Workspace) => void;
+    vi.mocked(getCaseWorkspace)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveA = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveB = resolve; }))
+      .mockResolvedValue(workspace("case-uuid"));
+    const latest = "/reports?report=cases&q=latest&offset=100";
+    function History() {
+      const navigate = useNavigate();
+      return <><button onClick={() => navigate("/cases/other-case?document_key=other")}>B</button>
+        <button onClick={() => navigate("/cases/case-uuid?document_key=revoked", { state: { caseReportReturn: latest } })}>New A</button></>;
+    }
+    render(<MemoryRouter initialEntries={[{
+      pathname: "/cases/case-uuid", search: "?document_key=revoked", state: { caseReportReturn: "/reports?report=cases&q=old" },
+    }]}><History /><Routes>
+      <Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} />
+      <Route path="/search" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    expect(getCaseWorkspace).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "B" }));
+    expect(getCaseWorkspace).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "New A" }));
+    await screen.findByRole("link", { name: "Mở Case không chọn mục tài liệu" });
+    const oldA = workspace("case-uuid", "old-site");
+    const slot = { checklist_key: "revoked", family_code: "PLAN", status: "available",
+      document_id: "old-document", parent_scope: "case", parent_id: "case-uuid" } as const;
+    oldA.documents = { items: [slot as typeof oldA.documents.items[number]] };
+    oldA.contextual_document_actions = [{ ...slot, workflow_step: "Kiểm tra",
+      actions: [{ action_key: "open", available: true }] } as typeof oldA.contextual_document_actions[number]];
+    await act(async () => {
+      resolveA(oldA);
+      resolveB(workspace("other-case", "foreign-site"));
+    });
+    expect(screen.queryByTestId("resolved-url")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Mở Case không chọn mục tài liệu" }));
+    expect(await screen.findByTestId("resolved-url")).toHaveTextContent("site_id=site-uuid");
+    expect(screen.getByTestId("resolved-url")).not.toHaveTextContent(/document_(key|id|parent)/);
+    expect(screen.getByTestId("return-hint")).toHaveTextContent(latest);
+    expect(getCaseWorkspace).toHaveBeenCalledTimes(4);
+  });
+
   it("preserves the validated report return alongside its workflow queue", async () => {
     vi.mocked(getCaseWorkspace).mockResolvedValue(workspace("case-uuid"));
     render(<MemoryRouter initialEntries={[{ pathname: "/cases/case-uuid", search: "?return_queue=inspection", state: { caseReportReturn: "/workflow?queue=inspection&state=planned&offset=100" } }]}><Routes><Route path="/cases/:caseId" element={<CaseDirectOpen access={access} />} /><Route path="/search" element={<Destination />} /></Routes></MemoryRouter>);

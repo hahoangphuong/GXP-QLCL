@@ -4304,3 +4304,88 @@ def test_change_request_mutation_allows_foreign_noop_marker(pg_engine, operation
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == action,
         )) >= 1
+
+
+def _change_request_detail_update_fixture(pg_engine):
+    _, site_id = seed(pg_engine)
+    cr = write(
+        pg_engine, SERVICE.create_change_request,
+        site_id=site_id, scope_label="Synthetic detail update owner",
+        description="Change request detail update", submitted_on=DAY,
+        requester_name="Synthetic operator", reason="seed",
+    )
+    detail = write(
+        pg_engine, SERVICE.create_change_request_detail,
+        change_request_id=cr["change_request_id"], expected_version=cr["row_version"],
+        classification_id=None, classification_label="Old synthetic classification",
+        approval_status=None, old_value="original", new_value="changed",
+        note="original note", reason="seed detail",
+    )
+    return detail
+
+
+def test_change_request_detail_update_rejects_foreign_pending_capa_before_flush(pg_engine):
+    """Updating one detail must not autoflush another Case's unfinished CAPA."""
+    detail = _change_request_detail_update_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="PENDING-FOREIGN-CR-DETAIL-UPDATE",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Change Request detail update attempted foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.update_change_request_detail(
+                    session, change_detail_id=detail["change_detail_id"],
+                    expected_version=detail["row_version"],
+                    classification_id=None, classification_label="Updated synthetic class",
+                    approval_status=None, old_value=None, new_value=None, note=None,
+                    fields_set={"classification_label"}, reason="separate operator update", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_change_request_detail_update_allows_foreign_noop_marker(pg_engine):
+    """An unchanged Case identity is not a pending independent mutation."""
+    detail = _change_request_detail_update_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original = foreign.scope_code
+        foreign.scope_code = original
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        receipt = SERVICE.update_change_request_detail(
+            session, change_detail_id=detail["change_detail_id"],
+            expected_version=detail["row_version"],
+            classification_id=None, classification_label="Updated synthetic class",
+            approval_status=None, old_value=None, new_value=None, note=None,
+            fields_set={"classification_label"}, reason="no-op foreign marker", user=USER,
+        )
+        assert receipt["change_detail_id"] == detail["change_detail_id"]
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "change_request_detail.update",
+        )) >= 1

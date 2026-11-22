@@ -1845,7 +1845,6 @@ class CaseWorkflowService:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found.")
             if cycle.case_id != parent.id:
                 raise HTTPException(status_code=409, detail="CAPA cycle Case owner changed; reload canonical cycle.")
-            self._assert_mutation_session_clean(session, operation=operation)
             return cycle
 
     def _site_has_gxp_context(
@@ -4490,6 +4489,9 @@ class CaseWorkflowService:
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA update",
         )
+        # The read-only parent admission allows unrelated Session drafts;
+        # the actual mutation must fence them before its first autoflush.
+        self._assert_mutation_session_clean(session, operation="CAPA update")
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
@@ -4535,6 +4537,9 @@ class CaseWorkflowService:
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA submit",
         )
+        # The read-only parent admission allows unrelated Session drafts;
+        # the actual mutation must fence them before its first autoflush.
+        self._assert_mutation_session_clean(session, operation="CAPA submit")
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
@@ -4576,6 +4581,9 @@ class CaseWorkflowService:
         row = self._lock_capa_parent_then_refresh(
             session, capa_cycle_id=capa_cycle_id, operation="CAPA assess",
         )
+        # The read-only parent admission allows unrelated Session drafts;
+        # the actual mutation must fence them before its first autoflush.
+        self._assert_mutation_session_clean(session, operation="CAPA assess")
         self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         normalized_result = (result or "").strip().lower()

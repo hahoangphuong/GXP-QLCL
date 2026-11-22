@@ -6850,14 +6850,16 @@ class CaseWorkflowService:
                             status_code=409,
                             detail="Current certificate ProductionLine has uncommitted changes; resolve draft before promotion.",
                         )
-            # Promotion does not edit scope children, but its final flush would
-            # persist unrelated operator changes to scopes in this graph.
-            # Fence the candidate and all DB-current peer versions here.
-            affected_version_ids = {candidate_version.id}
-            for peer_id in current_peer_ids:
-                affected_version_ids.add(
-                    self._load_latest_certificate_version(session, peer_id).id
+            # Promotion does not edit any scopes, but its final flush would
+            # persist unsubmitted edits even on nonlatest historical versions.
+            # Guard the entire affected Certificate aggregate, not only the
+            # latest version displayed on the promotion screen.
+            affected_certificate_ids = {certificate.id, *current_peer_ids}
+            affected_version_ids = set(session.scalars(
+                select(CertificateVersion.id).where(
+                    CertificateVersion.certificate_id.in_(affected_certificate_ids)
                 )
+            ).all())
             persisted_scope_ids = session.scalars(
                 select(CertificateScope.id).where(
                     CertificateScope.certificate_version_id.in_(affected_version_ids)
@@ -6876,8 +6878,14 @@ class CaseWorkflowService:
             # query and must not ride the final promotion flush.
             if any(
                 isinstance(item, CertificateScope)
-                and item.certificate_version_id in affected_version_ids
                 and session.is_modified(item, include_collections=False)
+                and (
+                    item.certificate_version_id in affected_version_ids
+                    or any(
+                        parent in affected_version_ids
+                        for parent in inspect(item).attrs.certificate_version_id.history.deleted
+                    )
+                )
                 for item in session.dirty
             ):
                 raise HTTPException(

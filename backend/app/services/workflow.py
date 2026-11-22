@@ -6316,6 +6316,41 @@ class CaseWorkflowService:
                     detail=f"Approval submission has uncommitted changes; resolve draft before certificate {operation}.",
                 )
 
+    def _assert_certificate_mutation_has_no_pending_capa(
+        self, session: Session, *, case_id: str | None, operation: str,
+    ) -> None:
+        """Do not flush a separately staged, edited or deleted CAPA round.
+
+        Called inside bounded no_autoflush admission after canonical owner
+        resolution. Match current and previous Case FK on dirty rows.
+        """
+        if case_id is None:
+            return
+        for pending in tuple(session.new):
+            if isinstance(pending, CapaCycle) and pending.case_id == case_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"CAPA cycle has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+        for deleted in tuple(session.deleted):
+            if isinstance(deleted, CapaCycle) and deleted.case_id == case_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"CAPA cycle has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+        for cached in tuple(session.dirty):
+            if not isinstance(cached, CapaCycle):
+                continue
+            original_cases = inspect(cached).attrs.case_id.history.deleted
+            if (
+                (cached.case_id == case_id or case_id in original_cases)
+                and session.is_modified(cached, include_collections=False)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"CAPA cycle has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+
     def issue_certificate(
         self,
         session: Session,
@@ -6371,12 +6406,10 @@ class CaseWorkflowService:
             # CAPA for this Case cannot be silently persisted or ignored by
             # a separate certificate issuance mutation.
             if case is not None:
+                self._assert_certificate_mutation_has_no_pending_capa(
+                    session, case_id=case.id, operation="issuance",
+                )
                 for pending in tuple(session.new):
-                    if isinstance(pending, CapaCycle) and pending.case_id == case.id:
-                        raise HTTPException(
-                            status_code=409,
-                            detail="CAPA cycle has uncommitted changes; resolve draft before certificate issuance.",
-                        )
                     # A pending non-issuance decision is a separate legal
                     # mutation, not something the GMP-issued or eligibility
                     # SELECT may flush while preparing a certificate.
@@ -6520,6 +6553,9 @@ class CaseWorkflowService:
             # Refresh child version before capturing committed audit before-state.
             session.refresh(version)
             self._assert_certificate_mutation_has_no_pending_approvals(
+                session, case_id=certificate.case_id, operation="version editing",
+            )
+            self._assert_certificate_mutation_has_no_pending_capa(
                 session, case_id=certificate.case_id, operation="version editing",
             )
             # Replacing scopes deletes persisted children. Guard their cached

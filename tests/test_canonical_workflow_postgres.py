@@ -2695,3 +2695,97 @@ def test_certificate_mutation_refuses_pending_approval_round(
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["issue", "edit_version"])
+@pytest.mark.parametrize("draft_mode", ["new", "dirty", "deleted"])
+def test_certificate_mutation_refuses_pending_capa_draft(
+    pg_engine, operation, draft_mode,
+):
+    """A GCN mutation cannot flush a second CAPA round, local edit or deletion."""
+    case_id, site_id = seed(pg_engine)
+    transition(pg_engine, case_id, "inspection_completed")
+    cycle = create_cycle(pg_engine, case_id)
+    assessed = assess_cycle(pg_engine, cycle, "accepted")
+    transition(pg_engine, case_id, "awaiting_certificate_decision")
+    pct = complete(pg_engine, approval(pg_engine, case_id, "PCT"))
+    complete(pg_engine, approval(pg_engine, case_id, "CT", pct["approval_submission_id"]))
+    candidate = issue(pg_engine, case_id, site_id) if operation == "edit_version" else None
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        certificates_before = session.scalar(
+            select(func.count()).select_from(Certificate)
+            .where(Certificate.case_id == case_id)
+        )
+        rounds_before = session.scalar(
+            select(func.count()).select_from(CapaCycle).where(CapaCycle.case_id == case_id)
+        )
+        if draft_mode == "new":
+            pending = CapaCycle(
+                case_id=case_id, round_no=2,
+                requested_on=DAY, incoming_reference="UNSUBMITTED-CAPA-GCN",
+                notes="second round is not yet requested",
+            )
+            session.add(pending)
+        else:
+            pending = session.get(CapaCycle, assessed["capa_cycle_id"])
+            if draft_mode == "dirty":
+                pending.notes = "UNSUBMITTED-CAPA-EDIT-DURING-GCN"
+            else:
+                session.delete(pending)
+        flushes = []
+
+        def forbid_flush(*_args):
+            flushes.append(True)
+            raise AssertionError("GCN mutation autoflushed a separate CAPA draft")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "issue":
+                    SERVICE.issue_certificate(
+                        session, site_id=site_id, case_id=case_id,
+                        certificate_type="GMP", issuance_basis="inspection_case",
+                        certificate_number="GCN-DURING-CAPA-DRAFT",
+                        issue_date=DAY, expiry_date=date(2027, 10, 1),
+                        scopes=[], reason="synthetic CAPA draft guard", user=USER,
+                    )
+                else:
+                    SERVICE.upsert_certificate_latest_version(
+                        session, certificate_id=candidate["certificate_id"],
+                        expected_version=candidate["row_version"],
+                        certificate_number="EDIT-DURING-CAPA-DRAFT",
+                        issue_date=DAY, expiry_date=date(2027, 10, 1),
+                        scopes=[], reason="synthetic CAPA draft guard", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            if draft_mode == "new":
+                assert pending in session.new
+            elif draft_mode == "dirty":
+                assert pending in session.dirty
+                assert pending.notes == "UNSUBMITTED-CAPA-EDIT-DURING-GCN"
+            else:
+                assert pending in session.deleted
+            with session.no_autoflush:
+                assert session.scalar(
+                    select(func.count()).select_from(CapaCycle).where(CapaCycle.case_id == case_id)
+                ) == rounds_before
+                assert session.scalar(
+                    select(CapaCycle.status).where(CapaCycle.id == assessed["capa_cycle_id"])
+                ) == "accepted"
+                assert session.scalar(
+                    select(func.count()).select_from(Certificate)
+                    .where(Certificate.case_id == case_id)
+                ) == certificates_before
+                if candidate is not None:
+                    assert session.scalar(
+                        select(CertificateVersion.certificate_number).where(
+                            CertificateVersion.id == candidate["latest_version_id"]
+                        )
+                    ) == candidate["certificate_number"]
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

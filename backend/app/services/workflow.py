@@ -6283,6 +6283,39 @@ class CaseWorkflowService:
         )
         return certificate, version, created_scopes
 
+    def _assert_certificate_mutation_has_no_pending_approvals(
+        self, session: Session, *, case_id: str | None, operation: str,
+    ) -> None:
+        """A GCN mutation must not flush an independent unsubmitted PCT/CT intent.
+
+        Called inside the caller's no_autoflush admission, after canonical
+        Case owner resolution. Include the previous Case for a locally
+        reparented approval draft rather than trusting only the new FK.
+        """
+        if case_id is None:
+            return
+        for pending in tuple(session.new):
+            if (
+                isinstance(pending, InspectionApprovalSubmission)
+                and pending.case_id == case_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Approval submission has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+        for cached in tuple(session.dirty):
+            if not isinstance(cached, InspectionApprovalSubmission):
+                continue
+            original_cases = inspect(cached).attrs.case_id.history.deleted
+            if (
+                (cached.case_id == case_id or case_id in original_cases)
+                and session.is_modified(cached, include_collections=False)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Approval submission has uncommitted changes; resolve draft before certificate {operation}.",
+                )
+
     def issue_certificate(
         self,
         session: Session,
@@ -6330,6 +6363,9 @@ class CaseWorkflowService:
             # before reading eligibility; a terminal transition cannot race with
             # a non-GMP certificate insert or audit.
             case = None if case_id is None else self._lock_case(session, case_id)
+            self._assert_certificate_mutation_has_no_pending_approvals(
+                session, case_id=None if case is None else case.id, operation="issuance",
+            )
             # After admission, the GMP already-issued/Case eligibility
             # queries may autoflush all pending objects. A new, unsubmitted
             # CAPA for this Case cannot be silently persisted or ignored by
@@ -6483,6 +6519,9 @@ class CaseWorkflowService:
                 )
             # Refresh child version before capturing committed audit before-state.
             session.refresh(version)
+            self._assert_certificate_mutation_has_no_pending_approvals(
+                session, case_id=certificate.case_id, operation="version editing",
+            )
             # Replacing scopes deletes persisted children. Guard their cached
             # dirty identities (and pending children of this Version) before
             # any actor/audit mutation or the replacement's first flush.

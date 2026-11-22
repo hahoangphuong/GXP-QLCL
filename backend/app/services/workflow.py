@@ -6912,6 +6912,23 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Certificate scope has uncommitted changes; resolve draft before promotion.",
                 )
+            # A subsequent SQLAlchemy autoflush/final flush writes the whole
+            # Session, not just this Certificate/Case aggregate. Domain-scoped
+            # guards above retain their specific conflict messages; fence any
+            # remaining independent operator intent (including another Site or
+            # Case) before leaving this no-autoflush mutation admission.
+            if (
+                session.new
+                or session.deleted
+                or any(
+                    session.is_modified(item, include_collections=True)
+                    for item in session.dirty
+                )
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Session has uncommitted changes; resolve other drafts before certificate promotion.",
+                )
         blocker = self._get_certificate_promotion_blocker(
             session,
             certificate=certificate,

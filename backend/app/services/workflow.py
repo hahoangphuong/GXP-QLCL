@@ -1593,6 +1593,28 @@ class CaseWorkflowService:
             raise HTTPException(status_code=404, detail="CAPA cycle not found.")
         return row
 
+    def _assert_capa_has_no_dirty_legal_intents(
+        self, session: Session, *, case_id: str, operation: str,
+    ) -> None:
+        """A CAPA flush must not persist separate edits to legal decisions."""
+        for cached in tuple(session.dirty):
+            if not isinstance(cached, (CaseCertificateNonissuanceDecision, Certificate)):
+                continue
+            original_cases = inspect(cached).attrs.case_id.history.deleted
+            if (
+                (cached.case_id == case_id or case_id in original_cases)
+                and session.is_modified(cached, include_collections=False)
+            ):
+                label = (
+                    "Non-issuance decision"
+                    if isinstance(cached, CaseCertificateNonissuanceDecision)
+                    else "Certificate"
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{label} has uncommitted changes; resolve draft before CAPA {operation}.",
+                )
+
     def _lock_capa_parent_then_refresh(
         self, session: Session, *, capa_cycle_id: str, operation: str,
     ) -> CapaCycle:
@@ -1727,6 +1749,9 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Approval submission has uncommitted changes; resolve draft before CAPA mutation.",
                     )
+            self._assert_capa_has_no_dirty_legal_intents(
+                session, case_id=case_id, operation="mutation",
+            )
             parent = self._lock_case(session, case_id)
             self._assert_case_not_terminal(parent, operation=operation)
             cycle = session.scalars(
@@ -4320,6 +4345,9 @@ class CaseWorkflowService:
                         status_code=409,
                         detail="Certificate has uncommitted changes; resolve draft before CAPA creation.",
                     )
+            self._assert_capa_has_no_dirty_legal_intents(
+                session, case_id=row.id, operation="creation",
+            )
             self._assert_case_has_no_open_capa_cycle(session, row.id)
         actor = self._get_or_create_app_user(session, user)
         capa_cycle = CapaCycle(

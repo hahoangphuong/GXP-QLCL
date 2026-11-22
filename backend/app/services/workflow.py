@@ -6753,6 +6753,19 @@ class CaseWorkflowService:
                     raise HTTPException(
                         status_code=409, detail="Certificate references an invalid linked Case."
                     ) from exc
+            # Promotion is a separate legal intent: never flush pending
+            # CAPA/PCT/CT/refusal drafts held by the same operator Session.
+            # Reuse the Case-bound certificate mutation guards before queries
+            # or the later actor/audit write can trigger any autoflush.
+            self._assert_certificate_mutation_has_no_pending_approvals(
+                session, case_id=certificate.case_id, operation="promotion",
+            )
+            self._assert_certificate_mutation_has_no_pending_capa(
+                session, case_id=certificate.case_id, operation="promotion",
+            )
+            self._assert_certificate_mutation_has_no_pending_nonissuance(
+                session, case_id=certificate.case_id, operation="promotion",
+            )
             self._assert_expected_version(certificate, expected_version, label="certificate")
             candidate_version = self._load_latest_certificate_version(session, certificate.id)
             # A cached dirty Version must not be replaced by committed values.

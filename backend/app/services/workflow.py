@@ -4904,6 +4904,11 @@ class CaseWorkflowService:
                 select(InspectionPlan).where(InspectionPlan.case_id == row.id)
                 .with_for_update().execution_options(populate_existing=True)
             ).first()
+            # The plan mutation will flush all Session objects, not just this
+            # Case. Reject independent drafts before leaving read-only admission.
+            self._assert_mutation_session_clean(
+                session, operation="inspection plan update",
+            )
         if stage is None:
             if expected_version is not None:
                 raise HTTPException(status_code=409, detail="Inspection plan does not exist for supplied expected_version.")
@@ -5147,6 +5152,12 @@ class CaseWorkflowService:
         )
         if effective_minutes_time is not None and effective_minutes_on is None:
             raise HTTPException(status_code=422, detail="Minutes time requires a minutes date.")
+        # Preserve validation errors above; only an admitted outcome mutation
+        # may flush pending operator intents from any Case/Site in this Session.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(
+                session, operation="inspection outcome update",
+            )
         if new_stage:
             # Only an admitted create may participate in SQL writes and audit.
             session.add(stage)

@@ -3106,6 +3106,9 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Change request Site/Company owner changed; reload canonical Site.",
                 )
+            # Resolving the affected artifacts and creating the request may
+            # autoflush unrelated Case/Site operator drafts from this Session.
+            self._assert_mutation_session_clean(session, operation="change request creation")
         affected_snapshot = self._resolve_change_request_affected_artifact_snapshot(
             session,
             site=site,

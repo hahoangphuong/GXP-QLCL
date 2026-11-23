@@ -5551,3 +5551,90 @@ def test_facility_master_edit_rejects_unreviewed_ownership_change_and_empty_chan
                 changes={"site_address": "  "}, reason="Review", user=USER,
             )
         assert blocked.value.status_code == 422
+
+
+def test_http_facility_master_correction_get_patch_get_and_rbac(pg_engine):
+    company_id, site_id = _seed_editable_facility(pg_engine)
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: USER
+
+    async def request(method, path, payload=None):
+        body = b"" if payload is None else json.dumps(payload).encode()
+        messages = []
+        received = False
+        async def receive():
+            nonlocal received
+            if not received:
+                received = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            await asyncio.Future()
+        async def send(message):
+            messages.append(message)
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": method, "scheme": "http", "path": path, "raw_path": path.encode(),
+            "query_string": b"", "headers": [(b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 12345), "server": ("localhost", 80),
+            "root_path": "",
+        }, receive, send)
+        status = next(item["status"] for item in messages if item["type"] == "http.response.start")
+        response_body = b"".join(item.get("body", b"") for item in messages
+                                  if item["type"] == "http.response.body")
+        return status, json.loads(response_body)
+
+    async def scenario():
+        c_status, company = await request("GET", f"/companies/{company_id}")
+        s_status, site = await request("GET", f"/sites/{site_id}")
+        assert c_status == s_status == 200, (company, site)
+        assert company["legal_name"] == "Original legal name"
+        assert site["company_id"] == company_id
+        company_precondition = _company_edit_snapshot(type("Row", (), company)())
+        site_precondition = _site_edit_snapshot(type("Row", (), site)())
+        c_status, edited_company = await request("PATCH", f"/companies/{company_id}", {
+            "expected": company_precondition,
+            "changes": {"legal_name": "Regulator reviewed legal name"},
+            "reason": "Verified name correction",
+        })
+        assert c_status == 200, edited_company
+        assert edited_company["legal_name"] == "Regulator reviewed legal name"
+        assert edited_company["audit_event_id"]
+        s_status, edited_site = await request("PATCH", f"/sites/{site_id}", {
+            "expected": site_precondition,
+            "changes": {"site_address": "Verified registered site address"},
+            "reason": "Verified address correction",
+        })
+        assert s_status == 200, edited_site
+        assert edited_site["site_address"] == "Verified registered site address"
+        c_status, c_after = await request("GET", f"/companies/{company_id}")
+        s_status, s_after = await request("GET", f"/sites/{site_id}")
+        assert c_status == s_status == 200
+        assert c_after["legal_name"] == "Regulator reviewed legal name"
+        assert s_after["site_address"] == "Verified registered site address"
+        assert s_after["company_id"] == company_id
+
+        c_status, stale = await request("PATCH", f"/companies/{company_id}", {
+            "expected": company_precondition, "changes": {"short_name": "STALE"},
+            "reason": "Stale operator tab",
+        })
+        assert c_status == 409, stale
+        s_status, forbidden_field = await request("PATCH", f"/sites/{site_id}", {
+            "expected": site_precondition,
+            "changes": {"company_id": str(uuid4())}, "reason": "Attempt ownership move",
+        })
+        assert s_status == 422, forbidden_field
+
+        app.dependency_overrides[get_authenticated_user] = lambda: build_authenticated_user(
+            "facility-reader", "reader", permissions=ROLE_PERMISSIONS["reader"],
+        )
+        c_status, denied = await request("PATCH", f"/companies/{company_id}", {
+            "expected": company_precondition,
+            "changes": {"legal_name": "Unauthorized"}, "reason": "Unauthorized",
+        })
+        assert c_status == 403, denied
+        s_status, denied = await request("PATCH", f"/sites/{site_id}", {
+            "expected": site_precondition,
+            "changes": {"site_name": "Unauthorized"}, "reason": "Unauthorized",
+        })
+        assert s_status == 403, denied
+
+    asyncio.run(scenario())

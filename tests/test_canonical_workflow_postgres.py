@@ -4800,3 +4800,73 @@ def test_ddk_version_or_promote_allows_foreign_noop_case_marker(pg_engine, opera
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == audit_action
         )) >= 1
+
+
+def test_inspection_period_replacement_rejects_foreign_pending_capa(pg_engine):
+    """Replacing an inspection visit must not flush a different Case's draft."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="PENDING-FOREIGN-PERIOD-REPLACEMENT",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Inspection period replacement attempted foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.upsert_inspection_period_segments(
+                    session, case_id=case_id, expected_version=None,
+                    segments=[{"ordinal": 1, "started_on": DAY, "ended_on": DAY}],
+                    reason="separate operator inspection period", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(InspectionOutcome).where(
+                    InspectionOutcome.case_id == case_id
+                )) == 0
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_inspection_period_replacement_allows_foreign_noop_case_marker(pg_engine):
+    """No-op dirty Case markers are not real foreign operator drafts."""
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        original = foreign.scope_code
+        foreign.scope_code = original
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        receipt = SERVICE.upsert_inspection_period_segments(
+            session, case_id=case_id, expected_version=None,
+            segments=[{"ordinal": 1, "started_on": DAY, "ended_on": DAY}],
+            reason="no-op Case marker control", user=USER,
+        )
+        assert receipt["case_id"] == case_id
+        assert receipt["inspection_period_state"] == "KNOWN"
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == original
+        assert verify.scalar(select(func.count()).select_from(InspectionOutcome).where(
+            InspectionOutcome.case_id == case_id
+        )) == 1
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "inspection_period_segments.replace"
+        )) >= 1

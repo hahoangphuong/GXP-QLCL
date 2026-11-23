@@ -5963,3 +5963,58 @@ def test_copy_inspection_team_http_post_and_canonical_readback(pg_engine):
             AuditEvent.entity_id == target.id,
             AuditEvent.action == "inspection_team.copy_from_case",
         )) == 1
+
+
+def test_competing_copy_inspection_team_only_one_mutation_and_audit(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    barrier = Barrier(2)
+    def attempt():
+        barrier.wait()
+        try:
+            result = write(
+                pg_engine, SERVICE.copy_inspection_team_from_case,
+                case_id=target_case_id, source_case_id=source_case_id,
+                expected_source_version=source["row_version"],
+                expected_target_version=None, reason="Concurrent team reuse",
+            )
+            return ("ok", result["team_id"])
+        except HTTPException as exc:
+            return ("blocked", exc.status_code)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: attempt(), range(2)))
+    assert sorted(outcome[0] for outcome in outcomes) == ["blocked", "ok"]
+    assert next(x[1] for x in outcomes if x[0] == "blocked") == 409
+    with Session(pg_engine) as session:
+        target_team = session.scalar(select(InspectionTeam).where(
+            InspectionTeam.case_id == target_case_id
+        ))
+        assert target_team is not None
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == target_team.id,
+            AuditEvent.action == "inspection_team.copy_from_case",
+        )) == 1
+        assert session.scalar(select(func.count()).select_from(InspectionTeamMember).where(
+            InspectionTeamMember.team_id == target_team.id
+        )) == 1
+
+
+def test_copy_inspection_team_fails_closed_after_source_team_changed(pg_engine):
+    source_case_id, target_case_id, source, person_id = _inspection_team_copy_fixture(pg_engine)
+    newer = write(
+        pg_engine, SERVICE.upsert_inspection_team,
+        case_id=source_case_id, expected_version=source["row_version"],
+        members=[_inspection_team_session_member(person_id)],
+        reason="Source composition re-reviewed",
+    )
+    assert newer["row_version"] > source["row_version"]
+    with Session(pg_engine) as session:
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.copy_inspection_team_from_case(
+                session, case_id=target_case_id, source_case_id=source_case_id,
+                expected_source_version=source["row_version"],
+                expected_target_version=None, reason="Obsolete source", user=USER,
+            )
+        assert blocked.value.status_code == 409
+        assert session.scalar(select(func.count()).select_from(InspectionTeam).where(
+            InspectionTeam.case_id == target_case_id
+        )) == 0

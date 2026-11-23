@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException
+from pydantic import UUID4
 from sqlalchemy.orm import Session
 
 from backend.app.api.session import commit_or_409, get_session_from_request_factory
@@ -55,6 +56,7 @@ from backend.app.read_models import (
     InspectionTeamRead,
     InspectionTeamCopyFromCaseRequest,
     InspectionTeamCopyFromCaseRead,
+    InspectionTeamCopyPreviewRead,
     InspectionTeamIdentityOptionRead,
     InspectionTeamUpsertRequest,
     InspectionApprovalSubmissionRead,
@@ -371,6 +373,20 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return InspectionTeamRead(**result)
+
+    def get_inspection_team_copy_preview(
+        case_id: str,
+        source_case_id: UUID4,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        return InspectionTeamCopyPreviewRead(
+            **service.get_inspection_team_copy_preview(
+                session, case_id=case_id,
+                source_case_id=str(source_case_id), user=user,
+            )
+        )
 
     def copy_inspection_team_from_case(
         case_id: str,
@@ -890,6 +906,13 @@ def register_workflow_routes(app, session_factory) -> None:
         upsert_inspection_team,
         methods=["PUT"],
         response_model=InspectionTeamRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/team/copy-preview",
+        get_inspection_team_copy_preview,
+        methods=["GET"],
+        response_model=InspectionTeamCopyPreviewRead,
         tags=["workflow"],
     )
     app.add_api_route(

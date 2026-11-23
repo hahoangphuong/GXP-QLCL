@@ -5330,10 +5330,12 @@ def test_evaluation_scope_replace_preserves_dirty_cached_target_before_refresh(p
     """populate_existing must not erase uncommitted edits to the exact Scope."""
     case_id, scope_id, token, node_id = _seed_structured_evaluation_scope(pg_engine)
     with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
         cached = session.get(CaseEvaluationScope, scope_id)
         cached.limitation_text = "operator draft; do not discard"
         assert session.is_modified(cached, include_collections=False)
-        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        # Keep the owner draft pending until the canonical mutation begins.
+        # A COUNT query here would itself autoflush and invalidate this probe.
         with pytest.raises(HTTPException) as blocked:
             with session.no_autoflush:
                 SERVICE.upsert_evaluation_scope(

@@ -6018,3 +6018,37 @@ def test_copy_inspection_team_fails_closed_after_source_team_changed(pg_engine):
         assert session.scalar(select(func.count()).select_from(InspectionTeam).where(
             InspectionTeam.case_id == target_case_id
         )) == 0
+
+
+def test_copy_inspection_team_never_borrows_unresolved_legacy_member(pg_engine):
+    source_case_id, _ = seed(pg_engine)
+    target_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        source = InspectionTeam(case_id=source_case_id, display_text="Legacy team only")
+        session.add(source)
+        session.flush()
+        session.add(InspectionTeamMember(
+            team_id=source.id, identity_kind="LEGACY_PERSON",
+            display_name="Unresolved historical delegate", legacy_source_token="LEGACY-NAME",
+            role_code="LEADER", role_label="Trưởng đoàn", sort_order=1,
+        ))
+        session.commit()
+        source_version = source.row_version
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "inspection_team.copy_from_case"
+        ))
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.copy_inspection_team_from_case(
+                session, case_id=target_case_id, source_case_id=source_case_id,
+                expected_source_version=source_version, expected_target_version=None,
+                reason="Attempt copy legacy roster", user=USER,
+            )
+        assert blocked.value.status_code == 409
+        assert "safe" in str(blocked.value.detail).lower()
+        assert session.scalar(select(func.count()).select_from(InspectionTeam).where(
+            InspectionTeam.case_id == target_case_id
+        )) == 0
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "inspection_team.copy_from_case"
+        )) == audit_before

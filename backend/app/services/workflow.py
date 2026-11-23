@@ -6206,6 +6206,10 @@ class CaseWorkflowService:
                     )
             self._validate_team_members(members)
             self._validate_team_member_identities(session, members)
+            # Team/member replace-all flushes the whole reused Session.
+            # Independent Case CAPA or other operator drafts must be committed
+            # separately, not as a side effect of updating this team.
+            self._assert_mutation_session_clean(session, operation="inspection team replacement")
         actor = self._get_or_create_app_user(session, user)
 
         team = existing_team

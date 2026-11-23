@@ -46,6 +46,7 @@ import type {
   Company,
   CompanyDetail,
   CompanyMasterCreateRequest,
+  CompanyProfileCorrection,
   DashboardSummary,
   DocumentDetail,
   DocumentOwnerMetadataInventory,
@@ -83,6 +84,7 @@ import type {
   Site,
   SiteDetail,
   SiteMasterCreateRequest,
+  SiteProfileCorrection,
   ProductionLineMasterRead,
   ProductionLineMasterCreateRequest,
   StubAuthState,
@@ -279,6 +281,10 @@ export function getCompany(companyId: string, auth: StubAuthState, useStubAuth: 
   return requestJson<CompanyDetail>(`/companies/${encodeURIComponent(companyId)}`, { auth, useStubAuth, bearerToken });
 }
 
+export function correctCompanyProfile(companyId: string, body: CompanyProfileCorrection, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null) {
+  return requestJson<CompanyDetail & { audit_event_id: string }>(`/companies/${encodeURIComponent(companyId)}`, { method: "PATCH", body, auth, useStubAuth, bearerToken });
+}
+
 export function createCompany(payload: CompanyMasterCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CompanyDetail> {
   return requestJson<CompanyDetail>("/companies", { method: "POST", body: payload, auth, useStubAuth, bearerToken });
 }
@@ -289,6 +295,10 @@ export function listSites(auth: StubAuthState, useStubAuth: boolean, bearerToken
 
 export function getSite(siteId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<SiteDetail> {
   return requestJson<SiteDetail>(`/sites/${encodeURIComponent(siteId)}`, { auth, useStubAuth, bearerToken });
+}
+
+export function correctSiteProfile(siteId: string, body: SiteProfileCorrection, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null) {
+  return requestJson<SiteDetail & { audit_event_id: string }>(`/sites/${encodeURIComponent(siteId)}`, { method: "PATCH", body, auth, useStubAuth, bearerToken });
 }
 
 export function createSite(companyId: string, payload: SiteMasterCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<SiteDetail> {

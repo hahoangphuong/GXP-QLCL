@@ -24,6 +24,7 @@ import { reportReturnLocation } from "../features/reports/reportReturnLocation";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { ReassessmentDialog } from "../features/search/ReassessmentDialog";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
+import { ProfileCorrectionActions, type ProfileDrafts, type ProfileReadback } from "../features/search/ProfileCorrection";
 import { useBusinessEligibilitySourceEvidence } from "../features/search/useBusinessEligibilitySourceEvidence";
 import { useCertificateDocumentMetadata } from "../features/search/useCertificateDocumentMetadata";
 import { DEFAULT_FACILITY_TAB, resolveFacilityTab } from "../features/search/facilityTabs";
@@ -289,9 +290,11 @@ function facilityContextIdentity(result: FacilitySearchResult): string {
 export function SearchPage({
   access,
   statusError,
+  profileDrafts,
 }: {
   access: ApiAccess;
   statusError: string | null;
+  profileDrafts?: ProfileDrafts;
 }) {
   const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -639,6 +642,22 @@ export function SearchPage({
 
   function isCurrentContext(): boolean {
     return selectedContext !== null && committedContextRef.current === selectedContext;
+  }
+
+  function applyProfileReadback(record: ProfileReadback) {
+    if (!selectedContext || !selectedResult || !isCurrentContext()) return;
+    const siteId = selectedResult.site_id;
+    if (record.kind === "site" && record.value.id !== siteId) return;
+    const summaryFields = record.kind === "site"
+      ? { facility_name: record.value.site_name, address: record.value.site_address, province_name: record.value.province_name }
+      : { company_name: record.value.legal_name, company_legal_address: record.value.legal_address };
+    const rowFields = record.kind === "site"
+      ? { facility_name: record.value.site_name, province_name: record.value.province_name }
+      : { company_name: record.value.legal_name };
+    setWorkspaceRequest(current => current?.status === "ready" && current.context === selectedContext && current.data.summary.site_id === siteId
+      ? { ...current, data: { ...current.data, summary: { ...current.data.summary, ...summaryFields } } } : current);
+    setSearchResultsRequest(current => current?.context === searchContext
+      ? { ...current, items: current.items.map(item => item.site_id === siteId ? { ...item, ...rowFields } : item) } : current);
   }
 
   function publishWorkspaceRequest(next: WorkspaceRequest) {
@@ -3037,6 +3056,9 @@ export function SearchPage({
               selectedHistory={selectedHistory}
               selectedRemediationCycleId={selectedRemediationCycleId}
               summary={retainedWorkspace.summary}
+              profileActions={profileDrafts && workspace && selectedContext && selectedResult?.site_id === workspace.summary.site_id
+                ? <ProfileCorrectionActions key={selectedContext} access={access} siteId={selectedResult.site_id}
+                    drafts={profileDrafts} onReadback={applyProfileReadback} /> : undefined}
             />
             </ApprovalMutationContext.Provider>
             </CaseDraftSession>

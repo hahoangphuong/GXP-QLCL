@@ -2645,6 +2645,12 @@ tr:focus-visible {
 .general-certificate-footer > dl:last-child dd { background: #fff; }
 .general-certificate-footer .general-field { grid-template-columns: 110px minmax(0, 1fr); }
 .general-identity-pane .general-field { grid-template-columns: 125px minmax(0, 1fr); }
+.profile-correction { padding: 0.5rem; }
+.profile-correction-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.profile-correction-editor { margin-top: 0.5rem; }
+.profile-correction-fields { min-inline-size: 0; display: grid; gap: 0.5rem; margin: 0 0 0.5rem; }
+.profile-correction-fields label { display: grid; gap: 0.15rem; min-width: 0; }
+.profile-correction-fields input, .profile-correction-fields textarea { width: 100%; box-sizing: border-box; }
 .general-address dd { min-height: 65px; }
 .general-contact dd { min-height: 50px; }
 .general-highlight dd { background: #ffff00; }

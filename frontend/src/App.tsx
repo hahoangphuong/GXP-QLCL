@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
@@ -20,6 +20,7 @@ import { ChangeRequestReadWorkspace } from "./features/reports/ChangeRequestRead
 import { ReportsPage } from "./pages/ReportsPage";
 import { CaseCommandRegistryRoot, FacilityCommandRegistryRoot } from "./features/search/CaseDraftSession";
 import { CatalogCreateSessionRoot } from "./features/search/CatalogCreateSession";
+import type { ProfileDrafts } from "./features/search/ProfileCorrection";
 import { TermsPage } from "./pages/TermsPage";
 import type { AppStatus, AuthenticatedIdentity, OidcSession, StubAuthState } from "./types";
 
@@ -226,6 +227,9 @@ export function App() {
   const canLoadSecureApi = status !== null && (useStubAuth || Boolean(oidcSession?.token));
 
   const identity = canLoadSecureApi && ownedIdentity?.generation === accessGeneration ? ownedIdentity.value : null;
+  const canEditProfiles = identity?.permissions.includes("case.edit") ?? false;
+  const profileDrafts = useMemo<ProfileDrafts>(() => ({ entries: new Map(), pending: new Set() }),
+    [accessGeneration, identity?.subject, identity?.username, canEditProfiles]);
 
   useEffect(() => {
     if (!canLoadSecureApi) {
@@ -289,7 +293,8 @@ export function App() {
       <Routes>
         <Route path="/" element={<DashboardPage access={apiAccess} statusError={statusError} />} />
         <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/search" element={<SearchPage access={apiAccess} statusError={statusError} />} />
+        <Route path="/search" element={<SearchPage access={apiAccess} statusError={statusError}
+          profileDrafts={canEditProfiles ? profileDrafts : undefined} />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/workflow" element={<WorkflowPage access={apiAccess} statusError={statusError} />} />
         <Route path="/documents" element={<DocumentsPage access={apiAccess} statusError={statusError} />} />

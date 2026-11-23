@@ -116,6 +116,42 @@ try {
     assert.equal(stale.status(),409);
     assert.equal((await api("/cases/"+fixture.operator_case+"/workspace")).case_summary.state,
       "inspection_completed");
+
+    // Correct optional profile fields through the same operator workspace.
+    // This fixture is disposable, and its Case and display-name identities stay intact.
+    const sitePath = "/sites/"+fixture.operator_site;
+    const siteBefore = await api(sitePath);
+    const companyPath = "/companies/"+siteBefore.company_id;
+    const companyBefore = await api(companyPath);
+    await page.getByRole("tab",{name:"Thông tin chung",exact:true}).click();
+    for (const [label,path,before,field] of [
+      ["Công ty",companyPath,companyBefore,"english_name"],
+      ["Cơ sở",sitePath,siteBefore,"site_name_en"],
+    ]) {
+      const newValue = "Synthetic profile correction "+label;
+      await page.getByRole("button",{name:"Sửa thông tin "+label,exact:true}).click();
+      const editor = page.getByRole("region",{name:"Hiệu chỉnh hồ sơ "+label});
+      await editor.getByRole("textbox",{name:"Tên tiếng Anh",exact:true}).fill(newValue);
+      await editor.getByRole("textbox",{name:"Lý do hiệu chỉnh"}).fill("Disposable Chromium correction proof");
+      const response = page.waitForResponse(res => res.request().method()==="PATCH" && new URL(res.url()).pathname==="/api"+path);
+      const readback = page.waitForResponse(res => res.request().method()==="GET" && new URL(res.url()).pathname==="/api"+path);
+      await editor.getByRole("button",{name:"Lưu thay đổi",exact:true}).click();
+      const http = await response;
+      assert.equal(http.status(),200);
+      assert.deepEqual(http.request().postDataJSON().changes,{[field]:newValue});
+      const receipt = await http.json();
+      assert.equal(receipt.id,before.id);
+      assert.ok(receipt.audit_event_id);
+      await editor.getByText("Mã audit: "+receipt.audit_event_id,{exact:true}).waitFor();
+      const canonical = await (await readback).json();
+      assert.deepEqual(canonical,{...before,[field]:newValue});
+      await editor.getByRole("button",{name:"Đóng",exact:true}).click();
+    }
+    assert.deepEqual(networkMutations.slice(states.length),[
+      {method:"PATCH",path:"/api"+companyPath}, {method:"PATCH",path:"/api"+sitePath},
+    ]);
+    assert.equal(new URL(page.url()).searchParams.get("history_id"),fixture.operator_case);
+    process.stdout.write("OPERATOR_COMPANY_SITE_PROFILE_CORRECTION_PASS patches=2\n");
     assert.deepEqual(errors,[]);
     process.stdout.write("OPERATOR_CASE_TRANSITION_REPORT_PASS steps="+states.length+"\n");
   } catch (error) {

@@ -1,6 +1,6 @@
 import type { HistoryState } from "./usePersistedCertificateHistory";
 import type { GxpCertificateVersionHistory, BusinessEligibilityVersionHistory } from "../../types";
-import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type {
   BusinessEligibilityDetail,
   BusinessEligibilityIssueActionReadiness,
@@ -50,6 +50,7 @@ export function FacilityWorkspaceTabs({
   gxpDocumentMetadata,
   eligibilityDocumentMetadata,
   summary,
+  profileActions,
   selectedFacilityTab,
   onFacilityTabChange,
   selectedHistory,
@@ -132,6 +133,7 @@ export function FacilityWorkspaceTabs({
   gxpDocumentMetadata?: CertificateDocumentMetadataState;
   eligibilityDocumentMetadata?: CertificateDocumentMetadataState;
   summary: FacilityWorkspaceSummary;
+  profileActions?: ReactNode;
   selectedFacilityTab: FacilityTab;
   onFacilityTabChange: (tab: FacilityTab) => void;
   selectedHistory: FacilityHistoryItem | null;
@@ -307,7 +309,7 @@ export function FacilityWorkspaceTabs({
   const selectedTabContent = (
     <>
     {selectedFacilityTab === "Thông tin chung" ? (
-      <FacilitySummary summary={summary} />
+      <FacilitySummary summary={summary} profileActions={profileActions} />
     ) : null}
 
     {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (

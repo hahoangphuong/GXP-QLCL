@@ -4040,6 +4040,11 @@ class CaseWorkflowService:
         source_case_id: str | None = None,
     ) -> dict[str, Any]:
         require_permissions(user, {"case.edit"})
+        # Reassessment admission starts by locking the Site. An ORM lock query
+        # can autoflush a separate Case's unsubmitted CAPA in this Session.
+        # Fence material drafts before any canonical owner read or write.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="reassessment Case creation")
         locked_site = self._lock_site(session, site_id)
         normalized_gxp_type, normalized_line_code, line = self._validate_create_inspection_case_context(
             session,

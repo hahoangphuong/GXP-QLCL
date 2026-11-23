@@ -3171,6 +3171,10 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION, CERTIFICATE_ISSUE_PERMISSION})
+        # This issuance can flush the entire Session, including unsubmitted
+        # CAPA drafts for a different Case. Fence before the owner SELECT.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="change request successor issuance")
         row = self._get_change_request(session, change_request_id)
         # The Change Request owns successor issuance. Serialize against its
         # committed root before checking the optimistic token or writing artifacts.
@@ -3353,6 +3357,10 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION, CERTIFICATE_ISSUE_PERMISSION})
+        # This issuance can flush the entire Session, including unsubmitted
+        # CAPA drafts for a different Case. Fence before the owner SELECT.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="change request successor issuance")
         row = self._get_change_request(session, change_request_id)
         # The Change Request owns successor issuance. Serialize against its
         # committed root before checking the optimistic token or writing artifacts.

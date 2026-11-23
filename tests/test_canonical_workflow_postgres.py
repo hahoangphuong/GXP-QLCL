@@ -5895,3 +5895,71 @@ def test_copy_inspection_team_refuses_pending_foreign_draft_before_flush(pg_engi
         finally:
             event.remove(session, "before_flush", forbid_flush)
             session.rollback()
+
+
+def test_copy_inspection_team_http_post_and_canonical_readback(pg_engine):
+    source_case_id, target_case_id, source, person_id = _inspection_team_copy_fixture(pg_engine)
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: USER
+
+    async def request(path, body):
+        messages = []
+        received = False
+        encoded = json.dumps(body).encode()
+        async def receive():
+            nonlocal received
+            if not received:
+                received = True
+                return {"type": "http.request", "body": encoded, "more_body": False}
+            await asyncio.Future()
+        async def send(message):
+            messages.append(message)
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": "POST", "scheme": "http", "path": path, "raw_path": path.encode(),
+            "query_string": b"", "headers": [(b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 12345), "server": ("localhost", 80),
+            "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        raw = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(raw)
+    async def scenario():
+        payload = {
+            "source_case_id": source_case_id,
+            "expected_source_version": source["row_version"],
+            "expected_target_version": None,
+            "reason": "Approved operator team selection",
+        }
+        status, copied = await request(
+            f"/cases/{target_case_id}/team/copy-from-case", payload,
+        )
+        assert status == 200, copied
+        assert copied["source_case_id"] == source_case_id
+        assert copied["source_team_id"] == source["team_id"]
+        assert copied["case_id"] == target_case_id
+        assert copied["members"][0]["person_id"] == person_id
+        assert copied["audit_event_id"]
+
+        status, stale = await request(
+            f"/cases/{target_case_id}/team/copy-from-case", payload,
+        )
+        assert status == 409, stale
+        app.dependency_overrides[get_authenticated_user] = lambda: build_authenticated_user(
+            "readonly-operator", "reader", permissions=ROLE_PERMISSIONS["reader"],
+        )
+        status, denied = await request(
+            f"/cases/{target_case_id}/team/copy-from-case",
+            {**payload, "expected_target_version": copied["row_version"]},
+        )
+        assert status == 403, denied
+    asyncio.run(scenario())
+    with Session(pg_engine) as session:
+        target = session.scalar(select(InspectionTeam).where(
+            InspectionTeam.case_id == target_case_id
+        ))
+        assert target is not None
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == target.id,
+            AuditEvent.action == "inspection_team.copy_from_case",
+        )) == 1

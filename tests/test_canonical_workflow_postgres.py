@@ -4625,3 +4625,73 @@ def test_change_successor_allows_foreign_noop_case_marker(pg_engine, kind):
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == audit_action,
         )) == 1
+
+
+def test_business_eligibility_issue_refuses_foreign_pending_capa(pg_engine):
+    """Direct DDK issuance must not implicitly commit another Case's CAPA."""
+    _, site_id = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        certificate_before = session.scalar(select(func.count()).select_from(BusinessEligibilityCertificate))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="UNCOMMITTED-FOREIGN-DIRECT-DDK-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Direct business eligibility issuance attempted foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.issue_business_eligibility(
+                    session, site_id=site_id, certificate_number="SYNTH-DDK-FENCE",
+                    issued_on=DAY, expires_on=None,
+                    professional_responsible_person_name=None, notes=None,
+                    linked_certificates=[], reason="foreign Session draft", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(BusinessEligibilityCertificate)) == certificate_before
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_business_eligibility_issue_allows_foreign_noop_case_marker(pg_engine):
+    """An unchanged cached foreign Case must not block direct DDK issuance."""
+    _, site_id = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        scope_before = foreign.scope_code
+        foreign.scope_code = scope_before
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        receipt = SERVICE.issue_business_eligibility(
+            session, site_id=site_id, certificate_number="SYNTH-DDK-NOOP",
+            issued_on=DAY, expires_on=None,
+            professional_responsible_person_name=None, notes=None,
+            linked_certificates=[], reason="no-op foreign marker", user=USER,
+        )
+        assert receipt["business_eligibility_certificate_id"]
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == scope_before
+        assert verify.scalar(select(func.count()).select_from(BusinessEligibilityCertificate).where(
+            BusinessEligibilityCertificate.id == receipt["business_eligibility_certificate_id"]
+        )) == 1
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "business_eligibility.issue"
+        )) >= 1

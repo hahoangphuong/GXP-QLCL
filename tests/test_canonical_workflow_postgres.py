@@ -4695,3 +4695,108 @@ def test_business_eligibility_issue_allows_foreign_noop_case_marker(pg_engine):
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "business_eligibility.issue"
         )) >= 1
+
+
+def _ddk_version_promotion_session_fixture(pg_engine):
+    _, site_id = seed(pg_engine)
+    receipt = write(
+        pg_engine, SERVICE.issue_business_eligibility,
+        site_id=site_id, certificate_number=f"DDK-OWNER-{uuid4()}",
+        issued_on=DAY, expires_on=None,
+        professional_responsible_person_name="Synthetic owner",
+        notes="original", linked_certificates=[], reason="seed",
+    )
+    return receipt
+
+
+@pytest.mark.parametrize("operation", ["latest_version", "promote"])
+def test_ddk_version_or_promote_refuses_foreign_pending_capa(pg_engine, operation):
+    """DDK version edit/promotion must never save another Case's CAPA draft."""
+    receipt = _ddk_version_promotion_session_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="UNCOMMITTED-FOREIGN-DDK-" + operation,
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("DDK " + operation + " attempted foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "latest_version":
+                    SERVICE.upsert_business_eligibility_latest_version(
+                        session,
+                        business_eligibility_certificate_id=receipt["business_eligibility_certificate_id"],
+                        expected_version=receipt["row_version"],
+                        certificate_number="DDK-NEW-VERSION", issued_on=DAY,
+                        expires_on=None, professional_responsible_person_name="Updated",
+                        notes="new", linked_certificates=[], reason="foreign draft", user=USER,
+                    )
+                else:
+                    SERVICE.promote_business_eligibility_current(
+                        session,
+                        business_eligibility_certificate_id=receipt["business_eligibility_certificate_id"],
+                        expected_version=receipt["row_version"],
+                        reason="foreign draft", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(BusinessEligibilityCertificate.row_version).where(
+                    BusinessEligibilityCertificate.id == receipt["business_eligibility_certificate_id"]
+                )) == receipt["row_version"]
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["latest_version", "promote"])
+def test_ddk_version_or_promote_allows_foreign_noop_case_marker(pg_engine, operation):
+    """No-op foreign Case dirtiness is not a reason to reject a valid DDK write."""
+    receipt = _ddk_version_promotion_session_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        scope_before = foreign.scope_code
+        foreign.scope_code = scope_before
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        if operation == "latest_version":
+            changed = SERVICE.upsert_business_eligibility_latest_version(
+                session,
+                business_eligibility_certificate_id=receipt["business_eligibility_certificate_id"],
+                expected_version=receipt["row_version"],
+                certificate_number="DDK-NOOP-VERSION", issued_on=DAY,
+                expires_on=None, professional_responsible_person_name="Updated",
+                notes="new", linked_certificates=[], reason="no-op control", user=USER,
+            )
+            audit_action = "business_eligibility.latest_version.upsert"
+        else:
+            changed = SERVICE.promote_business_eligibility_current(
+                session,
+                business_eligibility_certificate_id=receipt["business_eligibility_certificate_id"],
+                expected_version=receipt["row_version"],
+                reason="no-op control", user=USER,
+            )
+            audit_action = "business_eligibility.promote_current"
+            assert changed["latest_flag"] is True
+        assert changed["business_eligibility_certificate_id"] == receipt["business_eligibility_certificate_id"]
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == scope_before
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == audit_action
+        )) >= 1

@@ -6289,6 +6289,162 @@ class CaseWorkflowService:
             "row_version": submission.row_version,
         }
 
+    def get_inspection_team_copy_preview(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        source_case_id: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Read-only operator review before cross-Case team reuse.
+
+        This is an advisory projection, not a reservation or write capability.
+        Every actual copy must still revalidate both owners and versions.
+        Read persisted columns without refreshing/overwriting tracked drafts.
+        """
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+
+        def case_identity(owner_id: str) -> dict[str, Any] | None:
+            row = session.execute(
+                select(
+                    Case.id, Case.site_id, Case.gxp_type, Case.state,
+                    Site.site_name, Company.legal_name,
+                )
+                .join(Site, Case.site_id == Site.id)
+                .join(Company, Site.company_id == Company.id)
+                .where(Case.id == owner_id)
+            ).one_or_none()
+            if row is None:
+                return None
+            return {
+                "case_id": row[0], "site_id": row[1],
+                "gxp_type": row[2], "case_state": row[3].value,
+                "site_name": row[4], "company_legal_name": row[5],
+            }
+
+        with session.no_autoflush:
+            target = case_identity(case_id)
+            if target is None:
+                raise HTTPException(status_code=404, detail="Target Case not found.")
+            source = case_identity(source_case_id)
+            source_team = None if source is None else session.execute(
+                select(InspectionTeam.id, InspectionTeam.row_version)
+                .where(InspectionTeam.case_id == source_case_id)
+            ).one_or_none()
+            target_team = session.execute(
+                select(InspectionTeam.id, InspectionTeam.row_version)
+                .where(InspectionTeam.case_id == case_id)
+            ).one_or_none()
+            members: list[dict[str, Any]] = []
+            source_identity_state = None
+            if source_team is not None:
+                rows = session.execute(
+                    select(
+                        InspectionTeamMember.id,
+                        InspectionTeamMember.inspector_profile_id,
+                        InspectionTeamMember.person_id,
+                        InspectionTeamMember.participant_catalog_id,
+                        InspectionTeamMember.identity_kind,
+                        InspectionTeamMember.display_name,
+                        InspectionTeamMember.role_code,
+                        InspectionTeamMember.role_label,
+                        InspectionTeamMember.sort_order,
+                    )
+                    .where(InspectionTeamMember.team_id == source_team[0])
+                    .order_by(InspectionTeamMember.sort_order, InspectionTeamMember.id)
+                ).all()
+                # No ORM IdentityMap member refresh: form previews must never
+                # overwrite an unrelated operator's cached member edits.
+                from types import SimpleNamespace
+                projected = [
+                    SimpleNamespace(
+                        id=row[0], inspector_profile_id=row[1], person_id=row[2],
+                        participant_catalog_id=row[3], identity_kind=row[4],
+                        display_name=row[5], role_code=row[6],
+                        role_label=row[7], sort_order=row[8],
+                    ) for row in rows
+                ]
+                source_identity_state = inspection_team_existing_identity_state(
+                    session, members=projected,
+                )
+                members = [
+                    {
+                        "member_id": member.id,
+                        "inspector_profile_id": member.inspector_profile_id,
+                        "person_id": member.person_id,
+                        "participant_catalog_id": member.participant_catalog_id,
+                        "identity_kind": member.identity_kind,
+                        "role_code": member.role_code,
+                        "role_label": member.role_label,
+                        "sort_order": member.sort_order,
+                        "display_name": (
+                            source_identity_state["member_states"][member.id]["display_name"]
+                            or member.display_name
+                        ),
+                        "identity_status": source_identity_state["member_states"][member.id]["identity_status"],
+                    }
+                    for member in projected
+                ]
+            target_identity_state = None
+            if target_team is not None:
+                persisted_target_members = session.execute(
+                    select(
+                        InspectionTeamMember.id,
+                        InspectionTeamMember.inspector_profile_id,
+                        InspectionTeamMember.person_id,
+                        InspectionTeamMember.participant_catalog_id,
+                        InspectionTeamMember.identity_kind,
+                        InspectionTeamMember.display_name,
+                        InspectionTeamMember.role_code,
+                        InspectionTeamMember.role_label,
+                        InspectionTeamMember.sort_order,
+                    ).where(InspectionTeamMember.team_id == target_team[0])
+                ).all()
+                from types import SimpleNamespace
+                target_identity_state = inspection_team_existing_identity_state(
+                    session, members=[
+                        SimpleNamespace(
+                            id=row[0], inspector_profile_id=row[1], person_id=row[2],
+                            participant_catalog_id=row[3], identity_kind=row[4],
+                            display_name=row[5], role_code=row[6],
+                            role_label=row[7], sort_order=row[8],
+                        ) for row in persisted_target_members
+                    ],
+                )
+
+            reason = None
+            if source_case_id == case_id:
+                reason = "source_and_target_case_same"
+            elif target["case_state"] in {
+                CaseState.CLOSED.value, CaseState.CANCELLED.value,
+            }:
+                reason = "target_case_terminal"
+            elif source is None:
+                reason = "source_case_not_found"
+            elif source_team is None:
+                reason = "source_team_not_found"
+            elif not source_identity_state["round_trip_safe"]:
+                reason = source_identity_state["blocked_reason_code"] or "unresolved_member_identity"
+            elif target_identity_state is not None and not target_identity_state["round_trip_safe"]:
+                reason = target_identity_state["blocked_reason_code"] or "target_team_identity_unresolved"
+            return {
+                "target_case": target,
+                "source_case": source,
+                "source_team_id": None if source_team is None else source_team[0],
+                "target_team_id": None if target_team is None else target_team[0],
+                "expected_source_version": (
+                    source_team[1] if source_team is not None and
+                    source_identity_state["round_trip_safe"] else None
+                ),
+                "expected_target_version": None if target_team is None else target_team[1],
+                "copy_available": reason is None,
+                "blocked_reason_code": reason,
+                "members": members,
+                "legal_issuance_verified": False,
+                "qdkt_render_available": False,
+            }
+
     def copy_inspection_team_from_case(
         self,
         session: Session,

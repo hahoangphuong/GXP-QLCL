@@ -718,6 +718,31 @@ class CaseQdKtCurrentTeamRead(BaseModel):
     members: list[CaseQdKtTeamMemberRead]
 
 
+class CaseQdKtDecisionHistoryItemRead(BaseModel):
+    decision_id: str
+    ordinal: int
+    reference: str
+    decision_on: date
+    legacy_raw: str
+    relation_type: str | None
+    related_decision_id: str | None
+
+
+class CaseQdKtDecisionHistoryRead(BaseModel):
+    case_id: str
+    inspection_plan_id: str | None
+    source_status: Literal[
+        "NO_INSPECTION_PLAN", "NO_DECISIONS",
+        "EXPLICIT_REPLACEMENT_CHAIN", "LINEAGE_BLOCKED",
+    ]
+    blocked_reason: str | None
+    latest_source_decision_id: str | None
+    # A source row or REPLACES chain is not issuance verification.
+    legal_issuance_verified: Literal[False]
+    ready_to_render: Literal[False]
+    decisions: list[CaseQdKtDecisionHistoryItemRead]
+
+
 class CaseQdKtRuntimeReadinessRead(BaseModel):
     case_id: str
     family_code: Literal["INSPECTION_QD_KT"]

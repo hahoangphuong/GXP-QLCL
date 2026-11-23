@@ -5638,3 +5638,126 @@ def test_http_facility_master_correction_get_patch_get_and_rbac(pg_engine):
         assert s_status == 403, denied
 
     asyncio.run(scenario())
+
+
+def _seed_qdkt_history(pg_engine):
+    from backend.app.db.models.phase1 import InspectionPlan, InspectionDecision
+    case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        plan = InspectionPlan(case_id=case_id)
+        session.add(plan)
+        session.flush()
+        first = InspectionDecision(
+            inspection_plan_id=plan.id, ordinal=1,
+            reference="11/QDKT", decision_on=DAY, legacy_raw="11/QDKT 01/10/2026",
+        )
+        session.add(first)
+        session.flush()
+        second = InspectionDecision(
+            inspection_plan_id=plan.id, ordinal=2,
+            reference="12/QDKT", decision_on=DAY,
+            legacy_raw="12/QDKT 01/10/2026",
+            relation_type="REPLACES", related_decision_id=first.id,
+        )
+        session.add(second)
+        session.commit()
+        return case_id, plan.id, first.id, second.id
+
+
+def test_qdkt_history_case_owned_chain_and_ambiguous_legacy(pg_engine):
+    from backend.app.db.models.phase1 import InspectionDecision
+    from backend.app.document.inspection_qd_kt_decision_history import read_case_qdkt_decision_history
+    case_id, plan_id, first_id, second_id = _seed_qdkt_history(pg_engine)
+    foreign_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        result = read_case_qdkt_decision_history(session, case_id=case_id)
+        assert result["case_id"] == case_id and result["inspection_plan_id"] == plan_id
+        assert result["source_status"] == "EXPLICIT_REPLACEMENT_CHAIN"
+        assert result["latest_source_decision_id"] == second_id
+        assert result["legal_issuance_verified"] is False
+        assert result["ready_to_render"] is False
+        assert [item["decision_id"] for item in result["decisions"]] == [first_id, second_id]
+        assert result["decisions"][1]["related_decision_id"] == first_id
+        assert result["decisions"][1]["relation_type"] == "REPLACES"
+        missing = read_case_qdkt_decision_history(session, case_id=foreign_id)
+        assert missing["source_status"] == "NO_INSPECTION_PLAN"
+        assert missing["latest_source_decision_id"] is None
+        with pytest.raises(HTTPException) as not_found:
+            read_case_qdkt_decision_history(session, case_id=str(uuid4()))
+        assert not_found.value.status_code == 404
+    with Session(pg_engine) as session:
+        session.query(InspectionDecision).filter(InspectionDecision.id == second_id).update(
+            {"related_decision_id": None, "relation_type": None},
+        )
+        session.commit()
+    with Session(pg_engine) as session:
+        ambiguous = read_case_qdkt_decision_history(session, case_id=case_id)
+        assert ambiguous["source_status"] == "LINEAGE_BLOCKED"
+        assert ambiguous["blocked_reason"] == "DECISION_REPLACEMENT_LINEAGE_AMBIGUOUS"
+        assert ambiguous["latest_source_decision_id"] is None
+        assert len(ambiguous["decisions"]) == 2
+
+
+def test_qdkt_history_does_not_flush_or_overwrite_operator_drafts(pg_engine):
+    from backend.app.db.models.phase1 import InspectionDecision
+    from backend.app.document.inspection_qd_kt_decision_history import read_case_qdkt_decision_history
+    case_id, _, first_id, second_id = _seed_qdkt_history(pg_engine)
+    with Session(pg_engine) as session:
+        cached = session.get(InspectionDecision, first_id)
+        cached.reference = "Operator-uncommitted-reference"
+        pending = CapaCycle(
+            case_id=case_id, round_no=1, requested_on=DAY,
+            incoming_reference="PENDING", notes="Separate CAPA intent",
+        )
+        session.add(pending)
+        def fail_flush(*_):
+            raise AssertionError("History GET may not flush independent drafts")
+        event.listen(session, "before_flush", fail_flush)
+        try:
+            history = read_case_qdkt_decision_history(session, case_id=case_id)
+            assert history["decisions"][0]["reference"] == "11/QDKT"
+            assert history["latest_source_decision_id"] == second_id
+            assert cached.reference == "Operator-uncommitted-reference"
+            assert pending in session.new
+        finally:
+            event.remove(session, "before_flush", fail_flush)
+            session.rollback()
+
+
+def test_qdkt_history_http_get_reader_and_wrong_case(pg_engine):
+    from backend.app.db.models.phase1 import InspectionDecision
+    case_id, _, first_id, second_id = _seed_qdkt_history(pg_engine)
+    other_id, _ = seed(pg_engine)
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: build_authenticated_user(
+        "qdkt-reader", "reader", permissions=ROLE_PERMISSIONS["reader"],
+    )
+
+    async def request(case_key):
+        messages = []
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+        async def send(message):
+            messages.append(message)
+        path = f"/cases/{case_key}/documents/inspection-qd-kt/decision-history"
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": "GET", "scheme": "http", "path": path, "raw_path": path.encode(),
+            "query_string": b"", "headers": [], "client": ("127.0.0.1", 12345),
+            "server": ("localhost", 80), "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        body = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(body)
+
+    async def scenario():
+        status, history = await request(case_id)
+        assert status == 200, history
+        assert history["latest_source_decision_id"] == second_id
+        assert history["legal_issuance_verified"] is False
+        assert history["ready_to_render"] is False
+        status, other = await request(other_id)
+        assert status == 200 and other["decisions"] == []
+        status, missing = await request(str(uuid4()))
+        assert status == 404, missing
+    asyncio.run(scenario())

@@ -22,6 +22,8 @@ from backend.app.read_models import (
     CompanyDetailRead,
     CompanyMasterCreateRequest,
     CompanyMasterCreateRead,
+    CompanyMasterEditRequest,
+    CompanyMasterEditRead,
     CompanyRead,
     DashboardSummaryRead,
     FacilitySearchPageRead,
@@ -33,6 +35,8 @@ from backend.app.read_models import (
     SiteDetailRead,
     SiteMasterCreateRequest,
     SiteMasterCreateRead,
+    SiteMasterEditRequest,
+    SiteMasterEditRead,
     ProductionLineMasterCreateRequest,
     ProductionLineMasterRead,
     ProductionLineMasterCreateRead,
@@ -180,6 +184,38 @@ def register_catalog_routes(app, session_factory) -> None:
         commit_or_409(session)
         return SiteMasterCreateRead(**result)
 
+
+    def update_company_master(
+        company_id: str,
+        payload: CompanyMasterEditRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = workflow_service.update_company_master(
+            session, company_id=company_id,
+            expected=payload.expected.model_dump(),
+            changes=payload.changes.model_dump(exclude_unset=True),
+            reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return CompanyMasterEditRead(**result)
+
+    def update_site_master(
+        site_id: str,
+        payload: SiteMasterEditRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = workflow_service.update_site_master(
+            session, site_id=site_id,
+            expected=payload.expected.model_dump(),
+            changes=payload.changes.model_dump(exclude_unset=True),
+            reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return SiteMasterEditRead(**result)
 
     def create_production_line_master(
         site_id: str,
@@ -620,6 +656,8 @@ def register_catalog_routes(app, session_factory) -> None:
     app.add_api_route("/sites/{site_id}/production-lines", list_site_production_lines, methods=["GET"], response_model=list[ProductionLineMasterRead], tags=["catalog"])
     app.add_api_route("/production-lines/{production_line_id}", get_production_line_master, methods=["GET"], response_model=ProductionLineMasterRead, tags=["catalog"])
     app.add_api_route("/companies", create_company_master, methods=["POST"], response_model=CompanyMasterCreateRead, tags=["catalog"])
+    app.add_api_route("/companies/{company_id}", update_company_master, methods=["PATCH"], response_model=CompanyMasterEditRead, tags=["catalog"])
+    app.add_api_route("/sites/{site_id}", update_site_master, methods=["PATCH"], response_model=SiteMasterEditRead, tags=["catalog"])
     app.add_api_route("/companies/{company_id}/sites", create_site_master, methods=["POST"], response_model=SiteMasterCreateRead, tags=["catalog"])
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])

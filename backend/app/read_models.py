@@ -86,6 +86,75 @@ class SiteMasterCreateRead(SiteDetailRead):
     audit_event_id: str
 
 
+class CompanyMasterEditExpected(BaseModel):
+    # Full canonical GET profile precondition; no fabricated row_version.
+    model_config = ConfigDict(extra="forbid")
+
+    legal_name: str
+    legal_address: str | None
+    english_name: str | None
+    short_name: str | None
+    legal_address_en: str | None
+    is_inactive: bool
+
+
+class CompanyMasterEditChanges(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    legal_name: str | None = None
+    legal_address: str | None = None
+    english_name: str | None = None
+    short_name: str | None = None
+    legal_address_en: str | None = None
+
+
+class CompanyMasterEditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected: CompanyMasterEditExpected
+    changes: CompanyMasterEditChanges
+    reason: str
+
+
+class SiteMasterEditExpected(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    company_id: str
+    site_name: str
+    site_address: str | None
+    site_name_en: str | None
+    site_address_en: str | None
+    province_name: str | None
+    short_name: str | None
+
+
+class SiteMasterEditChanges(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    site_name: str | None = None
+    site_address: str | None = None
+    site_name_en: str | None = None
+    site_address_en: str | None = None
+    province_name: str | None = None
+    short_name: str | None = None
+
+
+class SiteMasterEditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected: SiteMasterEditExpected
+    changes: SiteMasterEditChanges
+    reason: str
+
+
+class CompanyMasterEditRead(CompanyDetailRead):
+    audit_event_id: str
+
+
+class SiteMasterEditRead(SiteDetailRead):
+    audit_event_id: str
+
+
 class ProductionLineMasterCreateRequest(BaseModel):
     # Client allocates an RFC 4122 v4 UUID *before* first POST, never on retry.
     production_line_id: UUID4

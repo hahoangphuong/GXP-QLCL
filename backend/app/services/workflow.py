@@ -2389,6 +2389,141 @@ class CaseWorkflowService:
         }
 
 
+    @staticmethod
+    def _reviewed_master_changes(
+        *,
+        expected: dict[str, Any],
+        changes: dict[str, Any],
+        required_fields: dict[str, int],
+        optional_fields: dict[str, int],
+        owner_snapshot: dict[str, Any],
+        operation: str,
+    ) -> dict[str, Any]:
+        """Compare a complete canonical GET snapshot; do not invent a row version.
+
+        Company/Site are legacy-backed identities without row_version. Compare
+        the full editable profile under the row lock, not only edited fields.
+        """
+        if set(expected) != set(owner_snapshot):
+            raise HTTPException(status_code=422, detail=f"{operation} requires a complete canonical profile precondition.")
+        if not changes or any(k not in required_fields and k not in optional_fields for k in changes):
+            raise HTTPException(status_code=422, detail=f"{operation} contains no editable profile fields or an unsupported change.")
+        if any(expected[key] != persisted for key, persisted in owner_snapshot.items()):
+            raise HTTPException(status_code=409, detail=f"{operation} has changed since it was reviewed; reload canonical profile.")
+        normalized: dict[str, Any] = {}
+        for key, value in changes.items():
+            if key in required_fields:
+                normalized[key] = CaseWorkflowService._facility_master_required_text(
+                    value, field=key, limit=required_fields[key],
+                )
+            else:
+                normalized[key] = CaseWorkflowService._facility_master_optional_text(
+                    value, field=key, limit=optional_fields[key],
+                )
+        if not any(owner_snapshot[key] != value for key, value in normalized.items()):
+            raise HTTPException(status_code=422, detail=f"{operation} has no effective changes.")
+        return normalized
+
+    def update_company_master(
+        self, session: Session, *, company_id: str,
+        expected: dict[str, Any], changes: dict[str, Any],
+        reason: str, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Correct registered Company fields; not an ownership/deactivation API."""
+        require_permissions(user, {"case.edit"})
+        normalized_reason = self._facility_master_required_text(
+            reason, field="reason", limit=10000,
+        )
+        required_fields = {"legal_name": 512, "legal_address": 10000}
+        optional_fields = {"english_name": 512, "short_name": 128, "legal_address_en": 10000}
+        if not changes or any(key not in required_fields and key not in optional_fields for key in changes):
+            raise HTTPException(status_code=422, detail="Company correction may only change editable profile fields.")
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="company profile correction")
+            company = session.scalars(
+                select(Company).where(Company.id == company_id)
+                .with_for_update(of=Company).execution_options(populate_existing=True)
+            ).one_or_none()
+            if company is None:
+                raise HTTPException(status_code=404, detail="Company not found.")
+            fields = tuple(required_fields) + tuple(optional_fields) + ("is_inactive",)
+            before = {key: getattr(company, key) for key in fields}
+            normalized = self._reviewed_master_changes(
+                expected=expected, changes=changes,
+                required_fields=required_fields, optional_fields=optional_fields,
+                owner_snapshot=before, operation="Company profile",
+            )
+        actor = self._get_or_create_app_user(session, user)
+        for key, value in normalized.items():
+            setattr(company, key, value)
+        after = {key: getattr(company, key) for key in fields}
+        audit = self._write_audit_event(
+            session, actor=actor, entity_type="company", entity_id=company.id,
+            action="company.update",
+            payload={"company_id": company.id, "changed_keys": sorted(normalized)},
+            before=before, after=after, reason=normalized_reason,
+        )
+        session.flush()
+        return {
+            "id": company.id, "legacy_company_id": company.legacy_company_id,
+            **after, "audit_event_id": audit.id,
+        }
+
+    def update_site_master(
+        self, session: Session, *, site_id: str,
+        expected: dict[str, Any], changes: dict[str, Any],
+        reason: str, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Correct registered Site fields without altering its Company identity."""
+        require_permissions(user, {"case.edit"})
+        normalized_reason = self._facility_master_required_text(
+            reason, field="reason", limit=10000,
+        )
+        required_fields = {"site_name": 512, "site_address": 10000}
+        optional_fields = {
+            "site_name_en": 512, "site_address_en": 10000,
+            "province_name": 255, "short_name": 255,
+        }
+        if not changes or any(key not in required_fields and key not in optional_fields for key in changes):
+            raise HTTPException(status_code=422, detail="Site correction may only change editable profile fields.")
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="site profile correction")
+            site = session.scalars(
+                select(Site).where(Site.id == site_id)
+                .with_for_update(of=Site).execution_options(populate_existing=True)
+            ).one_or_none()
+            if site is None:
+                raise HTTPException(status_code=404, detail="Site not found.")
+            fields = ("company_id",) + tuple(required_fields) + tuple(optional_fields)
+            before = {key: getattr(site, key) for key in fields}
+            normalized = self._reviewed_master_changes(
+                expected=expected, changes=changes,
+                required_fields=required_fields, optional_fields=optional_fields,
+                owner_snapshot=before, operation="Site profile",
+            )
+            # Company read is explicitly locked against an in-flight deactivation.
+            company = session.scalars(
+                select(Company).where(Company.id == site.company_id)
+                .with_for_update(of=Company).execution_options(populate_existing=True)
+            ).one_or_none()
+            if company is None or company.is_inactive:
+                raise HTTPException(status_code=409, detail="Site owning Company is missing or inactive.")
+        actor = self._get_or_create_app_user(session, user)
+        for key, value in normalized.items():
+            setattr(site, key, value)
+        after = {key: getattr(site, key) for key in fields}
+        audit = self._write_audit_event(
+            session, actor=actor, entity_type="site", entity_id=site.id,
+            action="site.update",
+            payload={"site_id": site.id, "company_id": site.company_id, "changed_keys": sorted(normalized)},
+            before=before, after=after, reason=normalized_reason,
+        )
+        session.flush()
+        return {
+            "id": site.id, "legacy_site_id": site.legacy_site_id,
+            **after, "audit_event_id": audit.id,
+        }
+
     def create_production_line_master(
         self, session: Session, *, site_id: str, production_line_id: str,
         code: str, effective_from: date, effective_to: date | None,

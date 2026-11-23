@@ -1430,6 +1430,15 @@ class InspectionTeamUpsertRequest(BaseModel):
     reason: str | None = None
 
 
+class InspectionTeamCopyFromCaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_case_id: UUID4
+    expected_source_version: int = Field(ge=1)
+    expected_target_version: int | None = Field(default=None, ge=1)
+    reason: str = Field(min_length=1)
+
+
 class InspectionTeamMemberRead(BaseModel):
     id: str
     inspector_profile_id: str | None
@@ -1449,6 +1458,12 @@ class InspectionTeamRead(BaseModel):
     display_text: str | None
     members: list[InspectionTeamMemberRead]
     audit_event_id: str
+
+
+class InspectionTeamCopyFromCaseRead(InspectionTeamRead):
+    source_case_id: str
+    source_team_id: str
+    source_team_version: int
 
 
 class InspectionTeamIdentityOptionRead(BaseModel):

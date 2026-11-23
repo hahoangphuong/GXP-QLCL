@@ -53,6 +53,8 @@ from backend.app.read_models import (
     InspectionPlanRead,
     InspectionPlanUpsertRequest,
     InspectionTeamRead,
+    InspectionTeamCopyFromCaseRequest,
+    InspectionTeamCopyFromCaseRead,
     InspectionTeamIdentityOptionRead,
     InspectionTeamUpsertRequest,
     InspectionApprovalSubmissionRead,
@@ -369,6 +371,22 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return InspectionTeamRead(**result)
+
+    def copy_inspection_team_from_case(
+        case_id: str,
+        payload: InspectionTeamCopyFromCaseRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        result = service.copy_inspection_team_from_case(
+            session, case_id=case_id, source_case_id=str(payload.source_case_id),
+            expected_source_version=payload.expected_source_version,
+            expected_target_version=payload.expected_target_version,
+            reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return InspectionTeamCopyFromCaseRead(**result)
 
     def list_inspection_team_identity_options(
         session: Session = dependency,
@@ -872,6 +890,13 @@ def register_workflow_routes(app, session_factory) -> None:
         upsert_inspection_team,
         methods=["PUT"],
         response_model=InspectionTeamRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/team/copy-from-case",
+        copy_inspection_team_from_case,
+        methods=["POST"],
+        response_model=InspectionTeamCopyFromCaseRead,
         tags=["workflow"],
     )
     app.add_api_route(

@@ -6289,6 +6289,101 @@ class CaseWorkflowService:
             "row_version": submission.row_version,
         }
 
+    def copy_inspection_team_from_case(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        source_case_id: str,
+        expected_source_version: int,
+        expected_target_version: int | None,
+        reason: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Reuse selected members without transferring any historical team identity.
+
+        Case locking is deterministic to avoid cyclic A-to-B and B-to-A copy
+        deadlocks. Both Cases and the source team are read as persisted owners.
+        The existing upsert owns validation, replacement, versioning and audit.
+        """
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+        if case_id == source_case_id:
+            raise HTTPException(status_code=422, detail="Source and target Cases must differ.")
+        normalized_reason = self._facility_master_required_text(
+            reason, field="reason", limit=10000,
+        )
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="inspection team reuse")
+            ids = sorted({case_id, source_case_id})
+            locked = session.scalars(
+                select(Case).where(Case.id.in_(ids)).order_by(Case.id.asc())
+                .with_for_update(of=Case).execution_options(populate_existing=True)
+            ).all()
+            if len(locked) != 2 or {item.id for item in locked} != set(ids):
+                raise HTTPException(status_code=404, detail="Source or target Case not found.")
+            target = next(item for item in locked if item.id == case_id)
+            self._assert_case_not_terminal(target, operation="inspection team reuse")
+            source_team = session.scalar(
+                select(InspectionTeam).where(InspectionTeam.case_id == source_case_id)
+                .execution_options(populate_existing=True)
+            )
+            if source_team is None:
+                raise HTTPException(status_code=409, detail="Source Case has no reusable inspection team.")
+            self._assert_expected_version(
+                source_team, expected_source_version, label="source_inspection_team",
+            )
+            existing = session.scalar(
+                select(InspectionTeam).where(InspectionTeam.case_id == case_id)
+                .execution_options(populate_existing=True)
+            )
+            if existing is None:
+                if expected_target_version is not None:
+                    raise HTTPException(status_code=409, detail="Target team has not been initialized.")
+            else:
+                if expected_target_version is None:
+                    raise HTTPException(status_code=409, detail="Target inspection team expected_version required.")
+                self._assert_expected_version(
+                    existing, expected_target_version, label="target_inspection_team",
+                )
+            source_members = session.scalars(
+                select(InspectionTeamMember).where(InspectionTeamMember.team_id == source_team.id)
+                .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
+                .execution_options(populate_existing=True)
+            ).all()
+            if not source_members:
+                raise HTTPException(status_code=409, detail="Source inspection team has no reusable members.")
+            source_state = inspection_team_existing_identity_state(
+                session, members=source_members,
+            )
+            if not source_state["round_trip_safe"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Source inspection team identity is not safe for canonical reuse.",
+                )
+            member_inputs = [
+                {
+                    "inspector_profile_id": member.inspector_profile_id,
+                    "person_id": member.person_id,
+                    "identity_kind": member.identity_kind,
+                    "participant_catalog_id": member.participant_catalog_id,
+                    "role_code": member.role_code,
+                    "role_label": member.role_label,
+                    "sort_order": member.sort_order,
+                }
+                for member in source_members
+            ]
+            source = {
+                "source_case_id": source_case_id,
+                "source_team_id": source_team.id,
+                "source_team_version": source_team.row_version,
+            }
+        result = self.upsert_inspection_team(
+            session, case_id=case_id, members=member_inputs,
+            reason=normalized_reason, user=user,
+            expected_version=expected_target_version, copy_source=source,
+        )
+        return {**result, **source}
+
     def upsert_inspection_team(
         self,
         session: Session,
@@ -6299,6 +6394,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
         expected_version: int | None = None,
         display_text: str | None = None,
+        copy_source: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         require_permissions(user, {INSPECTION_EDIT_PERMISSION})
         # Reject legacy display-text edits before any owner reads.
@@ -6433,8 +6529,9 @@ class CaseWorkflowService:
             actor=actor,
             entity_type="inspection_team",
             entity_id=team.id,
-            action="inspection_team.upsert",
+            action="inspection_team.copy_from_case" if copy_source is not None else "inspection_team.upsert",
             payload=self._build_stage_payload(
+                **({} if copy_source is None else copy_source),
                 case_id=row.id,
                 display_text=team.display_text,
                 member_count=len(created_members),

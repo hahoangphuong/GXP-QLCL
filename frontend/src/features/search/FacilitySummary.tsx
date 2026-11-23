@@ -7,7 +7,7 @@ function SummaryField({ label, value, className = "" }: { label: string; value: 
   return <div className={`general-field ${className}`}><dt>{label}</dt><dd>{value || "Chưa có"}</dd></div>;
 }
 
-export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary }) {
+export function FacilitySummary({ summary, profileActions }: { summary: FacilityWorkspaceSummary; profileActions?: ReactNode }) {
   const gxpContext = [summary.selected_gxp_type, summary.selected_line_code ? `Dây chuyền ${summary.selected_line_code}` : null].filter(Boolean).join(" · ");
   return <div className="summary-panel general-legacy-layout">
     <section className="general-certificate-pane" aria-label="Thông tin về GxP">
@@ -33,6 +33,7 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
     </section>
     <section className="general-identity-pane" aria-label="Thông tin về cơ sở và công ty">
       <h3 className="sr-only">Thông tin về cơ sở và công ty</h3>
+      {profileActions}
       <dl>
         <SummaryField label="Tên cơ sở" value={summary.facility_name} />
         <SummaryField label="Địa chỉ cơ sở" value={summary.address} className="general-address" />

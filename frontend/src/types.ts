@@ -45,10 +45,18 @@ export type Company = {
 
 /** Canonical company projection used to verify a create intent. */
 export type CompanyDetail = Company & {
-  legal_address: string;
+  legal_address: string | null;
   english_name: string | null;
   legal_address_en: string | null;
   is_inactive: boolean;
+};
+
+export type CompanyProfileExpected = Pick<CompanyDetail,
+  "legal_name" | "legal_address" | "english_name" | "short_name" | "legal_address_en" | "is_inactive">;
+export type CompanyProfileCorrection = {
+  expected: CompanyProfileExpected;
+  changes: Partial<Omit<CompanyProfileExpected, "is_inactive">>;
+  reason: string;
 };
 
 export type CompanyMasterCreateRequest = {
@@ -71,10 +79,18 @@ export type Site = {
 
 /** Canonical site projection used to verify a create intent. */
 export type SiteDetail = Site & {
-  site_address: string;
+  site_address: string | null;
   site_name_en: string | null;
   site_address_en: string | null;
   short_name: string | null;
+};
+
+export type SiteProfileExpected = Pick<SiteDetail,
+  "company_id" | "site_name" | "site_address" | "site_name_en" | "site_address_en" | "province_name" | "short_name">;
+export type SiteProfileCorrection = {
+  expected: SiteProfileExpected;
+  changes: Partial<Omit<SiteProfileExpected, "company_id">>;
+  reason: string;
 };
 
 export type SiteMasterCreateRequest = {

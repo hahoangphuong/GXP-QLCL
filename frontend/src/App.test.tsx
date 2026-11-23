@@ -87,8 +87,10 @@ const apiMocks = vi.hoisted(() => ({
   listCompanies: vi.fn().mockResolvedValue([]),
   listSites: vi.fn().mockResolvedValue([]),
   getCompany: vi.fn(),
+  correctCompanyProfile: vi.fn(),
   createCompany: vi.fn(),
   getSite: vi.fn(),
+  correctSiteProfile: vi.fn(),
   createSite: vi.fn(),
   prepareDocument: vi.fn(),
   getCaseInspectionPlanRuntimeReadiness: vi.fn(),
@@ -162,6 +164,8 @@ vi.mock("./lib/storage", () => ({
 function resetApiMocks() {
   apiMocks.getAppStatus.mockReset();
   apiMocks.getCurrentIdentity.mockReset();
+  apiMocks.correctCompanyProfile.mockReset();
+  apiMocks.correctSiteProfile.mockReset();
   apiMocks.getAdminSystemStatus.mockReset();
   apiMocks.assessCapaCycle.mockReset();
   apiMocks.createCapaCycle.mockReset();
@@ -953,6 +957,72 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 }
 
 describe("App Slice A.4 search workspace", () => {
+  it("opens Site profile correction for case.edit and updates the current Facility from canonical readback", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const canonical = { id: "site-1", legacy_site_id: 1, company_id: "company-1", site_name: "Cơ sở canonical",
+      site_address: "Địa chỉ cũ", site_name_en: null, site_address_en: null, province_name: null, short_name: null };
+    apiMocks.getSite.mockResolvedValueOnce(canonical).mockResolvedValueOnce({ ...canonical, site_name: "Cơ sở đã cập nhật" });
+    apiMocks.correctSiteProfile.mockResolvedValueOnce({ ...canonical, site_name: "Tên từ PATCH", audit_event_id: "audit-app" });
+    renderApp(["/search?gxp_type=GMP&facility_tab=Thông+tin+chung"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Sửa thông tin Cơ sở" }));
+    await screen.findByLabelText("Lý do hiệu chỉnh");
+    const editor = screen.getByRole("region", { name: "Hiệu chỉnh hồ sơ Cơ sở" });
+    fireEvent.change(within(editor).getByLabelText("Tên cơ sở"), { target: { value: "Cơ sở đã cập nhật" } });
+    fireEvent.change(within(editor).getByLabelText("Lý do hiệu chỉnh"), { target: { value: "Sửa lỗi hồ sơ" } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(await screen.findByRole("row", { name: /Cơ sở đã cập nhật/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Mã audit: audit-app")).toBeInTheDocument();
+    expect(screen.queryByText("Tên từ PATCH")).not.toBeInTheDocument();
+    expect(apiMocks.correctSiteProfile).toHaveBeenCalledOnce();
+    expect(apiMocks.getSite).toHaveBeenCalledTimes(2);
+    await flushSearchUrlSync();
+  });
+
+  it("keeps Company and Site profile correction unavailable without case.edit", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.getCurrentIdentity.mockResolvedValue({
+      username: "reader.local", email: null, subject: null, role_codes: ["reader"], permissions: ["case.view"],
+    });
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    renderApp(["/search?gxp_type=GMP&facility_tab=Thông+tin+chung"]);
+    await screen.findByRole("region", { name: "Thông tin về cơ sở và công ty" });
+    expect(screen.queryByRole("button", { name: /Sửa thông tin (Cơ sở|Công ty)/ })).not.toBeInTheDocument();
+    expect(apiMocks.correctCompanyProfile).not.toHaveBeenCalled();
+    expect(apiMocks.correctSiteProfile).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
+  });
+
+  it("preserves the unknown profile correction draft on browser history without PATCH replay", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getSite.mockResolvedValueOnce({ id: "site-1", legacy_site_id: 1, company_id: "company-1", site_name: "Cơ sở canonical",
+      site_address: "Địa chỉ cũ", site_name_en: null, site_address_en: null, province_name: null, short_name: null });
+    apiMocks.correctSiteProfile.mockRejectedValueOnce(new TypeError("Synthetic timeout"));
+    render(<MemoryRouter initialEntries={["/search?gxp_type=GMP&facility_tab=Thông+tin+chung"]}>
+      <SearchRouteNavigator to="/" /><App />
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Sửa thông tin Cơ sở" }));
+    await screen.findByLabelText("Lý do hiệu chỉnh");
+    const editor = screen.getByRole("region", { name: "Hiệu chỉnh hồ sơ Cơ sở" });
+    fireEvent.change(within(editor).getByLabelText("Tên cơ sở"), { target: { value: "Bản nháp cần đối chiếu" } });
+    fireEvent.change(within(editor).getByLabelText("Lý do hiệu chỉnh"), { target: { value: "Lý do" } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(await within(editor).findByRole("alert")).toHaveTextContent("Chưa xác định");
+    await flushSearchUrlSync();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Đi tới ngữ cảnh khác" })); });
+    expect(screen.queryByRole("region", { name: "Hiệu chỉnh hồ sơ Cơ sở" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Quay lại ngữ cảnh trước" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sửa thông tin Cơ sở" }));
+    expect(await screen.findByDisplayValue("Bản nháp cần đối chiếu")).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Tới ngữ cảnh tiếp theo" })); });
+    expect(screen.queryByRole("region", { name: "Hiệu chỉnh hồ sơ Cơ sở" })).not.toBeInTheDocument();
+    expect(apiMocks.correctSiteProfile).toHaveBeenCalledOnce();
+  });
+
   it("guides an operator to the canonical final evaluation without a mutation", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

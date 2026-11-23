@@ -7202,6 +7202,10 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Business eligibility Site has uncommitted changes; resolve draft before issuance.",
                 )
+            # Site admission alone does not fence pending CAPA/Case mutations
+            # elsewhere in a reused SQLAlchemy Session. The new DDK and audit
+            # flush the whole Session; reject independent operator drafts.
+            self._assert_mutation_session_clean(session, operation="business eligibility issuance")
         actor = self._get_or_create_app_user(session, user)
 
         row, version, created_links = self._create_business_eligibility_candidate(

@@ -4201,6 +4201,12 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         require_permissions(user, {"case.edit"})
+        # The Case lock and subsequent scope populate_existing may autoflush
+        # a separate operator draft or overwrite a dirty cached Scope. Fence
+        # the entire Session before either canonical owner read, including
+        # pending block/selection replacement intents across aggregates.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="evaluation-scope update")
         # Case closure is a parent-owner transition; the ORM identity might
         # still hold a nonterminal snapshot from an earlier Session read.
         case = self._lock_case(session, case_id)

@@ -15,6 +15,7 @@ from backend.app.read_models import (
     CaseInspectionPlanRuntimeReadinessRead,
     CaseQdKtRuntimeReadinessRead,
     CaseQdKtCurrentTeamRead,
+    CaseQdKtDecisionHistoryRead,
     DocumentDetailRead,
     DocumentOwnerMetadataInventoryRead,
     DocumentGenerationPrepareRequest,
@@ -26,6 +27,7 @@ from backend.app.read_models import (
 )
 from backend.app.document.contextual_actions import KHKT_CASE_TYPED_RENDER_ROUTE
 from backend.app.document.inspection_qd_kt_case_readiness import inspect_qdkt_case_readiness
+from backend.app.document.inspection_qd_kt_decision_history import read_case_qdkt_decision_history
 from backend.app.document.inspection_qd_kt_current_case_team import read_qdkt_current_case_team
 from backend.app.document.inspection_qd_kt_team_source import QdKtTeamSourceBlocked
 from backend.app.services.document_api import DocumentWorkflowService
@@ -133,6 +135,16 @@ def register_document_routes(app, session_factory) -> None:
             storage=request.app.state.storage_service,
         )
         return CaseInspectionPlanRuntimeReadinessRead(**result)
+
+    def get_case_qdkt_decision_history(
+        case_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.read"})
+        return CaseQdKtDecisionHistoryRead(
+            **read_case_qdkt_decision_history(session, case_id=case_id)
+        )
 
     def get_case_qdkt_current_team(
         case_id: str,
@@ -390,6 +402,13 @@ def register_document_routes(app, session_factory) -> None:
         get_case_inspection_plan_runtime_readiness,
         methods=["GET"],
         response_model=CaseInspectionPlanRuntimeReadinessRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/documents/inspection-qd-kt/decision-history",
+        get_case_qdkt_decision_history,
+        methods=["GET"],
+        response_model=CaseQdKtDecisionHistoryRead,
         tags=["documents"],
     )
     app.add_api_route(

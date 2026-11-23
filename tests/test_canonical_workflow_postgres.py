@@ -6207,3 +6207,21 @@ def test_inspection_team_copy_preview_http_auth_and_no_mutation(pg_engine):
     asyncio.run(scenario())
     with Session(pg_engine) as session:
         assert session.scalar(select(func.count()).select_from(AuditEvent)) == count_before
+
+
+def test_inspection_team_copy_preview_blocks_source_with_invalid_role(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    with Session(pg_engine) as session:
+        member = session.scalar(select(InspectionTeamMember).where(
+            InspectionTeamMember.team_id == source["team_id"]
+        ))
+        member.role_code = None  # Imported incomplete historical role, legal in expand schema.
+        session.commit()
+    with Session(pg_engine) as session:
+        data = SERVICE.get_inspection_team_copy_preview(
+            session, case_id=target_case_id, source_case_id=source_case_id, user=USER,
+        )
+        assert data["copy_available"] is False
+        assert data["blocked_reason_code"] == "source_team_structure_invalid"
+        assert data["expected_source_version"] is None
+        assert data["members"][0]["identity_status"] == "resolved"

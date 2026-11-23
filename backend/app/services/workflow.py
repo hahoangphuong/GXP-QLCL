@@ -5382,6 +5382,9 @@ class CaseWorkflowService:
                     .order_by(InspectionPeriodSegment.ordinal)
                     .execution_options(populate_existing=True)
                 ))
+            # Replace-all flushes the entire reused Session, not just this
+            # Case's period graph. Refuse independent operator drafts first.
+            self._assert_mutation_session_clean(session, operation="inspection period replacement")
         if outcome is None:
             outcome = InspectionOutcome(case_id=case.id, inspection_period_state="KNOWN")
             session.add(outcome)

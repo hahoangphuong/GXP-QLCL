@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, ProductionLine, InspectionApprovalSubmission, InspectionApprovalDocumentLink, InspectionOutcome, Document, Site, ChangeRequestAffectedArtifact, ChangeRequestIssuedArtifact, BusinessEligibilityCertificate, BusinessEligibilityVersion, Person, InspectionTeam, InspectionTeamMember
+from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, ProductionLine, InspectionApprovalSubmission, InspectionApprovalDocumentLink, InspectionOutcome, Document, Site, ChangeRequestAffectedArtifact, ChangeRequestIssuedArtifact, BusinessEligibilityCertificate, BusinessEligibilityVersion, Person, InspectionTeam, InspectionTeamMember, CaseEvaluationScope, CaseEvaluationScopeBlock, CaseEvaluationScopeSelection, EvaluationScopeTaxonomyNode, EvaluationScopeTaxonomyVersion
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 from backend.app.main import create_app
@@ -5243,4 +5243,140 @@ def test_reassessment_case_create_accepts_foreign_noop_marker(pg_engine):
         )) == 2
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "case.create_reassessment_case"
+        )) >= 1
+
+
+def _seed_structured_evaluation_scope(pg_engine):
+    case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        taxonomy = EvaluationScopeTaxonomyVersion(
+            taxonomy_content_sha256=uuid4().hex * 2,
+            source_workbook_sha256=uuid4().hex * 2,
+            schema_version="evaluation-scope-taxonomy/v1",
+        )
+        setup.add(taxonomy)
+        setup.flush()
+        node = EvaluationScopeTaxonomyNode(
+            taxonomy_version_id=taxonomy.id, gxp_type="GMP",
+            source_name="PVCN_GMP", node_key="1", description="Synthetic GMP scope",
+            source_order=1, source_excel_row=4,
+        )
+        setup.add(node)
+        setup.flush()
+        scope = CaseEvaluationScope(
+            case_id=case_id, taxonomy_version_id=taxonomy.id,
+            source_classification="STRUCTURED_VALID",
+            raw_legacy_value="Synthetic structured source",
+        )
+        setup.add(scope)
+        setup.commit()
+        return case_id, scope.id, scope.row_version, node.id
+
+
+def _replacement_evaluation_scope_block(node_id):
+    return [{
+        "name": "Synthetic replacement block", "note": None,
+        "selections": [{"taxonomy_node_id": node_id, "custom_description": "Verified"}],
+    }]
+
+
+def test_evaluation_scope_replace_refuses_foreign_capa_before_any_flush(pg_engine):
+    """Aggregate replace may not silently persist an independent operator CAPA."""
+    case_id, scope_id, token, node_id = _seed_structured_evaluation_scope(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        before_audits = session.scalar(select(func.count()).select_from(AuditEvent))
+        draft = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="FOREIGN-SCOPE-CAPA", notes="independent draft",
+        )
+        session.add(draft)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Evaluation scope replacement autoflushed foreign CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.upsert_evaluation_scope(
+                    session, case_id=case_id, expected_version=token,
+                    limitation_text="new limitation",
+                    blocks=_replacement_evaluation_scope_block(node_id),
+                    reason="synthetic isolated replacement", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert draft in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == before_audits
+                assert session.scalar(select(func.count()).select_from(CaseEvaluationScopeBlock).where(
+                    CaseEvaluationScopeBlock.case_evaluation_scope_id == scope_id
+                )) == 0
+                assert session.scalar(select(CaseEvaluationScope.row_version).where(
+                    CaseEvaluationScope.id == scope_id
+                )) == token
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_evaluation_scope_replace_preserves_dirty_cached_target_before_refresh(pg_engine):
+    """populate_existing must not erase uncommitted edits to the exact Scope."""
+    case_id, scope_id, token, node_id = _seed_structured_evaluation_scope(pg_engine)
+    with Session(pg_engine) as session:
+        cached = session.get(CaseEvaluationScope, scope_id)
+        cached.limitation_text = "operator draft; do not discard"
+        assert session.is_modified(cached, include_collections=False)
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        with pytest.raises(HTTPException) as blocked:
+            with session.no_autoflush:
+                SERVICE.upsert_evaluation_scope(
+                    session, case_id=case_id, expected_version=token,
+                    limitation_text="replacement", blocks=_replacement_evaluation_scope_block(node_id),
+                    reason="synthetic dirty owner protection", user=USER,
+                )
+        assert blocked.value.status_code == 409
+        assert "uncommitted" in str(blocked.value.detail).lower()
+        assert cached.limitation_text == "operator draft; do not discard"
+        assert session.is_modified(cached, include_collections=False)
+        with session.no_autoflush:
+            assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+            assert session.scalar(select(func.count()).select_from(CaseEvaluationScopeBlock).where(
+                CaseEvaluationScopeBlock.case_evaluation_scope_id == scope_id
+            )) == 0
+        session.rollback()
+
+
+def test_evaluation_scope_replace_allows_foreign_noop_marker_and_audits(pg_engine):
+    """No-op foreign ORM dirty markers are not independent SQL writes."""
+    case_id, scope_id, token, node_id = _seed_structured_evaluation_scope(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        foreign.scope_code = foreign.scope_code
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        result = SERVICE.upsert_evaluation_scope(
+            session, case_id=case_id, expected_version=token,
+            limitation_text="new limitation", blocks=_replacement_evaluation_scope_block(node_id),
+            reason="synthetic valid aggregate replace", user=USER,
+        )
+        assert result["row_version"] > token
+        session.commit()
+    with Session(pg_engine) as verify:
+        scope = verify.get(CaseEvaluationScope, scope_id)
+        assert scope.limitation_text == "new limitation"
+        assert scope.row_version == result["row_version"]
+        assert verify.scalar(select(func.count()).select_from(CaseEvaluationScopeBlock).where(
+            CaseEvaluationScopeBlock.case_evaluation_scope_id == scope_id
+        )) == 1
+        assert verify.scalar(select(func.count()).select_from(CaseEvaluationScopeSelection)) >= 1
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "case.evaluation_scope.update"
         )) >= 1

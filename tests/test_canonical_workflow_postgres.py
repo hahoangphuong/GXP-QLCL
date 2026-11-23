@@ -5761,3 +5761,137 @@ def test_qdkt_history_http_get_reader_and_wrong_case(pg_engine):
         status, missing = await request(str(uuid4()))
         assert status == 404, missing
     asyncio.run(scenario())
+
+
+def _inspection_team_copy_fixture(pg_engine):
+    source_case_id, person_id = _inspection_team_session_fixture(pg_engine)
+    target_case_id, _ = seed(pg_engine)
+    source = write(
+        pg_engine, SERVICE.upsert_inspection_team,
+        case_id=source_case_id, expected_version=None,
+        members=[_inspection_team_session_member(person_id)],
+        reason="Source Case team",
+    )
+    return source_case_id, target_case_id, source, person_id
+
+
+def test_copy_inspection_team_from_another_case_preserves_source_and_audits(pg_engine):
+    source_case_id, target_case_id, source, person_id = _inspection_team_copy_fixture(pg_engine)
+    result = write(
+        pg_engine, SERVICE.copy_inspection_team_from_case,
+        case_id=target_case_id, source_case_id=source_case_id,
+        expected_source_version=source["row_version"], expected_target_version=None,
+        reason="Reuse approved proposed team composition",
+    )
+    assert result["case_id"] == target_case_id
+    assert result["team_id"] != source["team_id"]
+    assert result["source_case_id"] == source_case_id
+    assert result["source_team_id"] == source["team_id"]
+    assert result["source_team_version"] == source["row_version"]
+    with Session(pg_engine) as session:
+        src = session.get(InspectionTeam, source["team_id"])
+        dest = session.get(InspectionTeam, result["team_id"])
+        assert src.case_id == source_case_id
+        assert dest.case_id == target_case_id
+        assert src.row_version == source["row_version"]
+        source_rows = session.scalars(select(InspectionTeamMember).where(
+            InspectionTeamMember.team_id == src.id
+        )).all()
+        target_rows = session.scalars(select(InspectionTeamMember).where(
+            InspectionTeamMember.team_id == dest.id
+        )).all()
+        assert len(source_rows) == len(target_rows) == 1
+        assert source_rows[0].id != target_rows[0].id
+        assert source_rows[0].person_id == target_rows[0].person_id == person_id
+        assert source_rows[0].role_code == target_rows[0].role_code == "LEADER"
+        audit = session.scalar(select(AuditEvent).where(AuditEvent.id == result["audit_event_id"]))
+        assert audit.action == "inspection_team.copy_from_case"
+        assert source_case_id in audit.payload_redacted
+        assert source["team_id"] in audit.payload_redacted
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == dest.id,
+            AuditEvent.action == "inspection_team.copy_from_case",
+        )) == 1
+
+
+def test_copy_inspection_team_rejects_stale_source_and_target(pg_engine):
+    source_case_id, target_case_id, source, person_id = _inspection_team_copy_fixture(pg_engine)
+    first = write(
+        pg_engine, SERVICE.copy_inspection_team_from_case,
+        case_id=target_case_id, source_case_id=source_case_id,
+        expected_source_version=source["row_version"], expected_target_version=None,
+        reason="First copy",
+    )
+    with Session(pg_engine) as session:
+        before = session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "inspection_team.copy_from_case"
+        ))
+    for source_version, target_version in (
+        (source["row_version"] + 1, first["row_version"]),
+        (source["row_version"], None),
+        (source["row_version"], first["row_version"] + 1),
+    ):
+        with Session(pg_engine) as session:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.copy_inspection_team_from_case(
+                    session, case_id=target_case_id, source_case_id=source_case_id,
+                    expected_source_version=source_version,
+                    expected_target_version=target_version,
+                    reason="Stale operator selection", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            session.rollback()
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "inspection_team.copy_from_case"
+        )) == before
+
+
+def test_copy_inspection_team_blocks_missing_source_terminal_and_same_case(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    for src in (str(uuid4()), target_case_id):
+        with Session(pg_engine) as session:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.copy_inspection_team_from_case(
+                    session, case_id=target_case_id, source_case_id=src,
+                    expected_source_version=source["row_version"],
+                    expected_target_version=None, reason="Invalid source", user=USER,
+                )
+            assert blocked.value.status_code in (404, 422)
+    transition(pg_engine, target_case_id, "cancelled")
+    with Session(pg_engine) as session:
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.copy_inspection_team_from_case(
+                session, case_id=target_case_id, source_case_id=source_case_id,
+                expected_source_version=source["row_version"],
+                expected_target_version=None, reason="Closed target", user=USER,
+            )
+        assert blocked.value.status_code == 409
+
+
+def test_copy_inspection_team_refuses_pending_foreign_draft_before_flush(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="FOREIGN-DRAFT", notes="Keep source independent",
+        )
+        session.add(pending)
+        attempts = []
+        def forbid_flush(*_):
+            attempts.append(True)
+            raise AssertionError("Foreign pending draft was flushed during team copy")
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.copy_inspection_team_from_case(
+                    session, case_id=target_case_id, source_case_id=source_case_id,
+                    expected_source_version=source["row_version"],
+                    expected_target_version=None, reason="Copy", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert pending in session.new and not attempts
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

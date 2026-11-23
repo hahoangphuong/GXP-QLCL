@@ -2078,6 +2078,10 @@ class CaseWorkflowService:
         normalized_standard = self._facility_master_optional_text(
             applicable_standard, field="applicable_standard", limit=255,
         )
+        # Site locking/refreshing may flush any pending Session object.
+        # Reject independent intents before the first possible owner read.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="initial Case creation")
         site = self._lock_site(session, site_id)
         # A Session may cache the Site before another writer changes its owner.
         # Refresh after the Site lock; do not trust the cached company_id.
@@ -2409,6 +2413,10 @@ class CaseWorkflowService:
         normalized_reason = self._facility_master_required_text(reason, field="reason", limit=10000)
         if effective_to is not None and effective_from >= effective_to:
             raise HTTPException(status_code=422, detail="effective_to must be after effective_from.")
+        # Locking/refreshing the Site is an ORM query that can autoflush a
+        # foreign Case draft. Fence the whole Session before that owner read.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="production line creation")
         # Site lock serializes new line creation with Site owner changes.
         site = session.scalars(
             select(Site).where(Site.id == site_id)

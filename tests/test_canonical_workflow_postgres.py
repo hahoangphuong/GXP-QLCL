@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, InspectionApprovalSubmission, InspectionApprovalDocumentLink, InspectionOutcome, Document, Site, ChangeRequestAffectedArtifact, ChangeRequestIssuedArtifact, BusinessEligibilityCertificate, BusinessEligibilityVersion, Person, InspectionTeam, InspectionTeamMember
+from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, ProductionLine, InspectionApprovalSubmission, InspectionApprovalDocumentLink, InspectionOutcome, Document, Site, ChangeRequestAffectedArtifact, ChangeRequestIssuedArtifact, BusinessEligibilityCertificate, BusinessEligibilityVersion, Person, InspectionTeam, InspectionTeamMember
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 from backend.app.main import create_app
@@ -5054,4 +5054,115 @@ def test_facility_master_create_allows_foreign_noop_dirty_case(pg_engine, operat
             assert verify.get(Site, new_id).site_name == "Synthetic no-op site"
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == ("company.create" if operation == "company" else "site.create")
+        )) >= 1
+
+
+@pytest.mark.parametrize("operation", ["physical_line", "initial_case"])
+def test_facility_child_create_rejects_foreign_session_capa_before_flush(pg_engine, operation):
+    """A line/first-Case create must never autoflush a foreign Case's CAPA."""
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        owner = Company(legal_name=f"Synthetic isolated parent {uuid4()}")
+        setup.add(owner)
+        setup.flush()
+        target_site = Site(company_id=owner.id, site_name="Synthetic unoccupied physical site")
+        setup.add(target_site)
+        setup.flush()
+        target_site_id = target_site.id
+        setup.commit()
+    new_id = str(uuid4())
+    with Session(pg_engine) as session:
+        before_audit = session.scalar(select(func.count()).select_from(AuditEvent))
+        draft = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="FOREIGN-CHILD-CAPA", notes="independent owner draft",
+        )
+        session.add(draft)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Physical line/initial Case autoflushed foreign CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                if operation == "physical_line":
+                    SERVICE.create_production_line_master(
+                        session, site_id=target_site_id, production_line_id=new_id,
+                        code="SYNTH-LINE", effective_from=DAY, effective_to=None,
+                        physical_identity_evidence_reference="SYNTHETIC-SOURCE",
+                        reason="synthetic isolated line registration", user=USER,
+                    )
+                else:
+                    SERVICE.create_initial_inspection_case(
+                        session, site_id=target_site_id, case_id=new_id,
+                        gxp_type="GMP", production_line_id=None,
+                        inspection_type="Mới", applicable_standard="WHO-GMP",
+                        reason="synthetic initial inspection", user=USER,
+                    )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert draft in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == before_audit
+                if operation == "physical_line":
+                    assert session.get(ProductionLine, new_id) is None
+                else:
+                    assert session.get(Case, new_id) is None
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["physical_line", "initial_case"])
+def test_facility_child_create_allows_foreign_noop_dirty_case(pg_engine, operation):
+    """An unchanged foreign Case marker is not a reason to reject a valid write."""
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        owner = Company(legal_name=f"Synthetic isolated parent {uuid4()}")
+        setup.add(owner)
+        setup.flush()
+        site = Site(company_id=owner.id, site_name="Synthetic empty site")
+        setup.add(site)
+        setup.flush()
+        site_id = site.id
+        setup.commit()
+    new_id = str(uuid4())
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        foreign.scope_code = foreign.scope_code
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        if operation == "physical_line":
+            result = SERVICE.create_production_line_master(
+                session, site_id=site_id, production_line_id=new_id,
+                code="SYNTH-LINE-NOOP", effective_from=DAY, effective_to=None,
+                physical_identity_evidence_reference="SYNTHETIC-SOURCE",
+                reason="synthetic no-op control", user=USER,
+            )
+            assert result["id"] == new_id
+        else:
+            result = SERVICE.create_initial_inspection_case(
+                session, site_id=site_id, case_id=new_id,
+                gxp_type="GMP", production_line_id=None,
+                inspection_type="Mới", applicable_standard="WHO-GMP",
+                reason="synthetic no-op control", user=USER,
+            )
+            assert result["case_id"] == new_id
+        session.commit()
+    with Session(pg_engine) as verify:
+        if operation == "physical_line":
+            assert verify.get(ProductionLine, new_id).site_id == site_id
+        else:
+            assert verify.get(Case, new_id).site_id == site_id
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == (
+                "production_line.create" if operation == "physical_line"
+                else "case.create_initial_case"
+            )
         )) >= 1

@@ -6368,6 +6368,26 @@ class CaseWorkflowService:
                 source_identity_state = inspection_team_existing_identity_state(
                     session, members=projected,
                 )
+                source_structure_valid = False
+                if source_identity_state["round_trip_safe"]:
+                    try:
+                        self._validate_team_members([
+                            {
+                                "inspector_profile_id": member.inspector_profile_id,
+                                "person_id": member.person_id,
+                                "participant_catalog_id": member.participant_catalog_id,
+                                "identity_kind": member.identity_kind,
+                                "role_code": member.role_code,
+                                "sort_order": member.sort_order,
+                            }
+                            for member in projected
+                        ])
+                        source_structure_valid = True
+                    except HTTPException:
+                        # An imported role/order defect is not a reusable roster.
+                        # Give the operator a stable reason, not an illusory
+                        # enabled action that only fails on POST.
+                        source_structure_valid = False
                 members = [
                     {
                         "member_id": member.id,
@@ -6426,6 +6446,8 @@ class CaseWorkflowService:
                 reason = "source_team_not_found"
             elif not source_identity_state["round_trip_safe"]:
                 reason = source_identity_state["blocked_reason_code"] or "unresolved_member_identity"
+            elif not source_structure_valid:
+                reason = "source_team_structure_invalid"
             elif target_identity_state is not None and not target_identity_state["round_trip_safe"]:
                 reason = target_identity_state["blocked_reason_code"] or "target_team_identity_unresolved"
             return {
@@ -6435,7 +6457,8 @@ class CaseWorkflowService:
                 "target_team_id": None if target_team is None else target_team[0],
                 "expected_source_version": (
                     source_team[1] if source_team is not None and
-                    source_identity_state["round_trip_safe"] else None
+                    source_identity_state["round_trip_safe"] and source_structure_valid
+                    else None
                 ),
                 "expected_target_version": None if target_team is None else target_team[1],
                 "copy_available": reason is None,

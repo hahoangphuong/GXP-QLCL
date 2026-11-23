@@ -7370,6 +7370,9 @@ class CaseWorkflowService:
                             status_code=409,
                             detail="Linked GxP ProductionLine has uncommitted changes; resolve draft before editing.",
                         )
+            # Local graph checks do not admit pending drafts of an unrelated
+            # Case. The link replacement and audit flush the entire Session.
+            self._assert_mutation_session_clean(session, operation="business eligibility latest version edit")
         actor = self._get_or_create_app_user(session, user)
         before = {
             "certificate_number": version.certificate_number,
@@ -7641,6 +7644,9 @@ class CaseWorkflowService:
                     status_code=409,
                     detail="Business eligibility link has uncommitted changes; resolve draft before promotion.",
                 )
+            # Block foreign Case/other independent drafts before readiness
+            # reads or the final Current-promotion audit/aggregate flush.
+            self._assert_mutation_session_clean(session, operation="business eligibility current promotion")
         blocker = self._get_business_eligibility_promotion_blocker(
             session,
             certificate=row,

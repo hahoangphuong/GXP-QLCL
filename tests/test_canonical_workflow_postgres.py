@@ -6104,6 +6104,7 @@ def test_inspection_team_copy_preview_never_borrows_legacy_identity(pg_engine):
             display_name="Historical text only", role_code="LEADER",
             sort_order=1, legacy_source_token="LEGACY-1",
         ))
+        legacy_team_id = team.id
         session.commit()
     with Session(pg_engine) as session:
         result = SERVICE.get_inspection_team_copy_preview(
@@ -6111,7 +6112,7 @@ def test_inspection_team_copy_preview_never_borrows_legacy_identity(pg_engine):
         )
         assert result["copy_available"] is False
         assert result["blocked_reason_code"] == "contains_legacy_person"
-        assert result["source_team_id"] == team.id
+        assert result["source_team_id"] == legacy_team_id
         assert result["members"][0]["identity_status"] == "unresolved"
         assert result["expected_source_version"] is None
     with Session(pg_engine) as session:

@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, InspectionApprovalSubmission, InspectionApprovalDocumentLink, InspectionOutcome, Document, Site
+from backend.app.db.models.phase1 import AuditEvent, CapaCycle, Case, CaseCertificateNonissuanceDecision, Certificate, CertificateScope, CertificateVersion, Company, InspectionApprovalSubmission, InspectionApprovalDocumentLink, InspectionOutcome, Document, Site, ChangeRequestAffectedArtifact, ChangeRequestIssuedArtifact, BusinessEligibilityCertificate, BusinessEligibilityVersion
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
 from backend.app.main import create_app
@@ -4487,3 +4487,141 @@ def test_change_approval_upsert_allows_foreign_noop_marker(pg_engine, existing):
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == ("change_approval.update" if existing else "change_approval.create"),
         )) >= 1
+
+
+def _change_successor_session_fixture(pg_engine, *, kind):
+    """Create one current committed source, then let CR snapshot its identity."""
+    with Session(pg_engine) as setup:
+        company = Company(legal_name=f"Synthetic successor owner {uuid4()}")
+        setup.add(company)
+        setup.flush()
+        site = Site(company_id=company.id, site_name="Successor session isolation")
+        setup.add(site)
+        setup.flush()
+        if kind == "certificate":
+            source = Certificate(
+                site_id=site.id, certificate_type="GLP",
+                issuance_basis="administrative_no_inspection", latest_flag=True,
+            )
+            setup.add(source)
+            setup.flush()
+            setup.add(CertificateVersion(
+                certificate_id=source.id, version_no=1,
+                certificate_number=f"SOURCE-{uuid4()}", is_latest_version=True,
+            ))
+        else:
+            source = BusinessEligibilityCertificate(
+                site_id=site.id, company_id=company.id, latest_flag=True,
+            )
+            setup.add(source)
+            setup.flush()
+            setup.add(BusinessEligibilityVersion(
+                business_eligibility_certificate_id=source.id,
+                version_no=1, certificate_number=f"DDK-SOURCE-{uuid4()}",
+            ))
+        setup.commit()
+        site_id, source_id = site.id, source.id
+    cr = write(
+        pg_engine, SERVICE.create_change_request,
+        site_id=site_id, scope_label="Synthetic successor approval",
+        description="Foreign Session isolation", submitted_on=DAY,
+        requester_name="Synthetic operator", reason="seed",
+    )
+    source_field = (
+        ChangeRequestAffectedArtifact.certificate_id
+        if kind == "certificate"
+        else ChangeRequestAffectedArtifact.business_eligibility_certificate_id
+    )
+    with Session(pg_engine) as lookup:
+        affected_id = lookup.scalars(select(ChangeRequestAffectedArtifact.id).where(
+            ChangeRequestAffectedArtifact.change_request_id == cr["change_request_id"],
+            source_field == source_id,
+        )).one()
+    return cr, affected_id
+
+
+@pytest.mark.parametrize("kind", ["certificate", "business_eligibility"])
+def test_change_successor_rejects_foreign_pending_capa_without_flush(pg_engine, kind):
+    """Issuing a new legal artifact must not save unrelated Case CAPA drafts."""
+    cr, affected_id = _change_successor_session_fixture(pg_engine, kind=kind)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        issued_before = session.scalar(select(func.count()).select_from(ChangeRequestIssuedArtifact))
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference=f"UNCOMMITTED-FOREIGN-{kind}-SUCCESSOR-CAPA",
+        )
+        session.add(pending)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError(f"{kind} successor attempted foreign CAPA flush")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                method = (
+                    SERVICE.issue_change_request_certificate_successor
+                    if kind == "certificate"
+                    else SERVICE.issue_change_request_business_eligibility_successor
+                )
+                method(
+                    session, change_request_id=cr["change_request_id"],
+                    source_affected_artifact_id=affected_id,
+                    expected_version=cr["row_version"],
+                    reason="separate operator intent", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert pending in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+                assert session.scalar(select(func.count()).select_from(ChangeRequestIssuedArtifact)) == issued_before
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("kind", ["certificate", "business_eligibility"])
+def test_change_successor_allows_foreign_noop_case_marker(pg_engine, kind):
+    """No-op cached Case markers do not invalidate a lawful successor issue."""
+    cr, affected_id = _change_successor_session_fixture(pg_engine, kind=kind)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        scope_before = foreign.scope_code
+        foreign.scope_code = scope_before
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        method = (
+            SERVICE.issue_change_request_certificate_successor
+            if kind == "certificate"
+            else SERVICE.issue_change_request_business_eligibility_successor
+        )
+        issued = method(
+            session, change_request_id=cr["change_request_id"],
+            source_affected_artifact_id=affected_id,
+            expected_version=cr["row_version"],
+            reason="no-op Case marker control", user=USER,
+        )
+        assert issued["issued_artifact_link_id"]
+        session.commit()
+    with Session(pg_engine) as verify:
+        assert verify.get(Case, foreign_case_id).scope_code == scope_before
+        assert verify.scalar(select(func.count()).select_from(ChangeRequestIssuedArtifact).where(
+            ChangeRequestIssuedArtifact.change_request_id == cr["change_request_id"],
+        )) == 1
+        audit_action = (
+            "change_request.certificate_successor.issue"
+            if kind == "certificate"
+            else "change_request.business_eligibility_successor.issue"
+        )
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == audit_action,
+        )) == 1

@@ -5166,3 +5166,81 @@ def test_facility_child_create_allows_foreign_noop_dirty_case(pg_engine, operati
                 else "case.create_initial_case"
             )
         )) >= 1
+
+
+def test_reassessment_case_create_refuses_foreign_pending_capa_before_flush(pg_engine):
+    """A new reassessment must not persist another Case's operator draft."""
+    foreign_case_id, _ = seed(pg_engine)
+    previous_case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        setup.get(Case, previous_case_id).state = CaseState.CLOSED
+        setup.commit()
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        draft = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="FOREIGN-REASSESS-CAPA", notes="independent draft",
+        )
+        session.add(draft)
+        flushes = []
+
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Reassessment creation autoflushed a foreign CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.create_inspection_case(
+                    session, site_id=site_id, gxp_type="GMP",
+                    line_code=None, production_line_id=None,
+                    applicable_standard="WHO-GMP",
+                    reason="synthetic independent reassessment", user=USER,
+                )
+            assert blocked.value.status_code == 409
+            assert "uncommitted" in str(blocked.value.detail).lower()
+            assert not flushes
+            assert draft in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(func.count()).select_from(Case).where(
+                    Case.site_id == site_id
+                )) == 1
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_reassessment_case_create_accepts_foreign_noop_marker(pg_engine):
+    """A harmless foreign Case identity dirty marker is not a separate write."""
+    foreign_case_id, _ = seed(pg_engine)
+    previous_case_id, site_id = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        setup.get(Case, previous_case_id).state = CaseState.CLOSED
+        setup.commit()
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        foreign.scope_code = foreign.scope_code
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        result = SERVICE.create_inspection_case(
+            session, site_id=site_id, gxp_type="GMP", line_code=None,
+            production_line_id=None, applicable_standard="WHO-GMP",
+            reason="synthetic no-op reassessment", user=USER,
+        )
+        assert result["case_id"] != previous_case_id
+        assert result["site_id"] == site_id
+        session.commit()
+    with Session(pg_engine) as verify:
+        reassessment = verify.get(Case, result["case_id"])
+        assert reassessment.site_id == site_id
+        assert reassessment.inspection_type == "Tái"
+        assert verify.scalar(select(func.count()).select_from(Case).where(
+            Case.site_id == site_id
+        )) == 2
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "case.create_reassessment_case"
+        )) >= 1

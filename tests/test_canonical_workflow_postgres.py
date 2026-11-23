@@ -6052,3 +6052,177 @@ def test_copy_inspection_team_never_borrows_unresolved_legacy_member(pg_engine):
         assert session.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "inspection_team.copy_from_case"
         )) == audit_before
+
+
+def test_inspection_team_copy_preview_includes_both_canonical_case_owners(pg_engine):
+    source_case_id, target_case_id, source, person_id = _inspection_team_copy_fixture(pg_engine)
+    with Session(pg_engine) as session:
+        result = SERVICE.get_inspection_team_copy_preview(
+            session, case_id=target_case_id, source_case_id=source_case_id, user=USER,
+        )
+        assert result["copy_available"] is True
+        assert result["blocked_reason_code"] is None
+        assert result["source_case"]["case_id"] == source_case_id
+        assert result["target_case"]["case_id"] == target_case_id
+        assert result["source_case"]["site_id"] != result["target_case"]["site_id"]
+        assert result["source_case"]["gxp_type"] == "GMP"
+        assert result["source_case"]["site_name"]
+        assert result["target_case"]["site_name"]
+        assert result["source_team_id"] == source["team_id"]
+        assert result["expected_source_version"] == source["row_version"]
+        assert result["expected_target_version"] is None
+        assert len(result["members"]) == 1
+        assert result["members"][0]["person_id"] == person_id
+        assert result["members"][0]["identity_status"] == "resolved"
+        assert result["members"][0]["display_name"] == "Synthetic inspection operator"
+        assert result["legal_issuance_verified"] is False
+        assert result["qdkt_render_available"] is False
+    first = write(
+        pg_engine, SERVICE.copy_inspection_team_from_case,
+        case_id=target_case_id, source_case_id=source_case_id,
+        expected_source_version=source["row_version"],
+        expected_target_version=None, reason="Previewed source team",
+    )
+    with Session(pg_engine) as session:
+        result = SERVICE.get_inspection_team_copy_preview(
+            session, case_id=target_case_id, source_case_id=source_case_id, user=USER,
+        )
+        assert result["copy_available"] is True
+        assert result["expected_target_version"] == first["row_version"]
+        assert result["target_team_id"] == first["team_id"]
+
+
+def test_inspection_team_copy_preview_never_borrows_legacy_identity(pg_engine):
+    source_case_id, _ = seed(pg_engine)
+    target_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        team = InspectionTeam(case_id=source_case_id, display_text="Historical unverified roster")
+        session.add(team)
+        session.flush()
+        session.add(InspectionTeamMember(
+            team_id=team.id, identity_kind="LEGACY_PERSON",
+            display_name="Historical text only", role_code="LEADER",
+            sort_order=1, legacy_source_token="LEGACY-1",
+        ))
+        legacy_team_id = team.id
+        session.commit()
+    with Session(pg_engine) as session:
+        result = SERVICE.get_inspection_team_copy_preview(
+            session, case_id=target_case_id, source_case_id=source_case_id, user=USER,
+        )
+        assert result["copy_available"] is False
+        assert result["blocked_reason_code"] == "contains_legacy_person"
+        assert result["source_team_id"] == legacy_team_id
+        assert result["members"][0]["identity_status"] == "unresolved"
+        assert result["expected_source_version"] is None
+    with Session(pg_engine) as session:
+        unavailable = SERVICE.get_inspection_team_copy_preview(
+            session, case_id=target_case_id, source_case_id=str(uuid4()), user=USER,
+        )
+        assert unavailable["copy_available"] is False
+        assert unavailable["blocked_reason_code"] == "source_case_not_found"
+
+
+def test_inspection_team_copy_preview_target_terminal_or_source_missing(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    transition(pg_engine, target_case_id, "cancelled")
+    with Session(pg_engine) as session:
+        data = SERVICE.get_inspection_team_copy_preview(
+            session, case_id=target_case_id, source_case_id=source_case_id, user=USER,
+        )
+        assert data["copy_available"] is False
+        assert data["blocked_reason_code"] == "target_case_terminal"
+        assert data["expected_source_version"] == source["row_version"]
+    with Session(pg_engine) as session:
+        with pytest.raises(HTTPException) as error:
+            SERVICE.get_inspection_team_copy_preview(
+                session, case_id=str(uuid4()), source_case_id=source_case_id, user=USER,
+            )
+        assert error.value.status_code == 404
+
+
+def test_inspection_team_copy_preview_no_autoflush_or_tracked_draft_mutation(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        source_team = session.get(InspectionTeam, source["team_id"])
+        source_team.row_version += 9
+        pending = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="PENDING-SEPARATE-CAPA",
+        )
+        session.add(pending)
+        attempts = []
+        def forbid_flush(*_):
+            attempts.append(True)
+            raise AssertionError("GET preview must never flush caller draft")
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            data = SERVICE.get_inspection_team_copy_preview(
+                session, case_id=target_case_id, source_case_id=source_case_id, user=USER,
+            )
+            assert data["expected_source_version"] == source["row_version"]
+            assert data["copy_available"] is True
+            assert source_team.row_version == source["row_version"] + 9
+            assert pending in session.new and not attempts
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+def test_inspection_team_copy_preview_http_auth_and_no_mutation(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: USER
+
+    async def request():
+        messages = []
+        path = f"/cases/{target_case_id}/team/copy-preview"
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+        async def send(msg):
+            messages.append(msg)
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": "GET", "scheme": "http", "path": path, "raw_path": path.encode(),
+            "query_string": f"source_case_id={source_case_id}".encode(),
+            "headers": [], "client": ("127.0.0.1", 12345),
+            "server": ("localhost", 80), "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        raw = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(raw)
+
+    with Session(pg_engine) as session:
+        count_before = session.scalar(select(func.count()).select_from(AuditEvent))
+    async def scenario():
+        status, data = await request()
+        assert status == 200, data
+        assert data["expected_source_version"] == source["row_version"]
+        assert data["source_team_id"] == source["team_id"]
+        app.dependency_overrides[get_authenticated_user] = lambda: build_authenticated_user(
+            "qdkt-reader", "reader", permissions=ROLE_PERMISSIONS["reader"],
+        )
+        status, denied = await request()
+        assert status == 403, denied
+    asyncio.run(scenario())
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == count_before
+
+
+def test_inspection_team_copy_preview_blocks_source_with_invalid_role(pg_engine):
+    source_case_id, target_case_id, source, _ = _inspection_team_copy_fixture(pg_engine)
+    with Session(pg_engine) as session:
+        member = session.scalar(select(InspectionTeamMember).where(
+            InspectionTeamMember.team_id == source["team_id"]
+        ))
+        member.role_code = None  # Imported incomplete historical role, legal in expand schema.
+        session.commit()
+    with Session(pg_engine) as session:
+        data = SERVICE.get_inspection_team_copy_preview(
+            session, case_id=target_case_id, source_case_id=source_case_id, user=USER,
+        )
+        assert data["copy_available"] is False
+        assert data["blocked_reason_code"] == "source_team_structure_invalid"
+        assert data["expected_source_version"] is None
+        assert data["members"][0]["identity_status"] == "resolved"

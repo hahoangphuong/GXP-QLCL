@@ -1430,6 +1430,42 @@ class InspectionTeamUpsertRequest(BaseModel):
     reason: str | None = None
 
 
+class InspectionTeamCopyPreviewCaseRead(BaseModel):
+    case_id: str
+    site_id: str
+    gxp_type: str
+    case_state: str
+    site_name: str
+    company_legal_name: str
+
+
+class InspectionTeamCopyPreviewMemberRead(BaseModel):
+    member_id: str
+    inspector_profile_id: str | None
+    person_id: str | None
+    participant_catalog_id: str | None
+    identity_kind: str | None
+    role_code: str | None
+    role_label: str | None
+    sort_order: int
+    display_name: str | None
+    identity_status: Literal["resolved", "unresolved"]
+
+
+class InspectionTeamCopyPreviewRead(BaseModel):
+    target_case: InspectionTeamCopyPreviewCaseRead
+    source_case: InspectionTeamCopyPreviewCaseRead | None
+    source_team_id: str | None
+    target_team_id: str | None
+    expected_source_version: int | None
+    expected_target_version: int | None
+    copy_available: bool
+    blocked_reason_code: str | None
+    members: list[InspectionTeamCopyPreviewMemberRead]
+    legal_issuance_verified: Literal[False]
+    qdkt_render_available: Literal[False]
+
+
 class InspectionTeamCopyFromCaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -5382,3 +5382,172 @@ def test_evaluation_scope_replace_allows_foreign_noop_marker_and_audits(pg_engin
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "case.evaluation_scope.update"
         )) >= 1
+
+
+# Company/Site master-correction vertical slice. Existing identity and ownership
+# never change; persisted field snapshots are mandatory update preconditions.
+def _seed_editable_facility(pg_engine):
+    with Session(pg_engine) as session:
+        company = Company(
+            legal_name="Original legal name", legal_address="Registered address A",
+            english_name="Original EN", short_name="ORIG", legal_address_en=None,
+            is_inactive=False,
+        )
+        session.add(company)
+        session.flush()
+        site = Site(
+            company_id=company.id, site_name="Factory A",
+            site_address="Factory registered address A", province_name="Hà Nội",
+            short_name="A", site_name_en=None, site_address_en=None,
+        )
+        session.add(site)
+        session.commit()
+        return company.id, site.id
+
+
+def _company_edit_snapshot(company):
+    return {key: getattr(company, key) for key in (
+        "legal_name", "legal_address", "english_name", "short_name",
+        "legal_address_en", "is_inactive",
+    )}
+
+
+def _site_edit_snapshot(site):
+    return {key: getattr(site, key) for key in (
+        "company_id", "site_name", "site_address", "site_name_en",
+        "site_address_en", "province_name", "short_name",
+    )}
+
+
+def test_facility_master_company_and_site_edit_canonical_readback(pg_engine):
+    company_id, site_id = _seed_editable_facility(pg_engine)
+    with Session(pg_engine) as session:
+        company_before = session.get(Company, company_id)
+        site_before = session.get(Site, site_id)
+        company_snapshot = _company_edit_snapshot(company_before)
+        site_snapshot = _site_edit_snapshot(site_before)
+    with Session(pg_engine) as session:
+        company = SERVICE.update_company_master(
+            session, company_id=company_id, expected=company_snapshot,
+            changes={"legal_name": "Updated legal name", "legal_address": "Registered address B"},
+            reason="Reviewed company registry correction", user=USER,
+        )
+        site = SERVICE.update_site_master(
+            session, site_id=site_id, expected=site_snapshot,
+            changes={"site_address": "Updated actual registered site address",
+                     "province_name": "Đà Nẵng"},
+            reason="Reviewed registered site correction", user=USER,
+        )
+        session.commit()
+    assert company["id"] == company_id
+    assert site["id"] == site_id
+    assert site["company_id"] == company_id
+    assert company["audit_event_id"] != site["audit_event_id"]
+    with Session(pg_engine) as verify:
+        persisted_company = verify.get(Company, company_id)
+        persisted_site = verify.get(Site, site_id)
+        assert persisted_company.legal_name == "Updated legal name"
+        assert persisted_company.legal_address == "Registered address B"
+        assert persisted_site.site_address == "Updated actual registered site address"
+        assert persisted_site.province_name == "Đà Nẵng"
+        assert persisted_site.company_id == company_id
+        audit_actions = set(verify.scalars(
+            select(AuditEvent.action).where(AuditEvent.entity_id.in_([company_id, site_id]))
+        ))
+        assert {"company.update", "site.update"} <= audit_actions
+
+
+def test_facility_master_edit_rejects_stale_snapshot_without_writes(pg_engine):
+    company_id, site_id = _seed_editable_facility(pg_engine)
+    with Session(pg_engine) as session:
+        old_company = _company_edit_snapshot(session.get(Company, company_id))
+        old_site = _site_edit_snapshot(session.get(Site, site_id))
+    with Session(pg_engine) as session:
+        SERVICE.update_company_master(
+            session, company_id=company_id, expected=old_company,
+            changes={"legal_address": "Registry corrected"}, reason="First review", user=USER,
+        )
+        SERVICE.update_site_master(
+            session, site_id=site_id, expected=old_site,
+            changes={"site_address": "Address corrected"}, reason="First review", user=USER,
+        )
+        session.commit()
+    with Session(pg_engine) as session:
+        audit_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        with pytest.raises(HTTPException) as company_conflict:
+            SERVICE.update_company_master(
+                session, company_id=company_id, expected=old_company,
+                changes={"short_name": "STALE"}, reason="Stale edit", user=USER,
+            )
+        assert company_conflict.value.status_code == 409
+        with pytest.raises(HTTPException) as site_conflict:
+            SERVICE.update_site_master(
+                session, site_id=site_id, expected=old_site,
+                changes={"province_name": "Hà Nội"}, reason="Stale edit", user=USER,
+            )
+        assert site_conflict.value.status_code == 409
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == audit_before
+        assert session.get(Company, company_id).short_name == "ORIG"
+        assert session.get(Site, site_id).province_name == "Hà Nội"
+
+
+def test_facility_master_edit_rejects_foreign_session_draft_before_query(pg_engine):
+    company_id, site_id = _seed_editable_facility(pg_engine)
+    foreign_id, _ = seed(pg_engine)
+    with Session(pg_engine) as setup:
+        company_snapshot = _company_edit_snapshot(setup.get(Company, company_id))
+        site_snapshot = _site_edit_snapshot(setup.get(Site, site_id))
+    for operation, kwargs in (
+        ("update_company_master", {
+            "company_id": company_id, "expected": company_snapshot,
+            "changes": {"legal_name": "Unexpected"}, "reason": "Review",
+        }),
+        ("update_site_master", {
+            "site_id": site_id, "expected": site_snapshot,
+            "changes": {"site_name": "Unexpected"}, "reason": "Review",
+        }),
+    ):
+        with Session(pg_engine) as session:
+            pending = CapaCycle(case_id=foreign_id, round_no=1, requested_on=DAY,
+                                incoming_reference="INDEPENDENT", notes="draft")
+            session.add(pending)
+            flushed = []
+            def forbid_flush(*_):
+                flushed.append(True)
+                raise AssertionError("Foreign CAPA must not flush in master correction")
+            event.listen(session, "before_flush", forbid_flush)
+            try:
+                with pytest.raises(HTTPException) as blocked:
+                    getattr(SERVICE, operation)(session, user=USER, **kwargs)
+                assert blocked.value.status_code == 409
+                assert "uncommitted" in str(blocked.value.detail).lower()
+                assert not flushed and pending in session.new
+            finally:
+                event.remove(session, "before_flush", forbid_flush)
+                session.rollback()
+
+
+def test_facility_master_edit_rejects_unreviewed_ownership_change_and_empty_changes(pg_engine):
+    company_id, site_id = _seed_editable_facility(pg_engine)
+    with Session(pg_engine) as session:
+        company_snapshot = _company_edit_snapshot(session.get(Company, company_id))
+        site_snapshot = _site_edit_snapshot(session.get(Site, site_id))
+        for changes in ({"company_id": str(uuid4())}, {"legacy_site_id": 1234}, {}):
+            with pytest.raises(HTTPException) as blocked:
+                SERVICE.update_site_master(
+                    session, site_id=site_id, expected=site_snapshot,
+                    changes=changes, reason="Review", user=USER,
+                )
+            assert blocked.value.status_code == 422
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.update_company_master(
+                session, company_id=company_id, expected=company_snapshot,
+                changes={"is_inactive": True}, reason="Review", user=USER,
+            )
+        assert blocked.value.status_code == 422
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.update_site_master(
+                session, site_id=site_id, expected=site_snapshot,
+                changes={"site_address": "  "}, reason="Review", user=USER,
+            )
+        assert blocked.value.status_code == 422

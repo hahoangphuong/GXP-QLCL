@@ -4959,3 +4959,99 @@ def test_inspection_team_replacement_allows_foreign_noop_marker(pg_engine):
         assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "inspection_team.upsert"
         )) >= 1
+
+
+@pytest.mark.parametrize("operation", ["company", "site"])
+def test_facility_master_create_rejects_foreign_session_capa_before_flush(pg_engine, operation):
+    """The independent foreign-Case CAPA intent must not accompany master creation."""
+    foreign_case_id, _ = seed(pg_engine)
+    _, owner_site_id = seed(pg_engine)
+    with Session(pg_engine) as session:
+        owner_site = session.get(Site, owner_site_id)
+        company_id = owner_site.company_id
+        new_id = str(uuid4())
+        before_audits = session.scalar(select(func.count()).select_from(AuditEvent))
+        draft = CapaCycle(
+            case_id=foreign_case_id, round_no=1, requested_on=DAY,
+            incoming_reference="FOREIGN-MASTER-CAPA", notes="keep independent",
+        )
+        session.add(draft)
+        flushed = []
+
+        def forbid_flush(*_):
+            flushed.append(True)
+            raise AssertionError("Facility master create autoflushed foreign CAPA")
+
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                if operation == "company":
+                    SERVICE.create_company_master(
+                        session, company_id=new_id,
+                        legal_name="Synthetic new company",
+                        legal_address="Synthetic registered address",
+                        english_name=None, short_name=None, legal_address_en=None,
+                        reason="synthetic owner test", user=USER,
+                    )
+                else:
+                    SERVICE.create_site_master(
+                        session, company_id=company_id, site_id=new_id,
+                        site_name="Synthetic new site", site_address="Synthetic site address",
+                        site_name_en=None, site_address_en=None,
+                        province_name=None, short_name=None,
+                        reason="synthetic owner test", user=USER,
+                    )
+            assert exc.value.status_code == 409
+            assert "uncommitted" in str(exc.value.detail).lower()
+            assert not flushed
+            assert draft in session.new
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(CapaCycle).where(
+                    CapaCycle.case_id == foreign_case_id
+                )) == 0
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == before_audits
+                if operation == "company":
+                    assert session.get(Company, new_id) is None
+                else:
+                    assert session.get(Site, new_id) is None
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+
+@pytest.mark.parametrize("operation", ["company", "site"])
+def test_facility_master_create_allows_foreign_noop_dirty_case(pg_engine, operation):
+    """A harmless foreign dirty marker must not block valid master registration."""
+    foreign_case_id, _ = seed(pg_engine)
+    _, owner_site_id = seed(pg_engine)
+    new_id = str(uuid4())
+    with Session(pg_engine) as session:
+        foreign = session.get(Case, foreign_case_id)
+        foreign.scope_code = foreign.scope_code
+        assert foreign in session.dirty
+        assert not session.is_modified(foreign, include_collections=True)
+        owner = session.get(Site, owner_site_id)
+        if operation == "company":
+            result = SERVICE.create_company_master(
+                session, company_id=new_id, legal_name="Synthetic no-op company",
+                legal_address="Synthetic registered address",
+                english_name=None, short_name=None, legal_address_en=None,
+                reason="synthetic no-op control", user=USER,
+            )
+        else:
+            result = SERVICE.create_site_master(
+                session, company_id=owner.company_id, site_id=new_id,
+                site_name="Synthetic no-op site", site_address="Synthetic site address",
+                site_name_en=None, site_address_en=None, province_name=None,
+                short_name=None, reason="synthetic no-op control", user=USER,
+            )
+        assert result["id"] == new_id
+        session.commit()
+    with Session(pg_engine) as verify:
+        if operation == "company":
+            assert verify.get(Company, new_id).legal_name == "Synthetic no-op company"
+        else:
+            assert verify.get(Site, new_id).site_name == "Synthetic no-op site"
+        assert verify.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == ("company.create" if operation == "company" else "site.create")
+        )) >= 1

@@ -2308,8 +2308,13 @@ class CaseWorkflowService:
             "short_name": self._facility_master_optional_text(short_name, field="short_name", limit=128),
             "legal_address_en": self._facility_master_optional_text(legal_address_en, field="legal_address_en", limit=10000),
         }
-        if session.scalar(select(Company.id).where(Company.id == company_id)) is not None:
-            raise HTTPException(status_code=409, detail="Company UUID already exists; resolve the original POST with canonical GET.")
+        # A Company create may flush the entire Session, not just its new
+        # master row. Reject independent Case/Site drafts before any SELECT
+        # can autoflush them during UUID admission.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="company creation")
+            if session.scalar(select(Company.id).where(Company.id == company_id)) is not None:
+                raise HTTPException(status_code=409, detail="Company UUID already exists; resolve the original POST with canonical GET.")
         actor = self._get_or_create_app_user(session, user)
         company = Company(id=company_id, **normalized, is_inactive=False)
         session.add(company)
@@ -2348,16 +2353,21 @@ class CaseWorkflowService:
             "province_name": self._facility_master_optional_text(province_name, field="province_name", limit=255),
             "short_name": self._facility_master_optional_text(short_name, field="short_name", limit=255),
         }
-        company = session.scalars(
-            select(Company).where(Company.id == company_id)
-            .with_for_update(of=Company).execution_options(populate_existing=True)
-        ).one_or_none()
-        if company is None:
-            raise HTTPException(status_code=404, detail="Company not found.")
-        if company.is_inactive:
-            raise HTTPException(status_code=409, detail="Cannot create a Site under an inactive Company.")
-        if session.scalar(select(Site.id).where(Site.id == site_id)) is not None:
-            raise HTTPException(status_code=409, detail="Site UUID already exists; resolve the original POST with canonical GET.")
+        # The Company lock and populate_existing refresh must not autoflush
+        # or discard independent operator drafts. Fence the whole Session
+        # before resolving the canonical Company owner or new Site UUID.
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="site creation")
+            company = session.scalars(
+                select(Company).where(Company.id == company_id)
+                .with_for_update(of=Company).execution_options(populate_existing=True)
+            ).one_or_none()
+            if company is None:
+                raise HTTPException(status_code=404, detail="Company not found.")
+            if company.is_inactive:
+                raise HTTPException(status_code=409, detail="Cannot create a Site under an inactive Company.")
+            if session.scalar(select(Site.id).where(Site.id == site_id)) is not None:
+                raise HTTPException(status_code=409, detail="Site UUID already exists; resolve the original POST with canonical GET.")
         actor = self._get_or_create_app_user(session, user)
         site = Site(id=site_id, company_id=company.id, **normalized)
         session.add(site)

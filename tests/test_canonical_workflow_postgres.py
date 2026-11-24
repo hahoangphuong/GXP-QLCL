@@ -6226,3 +6226,86 @@ def test_inspection_team_copy_preview_blocks_source_with_invalid_role(pg_engine)
         assert data["blocked_reason_code"] == "source_team_structure_invalid"
         assert data["expected_source_version"] is None
         assert data["members"][0]["identity_status"] == "resolved"
+
+
+def test_qdkt_preparation_independent_versioned_and_case_owned(pg_engine):
+    from backend.app.db.models.phase1 import QdKtPreparation, InspectionDecision, QdKtDraftRosterSnapshot, QdKtIssuedRoster, DocumentVersion
+
+    case_id, _ = seed(pg_engine)
+    other_id, _ = seed(pg_engine)
+    key, second_key = str(uuid4()), str(uuid4())
+    def save(**overrides):
+        args = dict(case_id=case_id, preparation_id=key, purpose="INITIAL",
+                    notes="Draft only", expected_version=None, reason="Prepare QDKT")
+        args.update(overrides)
+        return write(pg_engine, SERVICE.save_qdkt_preparation, **args)
+
+    models = (InspectionDecision, QdKtDraftRosterSnapshot, QdKtIssuedRoster, DocumentVersion)
+    with Session(pg_engine) as session:
+        before = [session.scalar(select(func.count()).select_from(m)) for m in models]
+    created = save()
+    assert created["preparation_id"] == key
+    assert created["legal_issuance_verified"] is False
+    assert created["ready_to_render"] is False
+    assert save(preparation_id=second_key, purpose="REPLACEMENT")["preparation_id"] == second_key
+    with pytest.raises(HTTPException) as duplicate:
+        save()
+    assert duplicate.value.status_code == 409
+    updated = save(expected_version=created["row_version"], notes="Revised draft")
+    assert updated["row_version"] > created["row_version"]
+    with pytest.raises(HTTPException) as stale:
+        save(expected_version=created["row_version"], notes="Stale")
+    assert stale.value.status_code == 409
+    with pytest.raises(HTTPException) as foreign:
+        save(case_id=other_id, expected_version=updated["row_version"])
+    assert foreign.value.status_code == 404
+    with Session(pg_engine) as session:
+        assert len(SERVICE.list_qdkt_preparations(session, case_id=case_id, user=USER)) == 2
+        assert SERVICE.list_qdkt_preparations(session, case_id=other_id, user=USER) == []
+        assert [session.scalar(select(func.count()).select_from(m)) for m in models] == before
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == key, AuditEvent.action == "qdkt_preparation.save"
+        )) == 2
+        assert session.get(Case, case_id).state == CaseState.INSPECTION_IN_PROGRESS
+        assert session.get(QdKtPreparation, key).notes == "Revised draft"
+        session.get(Case, case_id).state = CaseState.CANCELLED
+        session.commit()
+    with pytest.raises(HTTPException) as terminal:
+        save(expected_version=updated["row_version"], notes="Closed")
+    assert terminal.value.status_code == 409
+
+
+def test_qdkt_preparation_permission_and_foreign_session_draft(pg_engine):
+    case_id, _ = seed(pg_engine)
+    key = str(uuid4())
+    reader = build_authenticated_user("qdkt-preparation-reader", "reader", permissions=ROLE_PERMISSIONS["reader"])
+    args = dict(case_id=case_id, preparation_id=key, purpose="INITIAL",
+                notes="", expected_version=None, reason="Prepare")
+    with Session(pg_engine) as session:
+        with pytest.raises(HTTPException) as denied:
+            SERVICE.save_qdkt_preparation(session, user=reader, **args)
+        assert denied.value.status_code == 403
+        with pytest.raises(HTTPException) as denied_read:
+            SERVICE.list_qdkt_preparations(session, case_id=case_id, user=reader)
+        assert denied_read.value.status_code == 403
+        pending = CapaCycle(case_id=case_id, round_no=1, requested_on=DAY, notes="Separate intent")
+        session.add(pending)
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.save_qdkt_preparation(session, user=USER, **args)
+        assert blocked.value.status_code == 409
+        assert pending in session.new
+        assert SERVICE.list_qdkt_preparations(session, case_id=case_id, user=USER) == []
+        session.rollback()
+
+
+def test_qdkt_preparation_http_contract_rejects_issuance_fields():
+    from pydantic import ValidationError
+    from backend.app.read_models import QdKtPreparationWrite
+
+    payload = dict(purpose="INITIAL", notes="", expected_version=None, reason="Prepare")
+    assert QdKtPreparationWrite(**payload).expected_version is None
+    for field in ("decision_on", "decision_reference", "document_version_id", "legal_issuance_verified"):
+        with pytest.raises(ValidationError):
+            QdKtPreparationWrite(**payload, **{field: "not allowed"})
+    with pytest.raises(ValidationError):
+        QdKtPreparationWrite(**dict(payload, expected_version=True))

@@ -6608,6 +6608,7 @@ def test_qdkt_plan_http_denies_decision_atoms_but_updates_schedule(pg_engine):
         )) == 0
 
 def test_qdkt_issued_decision_owner_record_and_replace_are_atomic(pg_engine):
+    from backend.app.db.enums import InspectionEventType
     from backend.app.db.models.phase1 import (
         InspectionPlan, InspectionDecision, QdKtIssuedRoster, QdKtIssuedRosterMember,
         InspectionEvent,
@@ -6707,7 +6708,7 @@ def test_qdkt_issued_decision_owner_record_and_replace_are_atomic(pg_engine):
 
 
 def test_qdkt_issued_decision_rejects_foreign_pending_session(pg_engine):
-    from backend.app.db.models.phase1 import InspectionDecision
+    from backend.app.db.models.phase1 import InspectionDecision, InspectionPlan
     case_id, _ = seed(pg_engine)
     foreign_case_id, _ = seed(pg_engine)
     plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,

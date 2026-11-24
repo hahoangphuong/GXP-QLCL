@@ -43,6 +43,7 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionPeriodSegment,
     InspectionPlan,
+    QdKtPreparation,
     InspectionApprovalSubmission,
     InspectionApprovalDocumentLink,
     Document,
@@ -6562,6 +6563,97 @@ class CaseWorkflowService:
             expected_version=expected_target_version, copy_source=source,
         )
         return {**result, **source}
+
+    @staticmethod
+    def _qdkt_preparation_payload(row) -> dict[str, Any]:
+        return {
+            "preparation_id": row.id, "case_id": row.case_id,
+            "purpose": row.purpose, "notes": row.notes,
+            "row_version": row.row_version,
+            "legal_issuance_verified": False, "ready_to_render": False,
+        }
+
+    def list_qdkt_preparations(self, session: Session, *, case_id: str,
+                               user: AuthenticatedUser) -> list[dict[str, Any]]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+        with session.no_autoflush:
+            rows = session.execute(
+                select(Case.id, QdKtPreparation.id, QdKtPreparation.purpose,
+                       QdKtPreparation.notes, QdKtPreparation.row_version)
+                .outerjoin(QdKtPreparation, QdKtPreparation.case_id == Case.id)
+                .where(Case.id == case_id)
+                .order_by(QdKtPreparation.created_at, QdKtPreparation.id)
+            ).all()
+            if not rows:
+                raise HTTPException(status_code=404, detail="Case not found.")
+            return [
+                {"case_id": row[0], "preparation_id": row[1], "purpose": row[2],
+                 "notes": row[3], "row_version": row[4],
+                 "legal_issuance_verified": False, "ready_to_render": False}
+                for row in rows if row[1] is not None
+            ]
+
+    def save_qdkt_preparation(
+        self, session: Session, *, case_id: str, preparation_id: str,
+        purpose: str, notes: str, expected_version: int | None,
+        reason: str, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        from uuid import UUID
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+        try:
+            key = UUID(preparation_id)
+            if key.version != 4 or str(key) != preparation_id:
+                raise ValueError()
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid preparation identity.") from exc
+        if (
+            purpose not in ("INITIAL", "AMENDMENT", "REPLACEMENT")
+            or type(notes) is not str or len(notes) > 4000
+            or type(reason) is not str or not reason.strip() or len(reason) > 1000
+            or (expected_version is not None and
+                (type(expected_version) is not int or expected_version < 1))
+        ):
+            raise HTTPException(status_code=422, detail="Invalid preparation input.")
+        with session.no_autoflush:
+            # Check before refreshing any cached owner or flushing unrelated work.
+            self._assert_mutation_session_clean(session, operation="QDKT preparation")
+            case = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(case, operation="QDKT preparation")
+            if case.gxp_type not in SUPPORTED_CASE_GXP_TYPES:
+                raise HTTPException(status_code=409, detail="Unsupported Case GxP type.")
+            existing = session.scalars(
+                select(QdKtPreparation).where(QdKtPreparation.id == preparation_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if existing is not None and existing.case_id != case.id:
+                raise HTTPException(status_code=404, detail="Preparation not found.")
+            if existing is None and expected_version is not None:
+                raise HTTPException(status_code=409, detail="Preparation version not found.")
+            if existing is not None and expected_version is None:
+                # No silent overwrite or duplicate create on uncertain outcome.
+                raise HTTPException(status_code=409, detail="Preparation already exists; read back before editing.")
+            if existing is not None:
+                self._assert_expected_version(existing, expected_version, label="qdkt_preparation")
+        before = None if existing is None else self._qdkt_preparation_payload(existing)
+        if existing is not None and existing.purpose == purpose and existing.notes == notes:
+            return before
+        actor = self._get_or_create_app_user(session, user)
+        if existing is None:
+            existing = QdKtPreparation(id=preparation_id, case_id=case.id,
+                                       created_by_user_id=actor.id, purpose=purpose, notes=notes)
+            session.add(existing)
+        else:
+            existing.purpose = purpose
+            existing.notes = notes
+        session.flush()
+        after = self._qdkt_preparation_payload(existing)
+        self._write_audit_event(
+            session, actor=actor, entity_type="qdkt_preparation",
+            entity_id=existing.id, action="qdkt_preparation.save",
+            payload={"case_id": case.id, "preparation_id": existing.id},
+            before=before, after=after, reason=reason.strip(),
+        )
+        return after
 
     def upsert_inspection_team(
         self,

@@ -108,12 +108,12 @@ def test_explicit_root_locator_can_bind_without_binding_row():
     "../other-case/draft.docx",
     "case-a/../../other-case/draft.docx",
     "/other-case/draft.docx",
-    "\\\\server\\share\\draft.docx",
+    r"\\server\share\draft.docx",
     "C:/other-case/draft.docx",
     "case-a//draft.docx",
     "case-a/./draft.docx",
     "case-a\\draft.docx",
-    "case-a/draft.docx\\x00",
+    "case-a/draft.docx\x00",
 ])
 def test_unbound_unsafe_storage_locator_fails_closed(locator):
     session = ReadOnlySession(record(storage=None, root="synology", locator=locator))

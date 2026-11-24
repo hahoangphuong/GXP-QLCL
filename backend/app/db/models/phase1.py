@@ -573,8 +573,8 @@ class QdKtPreparationMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     role_code: Mapped[str] = mapped_column(String(16), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     __table_args__ = (
-        UniqueConstraint("preparation_id", "sort_order"),
-        UniqueConstraint("preparation_id", "source_member_id"),
+        UniqueConstraint("preparation_id", "sort_order", name="uq_qdkt_prep_member_order"),
+        UniqueConstraint("preparation_id", "source_member_id", name="uq_qdkt_prep_member_source"),
         CheckConstraint("source_team_revision >= 1", name="qdkt_preparation_member_revision_positive"),
         CheckConstraint("sort_order >= 0", name="qdkt_preparation_member_order_nonnegative"),
         CheckConstraint("role_code IN ('LEADER', 'SECRETARY', 'MEMBER')", name="qdkt_preparation_member_role_known"),

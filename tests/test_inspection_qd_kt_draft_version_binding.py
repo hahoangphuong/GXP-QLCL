@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.app.db.enums import DocumentVariantType
 from backend.app.document.inspection_qd_kt_team_snapshot_review import (
     DraftTeamSnapshot, TeamMemberAtDraft,
 )
@@ -36,12 +37,13 @@ class ReadOnlySession:
 
 def record(*, case_id="case-a", family="INSPECTION_QD_KT",
            checksum="a" * 64, storage="binding-1", binding_case="case-a",
-           root=None, locator=None, persisted_binding=None):
+           root=None, locator=None, persisted_binding=None,
+           variant_type=DocumentVariantType.EDITABLE_DOCX):
     # Scalar tuple from the exact single joined SQL statement, not ORM
     # instances; tests must not accidentally permit identity-map hydration.
     return (
         "version-1", "variant-1", "variant-1", "doc-1",
-        "doc-1", case_id, family, checksum,
+        variant_type, "doc-1", case_id, family, checksum,
         storage, root, locator,
         storage if persisted_binding is None else persisted_binding,
         binding_case,
@@ -64,6 +66,10 @@ def test_read_only_binding_keeps_binary_and_issuance_claims_false():
     (None, "VERSION_NOT_FOUND"),
     (record(case_id="case-b"), "OWNER_MISMATCH"),
     (record(family="INSPECTION_KE_HOACH_KT"), "OWNER_MISMATCH"),
+    (record(variant_type=DocumentVariantType.SCANNED_PDF), "NOT_EDITABLE_DOCX"),
+    (record(variant_type=DocumentVariantType.GENERATED_PDF), "NOT_EDITABLE_DOCX"),
+    (record(variant_type=DocumentVariantType.EDITABLE_XLSX), "NOT_EDITABLE_DOCX"),
+    (record(variant_type=None), "NOT_EDITABLE_DOCX"),
     (record(checksum=None), "CHECKSUM_MISSING"),
     (record(checksum="bad"), "CHECKSUM_MISSING"),
     (record(storage=None), "STORAGE_UNBOUND"),

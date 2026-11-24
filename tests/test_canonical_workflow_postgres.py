@@ -7008,7 +7008,7 @@ def test_qdkt_draft_version_binding_is_case_scoped_scalar_read_and_preserves_dir
             original_filename="synthetic.docx",
         )
         db.add(version); db.commit()
-        version_id, other_storage_id = version.id, other_storage.id
+        version_id, storage_id, other_storage_id = version.id, storage.id, other_storage.id
 
     def proposal(owner=case_id):
         return DraftTeamSnapshot(
@@ -7052,6 +7052,18 @@ def test_qdkt_draft_version_binding_is_case_scoped_scalar_read_and_preserves_dir
     with Session(pg_engine) as db:
         with pytest.raises(QdKtDraftVersionBindingBlocked, match="STORAGE_OWNER_MISMATCH"):
             require_qdkt_draft_version_binding(db, snapshot=proposal())
+    # Correct Case/storage/checksum cannot reclassify a signed PDF or scan
+    # into an editable draft DOCX. Type is persisted at variant owner.
+    with Session(pg_engine) as db:
+        version = db.get(DocumentVersion, version_id)
+        variant = db.get(DocumentVariant, version.document_variant_id)
+        version.storage_binding_id = storage_id
+        variant.variant_type = DocumentVariantType.SCANNED_PDF
+        db.commit()
+    with Session(pg_engine) as db:
+        with pytest.raises(QdKtDraftVersionBindingBlocked, match="NOT_EDITABLE_DOCX"):
+            require_qdkt_draft_version_binding(db, snapshot=proposal())
+
 
 
 def test_qdkt_preparation_exact_readback_preserves_foreign_pending_drafts(pg_engine):

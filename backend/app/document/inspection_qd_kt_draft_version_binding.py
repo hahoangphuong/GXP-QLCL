@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from re import fullmatch
 
 from sqlalchemy import select
+from backend.app.db.enums import DocumentVariantType
 from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding
 from backend.app.document.inspection_qd_kt_team_snapshot_review import (
     DraftTeamSnapshot, validate_draft_snapshot,
@@ -45,6 +46,7 @@ def require_qdkt_draft_version_binding(
             select(
                 DocumentVersion.id, DocumentVersion.document_variant_id,
                 DocumentVariant.id, DocumentVariant.document_id,
+                DocumentVariant.variant_type,
                 Document.id, Document.case_id, Document.family_code,
                 DocumentVersion.checksum_sha256,
                 DocumentVersion.storage_binding_id,
@@ -61,7 +63,7 @@ def require_qdkt_draft_version_binding(
         raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_NOT_FOUND")
     (
         version_id, version_variant_id, variant_id, variant_document_id,
-        document_id, owner_case_id, family_code, checksum, binding_id,
+        variant_type, document_id, owner_case_id, family_code, checksum, binding_id,
         storage_root, storage_relative_path, persisted_binding_id,
         binding_case_id,
     ) = match
@@ -72,6 +74,12 @@ def require_qdkt_draft_version_binding(
         or variant_id != version_variant_id
     ):
         raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_OWNER_MISMATCH")
+    # A PDF scan, signed PDF, spreadsheet, or arbitrary stored variant cannot
+    # masquerade as the editable DOCX used by Process A. The variant type is
+    # only metadata: this does NOT independently inspect DOCX bytes, prove
+    # the rendered roster, or certify an issued QĐKT.
+    if variant_type is not DocumentVariantType.EDITABLE_DOCX:
+        raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_NOT_EDITABLE_DOCX")
     if not isinstance(checksum, str) or fullmatch(r"[0-9a-fA-F]{64}", checksum) is None:
         raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_CHECKSUM_MISSING")
     if binding_id is not None:

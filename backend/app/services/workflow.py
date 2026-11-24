@@ -6641,7 +6641,7 @@ class CaseWorkflowService:
         from backend.app.document.inspection_qd_kt_issued_team_choice import IssuedTeamChoice
         from backend.app.document.inspection_qd_kt_team_snapshot_review import TeamMemberAtDraft
         from backend.app.document.inspection_qd_kt_decision_source import (
-            QdKtSourceDecision, QdKtDecisionSourceBlocked, require_latest_qdkt_reference,
+            QdKtSourceDecision, QdKtDecisionSourceBlocked, require_ordered_qdkt_recording_predecessor,
         )
 
         require_permissions(user, {"inspection.edit", "document.write"})
@@ -6654,7 +6654,7 @@ class CaseWorkflowService:
         if (
             type(expected_plan_version) is not int or expected_plan_version < 1
             or type(decision_on) is not date
-            or relation_type not in ("INITIAL", "REPLACES")
+            or relation_type not in ("INITIAL", "REPLACES", "AMENDS")
             or external_approval_confirmed is not True
             or team_confirmed is not True
             or not all(type(value) is str and value.strip() == value and value.strip()
@@ -6693,7 +6693,7 @@ class CaseWorkflowService:
             prior = None
             if persisted:
                 try:
-                    prior = require_latest_qdkt_reference(
+                    prior = require_ordered_qdkt_recording_predecessor(
                         QdKtSourceDecision(*row) for row in persisted
                     )
                 except QdKtDecisionSourceBlocked as exc:
@@ -6704,10 +6704,10 @@ class CaseWorkflowService:
                     or plan.decision_legacy_raw != prior.legacy_raw
                 ):
                     raise HTTPException(status_code=409, detail="Decision projection differs from persisted source.")
-                if relation_type != "REPLACES" or related_decision_id != prior.source_decision_id:
-                    raise HTTPException(status_code=409, detail="Replacement must identify latest source decision.")
+                if relation_type not in ("REPLACES", "AMENDS") or related_decision_id != prior.id:
+                    raise HTTPException(status_code=409, detail="Replacement or amendment must identify latest recorded decision.")
                 if decision_on < prior.decision_on:
-                    raise HTTPException(status_code=409, detail="Replacement date precedes its source.")
+                    raise HTTPException(status_code=409, detail="Successor decision date precedes its source.")
             else:
                 if any(value is not None for value in (
                     plan.decision_reference, plan.decision_date, plan.decision_legacy_raw,
@@ -6746,7 +6746,7 @@ class CaseWorkflowService:
             id=decision_id, inspection_plan_id=plan.id,
             ordinal=len(persisted) + 1, reference=reference,
             decision_on=decision_on, legacy_raw=source_text,
-            relation_type=None if relation_type == "INITIAL" else "REPLACES",
+            relation_type=None if relation_type == "INITIAL" else relation_type,
             related_decision_id=related_decision_id,
         )
         session.add(decision)

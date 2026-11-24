@@ -6740,3 +6740,57 @@ def test_qdkt_issued_decision_rejects_foreign_pending_session(pg_engine):
                 InspectionPlan.case_id == case_id
             ))
         )) == 0
+
+
+def test_qdkt_amendment_is_not_replacement_and_never_unlocks_render(pg_engine):
+    from backend.app.db.models.phase1 import InspectionDecision, InspectionPlan, QdKtIssuedRoster
+    from backend.app.document.inspection_qd_kt_decision_history import read_case_qdkt_decision_history
+
+    case_id, _ = seed(pg_engine)
+    plan = write(pg_engine, SERVICE.upsert_inspection_plan,
+                 case_id=case_id, plan_start_on=DAY, plan_end_on=DAY,
+                 planning_sheet_name="Schedule", decision_document_hint=None, reason="Plan")
+    def record(ref, kind, previous, version):
+        return write(
+            pg_engine, SERVICE.record_qdkt_issued_decision,
+            case_id=case_id, decision_id=str(uuid4()), expected_plan_version=version,
+            reference=ref, decision_on=DAY, source_text=ref + " exact external transcription",
+            relation_type=kind, related_decision_id=previous,
+            external_approval_confirmed=True,
+            approval_basis="Human-reviewed signed external source", team_confirmed=True,
+            roster_source="USER_ENTERED", draft_id=None, draft_team_id=None,
+            draft_team_revision=None, acknowledged_changes=False,
+            members=[dict(source_member_id=str(uuid4()), display_name=ref + " leader",
+                          role_code="LEADER", job_title="Inspector")],
+            reason="Record actual external source without inferring renderer approval",
+        )
+    first = record("QDKT-INITIAL", "INITIAL", None, plan["row_version"])
+    amended = record("QDKT-AMENDS", "AMENDS", first["decision_id"], first["plan_row_version"])
+    assert amended["relation_type"] == "AMENDS"
+    assert amended["related_decision_id"] == first["decision_id"]
+    with Session(pg_engine) as db:
+        middle = read_case_qdkt_decision_history(db, case_id=case_id)
+        assert middle["source_status"] == "EXPLICIT_AMENDMENT_CHAIN_REQUIRES_REVIEW"
+        assert middle["blocked_reason"] == "AMENDMENT_HAS_NO_SINGLE_EFFECTIVE_SOURCE"
+        assert middle["latest_source_decision_id"] is None
+        assert middle["legal_issuance_verified"] is False
+        assert middle["ready_to_render"] is False
+    replaced = record("QDKT-REPLACEMENT", "REPLACES", amended["decision_id"], amended["plan_row_version"])
+    assert replaced["related_decision_id"] == amended["decision_id"]
+    with Session(pg_engine) as db:
+        plan_row = db.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        decisions = db.scalars(select(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id == plan_row.id
+        ).order_by(InspectionDecision.ordinal)).all()
+        assert [d.relation_type for d in decisions] == [None, "AMENDS", "REPLACES"]
+        assert [d.id for d in decisions] == [
+            first["decision_id"], amended["decision_id"], replaced["decision_id"],
+        ]
+        assert plan_row.decision_reference == "QDKT-REPLACEMENT"
+        assert db.scalar(select(func.count()).select_from(QdKtIssuedRoster).where(
+            QdKtIssuedRoster.inspection_decision_id.in_([d.id for d in decisions])
+        )) == 3
+        final = read_case_qdkt_decision_history(db, case_id=case_id)
+        assert final["source_status"] == "EXPLICIT_AMENDMENT_CHAIN_REQUIRES_REVIEW"
+        assert final["latest_source_decision_id"] is None
+        assert final["ready_to_render"] is False

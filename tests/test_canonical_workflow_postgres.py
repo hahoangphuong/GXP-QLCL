@@ -6597,7 +6597,11 @@ def test_qdkt_plan_http_denies_decision_atoms_but_updates_schedule(pg_engine):
     with Session(pg_engine) as session:
         assert session.scalar(select(func.count()).select_from(InspectionPlan).where(
             InspectionPlan.case_id == case_id)) == 1
-        assert session.scalar(select(func.count()).select_from(InspectionDecision)) == 0
+        assert session.scalar(select(func.count()).select_from(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id.in_(select(InspectionPlan.id).where(
+                InspectionPlan.case_id == case_id
+            ))
+        )) == 0
         assert session.scalar(select(func.count()).select_from(InspectionEvent).where(
             InspectionEvent.case_id == case_id,
             InspectionEvent.event_type == InspectionEventType.DECISION_ISSUED,

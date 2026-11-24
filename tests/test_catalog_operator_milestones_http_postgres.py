@@ -158,21 +158,39 @@ def test_initial_case_real_application_assessment_plan_milestone_owners(pg_engin
     transition(api, case_id, "planned")
     assert workspace(api, case_id)["inspection"]["plan_decision_reference"] is None
 
-    # Only explicit user-entered decision fields yield this compatibility
-    # event. This does not create an approved QĐKT document.
-    decided = ok(api, "PUT", f"/cases/{case_id}/plan", {
+    # Only Process B may record an explicitly operator-attested approved QĐKT.
+    # No signed document is fabricated and rendering remains blocked.
+    status, invalid_plan = api("PUT", f"/cases/{case_id}/plan", {
         "expected_version": scheduled["row_version"],
-        "decision_reference": "SYNTHETIC-QDKT-REFERENCE",
+        "decision_reference": "FORGED-PLAN-DECISION",
         "decision_date": "2026-10-04",
-        "reason": "Explicitly recorded source reference",
+    })
+    assert status == 422, invalid_plan
+    decided = ok(api, "POST", f"/cases/{case_id}/qdkt-issued-decisions", {
+        "decision_id": str(uuid4()),
+        "expected_plan_version": scheduled["row_version"],
+        "reference": "SYNTHETIC-QDKT-REFERENCE",
+        "decision_on": "2026-10-04",
+        "source_text": "SYNTHETIC-QDKT-REFERENCE 04/10/2026",
+        "relation_type": "INITIAL", "related_decision_id": None,
+        "external_approval_confirmed": True,
+        "approval_basis": "Synthetic explicit operator review of approved external QDKT",
+        "team_confirmed": True, "roster_source": "USER_ENTERED",
+        "members": [{
+            "source_member_id": str(uuid4()),
+            "display_name": "Synthetic team leader",
+            "role_code": "LEADER", "job_title": "Inspector",
+        }],
+        "reason": "Record signed decision facts as operator attestation",
     })
     assert decided["inspection_event_id"] is not None
-    assert decided["decision_reference"] == "SYNTHETIC-QDKT-REFERENCE"
+    assert decided["reference"] == "SYNTHETIC-QDKT-REFERENCE"
+    assert decided["legal_issuance_verified"] is False
     assert [item.value for item in events(pg_engine, case_id)] == [
         "application_submitted", "assessment_completed", "plan_created", "decision_issued",
     ]
     readback = workspace(api, case_id)
-    assert readback["inspection"]["plan_decision_reference"] == decided["decision_reference"]
+    assert readback["inspection"]["plan_decision_reference"] == decided["reference"]
     assert str(readback["inspection"]["plan_decision_date"]) == "2026-10-04"
     transition(api, case_id, "decision_issued")
     assert len(events(pg_engine, case_id)) == 4

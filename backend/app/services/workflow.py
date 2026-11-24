@@ -5072,6 +5072,14 @@ class CaseWorkflowService:
             fields_set,
             {"plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"},
         )
+        # Process B owns all legal decision source atoms. Plan PATCH is schedule only.
+        # Reject even explicit null: a legacy compatibility scalar cannot be used
+        # to clear/reissue a persisted InspectionDecision or forge DECISION_ISSUED.
+        if {"decision_reference", "decision_date"} & provided:
+            raise HTTPException(
+                status_code=422,
+                detail="Decision reference/date are read-only projections; record an issued QDKT through its decision owner.",
+            )
         if (fields_set is not None and "decision_document_hint" in provided) or (
             fields_set is None and decision_document_hint is not None
         ):
@@ -5142,8 +5150,6 @@ class CaseWorkflowService:
                 "plan_start_on": plan_start_on,
                 "plan_end_on": plan_end_on,
                 "planning_sheet_name": planning_sheet_name,
-                "decision_reference": decision_reference,
-                "decision_date": decision_date,
             },
             provided,
         )
@@ -5171,24 +5177,7 @@ class CaseWorkflowService:
                 reason=reason,
             ),
         )
-        decision_event = self._write_inspection_event(
-            session,
-            case_id=row.id,
-            event_type=InspectionEventType.DECISION_ISSUED
-            if (
-                before["decision_reference"] is None
-                and before["decision_date"] is None
-                and (stage.decision_reference is not None or stage.decision_date is not None)
-            )
-            else None,
-            payload=self._build_stage_payload(
-                stage="inspection_decision",
-                decision_reference=stage.decision_reference,
-                decision_date=None if stage.decision_date is None else stage.decision_date.isoformat(),
-                reason=reason,
-            ),
-        )
-        inspection_event = decision_event or plan_event
+        inspection_event = plan_event
         audit_event = self._write_audit_event(
             session,
             actor=actor,

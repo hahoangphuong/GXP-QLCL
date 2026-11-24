@@ -6480,3 +6480,67 @@ def test_qdkt_preparation_real_http_lifecycle(pg_engine):
         assert (await request("PUT", item, payload))[0] == 403
 
     asyncio.run(scenario())
+
+def test_qdkt_plan_write_cannot_forge_or_clear_issued_decision(pg_engine):
+    """Process A schedule updates cannot become the legal Process B source."""
+    from backend.app.db.models.phase1 import InspectionPlan, InspectionDecision
+    case_id, _ = seed(pg_engine)
+    created = write(
+        pg_engine, SERVICE.upsert_inspection_plan,
+        case_id=case_id, plan_start_on=DAY, plan_end_on=DAY,
+        planning_sheet_name="Schedule only", decision_document_hint=None,
+        reason="Schedule", fields_set={"plan_start_on", "plan_end_on", "planning_sheet_name"},
+    )
+    with Session(pg_engine) as session:
+        plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        assert plan.decision_reference is None and plan.decision_date is None
+        assert session.scalar(select(func.count()).select_from(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id == plan.id)) == 0
+        before_audit = session.scalar(select(func.count()).select_from(AuditEvent))
+    for supplied in (
+        {"decision_reference": "FAKE-QDKT"},
+        {"decision_date": DAY},
+        {"decision_reference": None},
+        {"decision_date": None},
+        {"decision_reference": "FAKE", "decision_date": DAY},
+    ):
+        with Session(pg_engine) as session:
+            with pytest.raises(HTTPException) as exc:
+                SERVICE.upsert_inspection_plan(
+                    session, case_id=case_id, expected_version=created["row_version"],
+                    plan_start_on=None, plan_end_on=None, planning_sheet_name=None,
+                    decision_document_hint=None, reason="Forged legal update", user=USER,
+                    fields_set=set(supplied), **supplied,
+                )
+            assert exc.value.status_code == 422
+            session.rollback()
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == before_audit
+        plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        assert plan.row_version == created["row_version"]
+        assert plan.decision_reference is None and plan.decision_date is None
+
+
+def test_qdkt_plan_schedule_preserves_historical_projection(pg_engine):
+    """Legacy scalar values remain readable but schedule edits never rewrite them."""
+    from backend.app.db.models.phase1 import InspectionPlan
+    case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        plan = InspectionPlan(case_id=case_id, decision_reference="LEGACY-QDKT",
+                              decision_date=DAY, decision_legacy_raw="legacy statement")
+        session.add(plan)
+        session.commit()
+        version = plan.row_version
+    updated = write(
+        pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
+        expected_version=version, plan_start_on=DAY, plan_end_on=DAY,
+        planning_sheet_name="Changed schedule", decision_document_hint=None,
+        reason="Plan change",
+        fields_set={"plan_start_on", "plan_end_on", "planning_sheet_name"},
+    )
+    assert updated["decision_reference"] == "LEGACY-QDKT"
+    assert updated["decision_date"] == DAY
+    with Session(pg_engine) as session:
+        plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        assert plan.decision_legacy_raw == "legacy statement"
+        assert plan.decision_reference == "LEGACY-QDKT"

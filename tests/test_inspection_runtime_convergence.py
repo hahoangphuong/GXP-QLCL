@@ -23,13 +23,34 @@ def test_typed_plan_and_outcome_metadata_reject_compatibility_writes_and_preserv
         user = build_authenticated_user("manager01", "manager", permissions={"inspection.edit"})
         with pytest.raises(HTTPException, match="read-only compatibility"):
             service.upsert_inspection_plan(session, case_id=case_id, plan_start_on=None, plan_end_on=None, planning_sheet_name=None, decision_document_hint="legacy hint", decision_reference="QD-12", decision_date=date(2026, 9, 1), reason="compatibility", user=user)
-        plan = service.upsert_inspection_plan(session, case_id=case_id, plan_start_on=None, plan_end_on=None, planning_sheet_name=None, decision_document_hint=None, decision_reference="QD-12", decision_date=date(2026, 9, 1), reason="typed", user=user)
-        assert plan["decision_reference"] == "QD-12"
+        plan = service.upsert_inspection_plan(
+            session, case_id=case_id, plan_start_on=None, plan_end_on=None,
+            planning_sheet_name="Typed schedule", decision_document_hint=None,
+            decision_reference=None, decision_date=None, reason="typed", user=user,
+        )
+        assert plan["decision_reference"] is None
         persisted_plan = session.scalars(select(InspectionPlan).where(InspectionPlan.case_id == case_id)).one()
         assert persisted_plan is not None
+        # Preserve imported scalar history, but do not permit its modern mutation.
         persisted_plan.decision_document_hint = "historical hint"
+        persisted_plan.decision_reference = "QD-12"
+        persisted_plan.decision_date = date(2026, 9, 1)
         session.flush()
-        plan = service.upsert_inspection_plan(session, case_id=case_id, expected_version=persisted_plan.row_version, plan_start_on=None, plan_end_on=None, planning_sheet_name=None, decision_document_hint=None, decision_reference="QD-13", decision_date=date(2026, 9, 3), reason="typed update", user=user)
+        with pytest.raises(HTTPException, match="read-only compatibility"):
+            service.upsert_inspection_plan(
+                session, case_id=case_id, expected_version=persisted_plan.row_version,
+                plan_start_on=None, plan_end_on=None, planning_sheet_name=None,
+                decision_document_hint=None, decision_reference="QD-13",
+                decision_date=date(2026, 9, 3), reason="not an allowed Process A write",
+                user=user,
+            )
+        plan = service.upsert_inspection_plan(
+            session, case_id=case_id, expected_version=persisted_plan.row_version,
+            plan_start_on=None, plan_end_on=None, planning_sheet_name="Updated schedule",
+            decision_document_hint=None, decision_reference=None, decision_date=None,
+            reason="typed update", user=user, fields_set={"planning_sheet_name"},
+        )
+        assert plan["decision_reference"] == "QD-12"
         assert plan["decision_document_hint"] == "historical hint"
         with pytest.raises(HTTPException, match="read-only compatibility"):
             service.upsert_inspection_outcome(session, case_id=case_id, inspected_on=None, inspected_to_on=None, decision_reference="legacy decision", bbkt_reference=None, outcome_result="Dat", reason="compatibility", user=user)

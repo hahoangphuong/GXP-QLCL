@@ -6744,7 +6744,7 @@ class CaseWorkflowService:
             existing.purpose = purpose
             existing.notes = notes
         session.flush()
-        after = self._qdkt_preparation_payload(existing)
+        after = self._qdkt_preparation_payload(existing, members)
         self._write_audit_event(
             session, actor=actor, entity_type="qdkt_preparation",
             entity_id=existing.id, action="qdkt_preparation.save",

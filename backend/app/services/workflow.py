@@ -43,6 +43,7 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionPeriodSegment,
     InspectionPlan,
+    InspectionDecision,
     QdKtPreparation,
     QdKtPreparationMember,
     InspectionApprovalSubmission,
@@ -6562,6 +6563,184 @@ class CaseWorkflowService:
             expected_version=expected_target_version, copy_source=source,
         )
         return {**result, **source}
+
+    def record_qdkt_issued_decision(
+        self, session: Session, *, case_id: str, decision_id: str,
+        expected_plan_version: int, reference: str, decision_on: date,
+        source_text: str, relation_type: str, related_decision_id: str | None,
+        external_approval_confirmed: bool, approval_basis: str,
+        team_confirmed: bool, roster_source: str,
+        draft_id: str | None, draft_team_id: str | None,
+        draft_team_revision: int | None, acknowledged_changes: bool,
+        members: list[dict[str, Any]], reason: str, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Record operator-attested, previously approved QĐKT; never create a draft.
+
+        Only the caller attests external approval. The system does not
+        independently verify signatures or permit document rendering.
+        """
+        from uuid import UUID
+        from backend.app.document.inspection_qd_kt_issued_roster_persistence import (
+            stage_qdkt_issued_roster,
+        )
+        from backend.app.document.inspection_qd_kt_issued_team_choice import IssuedTeamChoice
+        from backend.app.document.inspection_qd_kt_team_snapshot_review import TeamMemberAtDraft
+        from backend.app.document.inspection_qd_kt_decision_source import (
+            QdKtSourceDecision, QdKtDecisionSourceBlocked, require_latest_qdkt_reference,
+        )
+
+        require_permissions(user, {"inspection.edit", "document.write"})
+        try:
+            parsed = UUID(decision_id)
+            if parsed.version != 4 or str(parsed) != decision_id:
+                raise ValueError()
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid QDKT decision ID.") from exc
+        if (
+            type(expected_plan_version) is not int or expected_plan_version < 1
+            or type(decision_on) is not date
+            or relation_type not in ("INITIAL", "REPLACES")
+            or external_approval_confirmed is not True
+            or team_confirmed is not True
+            or not all(type(value) is str and value.strip() == value and value.strip()
+                       for value in (reference, source_text, approval_basis, reason))
+            or len(reference) > 255 or len(source_text) > 4000
+            or len(approval_basis) > 1000 or len(reason) > 1000
+            or not isinstance(members, list) or not members
+        ):
+            raise HTTPException(status_code=422, detail="Incomplete externally approved QDKT source.")
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="QDKT issued decision recording")
+            case = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(case, operation="QDKT issued decision recording")
+            if case.gxp_type not in SUPPORTED_CASE_GXP_TYPES:
+                raise HTTPException(status_code=409, detail="Unsupported Case GxP type.")
+            plan = session.scalars(select(InspectionPlan).where(
+                InspectionPlan.case_id == case.id,
+            ).with_for_update().execution_options(populate_existing=True)).one_or_none()
+            if plan is None:
+                raise HTTPException(status_code=409, detail="Inspection plan must exist.")
+            self._assert_expected_version(plan, expected_plan_version, label="inspection_plan")
+            existing_id = session.scalar(select(InspectionDecision.id).where(
+                InspectionDecision.id == decision_id
+            ))
+            if existing_id is not None:
+                raise HTTPException(status_code=409, detail="Decision identity exists; read back before retrying.")
+            persisted = session.execute(select(
+                InspectionDecision.id, InspectionDecision.ordinal,
+                InspectionDecision.reference, InspectionDecision.decision_on,
+                InspectionDecision.legacy_raw, InspectionDecision.relation_type,
+                InspectionDecision.related_decision_id,
+            ).where(InspectionDecision.inspection_plan_id == plan.id)
+             .order_by(InspectionDecision.ordinal)).all()
+            prior = None
+            if persisted:
+                try:
+                    prior = require_latest_qdkt_reference(
+                        QdKtSourceDecision(*row) for row in persisted
+                    )
+                except QdKtDecisionSourceBlocked as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+                if (
+                    plan.decision_reference != prior.reference
+                    or plan.decision_date != prior.decision_on
+                    or plan.decision_legacy_raw != prior.legacy_raw
+                ):
+                    raise HTTPException(status_code=409, detail="Decision projection differs from persisted source.")
+                if relation_type != "REPLACES" or related_decision_id != prior.source_decision_id:
+                    raise HTTPException(status_code=409, detail="Replacement must identify latest source decision.")
+                if decision_on < prior.decision_on:
+                    raise HTTPException(status_code=409, detail="Replacement date precedes its source.")
+            else:
+                if any(value is not None for value in (
+                    plan.decision_reference, plan.decision_date, plan.decision_legacy_raw,
+                )):
+                    raise HTTPException(status_code=409, detail="Legacy decision projection has no verified source.")
+                if relation_type != "INITIAL" or related_decision_id is not None:
+                    raise HTTPException(status_code=409, detail="Initial decision must have no prior decision.")
+            if any(row[2] == reference for row in persisted):
+                raise HTTPException(status_code=409, detail="Duplicate QDKT reference for Case.")
+            try:
+                final_members = tuple(TeamMemberAtDraft(
+                    inspector_id=item["source_member_id"],
+                    display_name=item["display_name"],
+                    role=item["role_code"],
+                    job_title=item["job_title"],
+                ) for item in members)
+                choice = IssuedTeamChoice(
+                    case_id=case.id, decision_reference=reference,
+                    issued_on=decision_on,
+                    member_ids=tuple(member.inspector_id for member in final_members),
+                    confirmed_by_user=team_confirmed, roster_source=roster_source,
+                    draft_id=draft_id, draft_team_id=draft_team_id,
+                    draft_team_revision=draft_team_revision,
+                    acknowledged_changes=acknowledged_changes,
+                )
+                # Validate before any mutation; the staging helper repeats
+                # persisted snapshot/hash checks after source row creation.
+                from backend.app.document.inspection_qd_kt_team_snapshot_review import (
+                    validate_members,
+                )
+                validate_members(final_members)
+            except (ValueError, KeyError, TypeError) as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        actor = self._get_or_create_app_user(session, user)
+        decision = InspectionDecision(
+            id=decision_id, inspection_plan_id=plan.id,
+            ordinal=len(persisted) + 1, reference=reference,
+            decision_on=decision_on, legacy_raw=source_text,
+            relation_type=None if relation_type == "INITIAL" else "REPLACES",
+            related_decision_id=related_decision_id,
+        )
+        session.add(decision)
+        session.flush()
+        try:
+            roster = stage_qdkt_issued_roster(
+                session, decision_id=decision.id, choice=choice,
+                final_members=final_members, actor_user_id=actor.id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        plan.decision_reference = decision.reference
+        plan.decision_date = decision.decision_on
+        plan.decision_legacy_raw = decision.legacy_raw
+        session.flush()
+        inspection_event = self._write_inspection_event(
+            session, case_id=case.id,
+            event_type=InspectionEventType.DECISION_ISSUED,
+            payload={
+                "decision_id": decision.id,
+                "inspection_plan_id": plan.id,
+                "source_kind": "OPERATOR_ATTESTED_EXTERNAL_APPROVAL",
+                "independently_verified": False,
+            },
+        )
+        audit = self._write_audit_event(
+            session, actor=actor, entity_type="inspection_decision",
+            entity_id=decision.id, action="qdkt_issued_decision.record",
+            payload={
+                "case_id": case.id, "inspection_plan_id": plan.id,
+                "roster_id": roster.id, "approval_basis": approval_basis,
+                "external_approval_confirmed": True,
+                "signed_document_independently_verified": False,
+            },
+            after={
+                "reference": reference, "decision_on": decision_on.isoformat(),
+                "relation_type": relation_type, "related_decision_id": related_decision_id,
+                "roster_source": roster.roster_source,
+            },
+            reason=reason,
+        )
+        return {
+            "decision_id": decision.id, "case_id": case.id,
+            "inspection_plan_id": plan.id, "ordinal": decision.ordinal,
+            "reference": decision.reference, "decision_on": decision.decision_on,
+            "relation_type": relation_type, "related_decision_id": related_decision_id,
+            "roster_id": roster.id, "roster_source": roster.roster_source,
+            "plan_row_version": plan.row_version,
+            "inspection_event_id": inspection_event.id, "audit_event_id": audit.id,
+            "legal_issuance_verified": False, "ready_to_render": False,
+        }
 
     @staticmethod
     def _qdkt_preparation_payload(row, members) -> dict[str, Any]:

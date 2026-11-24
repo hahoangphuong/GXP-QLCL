@@ -54,6 +54,8 @@ from backend.app.read_models import (
     InspectionPlanRead,
     InspectionPlanUpsertRequest,
     InspectionTeamRead,
+    QdKtIssuedDecisionRecordRequest,
+    QdKtIssuedDecisionRecordRead,
     QdKtPreparationWrite,
     QdKtPreparationRead,
     QdKtPreparationTeamWrite,
@@ -358,6 +360,33 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return ApprovalDocumentBindingRead(**result)
+
+    def record_qdkt_issued_decision(
+        case_id: str, payload: QdKtIssuedDecisionRecordRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit", "document.write"})
+        result = service.record_qdkt_issued_decision(
+            session, case_id=case_id, decision_id=str(payload.decision_id),
+            expected_plan_version=payload.expected_plan_version,
+            reference=payload.reference, decision_on=payload.decision_on,
+            source_text=payload.source_text, relation_type=payload.relation_type,
+            related_decision_id=None if payload.related_decision_id is None
+                else str(payload.related_decision_id),
+            external_approval_confirmed=payload.external_approval_confirmed,
+            approval_basis=payload.approval_basis,
+            team_confirmed=payload.team_confirmed,
+            roster_source=payload.roster_source,
+            draft_id=None if payload.draft_id is None else str(payload.draft_id),
+            draft_team_id=None if payload.draft_team_id is None else str(payload.draft_team_id),
+            draft_team_revision=payload.draft_team_revision,
+            acknowledged_changes=payload.acknowledged_changes,
+            members=[member.model_dump() for member in payload.members],
+            reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return QdKtIssuedDecisionRecordRead(**result)
 
     def list_qdkt_preparations(
         case_id: str,
@@ -961,6 +990,11 @@ def register_workflow_routes(app, session_factory) -> None:
         methods=["PUT"],
         response_model=InspectionTeamRead,
         tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-issued-decisions",
+        record_qdkt_issued_decision, methods=["POST"],
+        response_model=QdKtIssuedDecisionRecordRead, tags=["workflow"],
     )
     app.add_api_route(
         "/cases/{case_id}/qdkt-preparations", list_qdkt_preparations,

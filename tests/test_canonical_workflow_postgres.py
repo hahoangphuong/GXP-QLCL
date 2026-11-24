@@ -6460,6 +6460,10 @@ def test_qdkt_preparation_real_http_lifecycle(pg_engine):
         assert created["legal_issuance_verified"] is False
         assert created["ready_to_render"] is False
         assert await request("GET", collection) == (200, [created])
+        assert await request("GET", item) == (200, created)
+        assert (await request("GET", f"/cases/{other_id}/qdkt-preparations/{key}"))[0] == 404
+        assert (await request("GET", f"{collection}/{uuid4()}"))[0] == 404
+
         assert (await request("PUT", item, payload))[0] == 409
         assert (await request("PUT", item, dict(payload, decision_reference="FORGED")))[0] == 422
         assert (await request("PUT", f"/cases/{other_id}/qdkt-preparations/{key}",
@@ -6470,6 +6474,8 @@ def test_qdkt_preparation_real_http_lifecycle(pg_engine):
         assert cancelled["status"] == "CANCELLED"
         assert cancelled["row_version"] > created["row_version"]
         assert await request("GET", collection) == (200, [cancelled])
+        assert await request("GET", item) == (200, cancelled)
+
         assert (await request("PUT", item, dict(payload, expected_version=cancelled["row_version"])))[0] == 409
         assert (await request("POST", item + "/capture-team",
                               dict(expected_version=cancelled["row_version"], expected_team_id=str(uuid4()),
@@ -6477,6 +6483,8 @@ def test_qdkt_preparation_real_http_lifecycle(pg_engine):
         app.dependency_overrides[get_authenticated_user] = lambda: build_authenticated_user(
             "qdkt-http-reader", "reader", permissions=ROLE_PERMISSIONS["reader"])
         assert (await request("GET", collection))[0] == 403
+        assert (await request("GET", item))[0] == 403
+
         assert (await request("PUT", item, payload))[0] == 403
 
     asyncio.run(scenario())
@@ -7044,3 +7052,48 @@ def test_qdkt_draft_version_binding_is_case_scoped_scalar_read_and_preserves_dir
     with Session(pg_engine) as db:
         with pytest.raises(QdKtDraftVersionBindingBlocked, match="STORAGE_OWNER_MISMATCH"):
             require_qdkt_draft_version_binding(db, snapshot=proposal())
+
+
+def test_qdkt_preparation_exact_readback_preserves_foreign_pending_drafts(pg_engine):
+    """Case-scoped readback never auto-flushes or overwrites unrelated ORM work."""
+    case_id, _ = seed(pg_engine)
+    other_case_id, _ = seed(pg_engine)
+    preparation_id = str(uuid4())
+    saved = write(
+        pg_engine, SERVICE.save_qdkt_preparation,
+        case_id=case_id, preparation_id=preparation_id, purpose="INITIAL",
+        notes="Only this Case", expected_version=None, reason="Prepare",
+    )
+    with Session(pg_engine) as session:
+        draft = CapaCycle(case_id=other_case_id, round_no=1, requested_on=DAY,
+                          notes="Must remain pending")
+        session.add(draft)
+        flushes = []
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Preparation readback must never autoflush")
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            read = SERVICE.get_qdkt_preparation(
+                session, case_id=case_id, preparation_id=preparation_id, user=USER,
+            )
+            assert read == saved
+            assert draft in session.new
+            assert not flushes
+            with pytest.raises(HTTPException) as crossed:
+                SERVICE.get_qdkt_preparation(
+                    session, case_id=other_case_id,
+                    preparation_id=preparation_id, user=USER,
+                )
+            assert crossed.value.status_code == 404
+            with pytest.raises(HTTPException) as missing:
+                SERVICE.get_qdkt_preparation(
+                    session, case_id=case_id,
+                    preparation_id=str(uuid4()), user=USER,
+                )
+            assert missing.value.status_code == 404
+            assert draft in session.new
+            assert not flushes
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()

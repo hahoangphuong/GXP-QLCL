@@ -181,6 +181,37 @@ def _unique_from_snapshot(session, snapshot):
     return replace(atoms, case_id=snapshot[0], inspection_plan_id=snapshot[1])
 
 
+def require_ordered_qdkt_recording_predecessor(
+    decisions: Iterable[QdKtSourceDecision],
+) -> QdKtSourceDecision | None:
+    """Validate an explicit append-only Process B chronology.
+
+    AMENDS remains distinct from REPLACES. The returned predecessor is only
+    the last *recorded* decision, never a legal effective-source selection
+    for a DOCX template or independent signature verification.
+    """
+    items = _checked_items(decisions)
+    if not items:
+        return None
+    by_id = {item.id: item for item in items}
+    if len(by_id) != len(items):
+        raise QdKtDecisionSourceBlocked("DECISION_IDENTITY_AMBIGUOUS")
+    ordered = sorted(items, key=lambda item: item.ordinal)
+    if [item.ordinal for item in ordered] != list(range(1, len(items) + 1)):
+        raise QdKtDecisionSourceBlocked("DECISION_ORDER_UNPROVEN")
+    root = ordered[0]
+    if root.relation_type is not None or root.related_decision_id is not None:
+        raise QdKtDecisionSourceBlocked("DECISION_ROOT_INVALID")
+    for prior, current in zip(ordered, ordered[1:]):
+        if (
+            current.relation_type not in ("REPLACES", "AMENDS")
+            or current.related_decision_id != prior.id
+            or current.decision_on < prior.decision_on
+        ):
+            raise QdKtDecisionSourceBlocked("DECISION_LINEAGE_AMBIGUOUS")
+    return ordered[-1]
+
+
 def require_latest_qdkt_reference(
     decisions: Iterable[QdKtSourceDecision],
 ) -> QdKtDecisionAtoms:

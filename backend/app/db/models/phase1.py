@@ -538,7 +538,7 @@ class InspectionDecision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("inspection_plan_id", "ordinal"),
         CheckConstraint("ordinal >= 1", name="inspection_decision_ordinal_positive"),
-        CheckConstraint("relation_type IS NULL OR relation_type IN ('REPLACES')", name="inspection_decision_relation_known"),
+        CheckConstraint("relation_type IS NULL OR relation_type IN ('REPLACES', 'AMENDS')", name="inspection_decision_relation_known"),
         CheckConstraint("(relation_type IS NULL) = (related_decision_id IS NULL)", name="inspection_decision_relation_shape"),
     )
 

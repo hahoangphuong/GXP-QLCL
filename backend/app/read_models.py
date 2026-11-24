@@ -715,7 +715,7 @@ class QdKtIssuedDecisionRecordRequest(BaseModel):
     reference: str = Field(min_length=1, max_length=255)
     decision_on: date
     source_text: str = Field(min_length=1, max_length=4000)
-    relation_type: Literal["INITIAL", "REPLACES"]
+    relation_type: Literal["INITIAL", "REPLACES", "AMENDS"]
     related_decision_id: UUID4 | None = None
     external_approval_confirmed: Literal[True]
     approval_basis: str = Field(min_length=1, max_length=1000)
@@ -736,7 +736,7 @@ class QdKtIssuedDecisionRecordRead(BaseModel):
     ordinal: int
     reference: str
     decision_on: date
-    relation_type: Literal["INITIAL", "REPLACES"]
+    relation_type: Literal["INITIAL", "REPLACES", "AMENDS"]
     related_decision_id: str | None
     roster_id: str
     roster_source: str
@@ -854,7 +854,7 @@ class CaseQdKtDecisionHistoryRead(BaseModel):
     inspection_plan_id: str | None
     source_status: Literal[
         "NO_INSPECTION_PLAN", "NO_DECISIONS",
-        "EXPLICIT_REPLACEMENT_CHAIN", "LINEAGE_BLOCKED",
+        "EXPLICIT_REPLACEMENT_CHAIN", "EXPLICIT_AMENDMENT_CHAIN_REQUIRES_REVIEW", "LINEAGE_BLOCKED",
     ]
     blocked_reason: str | None
     latest_source_decision_id: str | None

@@ -82,8 +82,23 @@ def read_case_qdkt_decision_history(session, *, case_id: str) -> dict[str, objec
                 latest_id = require_latest_qdkt_reference(decisions).source_decision_id
                 status = "EXPLICIT_REPLACEMENT_CHAIN"
             except QdKtDecisionSourceBlocked as exc:
-                status = "LINEAGE_BLOCKED"
-                blocked_reason = str(exc)
+                # Explicit AMENDS is valid chronology, but is not a
+                # replacement chain and supplies no single effective
+                # source for a downstream renderer/related form.
+                try:
+                    from backend.app.document.inspection_qd_kt_decision_source import (
+                        require_ordered_qdkt_recording_predecessor,
+                    )
+                    require_ordered_qdkt_recording_predecessor(decisions)
+                    if any(item.relation_type == "AMENDS" for item in decisions):
+                        status = "EXPLICIT_AMENDMENT_CHAIN_REQUIRES_REVIEW"
+                        blocked_reason = "AMENDMENT_HAS_NO_SINGLE_EFFECTIVE_SOURCE"
+                    else:
+                        status = "LINEAGE_BLOCKED"
+                        blocked_reason = str(exc)
+                except QdKtDecisionSourceBlocked:
+                    status = "LINEAGE_BLOCKED"
+                    blocked_reason = str(exc)
         return {
             "case_id": case_id,
             "inspection_plan_id": plan_id,

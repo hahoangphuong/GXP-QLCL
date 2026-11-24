@@ -6574,6 +6574,10 @@ class CaseWorkflowService:
         verified legal issuance. Querying scalars leaves Session drafts intact.
         """
         from backend.app.db.models.phase1 import QdKtIssuedRoster, QdKtIssuedRosterMember
+        from backend.app.document.inspection_qd_kt_issued_roster_persistence import (
+            require_qdkt_issued_roster_readback_integrity,
+            QdKtIssuedRosterReadBlocked,
+        )
         require_permissions(user, {"inspection.edit", "document.read"})
         with session.no_autoflush:
             recorded = select(AuditEvent.id).where(
@@ -6603,6 +6607,23 @@ class CaseWorkflowService:
             if not rows:
                 raise HTTPException(status_code=404, detail="Decision not found for Case.")
             first = rows[0]
+            if first[9] is None:
+                # Historical source-only decisions may legitimately have no
+                # roster, but a Process B audit may not silently lose its
+                # decision-owned confirmed roster.
+                if first[17]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="QDKT_ISSUED_ROSTER_MISSING",
+                    )
+            else:
+                try:
+                    require_qdkt_issued_roster_readback_integrity(
+                        roster_sha256=first[11],
+                        members=tuple(row[12:17] for row in rows),
+                    )
+                except QdKtIssuedRosterReadBlocked as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {
                 "case_id": first[0], "inspection_plan_id": first[1],
                 "decision_id": first[2], "ordinal": first[3],

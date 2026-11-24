@@ -696,6 +696,24 @@ class CaseInspectionPlanRuntimeReadinessRead(BaseModel):
     blocked_reasons: list[str]
 
 
+class QdKtPreparationWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    purpose: Literal["INITIAL", "AMENDMENT", "REPLACEMENT"]
+    notes: str = Field(max_length=4000)
+    expected_version: int | None = Field(ge=1, strict=True)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class QdKtPreparationRead(BaseModel):
+    preparation_id: str
+    case_id: str
+    purpose: Literal["INITIAL", "AMENDMENT", "REPLACEMENT"]
+    notes: str
+    row_version: int
+    legal_issuance_verified: Literal[False]
+    ready_to_render: Literal[False]
+
+
 class CaseQdKtTeamMemberRead(BaseModel):
     member_id: str
     sort_order: int

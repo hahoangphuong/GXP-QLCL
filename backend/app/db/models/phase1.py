@@ -543,6 +543,21 @@ class InspectionDecision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class QdKtPreparation(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
+    """Editable Process A intent, not a document or official decision."""
+
+    __tablename__ = "qdkt_preparation"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), nullable=False)
+    __table_args__ = (
+        CheckConstraint("purpose IN ('INITIAL', 'AMENDMENT', 'REPLACEMENT')", name="qdkt_preparation_purpose_known"),
+        CheckConstraint("length(trim(notes)) <= 4000", name="qdkt_preparation_notes_length"),
+    )
+
+
 class QdKtDraftRosterSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """One immutable roster projection for an exact QĐKT draft DOCX version.
 

@@ -91,9 +91,9 @@ def require_qdkt_draft_version_binding(
     ):
         raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_STORAGE_UNBOUND")
     elif (
-        storage_relative_path.startswith(("/", "\\\\"))
-        or "\\\\" in storage_relative_path
-        or "\\x00" in storage_relative_path
+        storage_relative_path.startswith(("/", "\\"))
+        or "\\" in storage_relative_path
+        or "\x00" in storage_relative_path
         or any(part in ("", ".", "..") for part in storage_relative_path.split("/"))
         or (len(storage_relative_path) >= 2 and storage_relative_path[1] == ":"
             and storage_relative_path[0].isalpha())

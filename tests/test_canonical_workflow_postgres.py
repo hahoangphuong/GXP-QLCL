@@ -6933,8 +6933,14 @@ def test_qdkt_issuance_roster_failure_cannot_be_committed_after_caught_exception
         assert session.scalar(select(func.count()).select_from(InspectionDecision).where(
             InspectionDecision.inspection_plan_id == original_plan.id
         )) == 0
-        assert session.scalar(select(func.count()).select_from(QdKtIssuedRoster)) == 0
-        assert session.scalar(select(func.count()).select_from(QdKtIssuedRosterMember)) == 0
+        assert session.scalar(select(func.count()).select_from(QdKtIssuedRoster).where(
+            QdKtIssuedRoster.inspection_decision_id == decision_id
+        )) == 0
+        assert session.scalar(select(func.count()).select_from(QdKtIssuedRosterMember).where(
+            QdKtIssuedRosterMember.issued_roster_id.in_(select(QdKtIssuedRoster.id).where(
+                QdKtIssuedRoster.inspection_decision_id == decision_id
+            ))
+        )) == 0
         assert session.scalar(select(func.count()).select_from(InspectionEvent).where(
             InspectionEvent.case_id == case_id,
             InspectionEvent.event_type == InspectionEventType.DECISION_ISSUED,

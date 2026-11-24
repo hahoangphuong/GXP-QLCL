@@ -35,6 +35,50 @@ def _digest(members: tuple[TeamMemberAtDraft, ...]) -> str:
         sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
+class QdKtIssuedRosterReadBlocked(ValueError):
+    """Persisted roster rows no longer reproduce the confirmed digest."""
+
+
+def require_qdkt_issued_roster_readback_integrity(
+    *, roster_sha256: str,
+    members: tuple[tuple[int, str | None, str, str, str], ...],
+) -> None:
+    """Verify read-only scalar rows against the original write-owner digest.
+
+    The caller must bind the roster and members to one decision in a single
+    SELECT. No repair, write, cached ORM row or inference from the current
+    mutable Case team is permitted here. This checks data integrity, not an
+    externally signed QĐKT document or legal issuance.
+    """
+    if not isinstance(roster_sha256, str) or len(roster_sha256) != 64 or any(
+        char not in "0123456789abcdef" for char in roster_sha256
+    ):
+        raise QdKtIssuedRosterReadBlocked("QDKT_ISSUED_ROSTER_DIGEST_INVALID")
+    if not members or any(
+        type(item) is not tuple or len(item) != 5
+        or type(item[0]) is not int or item[0] != index
+        or any(type(value) is not str or not value or value != value.strip()
+               for value in item[1:])
+        for index, item in enumerate(members, 1)
+    ):
+        raise QdKtIssuedRosterReadBlocked("QDKT_ISSUED_ROSTER_MEMBERS_INVALID")
+    try:
+        frozen = tuple(
+            TeamMemberAtDraft(
+                inspector_id=source_member_id,
+                display_name=display_name,
+                role=role_code,
+                job_title=job_title,
+            )
+            for _, source_member_id, display_name, role_code, job_title in members
+        )
+        validate_members(frozen)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise QdKtIssuedRosterReadBlocked("QDKT_ISSUED_ROSTER_MEMBERS_INVALID") from exc
+    if _digest(frozen) != roster_sha256:
+        raise QdKtIssuedRosterReadBlocked("QDKT_ISSUED_ROSTER_DIGEST_MISMATCH")
+
+
 def stage_qdkt_issued_roster(session, *, decision_id: str, choice: IssuedTeamChoice,
                              final_members: tuple[TeamMemberAtDraft, ...],
                              actor_user_id: str):

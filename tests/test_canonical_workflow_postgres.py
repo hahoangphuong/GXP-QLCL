@@ -6794,3 +6794,92 @@ def test_qdkt_amendment_is_not_replacement_and_never_unlocks_render(pg_engine):
         assert final["source_status"] == "EXPLICIT_AMENDMENT_CHAIN_REQUIRES_REVIEW"
         assert final["latest_source_decision_id"] is None
         assert final["ready_to_render"] is False
+
+def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
+    from backend.app.db.models.phase1 import QdKtIssuedRoster, InspectionPlan, InspectionDecision
+    case_id, _ = seed(pg_engine)
+    other_case_id, _ = seed(pg_engine)
+    plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
+                 plan_start_on=DAY, plan_end_on=DAY, planning_sheet_name="Test schedule",
+                 decision_document_hint=None, reason="Case plan")
+    decision_id = str(uuid4())
+    result = write(
+        pg_engine, SERVICE.record_qdkt_issued_decision,
+        case_id=case_id, decision_id=decision_id,
+        expected_plan_version=plan["row_version"], reference="QDKT-READBACK",
+        decision_on=DAY, source_text="Verbatim external decision",
+        relation_type="INITIAL", related_decision_id=None,
+        external_approval_confirmed=True,
+        approval_basis="Human reviewed the signed external decision",
+        team_confirmed=True, roster_source="USER_ENTERED",
+        draft_id=None, draft_team_id=None, draft_team_revision=None,
+        acknowledged_changes=False,
+        members=[
+            dict(source_member_id=str(uuid4()), display_name="Leader",
+                 role_code="LEADER", job_title="Inspector"),
+            dict(source_member_id=str(uuid4()), display_name="Secretary",
+                 role_code="SECRETARY", job_title="Officer"),
+        ],
+        reason="Operator recording",
+    )
+    with Session(pg_engine) as session:
+        before_audits = session.scalar(select(func.count()).select_from(AuditEvent))
+        before_rosters = session.scalar(select(func.count()).select_from(QdKtIssuedRoster))
+        pending = CapaCycle(
+            case_id=other_case_id, round_no=1, requested_on=DAY,
+            notes="Uncommitted independent draft",
+        )
+        session.add(pending)
+        flushes = []
+        def forbid_flush(*_):
+            flushes.append(True)
+            raise AssertionError("Readback may not autoflush unrelated Case drafts")
+        event.listen(session, "before_flush", forbid_flush)
+        try:
+            item = SERVICE.get_qdkt_issued_decision(
+                session, case_id=case_id, decision_id=decision_id, user=USER,
+            )
+            assert item["decision_id"] == decision_id
+            assert item["roster_id"] == result["roster_id"]
+            assert [row["position"] for row in item["members"]] == [1, 2]
+            assert [row["display_name"] for row in item["members"]] == ["Leader", "Secretary"]
+            assert item["operator_attestation_recorded"] is True
+            assert item["legal_issuance_verified"] is False
+            assert item["ready_to_render"] is False
+            with pytest.raises(HTTPException) as crossed:
+                SERVICE.get_qdkt_issued_decision(
+                    session, case_id=other_case_id, decision_id=decision_id, user=USER,
+                )
+            assert crossed.value.status_code == 404
+            assert pending in session.new
+            assert not flushes
+            with session.no_autoflush:
+                assert session.scalar(select(func.count()).select_from(AuditEvent)) == before_audits
+                assert session.scalar(select(func.count()).select_from(QdKtIssuedRoster)) == before_rosters
+        finally:
+            event.remove(session, "before_flush", forbid_flush)
+            session.rollback()
+
+    # Historical source-only rows remain readable as history, without
+    # fabricating an issued roster, attestation or legal verification.
+    historical_case, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        plan = InspectionPlan(case_id=historical_case)
+        session.add(plan)
+        session.flush()
+        legacy = InspectionDecision(
+            inspection_plan_id=plan.id, ordinal=1,
+            reference="LEGACY-SOURCE", decision_on=DAY,
+            legacy_raw="Unverified historical source atom",
+        )
+        session.add(legacy)
+        session.commit()
+        legacy_id = legacy.id
+    with Session(pg_engine) as session:
+        item = SERVICE.get_qdkt_issued_decision(
+            session, case_id=historical_case, decision_id=legacy_id, user=USER,
+        )
+        assert item["roster_id"] is None
+        assert item["members"] == []
+        assert item["operator_attestation_recorded"] is False
+        assert item["legal_issuance_verified"] is False

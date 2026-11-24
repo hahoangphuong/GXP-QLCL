@@ -6228,6 +6228,45 @@ def test_inspection_team_copy_preview_blocks_source_with_invalid_role(pg_engine)
         assert data["members"][0]["identity_status"] == "resolved"
 
 
+def test_qdkt_history_reads_case_plan_and_decisions_in_one_statement(pg_engine):
+    from backend.app.document.inspection_qd_kt_decision_history import read_case_qdkt_decision_history
+
+    case_id, plan_id, first_id, second_id = _seed_qdkt_history(pg_engine)
+    empty_case_id, _ = seed(pg_engine)
+    from backend.app.db.models.phase1 import InspectionPlan
+    with Session(pg_engine) as session:
+        empty_plan = InspectionPlan(case_id=empty_case_id)
+        session.add(empty_plan)
+        session.commit()
+        empty_plan_id = empty_plan.id
+    with Session(pg_engine) as session:
+        statements = []
+
+        def record_statement(state):
+            if state.is_select:
+                statements.append(state.statement)
+
+        event.listen(session, "do_orm_execute", record_statement)
+        try:
+            history = read_case_qdkt_decision_history(session, case_id=case_id)
+            assert len(statements) == 1
+            assert history["inspection_plan_id"] == plan_id
+            assert history["latest_source_decision_id"] == second_id
+            assert [item["decision_id"] for item in history["decisions"]] == [first_id, second_id]
+            assert history["legal_issuance_verified"] is False
+            assert history["ready_to_render"] is False
+
+            statements.clear()
+            empty = read_case_qdkt_decision_history(session, case_id=empty_case_id)
+            assert len(statements) == 1
+            assert empty["inspection_plan_id"] == empty_plan_id
+            assert empty["source_status"] == "NO_DECISIONS"
+            assert empty["decisions"] == []
+        finally:
+            event.remove(session, "do_orm_execute", record_statement)
+
+
+
 def test_qdkt_preparation_independent_versioned_and_case_owned(pg_engine):
     from backend.app.db.models.phase1 import QdKtPreparation, InspectionDecision, QdKtDraftRosterSnapshot, QdKtIssuedRoster, DocumentVersion
 

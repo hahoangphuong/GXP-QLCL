@@ -551,10 +551,34 @@ class QdKtPreparation(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base)
     case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, index=True)
     purpose: Mapped[str] = mapped_column(String(16), nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="PREPARING")
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), nullable=False)
     __table_args__ = (
+        CheckConstraint("status IN (\'PREPARING\', \'CANCELLED\')", name="qdkt_preparation_status_known"),
         CheckConstraint("purpose IN ('INITIAL', 'AMENDMENT', 'REPLACEMENT')", name="qdkt_preparation_purpose_known"),
         CheckConstraint("length(trim(notes)) <= 4000", name="qdkt_preparation_notes_length"),
+    )
+
+
+class QdKtPreparationMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Frozen proposed display data, independent of mutable Case team rows."""
+
+    __tablename__ = "qdkt_preparation_member"
+
+    preparation_id: Mapped[str] = mapped_column(ForeignKey("qdkt_preparation.id"), nullable=False, index=True)
+    source_team_id: Mapped[str] = mapped_column(UUID_TEXT_SAFE, nullable=False)
+    source_team_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_member_id: Mapped[str] = mapped_column(UUID_TEXT_SAFE, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    role_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("preparation_id", "sort_order"),
+        UniqueConstraint("preparation_id", "source_member_id"),
+        CheckConstraint("source_team_revision >= 1", name="qdkt_preparation_member_revision_positive"),
+        CheckConstraint("sort_order >= 0", name="qdkt_preparation_member_order_nonnegative"),
+        CheckConstraint("role_code IN ('LEADER', 'SECRETARY', 'MEMBER')", name="qdkt_preparation_member_role_known"),
+        CheckConstraint("length(trim(display_name)) > 0", name="qdkt_preparation_member_name_nonblank"),
     )
 
 

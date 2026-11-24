@@ -704,11 +704,36 @@ class QdKtPreparationWrite(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class QdKtPreparationTeamWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1, strict=True)
+    expected_team_id: UUID4
+    expected_team_revision: int = Field(ge=1, strict=True)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class QdKtPreparationCancelWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1, strict=True)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class QdKtPreparationMemberRead(BaseModel):
+    source_team_id: str
+    source_team_revision: int
+    source_member_id: str
+    sort_order: int
+    role_code: Literal["LEADER", "SECRETARY", "MEMBER"]
+    display_name: str
+
+
 class QdKtPreparationRead(BaseModel):
     preparation_id: str
     case_id: str
     purpose: Literal["INITIAL", "AMENDMENT", "REPLACEMENT"]
     notes: str
+    status: Literal["PREPARING", "CANCELLED"]
+    members: list[QdKtPreparationMemberRead]
     row_version: int
     legal_issuance_verified: Literal[False]
     ready_to_render: Literal[False]

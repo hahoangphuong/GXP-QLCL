@@ -6835,6 +6835,54 @@ class CaseWorkflowService:
             "legal_issuance_verified": False, "ready_to_render": False,
         }
 
+    def get_qdkt_preparation(self, session: Session, *, case_id: str,
+                             preparation_id: str,
+                             user: AuthenticatedUser) -> dict[str, Any]:
+        """Exact UUID/Case-scoped canonical readback for unknown PUT outcome.
+
+        A single scalar statement binds the preparation and its member rows
+        to one PostgreSQL MVCC snapshot. No autoflush, identity-map refresh,
+        fallback to a previous Case or implicit roster recapture.
+        """
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+        with session.no_autoflush:
+            rows = session.execute(
+                select(
+                    Case.id, QdKtPreparation.id, QdKtPreparation.purpose,
+                    QdKtPreparation.notes, QdKtPreparation.row_version,
+                    QdKtPreparation.status,
+                    QdKtPreparationMember.source_team_id,
+                    QdKtPreparationMember.source_team_revision,
+                    QdKtPreparationMember.source_member_id,
+                    QdKtPreparationMember.sort_order,
+                    QdKtPreparationMember.role_code,
+                    QdKtPreparationMember.display_name,
+                )
+                .join(QdKtPreparation, QdKtPreparation.case_id == Case.id)
+                .outerjoin(QdKtPreparationMember,
+                           QdKtPreparationMember.preparation_id == QdKtPreparation.id)
+                .where(Case.id == case_id, QdKtPreparation.id == preparation_id)
+                .order_by(QdKtPreparationMember.sort_order)
+            ).all()
+            if not rows:
+                raise HTTPException(status_code=404, detail="Preparation not found for Case.")
+            first = rows[0]
+            return {
+                "case_id": first[0], "preparation_id": first[1],
+                "purpose": first[2], "notes": first[3],
+                "row_version": first[4], "status": first[5],
+                "members": [
+                    dict(zip(
+                        ("source_team_id", "source_team_revision",
+                         "source_member_id", "sort_order", "role_code",
+                         "display_name"), row[6:12],
+                    ))
+                    for row in rows if row[8] is not None
+                ],
+                "legal_issuance_verified": False,
+                "ready_to_render": False,
+            }
+
     def list_qdkt_preparations(self, session: Session, *, case_id: str,
                                user: AuthenticatedUser) -> list[dict[str, Any]]:
         require_permissions(user, {INSPECTION_EDIT_PERMISSION})

@@ -186,6 +186,15 @@ def test_initial_case_real_application_assessment_plan_milestone_owners(pg_engin
     assert decided["inspection_event_id"] is not None
     assert decided["reference"] == "SYNTHETIC-QDKT-REFERENCE"
     assert decided["legal_issuance_verified"] is False
+    persisted = ok(api, "GET", f"/cases/{case_id}/qdkt-issued-decisions/{decided['decision_id']}")
+    assert persisted["decision_id"] == decided["decision_id"]
+    assert persisted["roster_id"] == decided["roster_id"]
+    assert persisted["operator_attestation_recorded"] is True
+    assert persisted["members"][0]["display_name"] == "Synthetic team leader"
+    assert persisted["legal_issuance_verified"] is False
+    assert persisted["ready_to_render"] is False
+    assert api("GET", f"/cases/{uuid4()}/qdkt-issued-decisions/{decided['decision_id']}")[0] == 404
+
     assert [item.value for item in events(pg_engine, case_id)] == [
         "application_submitted", "assessment_completed", "plan_created", "decision_issued",
     ]

@@ -747,6 +747,33 @@ class QdKtIssuedDecisionRecordRead(BaseModel):
     ready_to_render: Literal[False] = False
 
 
+class QdKtIssuedDecisionDetailMemberRead(BaseModel):
+    position: int
+    source_member_id: str | None
+    display_name: str
+    role_code: str
+    job_title: str
+
+
+class QdKtIssuedDecisionDetailRead(BaseModel):
+    decision_id: str
+    case_id: str
+    inspection_plan_id: str
+    ordinal: int
+    reference: str
+    decision_on: date
+    source_text: str
+    relation_type: str | None
+    related_decision_id: str | None
+    roster_id: str | None
+    roster_source: str | None
+    roster_sha256: str | None
+    members: list[QdKtIssuedDecisionDetailMemberRead]
+    operator_attestation_recorded: bool
+    legal_issuance_verified: Literal[False] = False
+    ready_to_render: Literal[False] = False
+
+
 class QdKtPreparationWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     purpose: Literal["INITIAL", "AMENDMENT", "REPLACEMENT"]

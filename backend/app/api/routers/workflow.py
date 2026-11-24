@@ -56,6 +56,7 @@ from backend.app.read_models import (
     InspectionTeamRead,
     QdKtIssuedDecisionRecordRequest,
     QdKtIssuedDecisionRecordRead,
+    QdKtIssuedDecisionDetailRead,
     QdKtPreparationWrite,
     QdKtPreparationRead,
     QdKtPreparationTeamWrite,
@@ -360,6 +361,16 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return ApprovalDocumentBindingRead(**result)
+
+    def get_qdkt_issued_decision(
+        case_id: str, decision_id: UUID4,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit", "document.read"})
+        return QdKtIssuedDecisionDetailRead(**service.get_qdkt_issued_decision(
+            session, case_id=case_id, decision_id=str(decision_id), user=user,
+        ))
 
     def record_qdkt_issued_decision(
         case_id: str, payload: QdKtIssuedDecisionRecordRequest,
@@ -990,6 +1001,11 @@ def register_workflow_routes(app, session_factory) -> None:
         methods=["PUT"],
         response_model=InspectionTeamRead,
         tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-issued-decisions/{decision_id}",
+        get_qdkt_issued_decision, methods=["GET"],
+        response_model=QdKtIssuedDecisionDetailRead, tags=["workflow"],
     )
     app.add_api_route(
         "/cases/{case_id}/qdkt-issued-decisions",

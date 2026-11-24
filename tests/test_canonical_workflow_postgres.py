@@ -6544,3 +6544,61 @@ def test_qdkt_plan_schedule_preserves_historical_projection(pg_engine):
         plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
         assert plan.decision_legacy_raw == "legacy statement"
         assert plan.decision_reference == "LEGACY-QDKT"
+
+
+def test_qdkt_plan_http_denies_decision_atoms_but_updates_schedule(pg_engine):
+    """HTTP explicit null and non-null legal fields may never produce a decision event."""
+    from backend.app.db.models.phase1 import InspectionPlan, InspectionDecision, InspectionEvent
+    from backend.app.db.enums import InspectionEventType
+    case_id, _ = seed(pg_engine)
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: USER
+    uri = f"/cases/{case_id}/plan"
+
+    async def request(payload):
+        messages = []
+        raw = json.dumps(payload).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": raw, "more_body": False}
+
+        async def send(message):
+            messages.append(message)
+
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": "PUT", "scheme": "http", "path": uri, "raw_path": uri.encode(),
+            "query_string": b"", "headers": [(b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 12345), "server": ("localhost", 80),
+            "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        body = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(body)
+
+    async def scenario():
+        for forged in (
+            {"decision_reference": "FAKE-REFERENCE"},
+            {"decision_date": DAY.isoformat()},
+            {"decision_reference": None},
+            {"decision_date": None},
+        ):
+            status, response = await request(forged)
+            assert status == 422, response
+        status, result = await request({
+            "plan_start_on": DAY.isoformat(),
+            "plan_end_on": DAY.isoformat(),
+            "planning_sheet_name": "Valid schedule",
+        })
+        assert status == 200, result
+        assert result["decision_reference"] is None
+        assert result["decision_date"] is None
+    asyncio.run(scenario())
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(InspectionPlan).where(
+            InspectionPlan.case_id == case_id)) == 1
+        assert session.scalar(select(func.count()).select_from(InspectionDecision)) == 0
+        assert session.scalar(select(func.count()).select_from(InspectionEvent).where(
+            InspectionEvent.case_id == case_id,
+            InspectionEvent.event_type == InspectionEventType.DECISION_ISSUED,
+        )) == 0

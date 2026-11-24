@@ -5088,7 +5088,7 @@ class CaseWorkflowService:
         if {"decision_reference", "decision_date"} & provided:
             raise HTTPException(
                 status_code=422,
-                detail="Decision reference/date are read-only projections; record an issued QDKT through its decision owner.",
+                detail="Decision reference/date are read-only compatibility projections; record an issued QDKT through its decision owner.",
             )
         if (fields_set is not None and "decision_document_hint" in provided) or (
             fields_set is None and decision_document_hint is not None

@@ -958,7 +958,6 @@ def test_upsert_inspection_plan_persists_stage():
             plan_end_on=date(2026, 8, 22),
             planning_sheet_name="KHKT-2026-08",
             decision_document_hint=None,
-            decision_reference="QD-01",
             reason="Planning baseline.",
             user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
@@ -970,7 +969,7 @@ def test_upsert_inspection_plan_persists_stage():
         row = session.scalars(select(InspectionPlan)).first()
         assert row is not None
         assert row.decision_document_hint is None
-        assert row.decision_reference == "QD-01"
+        assert row.decision_reference is None
 
 
 
@@ -992,15 +991,13 @@ def test_plan_created_event_uses_canonical_metadata_across_separate_field_edits(
             plan_end_on=None,
             planning_sheet_name="KHKT canonical",
             decision_document_hint=None,
-            decision_reference="QD-21",
-            decision_date=date(2026, 8, 19),
             reason="Prepared separately",
             user=actor,
-            fields_set={"planning_sheet_name", "decision_reference", "decision_date"},
+            fields_set={"planning_sheet_name"},
         )
         session.commit()
         events = list(session.scalars(select(InspectionEvent).where(InspectionEvent.case_id == case_id)))
-        assert [item.event_type.value for item in events] == ["decision_issued"]
+        assert events == []
 
     with Session(engine) as session:
         created = service.upsert_inspection_plan(
@@ -1028,8 +1025,8 @@ def test_plan_created_event_uses_canonical_metadata_across_separate_field_edits(
         assert payload["plan_start_on"] == "2026-08-20"
         assert payload["plan_end_on"] is None
         assert payload["planning_sheet_name"] == "KHKT canonical"
-        assert payload["decision_reference"] == "QD-21"
-        assert payload["decision_date"] == "2026-08-19"
+        assert payload["decision_reference"] is None
+        assert payload["decision_date"] is None
         assert payload["reason"] == "Schedule recorded"
         assert created["inspection_event_id"] == event.id
 
@@ -1127,7 +1124,6 @@ def test_upsert_inspection_plan_route_enforces_auth_and_returns_read_model(tmp_p
         plan_start_on=date(2026, 8, 20),
         plan_end_on=date(2026, 8, 21),
         planning_sheet_name="KHKT-HTTP",
-        decision_reference="QD-HTTP",
     )
 
     with Session(engine) as session:
@@ -1174,7 +1170,6 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
             plan_end_on=date(2026, 8, 22),
             planning_sheet_name="KHKT-2026-08",
             decision_document_hint=None,
-            decision_reference="QD-01",
             reason="Initial plan.",
             user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
@@ -1191,7 +1186,6 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
             plan_end_on=date(2026, 8, 22),
             planning_sheet_name="KHKT-2026-08",
             decision_document_hint=None,
-            decision_reference="QD-01",
             reason="No-op save.",
             user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
@@ -1201,7 +1195,7 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
 
     with Session(engine) as session:
         events = list(session.scalars(select(InspectionEvent).where(InspectionEvent.case_id == case_id)))
-        assert [event.event_type.value for event in events] == ["plan_created", "decision_issued"]
+        assert [event.event_type.value for event in events] == ["plan_created"]
         case_row = session.get(Case, case_id)
         assert case_row is not None
         case_row.state = CaseState.CLOSED
@@ -1217,7 +1211,6 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
                 plan_end_on=date(2026, 8, 24),
                 planning_sheet_name="KHKT-2026-09",
                 decision_document_hint=None,
-                decision_reference="QD-02",
                 reason="Should fail.",
                 user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
             )

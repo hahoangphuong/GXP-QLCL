@@ -6621,10 +6621,12 @@ class CaseWorkflowService:
             if plan is None:
                 raise HTTPException(status_code=409, detail="Inspection plan must exist.")
             self._assert_expected_version(plan, expected_plan_version, label="inspection_plan")
-            existing_id = session.scalar(select(InspectionDecision.id).where(
+            existing_plan_id = session.scalar(select(InspectionDecision.inspection_plan_id).where(
                 InspectionDecision.id == decision_id
             ))
-            if existing_id is not None:
+            if existing_plan_id is not None:
+                if existing_plan_id != plan.id:
+                    raise HTTPException(status_code=404, detail="Decision not found for Case.")
                 raise HTTPException(status_code=409, detail="Decision identity exists; read back before retrying.")
             persisted = session.execute(select(
                 InspectionDecision.id, InspectionDecision.ordinal,

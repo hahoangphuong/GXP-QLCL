@@ -35,15 +35,17 @@ class ReadOnlySession:
 
 
 def record(*, case_id="case-a", family="INSPECTION_QD_KT",
-           checksum="a" * 64, storage="binding-1"):
-    version = SimpleNamespace(
-        id="version-1", document_variant_id="variant-1",
-        checksum_sha256=checksum, storage_binding_id=storage,
-        storage_root=None, storage_relative_path=None,
+           checksum="a" * 64, storage="binding-1", binding_case="case-a",
+           root=None, locator=None, persisted_binding=None):
+    # Scalar tuple from the exact single joined SQL statement, not ORM
+    # instances; tests must not accidentally permit identity-map hydration.
+    return (
+        "version-1", "variant-1", "variant-1", "doc-1",
+        "doc-1", case_id, family, checksum,
+        storage, root, locator,
+        storage if persisted_binding is None else persisted_binding,
+        binding_case,
     )
-    variant = SimpleNamespace(id="variant-1", document_id="doc-1")
-    doc = SimpleNamespace(id="doc-1", case_id=case_id, family_code=family)
-    return version, variant, doc
 
 
 def test_read_only_binding_keeps_binary_and_issuance_claims_false():
@@ -65,6 +67,9 @@ def test_read_only_binding_keeps_binary_and_issuance_claims_false():
     (record(checksum=None), "CHECKSUM_MISSING"),
     (record(checksum="bad"), "CHECKSUM_MISSING"),
     (record(storage=None), "STORAGE_UNBOUND"),
+    (record(storage="binding-1", binding_case="case-b"), "STORAGE_OWNER_MISMATCH"),
+    (record(storage="binding-1", persisted_binding="binding-2"), "STORAGE_OWNER_MISMATCH"),
+    (record(storage=None, root="synology", locator=None), "STORAGE_UNBOUND"),
 ])
 def test_missing_cross_case_or_unpinned_document_fails_closed(row, error):
     with pytest.raises(QdKtDraftVersionBindingBlocked, match=error):
@@ -80,3 +85,14 @@ def test_invalid_snapshot_never_queries_document():
             session, snapshot=replace(snap(), document_version_id=""),
         )
     assert session.executed == 0
+
+
+def test_explicit_root_locator_can_bind_without_binding_row():
+    actual = require_qdkt_draft_version_binding(
+        ReadOnlySession(record(storage=None, root="synology",
+                               locator="case-a/drafts/draft.docx")),
+        snapshot=snap(),
+    )
+    assert actual.document_version_id == "version-1"
+    assert actual.confirmed_binary_roster_match is False
+    assert actual.approved_decision_link is False

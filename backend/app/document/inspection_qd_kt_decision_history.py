@@ -24,11 +24,32 @@ def read_case_qdkt_decision_history(session, *, case_id: str) -> dict[str, objec
             raise HTTPException(status_code=404, detail="Case not found.")
         # Case is the only authorization-scoped owner. Never accept Plan ID
         # or decision ID from the caller to cross-link another Case.
-        if session.scalar(select(Case.id).where(Case.id == case_id)) is None:
+        # A single statement gives one PostgreSQL MVCC snapshot even under
+        # READ COMMITTED. Separate Case/Plan/Decision SELECTs could mix states
+        # across a concurrent plan creation or decision append.
+        rows = session.execute(
+            select(
+                Case.id,
+                InspectionPlan.id,
+                InspectionDecision.id,
+                InspectionDecision.ordinal,
+                InspectionDecision.reference,
+                InspectionDecision.decision_on,
+                InspectionDecision.legacy_raw,
+                InspectionDecision.relation_type,
+                InspectionDecision.related_decision_id,
+            )
+            .outerjoin(InspectionPlan, InspectionPlan.case_id == Case.id)
+            .outerjoin(
+                InspectionDecision,
+                InspectionDecision.inspection_plan_id == InspectionPlan.id,
+            )
+            .where(Case.id == case_id)
+            .order_by(InspectionDecision.ordinal.asc(), InspectionDecision.id.asc())
+        ).all()
+        if not rows:
             raise HTTPException(status_code=404, detail="Case not found.")
-        plans = session.execute(
-            select(InspectionPlan.id).where(InspectionPlan.case_id == case_id)
-        ).scalars().all()
+        plans = {row[1] for row in rows if row[1] is not None}
         if not plans:
             return {
                 "case_id": case_id,
@@ -41,7 +62,6 @@ def read_case_qdkt_decision_history(session, *, case_id: str) -> dict[str, objec
                 "decisions": [],
             }
         if len(plans) != 1:
-            # Defensive against nonstandard imported schemas / damaged sources.
             return {
                 "case_id": case_id,
                 "inspection_plan_id": None,
@@ -52,22 +72,8 @@ def read_case_qdkt_decision_history(session, *, case_id: str) -> dict[str, objec
                 "ready_to_render": False,
                 "decisions": [],
             }
-        plan_id = plans[0]
-        rows = session.execute(
-            select(
-                InspectionDecision.id,
-                InspectionDecision.ordinal,
-                InspectionDecision.reference,
-                InspectionDecision.decision_on,
-                InspectionDecision.legacy_raw,
-                InspectionDecision.relation_type,
-                InspectionDecision.related_decision_id,
-            )
-            .join(InspectionPlan, InspectionDecision.inspection_plan_id == InspectionPlan.id)
-            .where(InspectionPlan.case_id == case_id, InspectionPlan.id == plan_id)
-            .order_by(InspectionDecision.ordinal.asc(), InspectionDecision.id.asc())
-        ).all()
-        decisions = [QdKtSourceDecision(*row) for row in rows]
+        plan_id = next(iter(plans))
+        decisions = [QdKtSourceDecision(*row[2:]) for row in rows if row[2] is not None]
         status = "NO_DECISIONS"
         blocked_reason = None
         latest_id = None

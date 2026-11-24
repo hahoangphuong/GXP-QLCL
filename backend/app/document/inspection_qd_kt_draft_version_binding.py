@@ -90,6 +90,18 @@ def require_qdkt_draft_version_binding(
         and isinstance(storage_relative_path, str) and storage_relative_path.strip()
     ):
         raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_STORAGE_UNBOUND")
+    elif (
+        storage_relative_path.startswith(("/", "\\\\"))
+        or "\\\\" in storage_relative_path
+        or "\\x00" in storage_relative_path
+        or any(part in ("", ".", "..") for part in storage_relative_path.split("/"))
+        or (len(storage_relative_path) >= 2 and storage_relative_path[1] == ":"
+            and storage_relative_path[0].isalpha())
+    ):
+        # Unbound legacy locators must be safely relative. A stored checksum
+        # alone cannot establish that a traversal/absolute locator belongs to
+        # the Case; never let that metadata authorize a draft snapshot.
+        raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_STORAGE_LOCATOR_INVALID")
     return QdKtDraftVersionBinding(
         case_id=snapshot.case_id,
         draft_id=snapshot.draft_id,

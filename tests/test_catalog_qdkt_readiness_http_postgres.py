@@ -86,15 +86,19 @@ def test_new_case_qdkt_draft_never_promotes_plan_scalar_to_issued_reference(pg_e
     assert "QDKT_LEGAL_ISSUANCE_EVIDENCE_UNPROVEN" in approved["blocked_reasons"]
     assert _counts(pg_engine, case_id) == before
 
-    # Plan compatibility metadata is NOT an InspectionDecision source record.
+    # New Case plan cannot claim QDKT issuance through compatibility scalars.
     plan = ok(api, "PUT", f"/cases/{case_id}/plan", {
         "planning_sheet_name": "Synthetic KHKT - draft",
+        "reason": "Draft schedule only",
+    })
+    assert plan["decision_reference"] is None
+    assert plan["decision_date"] is None
+    status, blocked = api("PUT", f"/cases/{case_id}/plan", {
+        "expected_version": plan["row_version"],
         "decision_reference": "SYNTHETIC-PLAN-PROJECTION",
         "decision_date": "2026-11-10",
-        "reason": "Source-independent compatibility metadata",
     })
-    assert plan["decision_reference"] == "SYNTHETIC-PLAN-PROJECTION"
-    assert plan["decision_date"] == "2026-11-10"
+    assert status == 422, blocked
     before_reads = _counts(pg_engine, case_id)
     assert before_reads["decisions"] == 0
     after_scalar = _readiness(api, case_id)

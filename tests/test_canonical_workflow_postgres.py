@@ -6480,3 +6480,263 @@ def test_qdkt_preparation_real_http_lifecycle(pg_engine):
         assert (await request("PUT", item, payload))[0] == 403
 
     asyncio.run(scenario())
+
+def test_qdkt_plan_write_cannot_forge_or_clear_issued_decision(pg_engine):
+    """Process A schedule updates cannot become the legal Process B source."""
+    from backend.app.db.models.phase1 import InspectionPlan, InspectionDecision
+    case_id, _ = seed(pg_engine)
+    created = write(
+        pg_engine, SERVICE.upsert_inspection_plan,
+        case_id=case_id, plan_start_on=DAY, plan_end_on=DAY,
+        planning_sheet_name="Schedule only", decision_document_hint=None,
+        reason="Schedule", fields_set={"plan_start_on", "plan_end_on", "planning_sheet_name"},
+    )
+    with Session(pg_engine) as session:
+        plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        assert plan.decision_reference is None and plan.decision_date is None
+        assert session.scalar(select(func.count()).select_from(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id == plan.id)) == 0
+        before_audit = session.scalar(select(func.count()).select_from(AuditEvent))
+    for supplied in (
+        {"decision_reference": "FAKE-QDKT"},
+        {"decision_date": DAY},
+        {"decision_reference": None},
+        {"decision_date": None},
+        {"decision_reference": "FAKE", "decision_date": DAY},
+    ):
+        with Session(pg_engine) as session:
+            with pytest.raises(HTTPException) as exc:
+                SERVICE.upsert_inspection_plan(
+                    session, case_id=case_id, expected_version=created["row_version"],
+                    plan_start_on=None, plan_end_on=None, planning_sheet_name=None,
+                    decision_document_hint=None, reason="Forged legal update", user=USER,
+                    fields_set=set(supplied), **supplied,
+                )
+            assert exc.value.status_code == 422
+            session.rollback()
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == before_audit
+        plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        assert plan.row_version == created["row_version"]
+        assert plan.decision_reference is None and plan.decision_date is None
+
+
+def test_qdkt_plan_schedule_preserves_historical_projection(pg_engine):
+    """Legacy scalar values remain readable but schedule edits never rewrite them."""
+    from backend.app.db.models.phase1 import InspectionPlan
+    case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        plan = InspectionPlan(case_id=case_id, decision_reference="LEGACY-QDKT",
+                              decision_date=DAY, decision_legacy_raw="legacy statement")
+        session.add(plan)
+        session.commit()
+        version = plan.row_version
+    updated = write(
+        pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
+        expected_version=version, plan_start_on=DAY, plan_end_on=DAY,
+        planning_sheet_name="Changed schedule", decision_document_hint=None,
+        reason="Plan change",
+        fields_set={"plan_start_on", "plan_end_on", "planning_sheet_name"},
+    )
+    assert updated["decision_reference"] == "LEGACY-QDKT"
+    assert updated["decision_date"] == DAY
+    with Session(pg_engine) as session:
+        plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        assert plan.decision_legacy_raw == "legacy statement"
+        assert plan.decision_reference == "LEGACY-QDKT"
+
+
+def test_qdkt_plan_http_denies_decision_atoms_but_updates_schedule(pg_engine):
+    """HTTP explicit null and non-null legal fields may never produce a decision event."""
+    from backend.app.db.models.phase1 import InspectionPlan, InspectionDecision, InspectionEvent
+    from backend.app.db.enums import InspectionEventType
+    case_id, _ = seed(pg_engine)
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: USER
+    uri = f"/cases/{case_id}/plan"
+
+    async def request(payload):
+        messages = []
+        raw = json.dumps(payload).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": raw, "more_body": False}
+
+        async def send(message):
+            messages.append(message)
+
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": "PUT", "scheme": "http", "path": uri, "raw_path": uri.encode(),
+            "query_string": b"", "headers": [(b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 12345), "server": ("localhost", 80),
+            "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        body = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(body)
+
+    async def scenario():
+        for forged in (
+            {"decision_reference": "FAKE-REFERENCE"},
+            {"decision_date": DAY.isoformat()},
+            {"decision_reference": None},
+            {"decision_date": None},
+        ):
+            status, response = await request(forged)
+            assert status == 422, response
+        status, result = await request({
+            "plan_start_on": DAY.isoformat(),
+            "plan_end_on": DAY.isoformat(),
+            "planning_sheet_name": "Valid schedule",
+        })
+        assert status == 200, result
+        assert result["decision_reference"] is None
+        assert result["decision_date"] is None
+    asyncio.run(scenario())
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(InspectionPlan).where(
+            InspectionPlan.case_id == case_id)) == 1
+        assert session.scalar(select(func.count()).select_from(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id.in_(select(InspectionPlan.id).where(
+                InspectionPlan.case_id == case_id
+            ))
+        )) == 0
+        assert session.scalar(select(func.count()).select_from(InspectionEvent).where(
+            InspectionEvent.case_id == case_id,
+            InspectionEvent.event_type == InspectionEventType.DECISION_ISSUED,
+        )) == 0
+
+def test_qdkt_issued_decision_owner_record_and_replace_are_atomic(pg_engine):
+    from backend.app.db.enums import InspectionEventType
+    from backend.app.db.models.phase1 import (
+        InspectionPlan, InspectionDecision, QdKtIssuedRoster, QdKtIssuedRosterMember,
+        InspectionEvent,
+    )
+    from backend.app.document.inspection_qd_kt_decision_history import read_case_qdkt_decision_history
+
+    case_id, _ = seed(pg_engine)
+    other_id, _ = seed(pg_engine)
+    def create_plan(key):
+        return write(pg_engine, SERVICE.upsert_inspection_plan, case_id=key,
+                     plan_start_on=DAY, plan_end_on=DAY, planning_sheet_name="QDKT schedule",
+                     decision_document_hint=None, reason="Plan")
+    plan = create_plan(case_id)
+    other_plan = create_plan(other_id)
+    base = dict(
+        case_id=case_id, expected_plan_version=plan["row_version"],
+        reference="120/QDKT", decision_on=DAY, source_text="120/QDKT 01/10/2026",
+        relation_type="INITIAL", related_decision_id=None,
+        external_approval_confirmed=True,
+        approval_basis="Operator examined externally approved official QDKT",
+        team_confirmed=True, roster_source="USER_ENTERED",
+        draft_id=None, draft_team_id=None, draft_team_revision=None,
+        acknowledged_changes=False,
+        members=[dict(source_member_id=str(uuid4()), display_name="Synthetic official leader",
+                      role_code="LEADER", job_title="Inspector")],
+        reason="Record approved external decision",
+    )
+    with pytest.raises(HTTPException) as unconfirmed:
+        write(pg_engine, SERVICE.record_qdkt_issued_decision,
+              decision_id=str(uuid4()), **dict(base, external_approval_confirmed=False))
+    assert unconfirmed.value.status_code == 422
+    first_id = str(uuid4())
+    first = write(pg_engine, SERVICE.record_qdkt_issued_decision, decision_id=first_id, **base)
+    assert first["decision_id"] == first_id
+    assert first["ordinal"] == 1
+    assert first["roster_source"] == "USER_ENTERED"
+    assert first["legal_issuance_verified"] is False
+    assert first["ready_to_render"] is False
+    with pytest.raises(HTTPException) as replay:
+        write(pg_engine, SERVICE.record_qdkt_issued_decision, decision_id=first_id,
+              **dict(base, expected_plan_version=first["plan_row_version"]))
+    assert replay.value.status_code == 409
+    with pytest.raises(HTTPException) as foreign:
+        write(pg_engine, SERVICE.record_qdkt_issued_decision, decision_id=first_id,
+              **dict(base, case_id=other_id, expected_plan_version=other_plan["row_version"]))
+    assert foreign.value.status_code == 404
+    with pytest.raises(HTTPException) as stale:
+        write(pg_engine, SERVICE.record_qdkt_issued_decision, decision_id=str(uuid4()),
+              **dict(base, relation_type="REPLACES", related_decision_id=first_id))
+    assert stale.value.status_code == 409
+    with pytest.raises(HTTPException) as wrong_chain:
+        write(pg_engine, SERVICE.record_qdkt_issued_decision, decision_id=str(uuid4()),
+              **dict(base, expected_plan_version=first["plan_row_version"],
+                     reference="121/QDKT", relation_type="REPLACES",
+                     related_decision_id=str(uuid4())))
+    assert wrong_chain.value.status_code == 409
+    second_id = str(uuid4())
+    replacement = write(pg_engine, SERVICE.record_qdkt_issued_decision,
+        decision_id=second_id, **dict(base,
+            expected_plan_version=first["plan_row_version"], reference="121/QDKT",
+            source_text="121/QDKT 01/10/2026", relation_type="REPLACES",
+            related_decision_id=first_id,
+            members=[dict(source_member_id=str(uuid4()), display_name="Replacement leader",
+                          role_code="LEADER", job_title="Inspector")],
+        ))
+    assert replacement["ordinal"] == 2
+    assert replacement["related_decision_id"] == first_id
+    assert replacement["plan_row_version"] > first["plan_row_version"]
+    with Session(pg_engine) as db:
+        plan_row = db.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+        assert plan_row.decision_reference == "121/QDKT"
+        assert plan_row.decision_legacy_raw == "121/QDKT 01/10/2026"
+        decision_rows = db.scalars(select(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id == plan_row.id
+        ).order_by(InspectionDecision.ordinal)).all()
+        assert [d.id for d in decision_rows] == [first_id, second_id]
+        official = db.scalars(select(QdKtIssuedRoster).where(
+            QdKtIssuedRoster.inspection_decision_id.in_([first_id, second_id])
+        )).all()
+        assert len(official) == 2
+        assert {x.inspection_decision_id for x in official} == {first_id, second_id}
+        roster_rows = db.scalars(select(QdKtIssuedRosterMember).where(
+            QdKtIssuedRosterMember.issued_roster_id.in_([x.id for x in official])
+        )).all()
+        assert {x.display_name for x in roster_rows} == {
+            "Synthetic official leader", "Replacement leader",
+        }
+        assert db.scalar(select(func.count()).select_from(InspectionEvent).where(
+            InspectionEvent.case_id == case_id,
+            InspectionEvent.event_type == InspectionEventType.DECISION_ISSUED,
+        )) == 2
+        history = read_case_qdkt_decision_history(db, case_id=case_id)
+        assert history["latest_source_decision_id"] == second_id
+        assert history["source_status"] == "EXPLICIT_REPLACEMENT_CHAIN"
+        assert history["legal_issuance_verified"] is False
+        assert history["ready_to_render"] is False
+
+
+def test_qdkt_issued_decision_rejects_foreign_pending_session(pg_engine):
+    from backend.app.db.models.phase1 import InspectionDecision, InspectionPlan
+    case_id, _ = seed(pg_engine)
+    foreign_case_id, _ = seed(pg_engine)
+    plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
+                 plan_start_on=DAY, plan_end_on=DAY, planning_sheet_name="Schedule",
+                 decision_document_hint=None, reason="Plan")
+    with Session(pg_engine) as db:
+        pending = CapaCycle(case_id=foreign_case_id, round_no=1,
+                            requested_on=DAY, notes="Foreign pending draft")
+        db.add(pending)
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.record_qdkt_issued_decision(
+                db, user=USER, case_id=case_id, decision_id=str(uuid4()),
+                expected_plan_version=plan["row_version"], reference="122/QDKT",
+                decision_on=DAY, source_text="122/QDKT", relation_type="INITIAL",
+                related_decision_id=None, external_approval_confirmed=True,
+                approval_basis="External approved QDKT verified", team_confirmed=True,
+                roster_source="USER_ENTERED", draft_id=None, draft_team_id=None,
+                draft_team_revision=None, acknowledged_changes=False,
+                members=[dict(source_member_id=str(uuid4()), display_name="Leader",
+                              role_code="LEADER", job_title="Inspector")],
+                reason="Foreign fence",
+            )
+        assert blocked.value.status_code == 409
+        assert pending in db.new
+        db.rollback()
+    with Session(pg_engine) as db:
+        assert db.scalar(select(func.count()).select_from(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id.in_(select(InspectionPlan.id).where(
+                InspectionPlan.case_id == case_id
+            ))
+        )) == 0

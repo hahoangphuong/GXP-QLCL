@@ -55,13 +55,16 @@ def test_plan_omission_preserves_canonical_decision_and_explicit_clear_is_distin
         plan = session.scalar(select(InspectionPlan))
         assert plan is not None
         assert (plan.decision_reference, plan.decision_date) == ("QD-123", date(2026, 10, 1))
-        service.upsert_inspection_plan(
-            session, case_id=case_id, expected_version=plan.row_version,
-            plan_start_on=None, plan_end_on=None, planning_sheet_name=None,
-            decision_document_hint=None, decision_reference=None, decision_date=None,
-            reason=None, user=_user(), fields_set={"decision_reference", "decision_date"},
-        )
-        assert plan.decision_reference is None and plan.decision_date is None
+        with pytest.raises(HTTPException) as blocked:
+            service.upsert_inspection_plan(
+                session, case_id=case_id, expected_version=plan.row_version,
+                plan_start_on=None, plan_end_on=None, planning_sheet_name=None,
+                decision_document_hint=None, decision_reference=None, decision_date=None,
+                reason=None, user=_user(), fields_set={"decision_reference", "decision_date"},
+            )
+        assert blocked.value.status_code == 422
+        assert plan.decision_reference == "QD-123"
+        assert plan.decision_date == date(2026, 10, 1)
 
 
 def test_http_contract_rejects_compatibility_fields_and_outcome_omission_preserves_typed_values() -> None:

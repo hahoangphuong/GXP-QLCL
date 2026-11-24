@@ -696,6 +696,84 @@ class CaseInspectionPlanRuntimeReadinessRead(BaseModel):
     blocked_reasons: list[str]
 
 
+class QdKtIssuedDecisionMemberWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_member_id: str = Field(min_length=1, max_length=64)
+    display_name: str = Field(min_length=1, max_length=255)
+    role_code: Literal["LEADER", "SECRETARY", "MEMBER"]
+    job_title: str = Field(min_length=1, max_length=255)
+
+
+class QdKtIssuedDecisionRecordRequest(BaseModel):
+    """Operator-attested Process B source; not independent legal proof."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision_id: UUID4
+    expected_plan_version: int = Field(ge=1, strict=True)
+    reference: str = Field(min_length=1, max_length=255)
+    decision_on: date
+    source_text: str = Field(min_length=1, max_length=4000)
+    relation_type: Literal["INITIAL", "REPLACES"]
+    related_decision_id: UUID4 | None = None
+    external_approval_confirmed: Literal[True]
+    approval_basis: str = Field(min_length=1, max_length=1000)
+    team_confirmed: Literal[True]
+    roster_source: Literal["USER_ENTERED", "DRAFT_UNCHANGED", "DRAFT_EDITED"]
+    draft_id: UUID4 | None = None
+    draft_team_id: UUID4 | None = None
+    draft_team_revision: int | None = Field(default=None, ge=1, strict=True)
+    acknowledged_changes: bool = False
+    members: list[QdKtIssuedDecisionMemberWrite] = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class QdKtIssuedDecisionRecordRead(BaseModel):
+    decision_id: str
+    case_id: str
+    inspection_plan_id: str
+    ordinal: int
+    reference: str
+    decision_on: date
+    relation_type: Literal["INITIAL", "REPLACES"]
+    related_decision_id: str | None
+    roster_id: str
+    roster_source: str
+    plan_row_version: int
+    inspection_event_id: str
+    audit_event_id: str
+    legal_issuance_verified: Literal[False] = False
+    ready_to_render: Literal[False] = False
+
+
+class QdKtIssuedDecisionDetailMemberRead(BaseModel):
+    position: int
+    source_member_id: str | None
+    display_name: str
+    role_code: str
+    job_title: str
+
+
+class QdKtIssuedDecisionDetailRead(BaseModel):
+    decision_id: str
+    case_id: str
+    inspection_plan_id: str
+    ordinal: int
+    reference: str
+    decision_on: date
+    source_text: str
+    relation_type: str | None
+    related_decision_id: str | None
+    roster_id: str | None
+    roster_source: str | None
+    roster_sha256: str | None
+    members: list[QdKtIssuedDecisionDetailMemberRead]
+    operator_attestation_recorded: bool
+    legal_issuance_verified: Literal[False] = False
+    ready_to_render: Literal[False] = False
+
+
 class QdKtPreparationWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     purpose: Literal["INITIAL", "AMENDMENT", "REPLACEMENT"]

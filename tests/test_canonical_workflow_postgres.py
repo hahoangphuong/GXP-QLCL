@@ -6418,3 +6418,65 @@ def test_qdkt_preparation_capture_is_explicit_and_independent(pg_engine):
         assert session.scalar(select(func.count()).select_from(AuditEvent).where(
             AuditEvent.entity_id == one["preparation_id"],
             AuditEvent.action == "qdkt_preparation.cancel")) == 1
+
+
+def test_qdkt_preparation_real_http_lifecycle(pg_engine):
+    case_id, _ = seed(pg_engine)
+    other_id, _ = seed(pg_engine)
+    key = str(uuid4())
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: USER
+
+    async def request(method, path, payload=None):
+        messages = []
+        data = b"" if payload is None else json.dumps(payload).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": data, "more_body": False}
+
+        async def send(message):
+            messages.append(message)
+
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": method, "scheme": "http", "path": path,
+            "raw_path": path.encode(), "query_string": b"",
+            "headers": [(b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 12345), "server": ("localhost", 80),
+            "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        body = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(body)
+
+    async def scenario():
+        collection = f"/cases/{case_id}/qdkt-preparations"
+        item = f"{collection}/{key}"
+        payload = dict(purpose="INITIAL", notes="HTTP draft", expected_version=None, reason="Create")
+        status, created = await request("PUT", item, payload)
+        assert status == 200, created
+        assert created["preparation_id"] == key and created["members"] == []
+        assert created["status"] == "PREPARING"
+        assert created["legal_issuance_verified"] is False
+        assert created["ready_to_render"] is False
+        assert await request("GET", collection) == (200, [created])
+        assert (await request("PUT", item, payload))[0] == 409
+        assert (await request("PUT", item, dict(payload, decision_reference="FORGED")))[0] == 422
+        assert (await request("PUT", f"/cases/{other_id}/qdkt-preparations/{key}",
+                              dict(payload, expected_version=created["row_version"])))[0] == 404
+        status, cancelled = await request("POST", item + "/cancel",
+                                          dict(expected_version=created["row_version"], reason="Cancel"))
+        assert status == 200, cancelled
+        assert cancelled["status"] == "CANCELLED"
+        assert cancelled["row_version"] > created["row_version"]
+        assert await request("GET", collection) == (200, [cancelled])
+        assert (await request("PUT", item, dict(payload, expected_version=cancelled["row_version"])))[0] == 409
+        assert (await request("POST", item + "/capture-team",
+                              dict(expected_version=cancelled["row_version"], expected_team_id=str(uuid4()),
+                                   expected_team_revision=1, reason="Blocked")))[0] == 409
+        app.dependency_overrides[get_authenticated_user] = lambda: build_authenticated_user(
+            "qdkt-http-reader", "reader", permissions=ROLE_PERMISSIONS["reader"])
+        assert (await request("GET", collection))[0] == 403
+        assert (await request("PUT", item, payload))[0] == 403
+
+    asyncio.run(scenario())

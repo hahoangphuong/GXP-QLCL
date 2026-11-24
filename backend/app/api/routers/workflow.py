@@ -399,6 +399,17 @@ def register_workflow_routes(app, session_factory) -> None:
         commit_or_409(session)
         return QdKtIssuedDecisionRecordRead(**result)
 
+    def get_qdkt_preparation(
+        case_id: str, preparation_id: UUID4,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        return QdKtPreparationRead(**service.get_qdkt_preparation(
+            session, case_id=case_id, preparation_id=str(preparation_id),
+            user=user,
+        ))
+
     def list_qdkt_preparations(
         case_id: str,
         session: Session = dependency,
@@ -1015,6 +1026,10 @@ def register_workflow_routes(app, session_factory) -> None:
     app.add_api_route(
         "/cases/{case_id}/qdkt-preparations", list_qdkt_preparations,
         methods=["GET"], response_model=list[QdKtPreparationRead], tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-preparations/{preparation_id}", get_qdkt_preparation,
+        methods=["GET"], response_model=QdKtPreparationRead, tags=["workflow"],
     )
     app.add_api_route(
         "/cases/{case_id}/qdkt-preparations/{preparation_id}", save_qdkt_preparation,

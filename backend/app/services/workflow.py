@@ -6762,63 +6762,68 @@ class CaseWorkflowService:
                 validate_members(final_members)
             except (ValueError, KeyError, TypeError) as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
-        actor = self._get_or_create_app_user(session, user)
-        decision = InspectionDecision(
-            id=decision_id, inspection_plan_id=plan.id,
-            ordinal=len(persisted) + 1, reference=reference,
-            decision_on=decision_on, legacy_raw=source_text,
-            relation_type=None if relation_type == "INITIAL" else relation_type,
-            related_decision_id=related_decision_id,
-        )
-        session.add(decision)
-        session.flush()
-        try:
-            roster = stage_qdkt_issued_roster(
-                session, decision_id=decision.id, choice=choice,
-                final_members=final_members, actor_user_id=actor.id,
+        # The draft-roster check can fail after the decision INSERT. Savepoint
+        # rollback must remove *all* Process B atoms even if a direct caller
+        # catches HTTPException and later commits its outer Session.
+        # No independent Session or upstream transaction is committed here.
+        with session.begin_nested():
+            actor = self._get_or_create_app_user(session, user)
+            decision = InspectionDecision(
+                id=decision_id, inspection_plan_id=plan.id,
+                ordinal=len(persisted) + 1, reference=reference,
+                decision_on=decision_on, legacy_raw=source_text,
+                relation_type=None if relation_type == "INITIAL" else relation_type,
+                related_decision_id=related_decision_id,
             )
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        plan.decision_reference = decision.reference
-        plan.decision_date = decision.decision_on
-        plan.decision_legacy_raw = decision.legacy_raw
-        session.flush()
-        inspection_event = self._write_inspection_event(
-            session, case_id=case.id,
-            event_type=InspectionEventType.DECISION_ISSUED,
-            payload={
-                "decision_id": decision.id,
-                "inspection_plan_id": plan.id,
-                "source_kind": "OPERATOR_ATTESTED_EXTERNAL_APPROVAL",
-                "independently_verified": False,
-            },
-        )
-        audit = self._write_audit_event(
-            session, actor=actor, entity_type="inspection_decision",
-            entity_id=decision.id, action="qdkt_issued_decision.record",
-            payload={
-                "case_id": case.id, "inspection_plan_id": plan.id,
-                "roster_id": roster.id, "approval_basis": approval_basis,
-                "external_approval_confirmed": True,
-                "signed_document_independently_verified": False,
-            },
-            after={
-                "reference": reference, "decision_on": decision_on.isoformat(),
+            session.add(decision)
+            session.flush()
+            try:
+                roster = stage_qdkt_issued_roster(
+                    session, decision_id=decision.id, choice=choice,
+                    final_members=final_members, actor_user_id=actor.id,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            plan.decision_reference = decision.reference
+            plan.decision_date = decision.decision_on
+            plan.decision_legacy_raw = decision.legacy_raw
+            session.flush()
+            inspection_event = self._write_inspection_event(
+                session, case_id=case.id,
+                event_type=InspectionEventType.DECISION_ISSUED,
+                payload={
+                    "decision_id": decision.id,
+                    "inspection_plan_id": plan.id,
+                    "source_kind": "OPERATOR_ATTESTED_EXTERNAL_APPROVAL",
+                    "independently_verified": False,
+                },
+            )
+            audit = self._write_audit_event(
+                session, actor=actor, entity_type="inspection_decision",
+                entity_id=decision.id, action="qdkt_issued_decision.record",
+                payload={
+                    "case_id": case.id, "inspection_plan_id": plan.id,
+                    "roster_id": roster.id, "approval_basis": approval_basis,
+                    "external_approval_confirmed": True,
+                    "signed_document_independently_verified": False,
+                },
+                after={
+                    "reference": reference, "decision_on": decision_on.isoformat(),
+                    "relation_type": relation_type, "related_decision_id": related_decision_id,
+                    "roster_source": roster.roster_source,
+                },
+                reason=reason,
+            )
+            return {
+                "decision_id": decision.id, "case_id": case.id,
+                "inspection_plan_id": plan.id, "ordinal": decision.ordinal,
+                "reference": decision.reference, "decision_on": decision.decision_on,
                 "relation_type": relation_type, "related_decision_id": related_decision_id,
-                "roster_source": roster.roster_source,
-            },
-            reason=reason,
-        )
-        return {
-            "decision_id": decision.id, "case_id": case.id,
-            "inspection_plan_id": plan.id, "ordinal": decision.ordinal,
-            "reference": decision.reference, "decision_on": decision.decision_on,
-            "relation_type": relation_type, "related_decision_id": related_decision_id,
-            "roster_id": roster.id, "roster_source": roster.roster_source,
-            "plan_row_version": plan.row_version,
-            "inspection_event_id": inspection_event.id, "audit_event_id": audit.id,
-            "legal_issuance_verified": False, "ready_to_render": False,
-        }
+                "roster_id": roster.id, "roster_source": roster.roster_source,
+                "plan_row_version": plan.row_version,
+                "inspection_event_id": inspection_event.id, "audit_event_id": audit.id,
+                "legal_issuance_verified": False, "ready_to_render": False,
+            }
 
     @staticmethod
     def _qdkt_preparation_payload(row, members) -> dict[str, Any]:

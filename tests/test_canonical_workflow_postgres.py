@@ -6883,3 +6883,78 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
         assert item["members"] == []
         assert item["operator_attestation_recorded"] is False
         assert item["legal_issuance_verified"] is False
+
+
+def test_qdkt_issuance_roster_failure_cannot_be_committed_after_caught_exception(pg_engine):
+    """A direct owner caller cannot commit a source-only issuance after roster 409."""
+    from backend.app.db.enums import InspectionEventType
+    from backend.app.db.models.phase1 import (
+        InspectionPlan, InspectionDecision, InspectionEvent,
+        QdKtIssuedRoster, QdKtIssuedRosterMember,
+    )
+
+    case_id, _ = seed(pg_engine)
+    plan = write(pg_engine, SERVICE.upsert_inspection_plan,
+                 case_id=case_id, plan_start_on=DAY, plan_end_on=DAY,
+                 planning_sheet_name="Official decision recording gate",
+                 decision_document_hint=None, reason="Plan")
+    decision_id = str(uuid4())
+    args = dict(
+        case_id=case_id, decision_id=decision_id,
+        expected_plan_version=plan["row_version"], reference="QDKT-ATOMIC",
+        decision_on=DAY, source_text="Verbatim approved external QDKT",
+        relation_type="INITIAL", related_decision_id=None,
+        external_approval_confirmed=True,
+        approval_basis="Human reviewed external source", team_confirmed=True,
+        roster_source="DRAFT_UNCHANGED", draft_id=str(uuid4()),
+        draft_team_id=str(uuid4()), draft_team_revision=1,
+        acknowledged_changes=False,
+        members=[dict(source_member_id=str(uuid4()), display_name="Inspector",
+                      role_code="LEADER", job_title="Lead inspector")],
+        reason="Explicit attempted issuance",
+    )
+    with Session(pg_engine) as session:
+        with pytest.raises(HTTPException) as failed:
+            SERVICE.record_qdkt_issued_decision(session, user=USER, **args)
+        assert failed.value.status_code == 409
+        assert "QDKT_DRAFT_SNAPSHOT_NOT_FOUND" in str(failed.value.detail)
+        # Proves the owner does not rely exclusively on endpoint-level
+        # rollback; the direct caller catches the failure and commits.
+        session.commit()
+
+    with Session(pg_engine) as session:
+        original_plan = session.scalar(select(InspectionPlan).where(
+            InspectionPlan.case_id == case_id
+        ))
+        assert original_plan.row_version == plan["row_version"]
+        assert original_plan.decision_reference is None
+        assert original_plan.decision_date is None
+        assert original_plan.decision_legacy_raw is None
+        assert session.scalar(select(func.count()).select_from(InspectionDecision).where(
+            InspectionDecision.inspection_plan_id == original_plan.id
+        )) == 0
+        assert session.scalar(select(func.count()).select_from(QdKtIssuedRoster).where(
+            QdKtIssuedRoster.inspection_decision_id == decision_id
+        )) == 0
+        assert session.scalar(select(func.count()).select_from(QdKtIssuedRosterMember).where(
+            QdKtIssuedRosterMember.issued_roster_id.in_(select(QdKtIssuedRoster.id).where(
+                QdKtIssuedRoster.inspection_decision_id == decision_id
+            ))
+        )) == 0
+        assert session.scalar(select(func.count()).select_from(InspectionEvent).where(
+            InspectionEvent.case_id == case_id,
+            InspectionEvent.event_type == InspectionEventType.DECISION_ISSUED,
+        )) == 0
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == decision_id,
+        )) == 0
+
+    # An accepted submission remains possible with the original version
+    # and a new UUID; the invalid intent was not silently made official.
+    success = write(pg_engine, SERVICE.record_qdkt_issued_decision,
+                    **dict(args, decision_id=str(uuid4()), roster_source="USER_ENTERED",
+                           draft_id=None, draft_team_id=None, draft_team_revision=None))
+    assert success["ordinal"] == 1
+    assert success["roster_id"]
+    assert success["legal_issuance_verified"] is False
+    assert success["ready_to_render"] is False

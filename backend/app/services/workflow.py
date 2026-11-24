@@ -5072,6 +5072,15 @@ class CaseWorkflowService:
             fields_set,
             {"plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"},
         )
+        # Legacy service callers omit fields_set and pass default None for
+        # compatibility decision projections. Only non-None supplied values
+        # constitute an attempted decision write at this internal boundary.
+        # HTTP callers retain explicit-null detection via model_fields_set.
+        if fields_set is None:
+            if decision_reference is None:
+                provided.discard("decision_reference")
+            if decision_date is None:
+                provided.discard("decision_date")
         # Process B owns all legal decision source atoms. Plan PATCH is schedule only.
         # Reject even explicit null: a legacy compatibility scalar cannot be used
         # to clear/reissue a persisted InspectionDecision or forge DECISION_ISSUED.

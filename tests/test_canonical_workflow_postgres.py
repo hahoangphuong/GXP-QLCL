@@ -6264,3 +6264,219 @@ def test_qdkt_history_reads_case_plan_and_decisions_in_one_statement(pg_engine):
             assert empty["decisions"] == []
         finally:
             event.remove(session, "do_orm_execute", record_statement)
+
+
+
+def test_qdkt_preparation_independent_versioned_and_case_owned(pg_engine):
+    from backend.app.db.models.phase1 import QdKtPreparation, InspectionDecision, QdKtDraftRosterSnapshot, QdKtIssuedRoster, DocumentVersion
+
+    case_id, _ = seed(pg_engine)
+    other_id, _ = seed(pg_engine)
+    key, second_key = str(uuid4()), str(uuid4())
+    def save(**overrides):
+        args = dict(case_id=case_id, preparation_id=key, purpose="INITIAL",
+                    notes="Draft only", expected_version=None, reason="Prepare QDKT")
+        args.update(overrides)
+        return write(pg_engine, SERVICE.save_qdkt_preparation, **args)
+
+    models = (InspectionDecision, QdKtDraftRosterSnapshot, QdKtIssuedRoster, DocumentVersion)
+    with Session(pg_engine) as session:
+        before = [session.scalar(select(func.count()).select_from(m)) for m in models]
+    created = save()
+    assert created["preparation_id"] == key
+    assert created["legal_issuance_verified"] is False
+    assert created["ready_to_render"] is False
+    assert save(preparation_id=second_key, purpose="REPLACEMENT")["preparation_id"] == second_key
+    with pytest.raises(HTTPException) as duplicate:
+        save()
+    assert duplicate.value.status_code == 409
+    updated = save(expected_version=created["row_version"], notes="Revised draft")
+    assert updated["row_version"] > created["row_version"]
+    with pytest.raises(HTTPException) as stale:
+        save(expected_version=created["row_version"], notes="Stale")
+    assert stale.value.status_code == 409
+    with pytest.raises(HTTPException) as foreign:
+        save(case_id=other_id, expected_version=updated["row_version"])
+    assert foreign.value.status_code == 404
+    with Session(pg_engine) as session:
+        assert len(SERVICE.list_qdkt_preparations(session, case_id=case_id, user=USER)) == 2
+        assert SERVICE.list_qdkt_preparations(session, case_id=other_id, user=USER) == []
+        assert [session.scalar(select(func.count()).select_from(m)) for m in models] == before
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == key, AuditEvent.action == "qdkt_preparation.save"
+        )) == 2
+        assert session.get(Case, case_id).state == CaseState.INSPECTION_IN_PROGRESS
+        assert session.get(QdKtPreparation, key).notes == "Revised draft"
+        session.get(Case, case_id).state = CaseState.CANCELLED
+        session.commit()
+    with pytest.raises(HTTPException) as terminal:
+        save(expected_version=updated["row_version"], notes="Closed")
+    assert terminal.value.status_code == 409
+
+
+def test_qdkt_preparation_permission_and_foreign_session_draft(pg_engine):
+    case_id, _ = seed(pg_engine)
+    key = str(uuid4())
+    reader = build_authenticated_user("qdkt-preparation-reader", "reader", permissions=ROLE_PERMISSIONS["reader"])
+    args = dict(case_id=case_id, preparation_id=key, purpose="INITIAL",
+                notes="", expected_version=None, reason="Prepare")
+    with Session(pg_engine) as session:
+        with pytest.raises(HTTPException) as denied:
+            SERVICE.save_qdkt_preparation(session, user=reader, **args)
+        assert denied.value.status_code == 403
+        with pytest.raises(HTTPException) as denied_read:
+            SERVICE.list_qdkt_preparations(session, case_id=case_id, user=reader)
+        assert denied_read.value.status_code == 403
+        pending = CapaCycle(case_id=case_id, round_no=1, requested_on=DAY, notes="Separate intent")
+        session.add(pending)
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.save_qdkt_preparation(session, user=USER, **args)
+        assert blocked.value.status_code == 409
+        assert pending in session.new
+        assert SERVICE.list_qdkt_preparations(session, case_id=case_id, user=USER) == []
+        session.rollback()
+
+
+def test_qdkt_preparation_http_contract_rejects_issuance_fields():
+    from pydantic import ValidationError
+    from backend.app.read_models import QdKtPreparationWrite
+
+    payload = dict(purpose="INITIAL", notes="", expected_version=None, reason="Prepare")
+    assert QdKtPreparationWrite(**payload).expected_version is None
+    for field in ("decision_on", "decision_reference", "document_version_id", "legal_issuance_verified"):
+        with pytest.raises(ValidationError):
+            QdKtPreparationWrite(**payload, **{field: "not allowed"})
+    with pytest.raises(ValidationError):
+        QdKtPreparationWrite(**dict(payload, expected_version=True))
+
+
+def test_qdkt_preparation_capture_is_explicit_and_independent(pg_engine):
+    from backend.app.db.models.phase1 import InspectionTeamParticipantCatalog
+    case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        first = InspectionTeamParticipantCatalog(code=str(uuid4()), display_name="First proposed inspector")
+        second = InspectionTeamParticipantCatalog(code=str(uuid4()), display_name="Second proposed inspector")
+        session.add_all([first, second])
+        session.commit()
+        first_id, second_id = first.id, second.id
+
+    def team_member(key):
+        return dict(identity_kind="ORGANIZATION_REPRESENTATIVE", participant_catalog_id=key,
+                    role_code="LEADER", sort_order=1)
+
+    def team_write(key, version):
+        return write(pg_engine, SERVICE.upsert_inspection_team, case_id=case_id,
+                     expected_version=version, members=[team_member(key)], reason="Team change")
+
+    def preparation():
+        return write(pg_engine, SERVICE.save_qdkt_preparation, case_id=case_id,
+                     preparation_id=str(uuid4()), purpose="INITIAL", notes="Draft",
+                     expected_version=None, reason="Prepare")
+
+    def capture(prep, team):
+        return write(pg_engine, SERVICE.change_qdkt_preparation, case_id=case_id,
+                     preparation_id=prep["preparation_id"], expected_version=prep["row_version"],
+                     expected_team_id=team["team_id"], expected_team_revision=team["row_version"],
+                     reason="Capture proposed team")
+
+    one, two = preparation(), preparation()
+    assert one["status"] == "PREPARING" and one["members"] == []
+    team_a = team_write(first_id, None)
+    captured = capture(one, team_a)
+    assert captured["row_version"] > one["row_version"]
+    assert captured["members"][0]["display_name"] == "First proposed inspector"
+    assert capture(captured, team_a) == captured
+    team_b = team_write(second_id, team_a["row_version"])
+    with pytest.raises(HTTPException) as stale:
+        capture(two, team_a)
+    assert stale.value.status_code == 409
+    other = capture(two, team_b)
+    assert other["members"][0]["display_name"] == "Second proposed inspector"
+    with Session(pg_engine) as session:
+        rows = {row["preparation_id"]: row for row in
+                SERVICE.list_qdkt_preparations(session, case_id=case_id, user=USER)}
+        assert rows[one["preparation_id"]] == captured
+        assert rows[two["preparation_id"]] == other
+    cancelled = write(pg_engine, SERVICE.change_qdkt_preparation, case_id=case_id,
+                      preparation_id=one["preparation_id"], expected_version=captured["row_version"],
+                      reason="Abandon preparation", cancel=True)
+    assert cancelled["status"] == "CANCELLED"
+    assert cancelled["members"] == captured["members"]
+    assert cancelled["row_version"] > captured["row_version"]
+    with pytest.raises(HTTPException) as blocked:
+        capture(cancelled, team_b)
+    assert blocked.value.status_code == 409
+    with pytest.raises(HTTPException) as edit_blocked:
+        write(pg_engine, SERVICE.save_qdkt_preparation, case_id=case_id,
+              preparation_id=one["preparation_id"], purpose="INITIAL", notes="Not permitted",
+              expected_version=cancelled["row_version"], reason="Edit cancelled")
+    assert edit_blocked.value.status_code == 409
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == one["preparation_id"],
+            AuditEvent.action == "qdkt_preparation.capture_team")) == 1
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == one["preparation_id"],
+            AuditEvent.action == "qdkt_preparation.cancel")) == 1
+
+
+def test_qdkt_preparation_real_http_lifecycle(pg_engine):
+    case_id, _ = seed(pg_engine)
+    other_id, _ = seed(pg_engine)
+    key = str(uuid4())
+    app = create_app(pg_engine.url.render_as_string(hide_password=False))
+    app.dependency_overrides[get_authenticated_user] = lambda: USER
+
+    async def request(method, path, payload=None):
+        messages = []
+        data = b"" if payload is None else json.dumps(payload).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": data, "more_body": False}
+
+        async def send(message):
+            messages.append(message)
+
+        await app({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": method, "scheme": "http", "path": path,
+            "raw_path": path.encode(), "query_string": b"",
+            "headers": [(b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 12345), "server": ("localhost", 80),
+            "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        body = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(body)
+
+    async def scenario():
+        collection = f"/cases/{case_id}/qdkt-preparations"
+        item = f"{collection}/{key}"
+        payload = dict(purpose="INITIAL", notes="HTTP draft", expected_version=None, reason="Create")
+        status, created = await request("PUT", item, payload)
+        assert status == 200, created
+        assert created["preparation_id"] == key and created["members"] == []
+        assert created["status"] == "PREPARING"
+        assert created["legal_issuance_verified"] is False
+        assert created["ready_to_render"] is False
+        assert await request("GET", collection) == (200, [created])
+        assert (await request("PUT", item, payload))[0] == 409
+        assert (await request("PUT", item, dict(payload, decision_reference="FORGED")))[0] == 422
+        assert (await request("PUT", f"/cases/{other_id}/qdkt-preparations/{key}",
+                              dict(payload, expected_version=created["row_version"])))[0] == 404
+        status, cancelled = await request("POST", item + "/cancel",
+                                          dict(expected_version=created["row_version"], reason="Cancel"))
+        assert status == 200, cancelled
+        assert cancelled["status"] == "CANCELLED"
+        assert cancelled["row_version"] > created["row_version"]
+        assert await request("GET", collection) == (200, [cancelled])
+        assert (await request("PUT", item, dict(payload, expected_version=cancelled["row_version"])))[0] == 409
+        assert (await request("POST", item + "/capture-team",
+                              dict(expected_version=cancelled["row_version"], expected_team_id=str(uuid4()),
+                                   expected_team_revision=1, reason="Blocked")))[0] == 409
+        app.dependency_overrides[get_authenticated_user] = lambda: build_authenticated_user(
+            "qdkt-http-reader", "reader", permissions=ROLE_PERMISSIONS["reader"])
+        assert (await request("GET", collection))[0] == 403
+        assert (await request("PUT", item, payload))[0] == 403
+
+    asyncio.run(scenario())

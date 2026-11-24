@@ -43,6 +43,8 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionPeriodSegment,
     InspectionPlan,
+    QdKtPreparation,
+    QdKtPreparationMember,
     InspectionApprovalSubmission,
     InspectionApprovalDocumentLink,
     Document,
@@ -6562,6 +6564,194 @@ class CaseWorkflowService:
             expected_version=expected_target_version, copy_source=source,
         )
         return {**result, **source}
+
+    @staticmethod
+    def _qdkt_preparation_payload(row, members) -> dict[str, Any]:
+        return {
+            "preparation_id": row.id, "case_id": row.case_id,
+            "purpose": row.purpose, "notes": row.notes,
+            "row_version": row.row_version, "status": row.status,
+            "members": members,
+            "legal_issuance_verified": False, "ready_to_render": False,
+        }
+
+    def list_qdkt_preparations(self, session: Session, *, case_id: str,
+                               user: AuthenticatedUser) -> list[dict[str, Any]]:
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+        with session.no_autoflush:
+            rows = session.execute(
+                select(Case.id, QdKtPreparation.id, QdKtPreparation.purpose,
+                       QdKtPreparation.notes, QdKtPreparation.row_version,
+                       QdKtPreparation.status, QdKtPreparationMember.source_team_id,
+                       QdKtPreparationMember.source_team_revision,
+                       QdKtPreparationMember.source_member_id,
+                       QdKtPreparationMember.sort_order, QdKtPreparationMember.role_code,
+                       QdKtPreparationMember.display_name)
+                .outerjoin(QdKtPreparation, QdKtPreparation.case_id == Case.id)
+                .outerjoin(QdKtPreparationMember, QdKtPreparationMember.preparation_id == QdKtPreparation.id)
+                .where(Case.id == case_id)
+                .order_by(QdKtPreparation.created_at, QdKtPreparation.id, QdKtPreparationMember.sort_order)
+            ).all()
+            if not rows:
+                raise HTTPException(status_code=404, detail="Case not found.")
+            result = {}
+            for row in rows:
+                if row[1] is None:
+                    continue
+                item = result.setdefault(row[1], {
+                    "case_id": row[0], "preparation_id": row[1], "purpose": row[2],
+                    "notes": row[3], "row_version": row[4], "status": row[5],
+                    "members": [], "legal_issuance_verified": False, "ready_to_render": False,
+                })
+                if row[8] is not None:
+                    item["members"].append(dict(zip(
+                        ("source_team_id", "source_team_revision", "source_member_id",
+                         "sort_order", "role_code", "display_name"), row[6:12])))
+            return list(result.values())
+
+    @staticmethod
+    def _qdkt_preparation_members(session, preparation_id):
+        fields = ("source_team_id", "source_team_revision", "source_member_id",
+                  "sort_order", "role_code", "display_name")
+        return [dict(zip(fields, row)) for row in session.execute(
+            select(*(getattr(QdKtPreparationMember, field) for field in fields))
+            .where(QdKtPreparationMember.preparation_id == preparation_id)
+            .order_by(QdKtPreparationMember.sort_order)
+        ).all()]
+
+    def _lock_qdkt_preparation(self, session, *, case_id, preparation_id, expected_version):
+        self._assert_mutation_session_clean(session, operation="QDKT preparation")
+        case = self._lock_case(session, case_id)
+        self._assert_case_not_terminal(case, operation="QDKT preparation")
+        row = session.scalars(select(QdKtPreparation).where(
+            QdKtPreparation.id == preparation_id, QdKtPreparation.case_id == case.id
+        ).execution_options(populate_existing=True)).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Preparation not found.")
+        self._assert_expected_version(row, expected_version, label="qdkt_preparation")
+        if row.status != "PREPARING":
+            raise HTTPException(status_code=409, detail="Preparation is cancelled.")
+        return row
+
+    def change_qdkt_preparation(self, session: Session, *, case_id: str,
+                                preparation_id: str, expected_version: int,
+                                reason: str, user: AuthenticatedUser,
+                                expected_team_id: str | None = None,
+                                expected_team_revision: int | None = None,
+                                cancel: bool = False) -> dict[str, Any]:
+        from backend.app.document.inspection_qd_kt_current_case_team import read_qdkt_current_case_team
+        from backend.app.document.inspection_qd_kt_team_source import QdKtTeamSourceBlocked
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+        if (type(expected_version) is not int or expected_version < 1
+                or type(reason) is not str or not reason.strip() or len(reason) > 1000
+                or type(cancel) is not bool
+                or (cancel and (expected_team_id is not None or expected_team_revision is not None))
+                or (not cancel and (not expected_team_id or type(expected_team_revision) is not int
+                                    or expected_team_revision < 1))):
+            raise HTTPException(status_code=422, detail="Invalid preparation operation.")
+        with session.no_autoflush:
+            row = self._lock_qdkt_preparation(session, case_id=case_id,
+                preparation_id=preparation_id, expected_version=expected_version)
+            previous = self._qdkt_preparation_members(session, row.id)
+            before = self._qdkt_preparation_payload(row, previous)
+            if not cancel:
+                # Case lock serializes canonical team replacement with capture.
+                try:
+                    team = read_qdkt_current_case_team(session, case_id=case_id)
+                except QdKtTeamSourceBlocked as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+                if team["team_id"] != expected_team_id or team["team_revision"] != expected_team_revision:
+                    raise HTTPException(status_code=409, detail="Inspection team changed; review current roster.")
+                members = [{
+                    "source_team_id": team["team_id"], "source_team_revision": team["team_revision"],
+                    "source_member_id": member["member_id"], "sort_order": member["sort_order"],
+                    "role_code": member["role_code"], "display_name": member["display_name"],
+                } for member in team["members"]]
+                if members == previous:
+                    return before
+            else:
+                members = previous
+        actor = self._get_or_create_app_user(session, user)
+        if cancel:
+            row.status = "CANCELLED"
+        else:
+            session.execute(delete(QdKtPreparationMember).where(QdKtPreparationMember.preparation_id == row.id))
+            session.add_all([QdKtPreparationMember(preparation_id=row.id, **member) for member in members])
+            row.row_version += 1
+        session.flush()
+        after = self._qdkt_preparation_payload(row, members)
+        self._write_audit_event(
+            session, actor=actor, entity_type="qdkt_preparation", entity_id=row.id,
+            action="qdkt_preparation.cancel" if cancel else "qdkt_preparation.capture_team",
+            payload={"case_id": case_id, "preparation_id": row.id},
+            before=before, after=after, reason=reason.strip(),
+        )
+        return after
+
+    def save_qdkt_preparation(
+        self, session: Session, *, case_id: str, preparation_id: str,
+        purpose: str, notes: str, expected_version: int | None,
+        reason: str, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        from uuid import UUID
+        require_permissions(user, {INSPECTION_EDIT_PERMISSION})
+        try:
+            key = UUID(preparation_id)
+            if key.version != 4 or str(key) != preparation_id:
+                raise ValueError()
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid preparation identity.") from exc
+        if (
+            purpose not in ("INITIAL", "AMENDMENT", "REPLACEMENT")
+            or type(notes) is not str or len(notes) > 4000
+            or type(reason) is not str or not reason.strip() or len(reason) > 1000
+            or (expected_version is not None and
+                (type(expected_version) is not int or expected_version < 1))
+        ):
+            raise HTTPException(status_code=422, detail="Invalid preparation input.")
+        with session.no_autoflush:
+            # Check before refreshing any cached owner or flushing unrelated work.
+            self._assert_mutation_session_clean(session, operation="QDKT preparation")
+            case = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(case, operation="QDKT preparation")
+            if case.gxp_type not in SUPPORTED_CASE_GXP_TYPES:
+                raise HTTPException(status_code=409, detail="Unsupported Case GxP type.")
+            existing = session.scalars(
+                select(QdKtPreparation).where(QdKtPreparation.id == preparation_id)
+                .execution_options(populate_existing=True)
+            ).one_or_none()
+            if existing is not None and existing.case_id != case.id:
+                raise HTTPException(status_code=404, detail="Preparation not found.")
+            if existing is None and expected_version is not None:
+                raise HTTPException(status_code=409, detail="Preparation version not found.")
+            if existing is not None and expected_version is None:
+                # No silent overwrite or duplicate create on uncertain outcome.
+                raise HTTPException(status_code=409, detail="Preparation already exists; read back before editing.")
+            if existing is not None:
+                self._assert_expected_version(existing, expected_version, label="qdkt_preparation")
+                if existing.status != "PREPARING":
+                    raise HTTPException(status_code=409, detail="Preparation is cancelled.")
+            members = [] if existing is None else self._qdkt_preparation_members(session, existing.id)
+        before = None if existing is None else self._qdkt_preparation_payload(existing, members)
+        if existing is not None and existing.purpose == purpose and existing.notes == notes:
+            return before
+        actor = self._get_or_create_app_user(session, user)
+        if existing is None:
+            existing = QdKtPreparation(id=preparation_id, case_id=case.id,
+                                       created_by_user_id=actor.id, purpose=purpose, notes=notes)
+            session.add(existing)
+        else:
+            existing.purpose = purpose
+            existing.notes = notes
+        session.flush()
+        after = self._qdkt_preparation_payload(existing, members)
+        self._write_audit_event(
+            session, actor=actor, entity_type="qdkt_preparation",
+            entity_id=existing.id, action="qdkt_preparation.save",
+            payload={"case_id": case.id, "preparation_id": existing.id},
+            before=before, after=after, reason=reason.strip(),
+        )
+        return after
 
     def upsert_inspection_team(
         self,

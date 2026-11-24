@@ -54,6 +54,10 @@ from backend.app.read_models import (
     InspectionPlanRead,
     InspectionPlanUpsertRequest,
     InspectionTeamRead,
+    QdKtPreparationWrite,
+    QdKtPreparationRead,
+    QdKtPreparationTeamWrite,
+    QdKtPreparationCancelWrite,
     InspectionTeamCopyFromCaseRequest,
     InspectionTeamCopyFromCaseRead,
     InspectionTeamCopyPreviewRead,
@@ -354,6 +358,56 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return ApprovalDocumentBindingRead(**result)
+
+    def list_qdkt_preparations(
+        case_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        return [QdKtPreparationRead(**item) for item in
+                service.list_qdkt_preparations(session, case_id=case_id, user=user)]
+
+    def save_qdkt_preparation(
+        case_id: str, preparation_id: UUID4, payload: QdKtPreparationWrite,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        result = service.save_qdkt_preparation(
+            session, case_id=case_id, preparation_id=str(preparation_id),
+            **payload.model_dump(), user=user,
+        )
+        commit_or_409(session)
+        return QdKtPreparationRead(**result)
+
+    def capture_qdkt_preparation_team(
+        case_id: str, preparation_id: UUID4, payload: QdKtPreparationTeamWrite,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        result = service.change_qdkt_preparation(
+            session, case_id=case_id, preparation_id=str(preparation_id),
+            expected_version=payload.expected_version, reason=payload.reason,
+            expected_team_id=str(payload.expected_team_id),
+            expected_team_revision=payload.expected_team_revision, user=user,
+        )
+        commit_or_409(session)
+        return QdKtPreparationRead(**result)
+
+    def cancel_qdkt_preparation(
+        case_id: str, preparation_id: UUID4, payload: QdKtPreparationCancelWrite,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        result = service.change_qdkt_preparation(
+            session, case_id=case_id, preparation_id=str(preparation_id),
+            **payload.model_dump(), cancel=True, user=user,
+        )
+        commit_or_409(session)
+        return QdKtPreparationRead(**result)
 
     def upsert_inspection_team(
         case_id: str,
@@ -907,6 +961,22 @@ def register_workflow_routes(app, session_factory) -> None:
         methods=["PUT"],
         response_model=InspectionTeamRead,
         tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-preparations", list_qdkt_preparations,
+        methods=["GET"], response_model=list[QdKtPreparationRead], tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-preparations/{preparation_id}", save_qdkt_preparation,
+        methods=["PUT"], response_model=QdKtPreparationRead, tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-preparations/{preparation_id}/capture-team",
+        capture_qdkt_preparation_team, methods=["POST"], response_model=QdKtPreparationRead, tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-preparations/{preparation_id}/cancel",
+        cancel_qdkt_preparation, methods=["POST"], response_model=QdKtPreparationRead, tags=["workflow"],
     )
     app.add_api_route(
         "/cases/{case_id}/team/copy-preview",

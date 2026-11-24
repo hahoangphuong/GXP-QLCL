@@ -6309,3 +6309,73 @@ def test_qdkt_preparation_http_contract_rejects_issuance_fields():
             QdKtPreparationWrite(**payload, **{field: "not allowed"})
     with pytest.raises(ValidationError):
         QdKtPreparationWrite(**dict(payload, expected_version=True))
+
+
+def test_qdkt_preparation_capture_is_explicit_and_independent(pg_engine):
+    from backend.app.db.models.phase1 import InspectionTeamParticipantCatalog
+    case_id, _ = seed(pg_engine)
+    with Session(pg_engine) as session:
+        first = InspectionTeamParticipantCatalog(code=str(uuid4()), display_name="First proposed inspector")
+        second = InspectionTeamParticipantCatalog(code=str(uuid4()), display_name="Second proposed inspector")
+        session.add_all([first, second])
+        session.commit()
+        first_id, second_id = first.id, second.id
+
+    def team_member(key):
+        return dict(identity_kind="ORGANIZATION_REPRESENTATIVE", participant_catalog_id=key,
+                    role_code="LEADER", sort_order=1)
+
+    def team_write(key, version):
+        return write(pg_engine, SERVICE.upsert_inspection_team, case_id=case_id,
+                     expected_version=version, members=[team_member(key)], reason="Team change")
+
+    def preparation():
+        return write(pg_engine, SERVICE.save_qdkt_preparation, case_id=case_id,
+                     preparation_id=str(uuid4()), purpose="INITIAL", notes="Draft",
+                     expected_version=None, reason="Prepare")
+
+    def capture(prep, team):
+        return write(pg_engine, SERVICE.change_qdkt_preparation, case_id=case_id,
+                     preparation_id=prep["preparation_id"], expected_version=prep["row_version"],
+                     expected_team_id=team["team_id"], expected_team_revision=team["row_version"],
+                     reason="Capture proposed team")
+
+    one, two = preparation(), preparation()
+    assert one["status"] == "PREPARING" and one["members"] == []
+    team_a = team_write(first_id, None)
+    captured = capture(one, team_a)
+    assert captured["row_version"] > one["row_version"]
+    assert captured["members"][0]["display_name"] == "First proposed inspector"
+    assert capture(captured, team_a) == captured
+    team_b = team_write(second_id, team_a["row_version"])
+    with pytest.raises(HTTPException) as stale:
+        capture(two, team_a)
+    assert stale.value.status_code == 409
+    other = capture(two, team_b)
+    assert other["members"][0]["display_name"] == "Second proposed inspector"
+    with Session(pg_engine) as session:
+        rows = {row["preparation_id"]: row for row in
+                SERVICE.list_qdkt_preparations(session, case_id=case_id, user=USER)}
+        assert rows[one["preparation_id"]] == captured
+        assert rows[two["preparation_id"]] == other
+    cancelled = write(pg_engine, SERVICE.change_qdkt_preparation, case_id=case_id,
+                      preparation_id=one["preparation_id"], expected_version=captured["row_version"],
+                      reason="Abandon preparation", cancel=True)
+    assert cancelled["status"] == "CANCELLED"
+    assert cancelled["members"] == captured["members"]
+    assert cancelled["row_version"] > captured["row_version"]
+    with pytest.raises(HTTPException) as blocked:
+        capture(cancelled, team_b)
+    assert blocked.value.status_code == 409
+    with pytest.raises(HTTPException) as edit_blocked:
+        write(pg_engine, SERVICE.save_qdkt_preparation, case_id=case_id,
+              preparation_id=one["preparation_id"], purpose="INITIAL", notes="Not permitted",
+              expected_version=cancelled["row_version"], reason="Edit cancelled")
+    assert edit_blocked.value.status_code == 409
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == one["preparation_id"],
+            AuditEvent.action == "qdkt_preparation.capture_team")) == 1
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_id == one["preparation_id"],
+            AuditEvent.action == "qdkt_preparation.cancel")) == 1

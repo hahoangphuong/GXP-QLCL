@@ -6958,3 +6958,89 @@ def test_qdkt_issuance_roster_failure_cannot_be_committed_after_caught_exception
     assert success["roster_id"]
     assert success["legal_issuance_verified"] is False
     assert success["ready_to_render"] is False
+
+
+def test_qdkt_draft_version_binding_is_case_scoped_scalar_read_and_preserves_dirty_orm(pg_engine):
+    from backend.app.db.models.phase1 import (
+        Document, DocumentVariant, DocumentVersion, StorageBinding,
+    )
+    from backend.app.db.enums import DocumentVariantType
+    from backend.app.document.inspection_qd_kt_draft_version_binding import (
+        QdKtDraftVersionBindingBlocked, require_qdkt_draft_version_binding,
+    )
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import (
+        DraftTeamSnapshot, TeamMemberAtDraft,
+    )
+
+    case_id, _ = seed(pg_engine)
+    foreign_case, _ = seed(pg_engine)
+    with Session(pg_engine) as db:
+        document = Document(
+            case_id=case_id, family_code="INSPECTION_QD_KT",
+            document_type_code="QDKT", title="Synthetic QDKT editable source",
+        )
+        db.add(document); db.flush()
+        variant = DocumentVariant(
+            document_id=document.id, variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+        )
+        db.add(variant); db.flush()
+        storage = StorageBinding(
+            case_id=case_id, relative_path="case/qdkt/synthetic.docx",
+            storage_class="synology_legacy",
+        )
+        other_storage = StorageBinding(
+            case_id=foreign_case, relative_path="foreign/qdkt/forbidden.docx",
+            storage_class="synology_legacy",
+        )
+        db.add_all((storage, other_storage)); db.flush()
+        version = DocumentVersion(
+            document_variant_id=variant.id, version_no=1,
+            storage_binding_id=storage.id, checksum_sha256="a" * 64,
+            original_filename="synthetic.docx",
+        )
+        db.add(version); db.commit()
+        version_id, other_storage_id = version.id, other_storage.id
+
+    def proposal(owner=case_id):
+        return DraftTeamSnapshot(
+            case_id=owner, draft_id=str(uuid4()),
+            document_version_id=version_id, team_id=str(uuid4()),
+            team_revision=1,
+            members=(TeamMemberAtDraft(
+                str(uuid4()), "Synthetic inspector", "LEADER", "Inspector",
+            ),),
+        )
+    with Session(pg_engine) as db:
+        cached = db.get(DocumentVersion, version_id)
+        cached.checksum_sha256 = "f" * 64  # pending modification must survive
+        before = cached.checksum_sha256
+        flushed = []
+        def fail_flush(*_):
+            flushed.append(True)
+            raise AssertionError("Version check may not autoflush dirty ORM rows")
+        event.listen(db, "before_flush", fail_flush)
+        try:
+            result = require_qdkt_draft_version_binding(db, snapshot=proposal())
+            assert result.document_version_id == version_id
+            assert result.stored_checksum_sha256 == "a" * 64
+            assert result.confirmed_binary_roster_match is False
+            assert result.approved_decision_link is False
+            assert cached.checksum_sha256 == before
+            assert cached in db.dirty
+            assert not flushed
+            with pytest.raises(QdKtDraftVersionBindingBlocked, match="OWNER_MISMATCH"):
+                require_qdkt_draft_version_binding(db, snapshot=proposal(foreign_case))
+            assert cached.checksum_sha256 == before
+        finally:
+            event.remove(db, "before_flush", fail_flush)
+            db.rollback()
+    # The storage-binding owner must match the registered Case, even when
+    # the document and variant IDs are otherwise valid.
+    with Session(pg_engine) as db:
+        version = db.get(DocumentVersion, version_id)
+        version.storage_binding_id = other_storage_id
+        db.commit()
+    with Session(pg_engine) as db:
+        with pytest.raises(QdKtDraftVersionBindingBlocked, match="STORAGE_OWNER_MISMATCH"):
+            require_qdkt_draft_version_binding(db, snapshot=proposal())

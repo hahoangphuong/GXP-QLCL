@@ -774,6 +774,31 @@ class QdKtIssuedDecisionDetailRead(BaseModel):
     ready_to_render: Literal[False] = False
 
 
+class QdKtIssuedPdfBindingWrite(BaseModel):
+    """Bind one exact pre-existing PDF version to an operator-attested QĐKT."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    binding_id: UUID4
+    document_version_id: UUID4
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class QdKtIssuedPdfBindingRead(BaseModel):
+    binding_id: str
+    case_id: str
+    decision_id: str
+    document_id: str
+    document_version_id: str
+    recorded_checksum_sha256: str
+    variant_type: Literal["signed_pdf", "scanned_pdf"]
+    source_kind: Literal["OPERATOR_LINKED_PDF_VERSION"] = "OPERATOR_LINKED_PDF_VERSION"
+    binary_checksum_verified: Literal[False] = False
+    independent_signature_verified: Literal[False] = False
+    legal_issuance_verified: Literal[False] = False
+    ready_to_render: Literal[False] = False
+
+
 class QdKtPreparationWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     purpose: Literal["INITIAL", "AMENDMENT", "REPLACEMENT"]

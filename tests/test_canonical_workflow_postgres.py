@@ -7010,7 +7010,7 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
     from backend.app.db.enums import DocumentVariantType
     from backend.app.db.models.phase1 import (
         DocumentVariant, DocumentVersion, StorageBinding,
-        QdKtIssuedDocumentBinding,
+        QdKtIssuedDocumentBinding, InspectionDecision,
     )
     from sqlalchemy import update
     from contextlib import contextmanager
@@ -7085,6 +7085,11 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
         pending = CapaCycle(case_id=other_case_id, round_no=1,
                             requested_on=DAY, notes="not flushed")
         session.add(pending)
+        # Canonical binary audit must not refresh or flush a caller-owned
+        # pending InspectionDecision; it reads persisted scalar columns only.
+        with session.no_autoflush:
+            dirty_decision = session.get(InspectionDecision, decision_id)
+            dirty_decision.reference = "pending-uncommitted-local-reference"
         exact = SERVICE.get_qdkt_issued_pdf_binding(
             session, case_id=case_id, decision_id=decision_id, user=USER,
         )
@@ -7110,6 +7115,8 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
         assert inspected["independent_legal_issuance_verified"] is False
         assert inspected["ready_to_render"] is False
         assert storage.calls == [(folder + "/issued/q.pdf", "inspection")] * 2
+        assert dirty_decision.reference == "pending-uncommitted-local-reference"
+        assert dirty_decision in session.dirty
         assert pending in session.new
         with pytest.raises(HTTPException) as binary_crossed:
             SERVICE.audit_qdkt_issued_pdf_binary(

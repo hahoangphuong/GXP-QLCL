@@ -13,8 +13,8 @@ from sqlalchemy import select
 
 from backend.app.db.enums import DocumentVariantType
 from backend.app.db.models.phase1 import (
-    Document, DocumentVariant, DocumentVersion, QdKtIssuedDocumentBinding,
-    StorageBinding,
+    Document, DocumentVariant, DocumentVersion, InspectionDecision,
+    InspectionPlan, QdKtIssuedDocumentBinding, StorageBinding,
 )
 from backend.app.document.inspection_qd_kt_storage_locator_policy import (
     is_safe_qdkt_relative_path,
@@ -68,6 +68,8 @@ def resolve_exact_issued_pdf_binary_locator(
                 QdKtIssuedDocumentBinding.id,
                 QdKtIssuedDocumentBinding.document_version_id,
                 QdKtIssuedDocumentBinding.recorded_checksum_sha256,
+                InspectionDecision.id,
+                InspectionPlan.case_id,
                 DocumentVersion.id,
                 DocumentVersion.document_variant_id,
                 DocumentVersion.checksum_sha256,
@@ -84,6 +86,10 @@ def resolve_exact_issued_pdf_binary_locator(
                 StorageBinding.case_id,
                 StorageBinding.relative_path,
             )
+            .join(InspectionDecision,
+                  QdKtIssuedDocumentBinding.inspection_decision_id == InspectionDecision.id)
+            .join(InspectionPlan,
+                  InspectionDecision.inspection_plan_id == InspectionPlan.id)
             .join(DocumentVersion,
                   QdKtIssuedDocumentBinding.document_version_id == DocumentVersion.id)
             .join(DocumentVariant,
@@ -96,7 +102,8 @@ def resolve_exact_issued_pdf_binary_locator(
     if len(rows) != 1:
         raise QdKtIssuedPdfBinaryAuditBlocked("QDKT_ISSUED_BINARY_BINDING_NOT_UNIQUE")
     (
-        binding_id, linked_version, linked_checksum, version_id, version_variant,
+        binding_id, linked_version, linked_checksum, owner_decision_id,
+        decision_case_id, version_id, version_variant,
         version_checksum, version_storage_binding, root, path,
         variant_id, variant_document, variant_type, document_id, document_case,
         document_family, storage_binding_id, storage_case, folder,
@@ -104,6 +111,7 @@ def resolve_exact_issued_pdf_binary_locator(
     if (
         not isinstance(case_id, str) or not isinstance(decision_id, str)
         or not case_id or not decision_id
+        or owner_decision_id != decision_id or decision_case_id != case_id
         or linked_version != version_id or version_variant != variant_id
         or variant_document != document_id
         or document_case != case_id or document_family != "INSPECTION_QD_KT"

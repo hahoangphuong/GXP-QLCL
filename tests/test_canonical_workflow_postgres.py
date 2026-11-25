@@ -6894,7 +6894,7 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
 
 
 def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_engine):
-    from backend.app.db.models.phase1 import QdKtIssuedRoster
+    from backend.app.db.models.phase1 import AppUser, QdKtIssuedRoster
     case_id, _ = seed(pg_engine)
     plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
                  plan_start_on=DAY, plan_end_on=DAY, planning_sheet_name="Audit test",
@@ -6939,7 +6939,10 @@ def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_en
                 values.update(after)
                 audit.new_values_json = json.dumps(values)
             if actor is not None:
-                audit.actor_user_id = actor
+                other = AppUser(username=f"qdkt-other-{uuid4()}")
+                session.add(other)
+                session.flush()
+                audit.actor_user_id = other.id
             if reason is not None:
                 audit.reason = reason
             session.flush()
@@ -6960,7 +6963,7 @@ def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_en
     audit_mutation(after={"reference": "FAKE-REFERENCE"})
     audit_mutation(after={"decision_on": "2026-11-01"})
     audit_mutation(after={"roster_source": "DRAFT_EDITED"})
-    audit_mutation(actor=str(uuid4()))
+    audit_mutation(actor=True)
     audit_mutation(reason=" ")
 
     # The SQL join must reject multiple matching audit atoms, not duplicate
@@ -7006,7 +7009,10 @@ def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_en
         roster = session.scalar(select(QdKtIssuedRoster).where(
             QdKtIssuedRoster.inspection_decision_id == decision_id))
         # Corrupt the owner actor without touching the original audit.
-        roster.confirmed_by_user_id = str(uuid4())
+        other = AppUser(username=f"qdkt-roster-other-{uuid4()}")
+        session.add(other)
+        session.flush()
+        roster.confirmed_by_user_id = other.id
         session.flush()
         with pytest.raises(HTTPException) as blocked:
             SERVICE.get_qdkt_issued_decision(

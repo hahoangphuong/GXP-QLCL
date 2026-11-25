@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from re import fullmatch
 from sqlalchemy import select
+from backend.app.db.enums import DocumentVariantType
 from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding
 
 from backend.app.document.inspection_qd_kt_draft_binary_evidence import (
@@ -86,32 +87,44 @@ def resolve_qdkt_draft_storage_locator(
     """Verify persisted version, document and binding ownership; no writes."""
     if not isinstance(provenance, QdKtDraftProvenance):
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_CONTRACT_INVALID")
+    # Select columns, not mapped instances: a read-only audit must not
+    # refresh or overwrite dirty caller-owned identity-map objects.
     with session.no_autoflush:
         matches = session.execute(
-            select(DocumentVersion, DocumentVariant, Document, StorageBinding)
+            select(
+                DocumentVersion.id, DocumentVersion.document_variant_id,
+                DocumentVersion.storage_binding_id, DocumentVersion.storage_root,
+                DocumentVersion.storage_relative_path, DocumentVersion.checksum_sha256,
+                DocumentVariant.id, DocumentVariant.document_id, DocumentVariant.variant_type,
+                Document.id, Document.case_id, Document.family_code,
+                StorageBinding.id, StorageBinding.case_id, StorageBinding.relative_path,
+            )
             .join(DocumentVariant, DocumentVersion.document_variant_id == DocumentVariant.id)
             .join(Document, DocumentVariant.document_id == Document.id)
             .join(StorageBinding, DocumentVersion.storage_binding_id == StorageBinding.id)
             .where(DocumentVersion.id == provenance.document_version_id)
-            .execution_options(populate_existing=True)
         ).all()
     if len(matches) != 1:
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_BINDING_NOT_UNIQUE")
-    version, variant, document, binding = matches[0]
-    path = version.storage_relative_path
-    folder = binding.relative_path
+    (
+        version_id, version_variant_id, version_binding_id, storage_root,
+        path, checksum, variant_id, variant_document_id, variant_type,
+        document_id, document_case_id, family_code, binding_id, binding_case_id, folder,
+    ) = matches[0]
     if (
-        document.id != provenance.document_id
-        or document.case_id != provenance.case_id
-        or document.family_code != "INSPECTION_QD_KT"
-        or variant.document_id != document.id
-        or version.document_variant_id != variant.id
-        or version.storage_binding_id != binding.id
-        or binding.case_id != provenance.case_id
-        or not isinstance(version.checksum_sha256, str)
-        or fullmatch(r"[0-9a-fA-F]{64}", version.checksum_sha256) is None
-        or version.checksum_sha256.lower() != provenance.stored_checksum_sha256
-        or version.storage_root != "inspection"
+        version_id != provenance.document_version_id
+        or document_id != provenance.document_id
+        or document_case_id != provenance.case_id
+        or family_code != "INSPECTION_QD_KT"
+        or variant_document_id != document_id
+        or version_variant_id != variant_id
+        or variant_type is not DocumentVariantType.EDITABLE_DOCX
+        or version_binding_id != binding_id
+        or binding_case_id != provenance.case_id
+        or not isinstance(checksum, str)
+        or fullmatch(r"[0-9a-fA-F]{64}", checksum) is None
+        or checksum.lower() != provenance.stored_checksum_sha256
+        or storage_root != "inspection"
         or not isinstance(path, str)
         or not isinstance(folder, str)
         or not folder
@@ -123,7 +136,7 @@ def resolve_qdkt_draft_storage_locator(
     locator = QdKtExactDraftLocator(
         case_id=provenance.case_id,
         document_version_id=provenance.document_version_id,
-        storage_root=version.storage_root,
+        storage_root=storage_root,
         storage_relative_path=path,
         storage_binding_owner_verified=True,
     )

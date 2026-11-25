@@ -46,6 +46,7 @@ class ExternalBridgeStorageConfig:
     auth_token_issuer: str | None = None
     auth_signing_key: str | None = None
     storage_class: str = "external_bridge_http"
+    request_timeout_seconds: float = 30.0
 
 
 @dataclass(frozen=True)

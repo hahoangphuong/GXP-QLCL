@@ -205,3 +205,75 @@ def test_round_open_fails_closed_on_source_corruption_or_binary_mismatch(boundar
             )
         assert invalid_owner.value.status_code == 409
         assert _counts(session) == (1, 1)
+
+
+def test_bound_round_open_allows_exact_limit_and_rejects_oversized_bytes(
+    boundary, monkeypatch,
+):
+    """No unverified bytes leave the app and oversized spooling is bounded."""
+    import backend.app.api.routers.document as document_route
+
+    engine, ids, endpoint, request, data = boundary
+    _bind(engine, ids)
+    with Session(engine) as session:
+        before = _counts(session)
+        monkeypatch.setattr(document_route, "MAX_DOCUMENT_CONTENT_BYTES", len(data))
+        response = endpoint(
+            approval_submission_id=ids["pct1"], document_id=ids["doc"],
+            request=request, session=session, user=_reader(),
+        )
+        assert asyncio.run(_content(response)) == data
+        assert response.headers["cache-control"] == "private, no-store"
+        assert _counts(session) == before
+
+        # The checksum still matches the registered version, but the
+        # configured resource cap now rejects before returning a response.
+        monkeypatch.setattr(document_route, "MAX_DOCUMENT_CONTENT_BYTES", len(data) - 1)
+        with pytest.raises(HTTPException) as exc:
+            endpoint(
+                approval_submission_id=ids["pct1"], document_id=ids["doc"],
+                request=request, session=session, user=_reader(),
+            )
+        assert exc.value.status_code == 413
+        assert "size limit" in exc.value.detail
+        assert _counts(session) == before
+        assert not session.new and not session.dirty
+
+
+@pytest.mark.parametrize("invalid_chunk", ["not-bytes", memoryview(b"not-bytes"), b"x" * (1024 * 1024 + 1)])
+def test_bound_round_open_rejects_untrusted_storage_chunk_types_and_sizes(
+    boundary, invalid_chunk,
+):
+    """A broken storage bridge cannot feed arbitrary objects/oversized chunks."""
+    engine, ids, endpoint, request, _ = boundary
+    _bind(engine, ids)
+    closed = []
+
+    class BadStorage(SyntheticStorage):
+        @contextmanager
+        def read_stream(self, path, *, root):
+            assert (root, path) == ("inspection", "synthetic/pct.pdf")
+
+            class BadStream:
+                def read(self, maximum):
+                    assert maximum == 1024 * 1024
+                    return invalid_chunk
+
+            try:
+                yield BadStream()
+            finally:
+                closed.append(True)
+
+    request.app.state.storage_service = BadStorage(b"")
+    with Session(engine) as session:
+        before = _counts(session)
+        with pytest.raises(HTTPException) as exc:
+            endpoint(
+                approval_submission_id=ids["pct1"], document_id=ids["doc"],
+                request=request, session=session, user=_reader(),
+            )
+        assert exc.value.status_code == 503
+        assert "invalid document content chunk" in exc.value.detail
+        assert closed == [True]
+        assert _counts(session) == before
+        assert not session.new and not session.dirty

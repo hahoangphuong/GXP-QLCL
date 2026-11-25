@@ -34,6 +34,13 @@ from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.services.workflow import CaseWorkflowService
 from backend.app.storage.types import StorageOperationError
 
+# A verified download is spooled before any bytes are returned. Bound the
+# untrusted storage stream independently of its metadata-reported size so a
+# stale/oversized object cannot exhaust a worker's temporary disk.
+MAX_DOCUMENT_CONTENT_BYTES = 256 * 1024 * 1024
+DOCUMENT_READ_CHUNK_BYTES = 1024 * 1024
+
+
 def register_document_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = DocumentWorkflowService()
@@ -238,14 +245,26 @@ def register_document_routes(app, session_factory) -> None:
                     detail="Document current binary is missing from storage.",
                 )
             digest = sha256()
+            total_bytes = 0
             with storage.read_stream(
                 locator.storage_relative_path,
                 root=locator.storage_root,
             ) as stream:
                 while True:
-                    chunk = stream.read(1024 * 1024)
+                    chunk = stream.read(DOCUMENT_READ_CHUNK_BYTES)
+                    if type(chunk) is not bytes or len(chunk) > DOCUMENT_READ_CHUNK_BYTES:
+                        raise HTTPException(
+                            status_code=503,
+                            detail="StorageService returned an invalid document content chunk.",
+                        )
                     if not chunk:
                         break
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_DOCUMENT_CONTENT_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail="Document content exceeds the verified download size limit.",
+                        )
                     digest.update(chunk)
                     verified_stream.write(chunk)
             if digest.hexdigest() != locator.checksum_sha256:
@@ -279,7 +298,7 @@ def register_document_routes(app, session_factory) -> None:
         def iter_chunks():
             try:
                 while True:
-                    chunk = verified_stream.read(1024 * 1024)
+                    chunk = verified_stream.read(DOCUMENT_READ_CHUNK_BYTES)
                     if not chunk:
                         break
                     yield chunk

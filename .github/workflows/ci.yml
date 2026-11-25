@@ -152,6 +152,28 @@ jobs:
           GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
         run: python -m pytest tests/test_canonical_workflow_postgres.py tests/test_canonical_http_workflow_postgres.py tests/test_catalog_first_case_http_postgres.py tests/test_catalog_operator_milestones_http_postgres.py tests/test_catalog_qdkt_readiness_http_postgres.py tests/test_catalog_qdkt_case_team_http_postgres.py -q -p no:cacheprovider
 
+      - name: Prove Google OIDC provisioned email identity with PostgreSQL RBAC
+        # The mocked verifier isolates identity-to-RBAC resolution from
+        # Google cryptographic token verification. Real FastAPI and migrated
+        # disposable PostgreSQL must execute all three cases (no skips).
+        env:
+          GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
+        run: |
+          set -euo pipefail
+          python -m pytest -q -p no:cacheprovider -rA \
+            tests/test_oidc_provisioned_email_identity_http_postgres.py \
+            | tee "${RUNNER_TEMP}/oidc-db-identity-postgres-gate.log"
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          log = (Path(os.environ["RUNNER_TEMP"]) / "oidc-db-identity-postgres-gate.log").read_text()
+          assert re.search(r"(?m)^3 passed in [0-9.]+s\s*$", log), (
+              "Google OIDC DB identity gate did not execute all three cases"
+          )
+          assert not re.search(r"(?mi)^\d+ (skipped|deselected|failed|errors?)\b", log)
+          PY
+
       - name: Prove issued QDKT version binding against actual PDF bytes over HTTP
         # Explicit opt-in is essential: this test's disposable PostgreSQL
         # fixture intentionally skips in ordinary full-suite shards.

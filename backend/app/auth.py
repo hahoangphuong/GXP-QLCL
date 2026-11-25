@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from fastapi import HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from backend.app.db.models.phase1 import AppUser, AppUserRole, RbacPermission, RbacRole, RbacRolePermission
 from backend.app.rbac import BUILTIN_ROLE_CODES, ROLE_PERMISSIONS
@@ -196,10 +196,20 @@ def _load_database_user(request: Request, *, email: str | None, subject: str | N
             if not value:
                 return None
             field = getattr(AppUser, field_name)
+            # Google email claims are canonicalized to lowercase, but legacy
+            # provisioned accounts can retain mixed-case email spelling.
+            # Match email case-insensitively and *reject* multiple matches
+            # instead of selecting an arbitrary RBAC identity. Subject IDs
+            # remain exact, case-sensitive stable identity keys.
+            identity_match = (
+                func.lower(field) == value.lower()
+                if field_name == "external_email"
+                else field == value
+            )
             rows = session.scalars(
                 select(AppUser).where(
                     AppUser.is_active.is_(True),
-                    field == value,
+                    identity_match,
                 )
             ).all()
             if len(rows) > 1:

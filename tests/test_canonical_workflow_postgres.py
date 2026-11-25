@@ -7158,6 +7158,66 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
             )
         assert duplicate.value.status_code == 409
         session.rollback()
+    # Link recovery GET must also verify the operator audit belonging to this
+    # specific binding, before declaring the metadata or binary healthy.
+    from sqlalchemy import delete
+    from backend.app.db.models.phase1 import AuditEvent
+    link_audit = select(AuditEvent.id).where(
+        AuditEvent.entity_type == "qdkt_issued_document_binding",
+        AuditEvent.entity_id == candidate_id,
+        AuditEvent.action == "qdkt_issued_pdf_version.bind",
+    )
+    with Session(pg_engine) as session:
+        source_audit_id = session.scalar(link_audit)
+        assert source_audit_id
+        session.execute(update(AuditEvent).where(AuditEvent.id == source_audit_id)
+                        .values(payload_redacted='{"case_id": "forged-case"}'))
+        with pytest.raises(HTTPException) as forged:
+            SERVICE.get_qdkt_issued_pdf_binding(
+                session, case_id=case_id, decision_id=decision_id, user=USER,
+            )
+        assert forged.value.status_code == 409
+        assert forged.value.detail == "QDKT_ISSUED_PDF_AUDIT_INVALID"
+        session.rollback()
+    with Session(pg_engine) as session:
+        source_audit_id = session.scalar(link_audit)
+        session.execute(update(AuditEvent).where(AuditEvent.id == source_audit_id)
+                        .values(actor_user_id=None))
+        with pytest.raises(HTTPException) as wrong_actor:
+            SERVICE.get_qdkt_issued_pdf_binding(
+                session, case_id=case_id, decision_id=decision_id, user=USER,
+            )
+        assert wrong_actor.value.status_code == 409
+        assert wrong_actor.value.detail == "QDKT_ISSUED_PDF_AUDIT_INVALID"
+        session.rollback()
+    with Session(pg_engine) as session:
+        source_audit_id = session.scalar(link_audit)
+        session.execute(delete(AuditEvent).where(AuditEvent.id == source_audit_id))
+        with pytest.raises(HTTPException) as missing:
+            SERVICE.get_qdkt_issued_pdf_binding(
+                session, case_id=case_id, decision_id=decision_id, user=USER,
+            )
+        assert missing.value.status_code == 409
+        assert missing.value.detail == "QDKT_ISSUED_PDF_AUDIT_MISSING"
+        session.rollback()
+    with Session(pg_engine) as session:
+        audit = session.get(AuditEvent, session.scalar(link_audit))
+        duplicate = AuditEvent(
+            actor_type=audit.actor_type, actor_user_id=audit.actor_user_id,
+            entity_type=audit.entity_type, entity_id=audit.entity_id,
+            action=audit.action, reason=audit.reason,
+            payload_redacted=audit.payload_redacted,
+        )
+        session.add(duplicate)
+        session.flush()
+        with pytest.raises(HTTPException) as ambiguous:
+            SERVICE.get_qdkt_issued_pdf_binding(
+                session, case_id=case_id, decision_id=decision_id, user=USER,
+            )
+        assert ambiguous.value.status_code == 409
+        assert ambiguous.value.detail == "QDKT_ISSUED_PDF_AUDIT_AMBIGUOUS"
+        session.rollback()
+
     # Even metadata drift after linking is not silently updated to 'latest'.
     with Session(pg_engine) as session:
         source = session.get(DocumentVersion, version_id)

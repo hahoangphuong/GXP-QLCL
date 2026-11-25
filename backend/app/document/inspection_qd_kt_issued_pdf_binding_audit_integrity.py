@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+from backend.app.audit_payload import normalize_and_redact_audit_payload
 from backend.app.db.enums import AuditActorType
 
 
@@ -43,7 +44,13 @@ def require_qdkt_issued_pdf_binding_audit_integrity(
         or payload.get("decision_id") != decision_id
         or payload.get("document_version_id") != document_version_id
         or payload.get("recorded_checksum_sha256") != recorded_checksum_sha256
-        or payload.get("binary_checksum_verified") is not False
+        # The global audit redactor intentionally masks keys containing
+        # "binary". Require its canonical stored marker, never infer byte
+        # verification from that redacted claim.
+        or payload.get("binary_checksum_verified") !=
+            normalize_and_redact_audit_payload(
+                {"binary_checksum_verified": False}
+            )["binary_checksum_verified"]
         or payload.get("independent_signature_verified") is not False
     ):
         raise QdKtIssuedPdfBindingAuditBlocked("QDKT_ISSUED_PDF_AUDIT_INVALID")

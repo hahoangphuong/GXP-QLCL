@@ -543,6 +543,37 @@ class InspectionDecision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class QdKtIssuedDocumentBinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Append-only operator link to an exact externally supplied PDF version.
+
+    A stored checksum is metadata, not verified bytes or legal issuance.
+    """
+
+    __tablename__ = "qdkt_issued_document_binding"
+
+    inspection_decision_id: Mapped[str] = mapped_column(
+        ForeignKey("inspection_decision.id"), nullable=False, unique=True
+    )
+    document_version_id: Mapped[str] = mapped_column(
+        ForeignKey("document_version.id"), nullable=False, unique=True
+    )
+    recorded_checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    linked_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("app_user.id"), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    __table_args__ = (
+        CheckConstraint(
+            "length(recorded_checksum_sha256) = 64",
+            name="qdkt_issued_document_checksum_length",
+        ),
+        CheckConstraint(
+            "length(trim(reason)) > 0",
+            name="qdkt_issued_document_reason_nonblank",
+        ),
+    )
+
+
 class QdKtPreparation(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     """Editable Process A intent, not a document or official decision."""
 

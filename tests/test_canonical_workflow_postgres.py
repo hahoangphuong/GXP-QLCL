@@ -6893,6 +6893,118 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
         assert item["legal_issuance_verified"] is False
 
 
+def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_engine):
+    from backend.app.db.models.phase1 import AppUser
+    case_id, _ = seed(pg_engine)
+    plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
+                 plan_start_on=DAY, plan_end_on=DAY, planning_sheet_name="Audit test",
+                 decision_document_hint=None, reason="Case plan")
+    decision_id = str(uuid4())
+    recorded = write(
+        pg_engine, SERVICE.record_qdkt_issued_decision,
+        case_id=case_id, decision_id=decision_id,
+        expected_plan_version=plan["row_version"], reference="QDKT-AUDIT-READBACK",
+        decision_on=DAY, source_text="External decision attested by operator",
+        relation_type="INITIAL", related_decision_id=None,
+        external_approval_confirmed=True,
+        approval_basis="Operator examined signed external document",
+        team_confirmed=True, roster_source="USER_ENTERED",
+        draft_id=None, draft_team_id=None, draft_team_revision=None,
+        acknowledged_changes=False,
+        members=[dict(source_member_id=str(uuid4()), display_name="Leader",
+                      role_code="LEADER", job_title="Inspector")],
+        reason="Operator recording",
+    )
+    with Session(pg_engine) as session:
+        original = SERVICE.get_qdkt_issued_decision(
+            session, case_id=case_id, decision_id=decision_id, user=USER)
+        assert original["operator_attestation_recorded"] is True
+        assert original["legal_issuance_verified"] is False
+        assert original["ready_to_render"] is False
+
+    def audit_mutation(*, payload=None, after=None, actor=None, reason=None):
+        # Mutate only an isolated PostgreSQL transaction, rollback after read.
+        with Session(pg_engine, autoflush=False) as session:
+            audit = session.scalar(select(AuditEvent).where(
+                AuditEvent.entity_type == "inspection_decision",
+                AuditEvent.entity_id == decision_id,
+                AuditEvent.action == "qdkt_issued_decision.record"))
+            assert audit is not None
+            if payload is not None:
+                values = json.loads(audit.payload_redacted)
+                values.update(payload)
+                audit.payload_redacted = json.dumps(values)
+            if after is not None:
+                values = json.loads(audit.new_values_json)
+                values.update(after)
+                audit.new_values_json = json.dumps(values)
+            if actor is not None:
+                other = AppUser(username=f"qdkt-other-{uuid4()}")
+                session.add(other)
+                session.flush()
+                audit.actor_user_id = other.id
+            if reason is not None:
+                audit.reason = reason
+            session.flush()
+            try:
+                with pytest.raises(HTTPException) as blocked:
+                    SERVICE.get_qdkt_issued_decision(
+                        session, case_id=case_id, decision_id=decision_id, user=USER)
+                assert blocked.value.status_code == 409
+                assert blocked.value.detail == "QDKT_ATTESTATION_INVALID"
+            finally:
+                session.rollback()
+
+    audit_mutation(payload={"case_id": str(uuid4())})
+    audit_mutation(payload={"inspection_plan_id": str(uuid4())})
+    audit_mutation(payload={"roster_id": str(uuid4())})
+    audit_mutation(payload={"external_approval_confirmed": False})
+    audit_mutation(payload={"signed_document_independently_verified": True})
+    audit_mutation(after={"reference": "FAKE-REFERENCE"})
+    audit_mutation(after={"decision_on": "2026-11-01"})
+    audit_mutation(after={"roster_source": "DRAFT_EDITED"})
+    audit_mutation(actor=True)
+    audit_mutation(reason=" ")
+
+    # The SQL join must reject multiple matching audit atoms, not duplicate
+    # member rows or silently select an arbitrary audit by ordering.
+    with Session(pg_engine) as session:
+        source = session.scalar(select(AuditEvent).where(
+            AuditEvent.entity_type == "inspection_decision",
+            AuditEvent.entity_id == decision_id,
+            AuditEvent.action == "qdkt_issued_decision.record"))
+        duplicate = AuditEvent(
+            actor_type=source.actor_type, actor_user_id=source.actor_user_id,
+            entity_type=source.entity_type, entity_id=source.entity_id,
+            action=source.action, reason=source.reason,
+            payload_redacted=source.payload_redacted,
+            new_values_json=source.new_values_json,
+        )
+        session.add(duplicate)
+        session.flush()
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.get_qdkt_issued_decision(
+                session, case_id=case_id, decision_id=decision_id, user=USER)
+        assert blocked.value.status_code == 409
+        assert blocked.value.detail == "QDKT_ATTESTATION_AMBIGUOUS"
+        session.rollback()
+
+    # A confirmed Process B roster without its matching audit is corrupted
+    # evidence, not a healthy historical-only source row.
+    with Session(pg_engine) as session:
+        source = session.scalar(select(AuditEvent).where(
+            AuditEvent.entity_type == "inspection_decision",
+            AuditEvent.entity_id == decision_id,
+            AuditEvent.action == "qdkt_issued_decision.record"))
+        session.delete(source)
+        session.flush()
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.get_qdkt_issued_decision(
+                session, case_id=case_id, decision_id=decision_id, user=USER)
+        assert blocked.value.status_code == 409
+        assert blocked.value.detail == "QDKT_ATTESTATION_MISSING"
+        session.rollback()
+
 def test_qdkt_issuance_roster_failure_cannot_be_committed_after_caught_exception(pg_engine):
     """A direct owner caller cannot commit a source-only issuance after roster 409."""
     from backend.app.db.enums import InspectionEventType

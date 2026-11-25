@@ -1,27 +1,58 @@
-"""Issued-QĐKT binary audit reads only the application's startup-owned storage.
+"""Issued-QĐKT binary audit must use the app-owned storage adapter.
 
-The endpoint must not construct another storage adapter from environment
-variables. This regression uses real HTTP routing and permission checks but
-a stubbed service so it can target the storage-injection boundary precisely.
+Exercise real ASGI FastAPI routing without TestClient: repository's locked
+Starlette dependency intentionally does not include httpx2.
 """
+import asyncio
+import json
 from uuid import uuid4
-
-from fastapi.testclient import TestClient
 
 from backend.app.main import create_app
 from backend.app.services.workflow import CaseWorkflowService
 
 
-def _client(storage):
+def _request(storage, url):
     app = create_app(
         "sqlite:///:memory:",
         storage_service=storage,
         app_env={"AUTH_MODE": "header_stub", "APP_ENV": "development"},
     )
-    # Model an unavailable startup adapter even if development defaults
-    # would otherwise construct local storage.
+    # For the absent-storage case, development startup may initialize its
+    # local fallback. Force the actual app-level unavailable state.
     app.state.storage_service = storage
-    return TestClient(app)
+
+    async def invoke():
+        messages = []
+        received = False
+
+        async def receive():
+            nonlocal received
+            if not received:
+                received = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await asyncio.Future()
+
+        async def send(message):
+            messages.append(message)
+
+        await app({
+            "type": "http", "asgi": {"version": "3.0"},
+            "http_version": "1.1", "method": "GET", "scheme": "http",
+            "path": url, "raw_path": url.encode(),
+            "query_string": b"",
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"x-auth-user", b"synthetic-auditor"),
+                (b"x-auth-role", b"admin"),
+            ],
+            "client": ("127.0.0.1", 12345),
+            "server": ("localhost", 80), "root_path": "",
+        }, receive, send)
+        status = next(x["status"] for x in messages if x["type"] == "http.response.start")
+        data = b"".join(x.get("body", b"") for x in messages if x["type"] == "http.response.body")
+        return status, json.loads(data) if data else None
+
+    return asyncio.run(invoke())
 
 
 def _path():
@@ -58,13 +89,9 @@ def test_qdkt_issued_binary_audit_uses_exact_startup_storage_not_env(monkeypatch
     monkeypatch.setattr(
         "backend.app.storage.factory.create_storage_service_from_env", forbidden_factory
     )
-    with _client(startup_storage) as client:
-        url = _path()
-        result = client.get(url, headers={
-            "X-Auth-User": "synthetic-auditor", "X-Auth-Role": "admin",
-        })
-    assert result.status_code == 200, result.text
-    body = result.json()
+    url = _path()
+    status, body = _request(startup_storage, url)
+    assert status == 200, body
     assert body["case_id"] == url.split("/")[2]
     assert body["decision_id"] == url.split("/")[4]
     assert body["actual_binary_checksum_verified"] is True
@@ -81,10 +108,7 @@ def test_qdkt_issued_binary_audit_fails_closed_when_startup_storage_missing(monk
         raise AssertionError("audit must not run without validated storage")
 
     monkeypatch.setattr(CaseWorkflowService, "audit_qdkt_issued_pdf_binary", forbidden_audit)
-    with _client(None) as client:
-        result = client.get(_path(), headers={
-            "X-Auth-User": "synthetic-auditor", "X-Auth-Role": "admin",
-        })
-    assert result.status_code == 503, result.text
-    assert result.json()["detail"] == "QDKT_ISSUED_BINARY_STORAGE_UNAVAILABLE"
+    status, body = _request(None, _path())
+    assert status == 503, body
+    assert body["detail"] == "QDKT_ISSUED_BINARY_STORAGE_UNAVAILABLE"
     assert not called

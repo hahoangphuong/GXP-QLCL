@@ -13,6 +13,12 @@ class SourceBinaryAccessError(RuntimeError):
     pass
 
 
+# Bound the snapshot before any copy-forward consumer gets its bytes.
+# A stale/oversized source must not exhaust a worker's temporary disk.
+MAX_SOURCE_BINARY_BYTES = 256 * 1024 * 1024
+SOURCE_READ_CHUNK_BYTES = 1024 * 1024
+
+
 @contextmanager
 def open_source_binary_stream(
     storage: StorageServiceProtocol,
@@ -50,14 +56,24 @@ def open_source_binary_stream(
     # be read by copy-forward. Never yield unverified or partially read bytes.
     with SpooledTemporaryFile(max_size=8 * 1024 * 1024) as verified:
         digest = sha256()
+        total_bytes = 0
         with storage.read_stream(
             requirement.exact_storage_relative_path,
             root=requirement.exact_storage_root,
         ) as stream:
             while True:
-                chunk = stream.read(1024 * 1024)
+                chunk = stream.read(SOURCE_READ_CHUNK_BYTES)
+                if type(chunk) is not bytes or len(chunk) > SOURCE_READ_CHUNK_BYTES:
+                    raise SourceBinaryAccessError(
+                        "Source storage returned an invalid binary chunk."
+                    )
                 if not chunk:
                     break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_SOURCE_BINARY_BYTES:
+                    raise SourceBinaryAccessError(
+                        "Source binary exceeds the copy-forward size limit."
+                    )
                 digest.update(chunk)
                 verified.write(chunk)
         if digest.hexdigest() != expected_checksum:

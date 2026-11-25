@@ -7,6 +7,8 @@ from zipfile import ZipFile
 
 import pytest
 
+from backend.app.db.enums import DocumentVariantType
+
 from backend.app.document.inspection_qd_kt_draft_provenance import QdKtDraftProvenance
 from backend.app.document.inspection_qd_kt_draft_storage_audit import (
     QdKtDraftStorageAuditBlocked, QdKtExactDraftLocator,
@@ -36,6 +38,17 @@ def fixture():
         storage_binding_owner_verified=True,
     )
     return payload, source, locator
+
+
+def locator_row(version, variant, document, binding, *, variant_type=DocumentVariantType.EDITABLE_DOCX):
+    # Shape of the scalar SELECT, deliberately not mapped ORM instances.
+    return (
+        version.id, version.document_variant_id, version.storage_binding_id,
+        version.storage_root, version.storage_relative_path, version.checksum_sha256,
+        variant.id, variant.document_id, variant_type, document.id,
+        document.case_id, document.family_code, binding.id, binding.case_id,
+        binding.relative_path,
+    )
 
 
 class FakeStorage:
@@ -124,7 +137,7 @@ def test_db_resolved_locator_proves_document_version_and_binding_ownership():
     doc = SimpleNamespace(id="document-1", case_id="case-1", family_code="INSPECTION_QD_KT")
     binding = SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1")
     result = resolve_qdkt_draft_storage_locator(
-        Session([(version, variant, doc, binding)]), provenance=provenance,
+        Session([locator_row(version, variant, doc, binding)]), provenance=provenance,
     )
     assert result.storage_binding_owner_verified
     assert result.storage_relative_path == "case-1/qdkt/draft.docx"
@@ -137,7 +150,7 @@ def test_db_resolved_locator_proves_document_version_and_binding_ownership():
         setattr(bad_binding, key, value)
         with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
             resolve_qdkt_draft_storage_locator(
-                Session([(version, variant, doc, bad_binding)]), provenance=provenance,
+                Session([locator_row(version, variant, doc, bad_binding)]), provenance=provenance,
             )
     with pytest.raises(QdKtDraftStorageAuditBlocked, match="NOT_UNIQUE"):
         resolve_qdkt_draft_storage_locator(Session([]), provenance=provenance)
@@ -167,7 +180,7 @@ def test_db_binding_rejects_parent_segments_in_bound_folder():
     binding = SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1/..")
     with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
         resolve_qdkt_draft_storage_locator(
-            Session([(version, variant, doc, binding)]), provenance=provenance,
+            Session([locator_row(version, variant, doc, binding)]), provenance=provenance,
         )
 
 
@@ -281,7 +294,7 @@ def test_db_binding_rejects_control_characters_before_storage_read(unsafe_path):
         def execute(self, query):
             return self
         def all(self):
-            return [(
+            return [locator_row(
                 SimpleNamespace(id="version-1", document_variant_id="variant-1",
                     storage_binding_id="binding-1", storage_root="inspection",
                     storage_relative_path=unsafe_path,
@@ -439,7 +452,7 @@ def test_internal_audit_rechecks_unchanged_source_after_storage(monkeypatch):
     assert not evidence.ready_to_render
 
 
-def test_db_locator_query_refreshes_existing_identity_map_rows():
+def test_db_locator_query_reads_columns_without_refreshing_identity_map_rows():
     from contextlib import nullcontext
     from types import SimpleNamespace
     from backend.app.document.inspection_qd_kt_draft_storage_audit import (
@@ -451,9 +464,12 @@ def test_db_locator_query_refreshes_existing_identity_map_rows():
         no_autoflush = nullcontext()
         def execute(self, statement):
             seen.append(statement.get_execution_options().get("populate_existing"))
+            assert len(statement.selected_columns) == 15
+            assert all(item.get("expr") is not item.get("entity")
+                       for item in statement.column_descriptions)
             return self
         def all(self):
-            return [(
+            return [locator_row(
                 SimpleNamespace(id="version-1", document_variant_id="variant-1",
                     storage_binding_id="binding-1", storage_root="inspection",
                     storage_relative_path="case-1/qdkt/draft.docx",
@@ -463,7 +479,7 @@ def test_db_locator_query_refreshes_existing_identity_map_rows():
                 SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1"),
             )]
     resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
-    assert seen == [True]
+    assert seen == [None]
 
 
 def test_internal_case_audit_detects_in_place_storage_replacement(monkeypatch):
@@ -630,7 +646,7 @@ def test_db_locator_accepts_equivalent_canonical_sha256(monkeypatch, stored_chec
         def execute(self, statement):
             return self
         def all(self):
-            return [(version, variant, doc, binding)]
+            return [locator_row(version, variant, doc, binding)]
     result = resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
     assert result.storage_relative_path == locator.storage_relative_path
     assert result.storage_binding_owner_verified
@@ -653,7 +669,7 @@ def test_db_locator_still_rejects_invalid_or_changed_checksum(stored_checksum):
         def execute(self, statement):
             return self
         def all(self):
-            return [(version, variant, doc, binding)]
+            return [locator_row(version, variant, doc, binding)]
     with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
         resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
 
@@ -690,7 +706,7 @@ def test_windows_superscript_device_alias_rejected_from_db_owner_gate():
         def execute(self, query):
             return self
         def all(self):
-            return [(
+            return [locator_row(
                 SimpleNamespace(
                     id="version-1", document_variant_id="variant-1",
                     storage_binding_id="binding-1", storage_root="inspection",
@@ -725,3 +741,24 @@ def test_non_reserved_superscript_names_remain_usable(safe_path):
     assert result.actual_docx_bytes_verified
     assert not result.ready_to_render
     assert storage.calls == [(safe_path, "inspection")]
+
+
+@pytest.mark.parametrize("variant_type", [DocumentVariantType.SCANNED_PDF,
+                                         DocumentVariantType.EDITABLE_XLSX])
+def test_direct_locator_cannot_bypass_editable_docx_owner(variant_type):
+    from contextlib import nullcontext
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import resolve_qdkt_draft_storage_locator
+    _, provenance, locator = fixture()
+
+    class Session:
+        no_autoflush = nullcontext()
+        def execute(self, statement):
+            return self
+        def all(self):
+            return [("version-1", "variant-1", "binding-1", "inspection",
+                     locator.storage_relative_path, provenance.stored_checksum_sha256,
+                     "variant-1", "document-1", variant_type, "document-1",
+                     "case-1", "INSPECTION_QD_KT", "binding-1", "case-1", "case-1")]
+
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
+        resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)

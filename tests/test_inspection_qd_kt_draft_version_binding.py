@@ -102,3 +102,52 @@ def test_explicit_root_locator_can_bind_without_binding_row():
     assert actual.document_version_id == "version-1"
     assert actual.confirmed_binary_roster_match is False
     assert actual.approved_decision_link is False
+
+
+@pytest.mark.parametrize("locator", [
+    "../other-case/draft.docx",
+    "case-a/../../other-case/draft.docx",
+    "/other-case/draft.docx",
+    r"\\server\share\draft.docx",
+    "C:/other-case/draft.docx",
+    "case-a//draft.docx",
+    "case-a/./draft.docx",
+    "case-a\\draft.docx",
+    "case-a/draft.docx\x00",
+    "case-a/draft.docx:stream",
+    "case-a/draft.docx.",
+    "case-a/draft.docx ",
+    "case-a/COM¹/draft.docx",
+    "case-a/NUL.docx",
+    "case-a/draft\u202e.docx",
+    "case-a/cafe\u0301.docx",
+    "case-a/draft\x85.docx",
+])
+def test_unbound_unsafe_storage_locator_fails_closed(locator):
+    session = ReadOnlySession(record(storage=None, root="synology", locator=locator))
+    with pytest.raises(QdKtDraftVersionBindingBlocked, match="STORAGE_LOCATOR_INVALID"):
+        require_qdkt_draft_version_binding(session, snapshot=snap())
+    assert session.executed == 1
+
+
+def test_bound_storage_does_not_treat_optional_legacy_locator_as_authority():
+    # When a real StorageBinding exists, its Case owner is authoritative;
+    # optional legacy root/path metadata cannot override that binding.
+    result = require_qdkt_draft_version_binding(
+        ReadOnlySession(record(storage="binding-1", root=None, locator=None)),
+        snapshot=snap(),
+    )
+    assert result.document_version_id == "version-1"
+
+
+@pytest.mark.parametrize("locator", [
+    "hồ-sơ/quyết-định.docx",
+    "case-a/COM10/draft.final.docx",
+])
+def test_canonical_relative_locator_keeps_metadata_only_binding(locator):
+    result = require_qdkt_draft_version_binding(
+        ReadOnlySession(record(storage=None, root="synology", locator=locator)),
+        snapshot=snap(),
+    )
+    assert not result.confirmed_binary_roster_match
+    assert not result.approved_decision_link

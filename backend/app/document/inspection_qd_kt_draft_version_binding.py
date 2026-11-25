@@ -11,6 +11,7 @@ from re import fullmatch
 from sqlalchemy import select
 from backend.app.db.enums import DocumentVariantType
 from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding
+from backend.app.document.inspection_qd_kt_storage_locator_policy import is_safe_qdkt_relative_path
 from backend.app.document.inspection_qd_kt_team_snapshot_review import (
     DraftTeamSnapshot, validate_draft_snapshot,
 )
@@ -90,6 +91,10 @@ def require_qdkt_draft_version_binding(
         and isinstance(storage_relative_path, str) and storage_relative_path.strip()
     ):
         raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_STORAGE_UNBOUND")
+    elif not is_safe_qdkt_relative_path(storage_relative_path):
+        # A relative locator is metadata only; it cannot prove Case-owned
+        # storage. Apply the same exact-path policy as the binary audit.
+        raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_STORAGE_LOCATOR_INVALID")
     return QdKtDraftVersionBinding(
         case_id=snapshot.case_id,
         draft_id=snapshot.draft_id,

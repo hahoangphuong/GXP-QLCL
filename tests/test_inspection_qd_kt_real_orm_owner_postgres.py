@@ -85,6 +85,31 @@ def test_real_orm_locator_concurrent_owner_mutation(isolation, observes_commit, 
         ):
             initial = resolve_qdkt_draft_storage_locator(reader, provenance=provenance)
             assert initial.storage_binding_owner_verified
+            # A canonical scalar read must neither flush nor overwrite pending
+            # attributes in the caller's identity map. Exercise all four owners.
+            version_obj = reader.get(DocumentVersion, ids["version"])
+            binding_obj = reader.get(StorageBinding, ids["binding1"])
+            document_obj = reader.get(Document, ids["document"])
+            variant_obj = reader.get(DocumentVariant, ids["variant"])
+            version_obj.storage_relative_path = "pending/not-persisted.docx"
+            binding_obj.relative_path = "pending-folder"
+            document_obj.family_code = "PENDING_FAMILY"
+            variant_obj.variant_type = DocumentVariantType.SCANNED_PDF
+            with reader.no_autoflush:
+                assert resolve_qdkt_draft_storage_locator(reader, provenance=provenance) == initial
+                assert version_obj.storage_relative_path == "pending/not-persisted.docx"
+                assert binding_obj.relative_path == "pending-folder"
+                assert document_obj.family_code == "PENDING_FAMILY"
+                assert variant_obj.variant_type is DocumentVariantType.SCANNED_PDF
+            assert all(obj in reader.dirty for obj in (
+                version_obj, binding_obj, document_obj, variant_obj,
+            ))
+            # Discard deliberately dirty caller state before the concurrent
+            # writer scenarios; no pending attributes may be committed.
+            reader.expire(version_obj)
+            reader.expire(binding_obj)
+            reader.expire(document_obj)
+            reader.expire(variant_obj)
             if mutation == "binding_owner":
                 stmt = StorageBinding.__table__.update().where(
                     StorageBinding.id == ids["binding1"]
@@ -105,7 +130,7 @@ def test_real_orm_locator_concurrent_owner_mutation(isolation, observes_commit, 
                 with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
                     resolve_qdkt_draft_storage_locator(reader, provenance=provenance)
             else:
-                # REPEATABLE READ preserves original snapshot, despite ORM refresh.
+                # REPEATABLE READ preserves original snapshot, with scalar reads.
                 assert resolve_qdkt_draft_storage_locator(reader, provenance=provenance) == initial
             reader.rollback()
     finally:

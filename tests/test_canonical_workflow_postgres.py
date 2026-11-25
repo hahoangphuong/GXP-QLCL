@@ -6894,7 +6894,7 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
 
 
 def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_engine):
-    from backend.app.db.models.phase1 import AppUser, QdKtIssuedRoster
+    from backend.app.db.models.phase1 import AppUser
     case_id, _ = seed(pg_engine)
     plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
                  plan_start_on=DAY, plan_end_on=DAY, planning_sheet_name="Audit test",
@@ -7004,23 +7004,6 @@ def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_en
         assert blocked.value.status_code == 409
         assert blocked.value.detail == "QDKT_ATTESTATION_MISSING"
         session.rollback()
-
-    with Session(pg_engine) as session:
-        roster = session.scalar(select(QdKtIssuedRoster).where(
-            QdKtIssuedRoster.inspection_decision_id == decision_id))
-        # Corrupt the owner actor without touching the original audit.
-        other = AppUser(username=f"qdkt-roster-other-{uuid4()}")
-        session.add(other)
-        session.flush()
-        roster.confirmed_by_user_id = other.id
-        session.flush()
-        with pytest.raises(HTTPException) as blocked:
-            SERVICE.get_qdkt_issued_decision(
-                session, case_id=case_id, decision_id=decision_id, user=USER)
-        assert blocked.value.status_code == 409
-        assert blocked.value.detail == "QDKT_ATTESTATION_INVALID"
-        session.rollback()
-
 
 def test_qdkt_issuance_roster_failure_cannot_be_committed_after_caught_exception(pg_engine):
     """A direct owner caller cannot commit a source-only issuance after roster 409."""

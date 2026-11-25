@@ -7087,8 +7087,9 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
         session.add(pending)
         # Canonical binary audit must not refresh or flush a caller-owned
         # pending InspectionDecision; it reads persisted scalar columns only.
-        dirty_decision = session.get(InspectionDecision, decision_id)
-        dirty_decision.reference = "pending-uncommitted-local-reference"
+        with session.no_autoflush:
+            dirty_decision = session.get(InspectionDecision, decision_id)
+            dirty_decision.reference = "pending-uncommitted-local-reference"
         exact = SERVICE.get_qdkt_issued_pdf_binding(
             session, case_id=case_id, decision_id=decision_id, user=USER,
         )

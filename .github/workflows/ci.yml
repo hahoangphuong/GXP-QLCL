@@ -170,10 +170,10 @@ jobs:
           import os
           import re
           log = (Path(os.environ["RUNNER_TEMP"]) / "qdkt-recovery-postgres-gate.log").read_text()
-          assert re.search(r"(?m)^3 passed in [0-9.]+s\\s*$", log), (
+          assert re.search(r"(?m)^3 passed in [0-9.]+s\s*$", log), (
               "Recovery gate did not execute all three PostgreSQL tests"
           )
-          assert not re.search(r"(?mi)^\\d+ (skipped|deselected|failed|errors?)\\b", log), (
+          assert not re.search(r"(?mi)^\d+ (skipped|deselected|failed|errors?)\b", log), (
               "Recovery gate was incomplete"
           )
           PY

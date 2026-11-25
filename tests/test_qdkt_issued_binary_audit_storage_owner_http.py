@@ -18,6 +18,9 @@ def _client(storage):
         storage_service=storage,
         app_env={"AUTH_MODE": "header_stub", "APP_ENV": "development"},
     )
+    # Model an unavailable startup adapter even if development defaults
+    # would otherwise construct local storage.
+    app.state.storage_service = storage
     return TestClient(app)
 
 

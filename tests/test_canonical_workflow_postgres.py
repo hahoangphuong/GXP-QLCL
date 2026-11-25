@@ -7016,7 +7016,7 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
     from contextlib import contextmanager
     from hashlib import sha256
     from io import BytesIO
-    pdf_bytes = b"%PDF-1.4\\n1 0 obj\\n<< /Type /Catalog >>\\nendobj\\n%%EOF\\n"
+    pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
     pdf_hash = sha256(pdf_bytes).hexdigest()
     case_id, _ = seed(pg_engine)
     other_case_id, _ = seed(pg_engine)

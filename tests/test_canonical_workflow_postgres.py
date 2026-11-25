@@ -7013,6 +7013,11 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
         QdKtIssuedDocumentBinding,
     )
     from sqlalchemy import update
+    from contextlib import contextmanager
+    from hashlib import sha256
+    from io import BytesIO
+    pdf_bytes = b"%PDF-1.4\\n1 0 obj\\n<< /Type /Catalog >>\\nendobj\\n%%EOF\\n"
+    pdf_hash = sha256(pdf_bytes).hexdigest()
     case_id, _ = seed(pg_engine)
     other_case_id, _ = seed(pg_engine)
     plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
@@ -7058,7 +7063,7 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
             document_variant_id=variant.id, version_no=1,
             storage_binding_id=binding.id, storage_root="inspection",
             storage_relative_path=folder + "/issued/q.pdf",
-            checksum_sha256="a" * 64,
+            checksum_sha256=pdf_hash,
         )
         session.add(version); session.commit()
         version_id = version.id
@@ -7070,7 +7075,7 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
     )
     assert recorded["binding_id"] == candidate_id
     assert recorded["document_version_id"] == version_id
-    assert recorded["recorded_checksum_sha256"] == "a" * 64
+    assert recorded["recorded_checksum_sha256"] == pdf_hash
     assert recorded["variant_type"] == "signed_pdf"
     assert recorded["binary_checksum_verified"] is False
     assert recorded["independent_signature_verified"] is False
@@ -7085,6 +7090,43 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
         )
         assert exact == recorded
         assert pending in session.new
+        class LocalStorage:
+            def __init__(self, payload):
+                self.payload = payload
+                self.calls = []
+            @contextmanager
+            def read_stream(self, path, *, root):
+                self.calls.append((path, root))
+                yield BytesIO(self.payload)
+        storage = LocalStorage(pdf_bytes)
+        inspected = SERVICE.audit_qdkt_issued_pdf_binary(
+            session, case_id=case_id, decision_id=decision_id,
+            storage=storage, user=USER,
+        )
+        assert inspected["verified_sha256"] == pdf_hash
+        assert inspected["verified_pdf_bytes"] == len(pdf_bytes)
+        assert inspected["actual_binary_checksum_verified"] is True
+        assert inspected["signature_cryptographically_verified"] is False
+        assert inspected["independent_legal_issuance_verified"] is False
+        assert inspected["ready_to_render"] is False
+        assert storage.calls == [(folder + "/issued/q.pdf", "inspection")] * 2
+        assert pending in session.new
+        with pytest.raises(HTTPException) as binary_crossed:
+            SERVICE.audit_qdkt_issued_pdf_binary(
+                session, case_id=other_case_id, decision_id=decision_id,
+                storage=storage, user=USER,
+            )
+        assert binary_crossed.value.status_code == 404
+        assert len(storage.calls) == 2
+        broken = LocalStorage(pdf_bytes.replace(b"Catalog", b"CatalogChanged"))
+        with pytest.raises(HTTPException) as corrupted:
+            SERVICE.audit_qdkt_issued_pdf_binary(
+                session, case_id=case_id, decision_id=decision_id,
+                storage=broken, user=USER,
+            )
+        assert corrupted.value.status_code == 409
+        assert corrupted.value.detail == "QDKT_ISSUED_BINARY_CHECKSUM_MISMATCH"
+        assert len(broken.calls) == 1
         with pytest.raises(HTTPException) as crossed:
             SERVICE.get_qdkt_issued_pdf_binding(
                 session, case_id=other_case_id, decision_id=decision_id, user=USER,

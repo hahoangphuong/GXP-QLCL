@@ -52,7 +52,7 @@ class ScriptedSession:
         self.calls = 0
 
     def execute(self, statement):
-        assert len(statement.selected_columns) == 18
+        assert len(statement.selected_columns) == 20
         self.calls += 1
         return self
 
@@ -65,9 +65,11 @@ def record(*, case_id="case-a", pdf_type=DocumentVariantType.SCANNED_PDF,
            path="case-a/issued/decision.pdf", folder="case-a",
            binding_case="case-a", version_binding="folder-a",
            variant_document="doc-a", family="INSPECTION_QD_KT",
-           linked_version="version-a"):
+           linked_version="version-a", decision_id="decision-a",
+           decision_case="case-a"):
     return (
-        "binding-a", linked_version, binding_checksum, "version-a", "variant-a",
+        "binding-a", linked_version, binding_checksum, decision_id,
+        decision_case, "version-a", "variant-a",
         version_checksum, version_binding, "inspection", path,
         "variant-a", variant_document, pdf_type, "doc-a", case_id, family,
         "folder-a", binding_case, folder,
@@ -84,6 +86,8 @@ def test_bound_resolver_uses_scalar_db_snapshot_only():
 
 
 @pytest.mark.parametrize("changes", [
+    {"decision_id": "decision-b"},
+    {"decision_case": "case-b"},
     {"case_id": "case-b"},
     {"binding_case": "case-b"},
     {"family": "INSPECTION_KE_HOACH_KT"},
@@ -209,3 +213,27 @@ def test_trusted_entrypoint_detects_binary_change_on_second_read():
             case_id="case-a", decision_id="decision-a",
         )
     assert len(storage.calls) == 2
+
+
+
+def test_internal_resolver_refuses_foreign_decision_even_with_matching_document_case():
+    """A document's Case ownership cannot substitute for the decision's Case."""
+    storage = FakeStorage(PDF)
+    session = ScriptedSession(record(decision_case="case-foreign"))
+    with pytest.raises(QdKtIssuedPdfBinaryAuditBlocked, match="OWNER_OR_SOURCE_DRIFT"):
+        audit_case_issued_pdf_binary_readonly(
+            session, storage, case_id="case-a", decision_id="decision-a",
+        )
+    assert session.calls == 1
+    assert storage.calls == []
+
+
+def test_internal_resolver_refuses_swapped_decision_id_before_storage():
+    storage = FakeStorage(PDF)
+    session = ScriptedSession(record(decision_id="other-decision"))
+    with pytest.raises(QdKtIssuedPdfBinaryAuditBlocked, match="OWNER_OR_SOURCE_DRIFT"):
+        audit_case_issued_pdf_binary_readonly(
+            session, storage, case_id="case-a", decision_id="decision-a",
+        )
+    assert session.calls == 1
+    assert storage.calls == []

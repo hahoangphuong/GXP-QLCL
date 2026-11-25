@@ -85,3 +85,19 @@ def test_oidc_database_receipt_contains_verified_claim_owner_and_git_sha(
     )
     assert missing_sha.status_code == 200
     assert missing_sha.json()["deployment_git_sha"] is None
+
+
+def test_direct_identity_helper_preserves_legacy_call_without_runtime_provenance():
+    from backend.app.api.routers.identity import current_identity
+    from backend.app.auth import build_authenticated_user
+
+    user = build_authenticated_user(
+        "synthetic-direct", "reader", permissions={"document.read"},
+    )
+    receipt = current_identity(user)
+    assert receipt.username == "synthetic-direct"
+    assert receipt.role_codes == ["reader"]
+    assert receipt.permissions == ["document.read"]
+    assert receipt.auth_mode == "header_stub"
+    assert receipt.auth_role_source is None
+    assert receipt.deployment_git_sha is None

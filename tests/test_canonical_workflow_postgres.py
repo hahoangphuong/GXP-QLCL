@@ -6848,6 +6848,12 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
                 session, case_id=case_id, decision_id=decision_id, user=USER,
             )
             assert item["decision_id"] == decision_id
+            # Unknown-outcome POST recovery must expose the original INITIAL
+            # command, not the SQL NULL used to persist its first relation.
+            assert result["relation_type"] == "INITIAL"
+            assert item["relation_type"] == result["relation_type"]
+            assert item["related_decision_id"] is None
+            assert item["source_text"] == "Verbatim external decision"
             assert item["roster_id"] == result["roster_id"]
             assert [row["position"] for row in item["members"]] == [1, 2]
             assert [row["display_name"] for row in item["members"]] == ["Leader", "Secretary"]
@@ -6890,6 +6896,9 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
         assert item["roster_id"] is None
         assert item["members"] == []
         assert item["operator_attestation_recorded"] is False
+        # Unverified legacy SQL NULL cannot be elevated to Process B INITIAL.
+        assert item["relation_type"] is None
+        assert item["related_decision_id"] is None
         assert item["legal_issuance_verified"] is False
 
 

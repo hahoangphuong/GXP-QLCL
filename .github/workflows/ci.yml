@@ -152,6 +152,27 @@ jobs:
           GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
         run: python -m pytest tests/test_canonical_workflow_postgres.py tests/test_canonical_http_workflow_postgres.py tests/test_catalog_first_case_http_postgres.py tests/test_catalog_operator_milestones_http_postgres.py tests/test_catalog_qdkt_readiness_http_postgres.py tests/test_catalog_qdkt_case_team_http_postgres.py -q -p no:cacheprovider
 
+      - name: Prove issued QDKT version binding against actual PDF bytes over HTTP
+        # Explicit opt-in is essential: this test's disposable PostgreSQL
+        # fixture intentionally skips in ordinary full-suite shards.
+        env:
+          GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
+        run: |
+          set -euo pipefail
+          python -m pytest -q -p no:cacheprovider -rA \
+            tests/test_qdkt_issued_pdf_version_e2e_http_postgres.py \
+            | tee "${RUNNER_TEMP}/qdkt-pdf-version-e2e.log"
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          log = (Path(os.environ["RUNNER_TEMP"]) / "qdkt-pdf-version-e2e.log").read_text()
+          assert re.search(r"(?m)^1 passed in [0-9.]+s\s*$", log), (
+              "QDKT PDF version owner test was skipped or incomplete"
+          )
+          assert not re.search(r"(?mi)^\d+ (skipped|deselected|failed|errors?)\b", log)
+          PY
+
       - name: Prove Process B recovery failures on actual disposable PostgreSQL
         # Shard jobs deliberately do not enable this fixture: explicit execution
         # here is required, otherwise passing shards can mask skipped

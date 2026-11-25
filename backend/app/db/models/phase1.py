@@ -552,10 +552,10 @@ class QdKtIssuedDocumentBinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "qdkt_issued_document_binding"
 
     inspection_decision_id: Mapped[str] = mapped_column(
-        ForeignKey("inspection_decision.id"), nullable=False, unique=True
+        ForeignKey("inspection_decision.id"), nullable=False
     )
     document_version_id: Mapped[str] = mapped_column(
-        ForeignKey("document_version.id"), nullable=False, unique=True
+        ForeignKey("document_version.id"), nullable=False
     )
     recorded_checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     linked_by_user_id: Mapped[str] = mapped_column(
@@ -563,6 +563,8 @@ class QdKtIssuedDocumentBinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     __table_args__ = (
+        UniqueConstraint("inspection_decision_id", name="uq_qdkt_issued_document_decision"),
+        UniqueConstraint("document_version_id", name="uq_qdkt_issued_document_version"),
         CheckConstraint(
             "length(recorded_checksum_sha256) = 64",
             name="qdkt_issued_document_checksum_length",

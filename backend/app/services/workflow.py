@@ -6626,6 +6626,15 @@ class CaseWorkflowService:
                         detail="QDKT_ISSUED_ROSTER_MISSING",
                     )
             else:
+                # A decision-owned confirmed roster is a Process B evidence
+                # atom, not merely historical source text. Losing its matching
+                # audit must fail closed rather than downgrade the record into
+                # an apparently unverified-but-healthy historical row.
+                if not recorded:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="QDKT_ATTESTATION_MISSING",
+                    )
                 try:
                     require_qdkt_issued_roster_readback_integrity(
                         roster_sha256=first[11],

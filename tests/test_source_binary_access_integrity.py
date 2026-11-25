@@ -103,3 +103,58 @@ def test_source_binary_access_accepts_uppercase_sha256_hex(tmp_path):
         storage, _requirement(sha256(payload).hexdigest().upper())
     ) as stream:
         assert stream.read() == payload
+
+
+def test_checksum_source_snapshot_accepts_exact_cap_and_rejects_oversized_input(
+    tmp_path, monkeypatch,
+):
+    import backend.app.document.source_binary_access as source_access
+
+    source = tmp_path / "2026" / "source" / "document.docx"
+    source.parent.mkdir(parents=True)
+    payload = b"exactly-at-boundary"
+    source.write_bytes(payload)
+    storage = FilesystemStorageService(StorageConfig(inspection_root=tmp_path))
+    requirement = _requirement(sha256(payload).hexdigest())
+
+    monkeypatch.setattr(source_access, "MAX_SOURCE_BINARY_BYTES", len(payload))
+    with open_source_binary_stream(storage, requirement) as stream:
+        assert stream.read() == payload
+
+    monkeypatch.setattr(source_access, "MAX_SOURCE_BINARY_BYTES", len(payload) - 1)
+    with pytest.raises(SourceBinaryAccessError, match="size limit"):
+        with open_source_binary_stream(storage, requirement) as stream:
+            pytest.fail("Over-limit bytes must never reach the copy-forward consumer")
+
+
+@pytest.mark.parametrize("bad_chunk", [
+    "not-bytes", memoryview(b"byte-view"), b"x" * (1024 * 1024 + 1),
+])
+def test_checksum_source_snapshot_rejects_nonbytes_or_overlong_storage_chunks(
+    bad_chunk,
+):
+    from contextlib import contextmanager
+
+    closed = []
+
+    class UntrustedStorage:
+        @contextmanager
+        def read_stream(self, path, *, root):
+            assert (root, path) == ("inspection", "2026/source/document.docx")
+
+            class Stream:
+                def read(self, size):
+                    assert size == 1024 * 1024
+                    return bad_chunk
+
+            try:
+                yield Stream()
+            finally:
+                closed.append(True)
+
+    with pytest.raises(SourceBinaryAccessError, match="invalid binary chunk"):
+        with open_source_binary_stream(
+            UntrustedStorage(), _requirement(sha256(b"source").hexdigest()),
+        ) as stream:
+            pytest.fail("Untrusted storage data must not be yielded")
+    assert closed == [True]

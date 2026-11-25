@@ -59,6 +59,7 @@ from backend.app.read_models import (
     QdKtIssuedDecisionDetailRead,
     QdKtIssuedPdfBindingWrite,
     QdKtIssuedPdfBindingRead,
+    QdKtIssuedPdfBinaryEvidenceRead,
     QdKtPreparationWrite,
     QdKtPreparationRead,
     QdKtPreparationTeamWrite,
@@ -400,6 +401,25 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return QdKtIssuedDecisionRecordRead(**result)
+
+    def audit_qdkt_issued_pdf_binary(
+        case_id: str, decision_id: UUID4,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        from backend.app.storage.factory import create_storage_service_from_env
+        from backend.app.storage.types import StorageOperationError
+        require_permissions(user, {"inspection.edit", "document.read"})
+        try:
+            storage = create_storage_service_from_env()
+        except (StorageOperationError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503, detail="QDKT_ISSUED_BINARY_STORAGE_UNAVAILABLE",
+            ) from exc
+        return QdKtIssuedPdfBinaryEvidenceRead(**service.audit_qdkt_issued_pdf_binary(
+            session, case_id=case_id, decision_id=str(decision_id),
+            storage=storage, user=user,
+        ))
 
     def get_qdkt_issued_pdf_binding(
         case_id: str, decision_id: UUID4,
@@ -1049,6 +1069,11 @@ def register_workflow_routes(app, session_factory) -> None:
         "/cases/{case_id}/qdkt-issued-decisions",
         record_qdkt_issued_decision, methods=["POST"],
         response_model=QdKtIssuedDecisionRecordRead, tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-issued-decisions/{decision_id}/pdf-version/binary-audit",
+        audit_qdkt_issued_pdf_binary, methods=["GET"],
+        response_model=QdKtIssuedPdfBinaryEvidenceRead, tags=["workflow"],
     )
     app.add_api_route(
         "/cases/{case_id}/qdkt-issued-decisions/{decision_id}/pdf-version",

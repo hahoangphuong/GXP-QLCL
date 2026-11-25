@@ -35,6 +35,11 @@ class ExternalBridgeStorageService:
         chunk_size: int = 1024 * 1024,
         max_upload_bytes: int = 64 * 1024 * 1024,
     ):
+        from math import isfinite
+        if (type(config.request_timeout_seconds) not in (int, float)
+                or not isfinite(config.request_timeout_seconds)
+                or config.request_timeout_seconds <= 0):
+            raise StorageOperationError("external_bridge request timeout must be finite and positive.")
         self.config = config
         self._token_provider = token_provider
         self._chunk_size = chunk_size
@@ -107,12 +112,14 @@ class ExternalBridgeStorageService:
             headers=self._build_headers(content_type=content_type),
         )
         try:
-            return urllib_request.urlopen(req)
+            return urllib_request.urlopen(req, timeout=self.config.request_timeout_seconds)
         except urllib_error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise StorageOperationError(f"external_bridge request failed: {exc.code} {detail}".strip()) from exc
         except urllib_error.URLError as exc:
             raise StorageOperationError(f"external_bridge request failed: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise StorageOperationError("external_bridge request timed out.") from exc
 
     def _request_json(
         self,

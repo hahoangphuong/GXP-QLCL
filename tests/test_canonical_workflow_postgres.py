@@ -6989,8 +6989,8 @@ def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_en
         assert blocked.value.detail == "QDKT_ATTESTATION_AMBIGUOUS"
         session.rollback()
 
-    # A surviving issued roster without its audit must not be presented as
-    # a positive operator attestation. It remains unverified history.
+    # A confirmed Process B roster without its matching audit is corrupted
+    # evidence, not a healthy historical-only source row.
     with Session(pg_engine) as session:
         source = session.scalar(select(AuditEvent).where(
             AuditEvent.entity_type == "inspection_decision",
@@ -6998,11 +6998,11 @@ def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_en
             AuditEvent.action == "qdkt_issued_decision.record"))
         session.delete(source)
         session.flush()
-        item = SERVICE.get_qdkt_issued_decision(
-            session, case_id=case_id, decision_id=decision_id, user=USER)
-        assert item["roster_id"] == recorded["roster_id"]
-        assert item["operator_attestation_recorded"] is False
-        assert item["legal_issuance_verified"] is False
+        with pytest.raises(HTTPException) as blocked:
+            SERVICE.get_qdkt_issued_decision(
+                session, case_id=case_id, decision_id=decision_id, user=USER)
+        assert blocked.value.status_code == 409
+        assert blocked.value.detail == "QDKT_ATTESTATION_MISSING"
         session.rollback()
 
     with Session(pg_engine) as session:

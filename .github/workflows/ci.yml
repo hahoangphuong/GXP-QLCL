@@ -152,6 +152,32 @@ jobs:
           GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
         run: python -m pytest tests/test_canonical_workflow_postgres.py tests/test_canonical_http_workflow_postgres.py tests/test_catalog_first_case_http_postgres.py tests/test_catalog_operator_milestones_http_postgres.py tests/test_catalog_qdkt_readiness_http_postgres.py tests/test_catalog_qdkt_case_team_http_postgres.py -q -p no:cacheprovider
 
+      - name: Prove Process B recovery failures on actual disposable PostgreSQL
+        # Shard jobs deliberately do not enable this fixture: explicit execution
+        # here is required, otherwise passing shards can mask three skipped
+        # HTTP/transaction/TCP disconnect recovery regressions.
+        env:
+          GXP_CANONICAL_WORKFLOW_POSTGRES: "1"
+        run: |
+          set -euo pipefail
+          python -m pytest -q -p no:cacheprovider -rA \
+            tests/test_qdkt_postcommit_response_loss_http_postgres.py \
+            tests/test_qdkt_precommit_rollback_http_postgres.py \
+            tests/test_qdkt_tcp_reset_recovery_http_postgres.py \
+            | tee "${RUNNER_TEMP}/qdkt-recovery-postgres-gate.log"
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          log = (Path(os.environ["RUNNER_TEMP"]) / "qdkt-recovery-postgres-gate.log").read_text()
+          assert re.search(r"(?m)^3 passed in [0-9.]+s\\s*$", log), (
+              "Recovery gate did not execute all three PostgreSQL tests"
+          )
+          assert not re.search(r"(?mi)^\\d+ (skipped|deselected|failed|errors?)\\b", log), (
+              "Recovery gate was incomplete"
+          )
+          PY
+
 
   backend-pytest-shard:
     # Every runner collects the same full test suite, then executes all tests

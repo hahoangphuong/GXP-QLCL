@@ -126,6 +126,20 @@ def test_http_readback_rejects_corrupted_persisted_roster(tmp_path, damage):
             actor_type=AuditActorType.USER, actor_user_id=actor.id,
             entity_type="inspection_decision", entity_id=decision.id,
             action="qdkt_issued_decision.record",
+            reason="Operator recorded an externally approved QDKT",
+            payload_redacted=json.dumps({
+                "case_id": case.id, "inspection_plan_id": plan.id,
+                "roster_id": roster.id,
+                "approval_basis": "Human examined signed external document",
+                "external_approval_confirmed": True,
+                "signed_document_independently_verified": False,
+            }),
+            new_values_json=json.dumps({
+                "reference": decision.reference,
+                "decision_on": decision.decision_on.isoformat(),
+                "relation_type": "INITIAL", "related_decision_id": None,
+                "roster_source": "USER_ENTERED",
+            }),
         )
         session.add_all((member, audit))
         session.commit()

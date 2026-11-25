@@ -57,6 +57,8 @@ from backend.app.read_models import (
     QdKtIssuedDecisionRecordRequest,
     QdKtIssuedDecisionRecordRead,
     QdKtIssuedDecisionDetailRead,
+    QdKtIssuedPdfBindingWrite,
+    QdKtIssuedPdfBindingRead,
     QdKtPreparationWrite,
     QdKtPreparationRead,
     QdKtPreparationTeamWrite,
@@ -398,6 +400,31 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return QdKtIssuedDecisionRecordRead(**result)
+
+    def get_qdkt_issued_pdf_binding(
+        case_id: str, decision_id: UUID4,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit", "document.read"})
+        return QdKtIssuedPdfBindingRead(**service.get_qdkt_issued_pdf_binding(
+            session, case_id=case_id, decision_id=str(decision_id), user=user,
+        ))
+
+    def bind_qdkt_issued_pdf_version(
+        case_id: str, decision_id: UUID4, payload: QdKtIssuedPdfBindingWrite,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit", "document.read", "document.write"})
+        result = service.bind_qdkt_issued_pdf_version(
+            session, case_id=case_id, decision_id=str(decision_id),
+            binding_id=str(payload.binding_id),
+            document_version_id=str(payload.document_version_id),
+            reason=payload.reason, user=user,
+        )
+        commit_or_409(session)
+        return QdKtIssuedPdfBindingRead(**result)
 
     def get_qdkt_preparation(
         case_id: str, preparation_id: UUID4,
@@ -1022,6 +1049,16 @@ def register_workflow_routes(app, session_factory) -> None:
         "/cases/{case_id}/qdkt-issued-decisions",
         record_qdkt_issued_decision, methods=["POST"],
         response_model=QdKtIssuedDecisionRecordRead, tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-issued-decisions/{decision_id}/pdf-version",
+        get_qdkt_issued_pdf_binding, methods=["GET"],
+        response_model=QdKtIssuedPdfBindingRead, tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/qdkt-issued-decisions/{decision_id}/pdf-version",
+        bind_qdkt_issued_pdf_version, methods=["POST"],
+        response_model=QdKtIssuedPdfBindingRead, tags=["workflow"],
     )
     app.add_api_route(
         "/cases/{case_id}/qdkt-preparations", list_qdkt_preparations,

@@ -6564,6 +6564,136 @@ class CaseWorkflowService:
         )
         return {**result, **source}
 
+    def get_qdkt_issued_pdf_binding(
+        self, session: Session, *, case_id: str, decision_id: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Exact Case/decision readback; no automatic version substitution."""
+        from backend.app.db.models.phase1 import QdKtIssuedDocumentBinding
+        from backend.app.document.inspection_qd_kt_issued_document_binding import (
+            QdKtIssuedDocumentBlocked, require_exact_qdkt_issued_pdf_version,
+        )
+        require_permissions(user, {"inspection.edit", "document.read"})
+        # Verify decision/roster/attestation first. A source-only legacy row is
+        # not enough evidence to bind an external issued-decision document.
+        decision = self.get_qdkt_issued_decision(
+            session, case_id=case_id, decision_id=decision_id, user=user,
+        )
+        if not decision["operator_attestation_recorded"]:
+            raise HTTPException(status_code=409, detail="QDKT_ATTESTATION_REQUIRED")
+        with session.no_autoflush:
+            rows = session.execute(select(
+                QdKtIssuedDocumentBinding.id,
+                QdKtIssuedDocumentBinding.document_version_id,
+                QdKtIssuedDocumentBinding.recorded_checksum_sha256,
+            ).where(
+                QdKtIssuedDocumentBinding.inspection_decision_id == decision_id,
+            )).all()
+            if not rows:
+                raise HTTPException(status_code=404, detail="QDKT_ISSUED_PDF_BINDING_NOT_FOUND")
+            if len(rows) != 1:
+                raise HTTPException(status_code=409, detail="QDKT_ISSUED_PDF_BINDING_AMBIGUOUS")
+            binding_id, version_id, stored_checksum = rows[0]
+            try:
+                source = require_exact_qdkt_issued_pdf_version(
+                    session, case_id=case_id, document_version_id=version_id,
+                )
+            except QdKtIssuedDocumentBlocked as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if source["recorded_checksum_sha256"] != stored_checksum:
+                raise HTTPException(status_code=409, detail="QDKT_ISSUED_PDF_SOURCE_DRIFT")
+            return {
+                "binding_id": binding_id, "case_id": case_id,
+                "decision_id": decision_id, **source,
+                "source_kind": "OPERATOR_LINKED_PDF_VERSION",
+                "binary_checksum_verified": False,
+                "independent_signature_verified": False,
+                "legal_issuance_verified": False,
+                "ready_to_render": False,
+            }
+
+    def bind_qdkt_issued_pdf_version(
+        self, session: Session, *, case_id: str, decision_id: str,
+        binding_id: str, document_version_id: str, reason: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Append one metadata link; no upload, PDF inspection or legal approval."""
+        from uuid import UUID
+        from backend.app.db.models.phase1 import QdKtIssuedDocumentBinding
+        from backend.app.document.inspection_qd_kt_issued_document_binding import (
+            QdKtIssuedDocumentBlocked, require_exact_qdkt_issued_pdf_version,
+        )
+        require_permissions(user, {"inspection.edit", "document.read", "document.write"})
+        try:
+            parsed = UUID(binding_id)
+            if parsed.version != 4 or str(parsed) != binding_id:
+                raise ValueError()
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid QDKT issued PDF binding ID.") from exc
+        if type(reason) is not str or not reason.strip() or reason != reason.strip() or len(reason) > 1000:
+            raise HTTPException(status_code=422, detail="QDKT issued PDF reason required.")
+        with session.no_autoflush:
+            self._assert_mutation_session_clean(session, operation="QDKT issued PDF binding")
+            case = self._lock_case(session, case_id)
+            self._assert_case_not_terminal(case, operation="QDKT issued PDF binding")
+            decision = self.get_qdkt_issued_decision(
+                session, case_id=case_id, decision_id=decision_id, user=user,
+            )
+            if not decision["operator_attestation_recorded"]:
+                raise HTTPException(status_code=409, detail="QDKT_ATTESTATION_REQUIRED")
+            already = session.execute(select(
+                QdKtIssuedDocumentBinding.id,
+                QdKtIssuedDocumentBinding.document_version_id,
+            ).where(
+                (QdKtIssuedDocumentBinding.inspection_decision_id == decision_id)
+                | (QdKtIssuedDocumentBinding.id == binding_id)
+                | (QdKtIssuedDocumentBinding.document_version_id == document_version_id)
+            )).all()
+            if already:
+                raise HTTPException(
+                    status_code=409,
+                    detail="QDKT_ISSUED_PDF_BINDING_EXISTS_READ_BACK",
+                )
+            try:
+                source = require_exact_qdkt_issued_pdf_version(
+                    session, case_id=case_id, document_version_id=document_version_id,
+                )
+            except QdKtIssuedDocumentBlocked as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # Atomic link plus audit. Any caught downstream exception must not
+        # leave a partial binding if the caller commits its outer Session.
+        with session.begin_nested():
+            actor = self._get_or_create_app_user(session, user)
+            binding = QdKtIssuedDocumentBinding(
+                id=binding_id, inspection_decision_id=decision_id,
+                document_version_id=document_version_id,
+                recorded_checksum_sha256=source["recorded_checksum_sha256"],
+                linked_by_user_id=actor.id, reason=reason,
+            )
+            session.add(binding)
+            session.flush()
+            self._write_audit_event(
+                session, actor=actor, entity_type="qdkt_issued_document_binding",
+                entity_id=binding_id, action="qdkt_issued_pdf_version.bind",
+                payload={
+                    "case_id": case_id, "decision_id": decision_id,
+                    "document_version_id": document_version_id,
+                    "recorded_checksum_sha256": source["recorded_checksum_sha256"],
+                    "binary_checksum_verified": False,
+                    "independent_signature_verified": False,
+                },
+                reason=reason,
+            )
+        return {
+            "binding_id": binding_id, "case_id": case_id,
+            "decision_id": decision_id, **source,
+            "source_kind": "OPERATOR_LINKED_PDF_VERSION",
+            "binary_checksum_verified": False,
+            "independent_signature_verified": False,
+            "legal_issuance_verified": False,
+            "ready_to_render": False,
+        }
+
     def get_qdkt_issued_decision(
         self, session: Session, *, case_id: str, decision_id: str,
         user: AuthenticatedUser,

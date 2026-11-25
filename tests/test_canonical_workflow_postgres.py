@@ -7005,6 +7005,130 @@ def test_qdkt_attestation_readback_blocks_corrupt_audit_and_duplicate_rows(pg_en
         assert blocked.value.detail == "QDKT_ATTESTATION_MISSING"
         session.rollback()
 
+def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
+    """One decision = one existing external PDF version, no invented bytes."""
+    from backend.app.db.enums import DocumentVariantType
+    from backend.app.db.models.phase1 import (
+        DocumentVariant, DocumentVersion, StorageBinding,
+        QdKtIssuedDocumentBinding,
+    )
+    from sqlalchemy import update
+    case_id, _ = seed(pg_engine)
+    other_case_id, _ = seed(pg_engine)
+    plan = write(pg_engine, SERVICE.upsert_inspection_plan, case_id=case_id,
+                 plan_start_on=DAY, plan_end_on=DAY,
+                 planning_sheet_name="QDKT issued PDF owner",
+                 decision_document_hint=None, reason="Case plan")
+    decision_id = str(uuid4())
+    write(
+        pg_engine, SERVICE.record_qdkt_issued_decision,
+        case_id=case_id, decision_id=decision_id,
+        expected_plan_version=plan["row_version"],
+        reference="QDKT-PDF-OWNER", decision_on=DAY,
+        source_text="Operator-transcribed external decision",
+        relation_type="INITIAL", related_decision_id=None,
+        external_approval_confirmed=True,
+        approval_basis="External document examined by operator",
+        team_confirmed=True, roster_source="USER_ENTERED",
+        draft_id=None, draft_team_id=None, draft_team_revision=None,
+        acknowledged_changes=False,
+        members=[dict(source_member_id=str(uuid4()),
+                      display_name="Inspector", role_code="LEADER",
+                      job_title="Inspector")],
+        reason="Operator recording",
+    )
+    with Session(pg_engine) as session:
+        folder = "qdkt-" + case_id
+        binding = StorageBinding(
+            case_id=case_id, relative_path=folder,
+            storage_class="local_filesystem_fake",
+        )
+        session.add(binding); session.flush()
+        doc = Document(
+            case_id=case_id, family_code="INSPECTION_QD_KT",
+            document_type_code="INSPECTION_QD_KT",
+        )
+        session.add(doc); session.flush()
+        variant = DocumentVariant(
+            document_id=doc.id, variant_type=DocumentVariantType.SIGNED_PDF,
+            language_code="vi",
+        )
+        session.add(variant); session.flush()
+        version = DocumentVersion(
+            document_variant_id=variant.id, version_no=1,
+            storage_binding_id=binding.id, storage_root="inspection",
+            storage_relative_path=folder + "/issued/q.pdf",
+            checksum_sha256="a" * 64,
+        )
+        session.add(version); session.commit()
+        version_id = version.id
+    candidate_id = str(uuid4())
+    recorded = write(
+        pg_engine, SERVICE.bind_qdkt_issued_pdf_version,
+        case_id=case_id, decision_id=decision_id, binding_id=candidate_id,
+        document_version_id=version_id, reason="Link exact external PDF source",
+    )
+    assert recorded["binding_id"] == candidate_id
+    assert recorded["document_version_id"] == version_id
+    assert recorded["recorded_checksum_sha256"] == "a" * 64
+    assert recorded["variant_type"] == "signed_pdf"
+    assert recorded["binary_checksum_verified"] is False
+    assert recorded["independent_signature_verified"] is False
+    assert recorded["legal_issuance_verified"] is False
+    assert recorded["ready_to_render"] is False
+    with Session(pg_engine) as session:
+        pending = CapaCycle(case_id=other_case_id, round_no=1,
+                            requested_on=DAY, notes="not flushed")
+        session.add(pending)
+        exact = SERVICE.get_qdkt_issued_pdf_binding(
+            session, case_id=case_id, decision_id=decision_id, user=USER,
+        )
+        assert exact == recorded
+        assert pending in session.new
+        with pytest.raises(HTTPException) as crossed:
+            SERVICE.get_qdkt_issued_pdf_binding(
+                session, case_id=other_case_id, decision_id=decision_id, user=USER,
+            )
+        assert crossed.value.status_code == 404
+        session.rollback()
+    with Session(pg_engine) as session:
+        assert session.scalar(select(func.count()).select_from(
+            QdKtIssuedDocumentBinding).where(
+                QdKtIssuedDocumentBinding.inspection_decision_id == decision_id,
+            )) == 1
+        assert session.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.entity_type == "qdkt_issued_document_binding",
+            AuditEvent.entity_id == candidate_id,
+            AuditEvent.action == "qdkt_issued_pdf_version.bind",
+        )) == 1
+        with pytest.raises(HTTPException) as duplicate:
+            SERVICE.bind_qdkt_issued_pdf_version(
+                session, case_id=case_id, decision_id=decision_id,
+                binding_id=str(uuid4()), document_version_id=version_id,
+                reason="Ambiguous retry", user=USER,
+            )
+        assert duplicate.value.status_code == 409
+        session.rollback()
+    # Even metadata drift after linking is not silently updated to 'latest'.
+    with Session(pg_engine) as session:
+        source = session.get(DocumentVersion, version_id)
+        source.checksum_sha256 = "b" * 64
+        session.flush()
+        with pytest.raises(HTTPException) as drift:
+            SERVICE.get_qdkt_issued_pdf_binding(
+                session, case_id=case_id, decision_id=decision_id, user=USER)
+        assert drift.value.status_code == 409
+        assert drift.value.detail == "QDKT_ISSUED_PDF_SOURCE_DRIFT"
+        session.rollback()
+    # The link itself is append-only in the migrated PostgreSQL schema.
+    with Session(pg_engine) as session:
+        with pytest.raises(Exception, match="QDKT_SNAPSHOT_APPEND_ONLY"):
+            session.execute(update(QdKtIssuedDocumentBinding).where(
+                QdKtIssuedDocumentBinding.id == candidate_id,
+            ).values(reason="unauthorized rewrite"))
+        session.rollback()
+
+
 def test_qdkt_issuance_roster_failure_cannot_be_committed_after_caught_exception(pg_engine):
     """A direct owner caller cannot commit a source-only issuance after roster 409."""
     from backend.app.db.enums import InspectionEventType

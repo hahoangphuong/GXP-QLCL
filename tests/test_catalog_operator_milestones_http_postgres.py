@@ -166,7 +166,7 @@ def test_initial_case_real_application_assessment_plan_milestone_owners(pg_engin
         "decision_date": "2026-10-04",
     })
     assert status == 422, invalid_plan
-    decided = ok(api, "POST", f"/cases/{case_id}/qdkt-issued-decisions", {
+    decision_payload = {
         "decision_id": str(uuid4()),
         "expected_plan_version": scheduled["row_version"],
         "reference": "SYNTHETIC-QDKT-REFERENCE",
@@ -182,17 +182,34 @@ def test_initial_case_real_application_assessment_plan_milestone_owners(pg_engin
             "role_code": "LEADER", "job_title": "Inspector",
         }],
         "reason": "Record signed decision facts as operator attestation",
-    })
+    }
+    decided = ok(api, "POST", f"/cases/{case_id}/qdkt-issued-decisions", decision_payload)
     assert decided["inspection_event_id"] is not None
     assert decided["reference"] == "SYNTHETIC-QDKT-REFERENCE"
     assert decided["legal_issuance_verified"] is False
     persisted = ok(api, "GET", f"/cases/{case_id}/qdkt-issued-decisions/{decided['decision_id']}")
     assert persisted["decision_id"] == decided["decision_id"]
+    # A lost POST response is recovered from the original canonical UUID.
+    # Process B INITIAL must not leak its internal SQL NULL representation.
+    assert decided["relation_type"] == "INITIAL"
+    assert persisted["relation_type"] == decided["relation_type"]
+    assert persisted["related_decision_id"] is None
+    assert persisted["reference"] == decided["reference"]
+    assert persisted["source_text"] == decision_payload["source_text"]
     assert persisted["roster_id"] == decided["roster_id"]
     assert persisted["operator_attestation_recorded"] is True
     assert persisted["members"][0]["display_name"] == "Synthetic team leader"
     assert persisted["legal_issuance_verified"] is False
     assert persisted["ready_to_render"] is False
+    # Reusing the caller UUID after unknown outcome cannot append a second
+    # issued decision or milestone, even with the now-current plan version.
+    before_replay = [item.value for item in events(pg_engine, case_id)]
+    replay_status, _ = api("POST", f"/cases/{case_id}/qdkt-issued-decisions", {
+        **decision_payload, "expected_plan_version": decided["plan_row_version"],
+    })
+    assert replay_status == 409
+    assert [item.value for item in events(pg_engine, case_id)] == before_replay
+    assert ok(api, "GET", f"/cases/{case_id}/qdkt-issued-decisions/{decided['decision_id']}") == persisted
     assert api("GET", f"/cases/{uuid4()}/qdkt-issued-decisions/{decided['decision_id']}")[0] == 404
 
     assert [item.value for item in events(pg_engine, case_id)] == [

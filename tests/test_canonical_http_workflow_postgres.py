@@ -22,7 +22,7 @@ from test_canonical_workflow_postgres import pg_engine, seed  # shared isolated-
 def api(pg_engine):
     app = create_app(pg_engine.url.render_as_string(hide_password=False), app_env={"AUTH_MODE": "header_stub"})
 
-    def call(method, path, payload=None, role="admin"):
+    def call(method, path, payload=None, role="admin", *, disconnect_on_response=False):
         target = urlsplit(path)
         async def invoke():
             body = b"" if payload is None else json.dumps(payload).encode()
@@ -35,6 +35,11 @@ def api(pg_engine):
                     return {"type": "http.request", "body": body, "more_body": False}
                 await asyncio.Future()
             async def send(message):
+                # Deliberately lose the HTTP reply after the endpoint returns.
+                # All endpoint commits precede http.response.start; raising
+                # from send cannot roll back a committed PostgreSQL transaction.
+                if disconnect_on_response and message["type"] == "http.response.start":
+                    raise ConnectionError("synthetic client disconnected after commit")
                 messages.append(message)
             await app({"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
                        "method": method, "scheme": "http", "path": target.path, "raw_path": target.path.encode(),

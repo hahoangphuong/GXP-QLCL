@@ -683,6 +683,10 @@ class AuthenticatedIdentityRead(BaseModel):
     subject: str | None
     role_codes: list[str]
     permissions: list[str]
+    # Read-only operator UAT provenance: never token/signature proof itself.
+    auth_mode: str
+    auth_role_source: str
+    deployment_git_sha: str | None
 
 
 class CaseInspectionPlanRuntimeReadinessRead(BaseModel):

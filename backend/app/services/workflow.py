@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, func, inspect, or_, select
+from sqlalchemy import String, and_, cast, delete, func, inspect, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -6604,7 +6604,7 @@ class CaseWorkflowService:
              .outerjoin(QdKtIssuedRosterMember, QdKtIssuedRosterMember.issued_roster_id == QdKtIssuedRoster.id)
              .outerjoin(AuditEvent, and_(
                  AuditEvent.entity_type == "inspection_decision",
-                 AuditEvent.entity_id == InspectionDecision.id,
+                 AuditEvent.entity_id == cast(InspectionDecision.id, String(64)),
                  AuditEvent.action == "qdkt_issued_decision.record",
              ))
              .where(Case.id == case_id, InspectionDecision.id == decision_id)

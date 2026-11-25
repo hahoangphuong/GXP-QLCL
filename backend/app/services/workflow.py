@@ -6612,6 +6612,10 @@ class CaseWorkflowService:
         from backend.app.document.inspection_qd_kt_issued_document_binding import (
             QdKtIssuedDocumentBlocked, require_exact_qdkt_issued_pdf_version,
         )
+        from backend.app.document.inspection_qd_kt_issued_pdf_binding_audit_integrity import (
+            QdKtIssuedPdfBindingAuditBlocked,
+            require_qdkt_issued_pdf_binding_audit_integrity,
+        )
         require_permissions(user, {"inspection.edit", "document.read"})
         # Verify decision/roster/attestation first. A source-only legacy row is
         # not enough evidence to bind an external issued-decision document.
@@ -6625,14 +6629,43 @@ class CaseWorkflowService:
                 QdKtIssuedDocumentBinding.id,
                 QdKtIssuedDocumentBinding.document_version_id,
                 QdKtIssuedDocumentBinding.recorded_checksum_sha256,
-            ).where(
+                QdKtIssuedDocumentBinding.linked_by_user_id,
+                QdKtIssuedDocumentBinding.reason,
+                AuditEvent.id, AuditEvent.actor_type, AuditEvent.actor_user_id,
+                AuditEvent.reason, AuditEvent.payload_redacted,
+            ).outerjoin(AuditEvent, and_(
+                AuditEvent.entity_type == "qdkt_issued_document_binding",
+                AuditEvent.entity_id == cast(QdKtIssuedDocumentBinding.id, String(64)),
+                AuditEvent.action == "qdkt_issued_pdf_version.bind",
+            )).where(
                 QdKtIssuedDocumentBinding.inspection_decision_id == decision_id,
             )).all()
             if not rows:
                 raise HTTPException(status_code=404, detail="QDKT_ISSUED_PDF_BINDING_NOT_FOUND")
-            if len(rows) != 1:
+            binding_ids = {row[0] for row in rows}
+            if len(binding_ids) != 1:
                 raise HTTPException(status_code=409, detail="QDKT_ISSUED_PDF_BINDING_AMBIGUOUS")
-            binding_id, version_id, stored_checksum = rows[0]
+            if len(rows) != 1:
+                raise HTTPException(status_code=409, detail="QDKT_ISSUED_PDF_AUDIT_AMBIGUOUS")
+            (
+                binding_id, version_id, stored_checksum, linked_by_user_id,
+                binding_reason, audit_id, actor_type, actor_id,
+                audit_reason, audit_payload,
+            ) = rows[0]
+            if audit_id is None:
+                raise HTTPException(status_code=409, detail="QDKT_ISSUED_PDF_AUDIT_MISSING")
+            try:
+                require_qdkt_issued_pdf_binding_audit_integrity(
+                    binding_id=binding_id, case_id=case_id,
+                    decision_id=decision_id, document_version_id=version_id,
+                    recorded_checksum_sha256=stored_checksum,
+                    binding_actor_id=linked_by_user_id,
+                    binding_reason=binding_reason,
+                    evidence=(audit_id, actor_type, actor_id,
+                              audit_reason, audit_payload),
+                )
+            except QdKtIssuedPdfBindingAuditBlocked as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
             try:
                 source = require_exact_qdkt_issued_pdf_version(
                     session, case_id=case_id, document_version_id=version_id,

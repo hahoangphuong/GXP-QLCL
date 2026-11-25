@@ -6,8 +6,12 @@ from backend.app.auth import AuthenticatedUser, get_authenticated_user
 from backend.app.read_models import AuthenticatedIdentityRead
 
 
-def current_identity(user: AuthenticatedUser, *, request: Request) -> AuthenticatedIdentityRead:
-    config = request.app.state.config
+def current_identity(
+    user: AuthenticatedUser, *, request: Request | None = None,
+) -> AuthenticatedIdentityRead:
+    # Keep the pure helper callable by existing service/read-model consumers.
+    # A direct call has no authoritative deployment/authorization config.
+    config = request.app.state.config if request is not None else None
     return AuthenticatedIdentityRead(
         username=user.username,
         email=user.email,
@@ -15,8 +19,8 @@ def current_identity(user: AuthenticatedUser, *, request: Request) -> Authentica
         role_codes=sorted(user.role_codes),
         permissions=sorted(user.permissions),
         auth_mode=user.auth_mode,
-        auth_role_source=config.auth_role_source,
-        deployment_git_sha=config.deployment_git_sha or None,
+        auth_role_source=config.auth_role_source if config is not None else None,
+        deployment_git_sha=(config.deployment_git_sha or None) if config is not None else None,
     )
 
 

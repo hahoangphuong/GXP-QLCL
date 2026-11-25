@@ -6578,13 +6578,11 @@ class CaseWorkflowService:
             require_qdkt_issued_roster_readback_integrity,
             QdKtIssuedRosterReadBlocked,
         )
+        from backend.app.document.inspection_qd_kt_attestation_integrity import (
+            QdKtAttestationBlocked, require_qdkt_attestation_integrity,
+        )
         require_permissions(user, {"inspection.edit", "document.read"})
         with session.no_autoflush:
-            recorded = select(AuditEvent.id).where(
-                AuditEvent.entity_type == "inspection_decision",
-                AuditEvent.entity_id == decision_id,
-                AuditEvent.action == "qdkt_issued_decision.record",
-            ).exists()
             rows = session.execute(select(
                 Case.id, InspectionPlan.id, InspectionDecision.id,
                 InspectionDecision.ordinal, InspectionDecision.reference,
@@ -6597,21 +6595,32 @@ class CaseWorkflowService:
                 QdKtIssuedRosterMember.display_name,
                 QdKtIssuedRosterMember.role_code,
                 QdKtIssuedRosterMember.job_title,
-                recorded,
+                QdKtIssuedRoster.confirmed_by_user_id,
+                AuditEvent.id, AuditEvent.actor_type, AuditEvent.actor_user_id,
+                AuditEvent.reason, AuditEvent.payload_redacted, AuditEvent.new_values_json,
             ).join(InspectionPlan, InspectionPlan.case_id == Case.id)
              .join(InspectionDecision, InspectionDecision.inspection_plan_id == InspectionPlan.id)
              .outerjoin(QdKtIssuedRoster, QdKtIssuedRoster.inspection_decision_id == InspectionDecision.id)
              .outerjoin(QdKtIssuedRosterMember, QdKtIssuedRosterMember.issued_roster_id == QdKtIssuedRoster.id)
+             .outerjoin(AuditEvent, and_(
+                 AuditEvent.entity_type == "inspection_decision",
+                 AuditEvent.entity_id == InspectionDecision.id,
+                 AuditEvent.action == "qdkt_issued_decision.record",
+             ))
              .where(Case.id == case_id, InspectionDecision.id == decision_id)
              .order_by(QdKtIssuedRosterMember.position)).all()
             if not rows:
                 raise HTTPException(status_code=404, detail="Decision not found for Case.")
             first = rows[0]
+            audit_ids = {row[18] for row in rows if row[18] is not None}
+            if len(audit_ids) > 1:
+                raise HTTPException(status_code=409, detail="QDKT_ATTESTATION_AMBIGUOUS")
+            recorded = bool(audit_ids)
             if first[9] is None:
                 # Historical source-only decisions may legitimately have no
                 # roster, but a Process B audit may not silently lose its
                 # decision-owned confirmed roster.
-                if first[17]:
+                if recorded:
                     raise HTTPException(
                         status_code=409,
                         detail="QDKT_ISSUED_ROSTER_MISSING",
@@ -6623,6 +6632,17 @@ class CaseWorkflowService:
                         members=tuple(row[12:17] for row in rows),
                     )
                 except QdKtIssuedRosterReadBlocked as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if recorded:
+                try:
+                    require_qdkt_attestation_integrity(
+                        evidence=tuple(first[18:24]), case_id=first[0],
+                        plan_id=first[1], roster_id=first[9],
+                        roster_actor_id=first[17], roster_source=first[10],
+                        reference=first[4], decision_on=first[5],
+                        relation_type=first[7], related_decision_id=first[8],
+                    )
+                except QdKtAttestationBlocked as exc:
                     raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {
                 "case_id": first[0], "inspection_plan_id": first[1],
@@ -6636,7 +6656,7 @@ class CaseWorkflowService:
                     "display_name": row[14], "role_code": row[15],
                     "job_title": row[16],
                 } for row in rows if row[12] is not None],
-                "operator_attestation_recorded": bool(first[17]),
+                "operator_attestation_recorded": recorded,
                 "legal_issuance_verified": False, "ready_to_render": False,
             }
 

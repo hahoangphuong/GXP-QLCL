@@ -6564,6 +6564,45 @@ class CaseWorkflowService:
         )
         return {**result, **source}
 
+    def audit_qdkt_issued_pdf_binary(
+        self, session: Session, *, case_id: str, decision_id: str,
+        storage, user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Authenticated read-only actual-byte audit, no persisted new proof."""
+        from dataclasses import asdict
+        from backend.app.document.inspection_qd_kt_issued_pdf_binary_audit import (
+            QdKtIssuedPdfBinaryAuditBlocked, audit_case_issued_pdf_binary_readonly,
+        )
+        require_permissions(user, {"inspection.edit", "document.read"})
+        bound = self.get_qdkt_issued_pdf_binding(
+            session, case_id=case_id, decision_id=decision_id, user=user,
+        )
+        with session.no_autoflush:
+            try:
+                evidence = audit_case_issued_pdf_binary_readonly(
+                    session, storage, case_id=case_id, decision_id=decision_id,
+                )
+            except QdKtIssuedPdfBinaryAuditBlocked as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if (
+                evidence.binding_id != bound["binding_id"]
+                or evidence.document_version_id != bound["document_version_id"]
+                or evidence.verified_sha256 != bound["recorded_checksum_sha256"]
+            ):
+                raise HTTPException(
+                    status_code=409, detail="QDKT_ISSUED_BINARY_SOURCE_CHANGED",
+                )
+            # Recheck the existing Process B attestation owner once again:
+            # a valid binary hash cannot revive an invalid decision record.
+            final_bound = self.get_qdkt_issued_pdf_binding(
+                session, case_id=case_id, decision_id=decision_id, user=user,
+            )
+            if final_bound != bound:
+                raise HTTPException(
+                    status_code=409, detail="QDKT_ISSUED_BINARY_SOURCE_CHANGED",
+                )
+            return asdict(evidence)
+
     def get_qdkt_issued_pdf_binding(
         self, session: Session, *, case_id: str, decision_id: str,
         user: AuthenticatedUser,

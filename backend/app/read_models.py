@@ -799,6 +799,21 @@ class QdKtIssuedPdfBindingRead(BaseModel):
     ready_to_render: Literal[False] = False
 
 
+class QdKtIssuedPdfBinaryEvidenceRead(BaseModel):
+    case_id: str
+    decision_id: str
+    binding_id: str
+    document_version_id: str
+    verified_sha256: str
+    verified_pdf_bytes: int = Field(ge=1)
+    actual_binary_checksum_verified: Literal[True] = True
+    basic_pdf_envelope_verified: Literal[True] = True
+    signature_cryptographically_verified: Literal[False] = False
+    pdf_decision_content_verified: Literal[False] = False
+    independent_legal_issuance_verified: Literal[False] = False
+    ready_to_render: Literal[False] = False
+
+
 class QdKtPreparationWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     purpose: Literal["INITIAL", "AMENDMENT", "REPLACEMENT"]

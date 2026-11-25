@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+from backend.app.audit_payload import normalize_and_redact_audit_payload
 from backend.app.db.enums import AuditActorType
 from backend.app.document.inspection_qd_kt_issued_pdf_binding_audit_integrity import (
     QdKtIssuedPdfBindingAuditBlocked,
@@ -20,7 +21,7 @@ def payload(**overrides):
         "independent_signature_verified": False,
     }
     values.update(overrides)
-    return json.dumps(values)
+    return json.dumps(normalize_and_redact_audit_payload(values))
 
 
 def check(evidence=None, **overrides):
@@ -50,8 +51,6 @@ def test_valid_operator_audit_evidence():
     ("decision_id", "foreign-decision"),
     ("document_version_id", "newer-version"),
     ("recorded_checksum_sha256", "b" * 64),
-    ("binary_checksum_verified", True),
-    ("binary_checksum_verified", None),
     ("independent_signature_verified", True),
     ("independent_signature_verified", None),
 ])
@@ -81,3 +80,14 @@ def test_bad_binding_actor_or_reason_blocks():
         check(binding_actor_id="different-operator")
     with pytest.raises(QdKtIssuedPdfBindingAuditBlocked, match="AUDIT_INVALID"):
         check(binding_reason=" ")
+
+
+
+def test_binary_redaction_marker_required_without_claiming_byte_verification():
+    raw = json.loads(payload())
+    assert raw["binary_checksum_verified"] == "<redacted>"
+    check()
+    raw["binary_checksum_verified"] = False
+    with pytest.raises(QdKtIssuedPdfBindingAuditBlocked, match="AUDIT_INVALID"):
+        check(evidence=("audit-a", AuditActorType.USER, "operator-a",
+                        "Operator linked issued PDF", json.dumps(raw)))

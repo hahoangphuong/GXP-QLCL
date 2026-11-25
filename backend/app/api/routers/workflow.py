@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from pydantic import UUID4
 from sqlalchemy.orm import Session
 
@@ -403,19 +403,19 @@ def register_workflow_routes(app, session_factory) -> None:
         return QdKtIssuedDecisionRecordRead(**result)
 
     def audit_qdkt_issued_pdf_binary(
-        case_id: str, decision_id: UUID4,
+        case_id: str, decision_id: UUID4, request: Request,
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
-        from backend.app.storage.factory import create_storage_service_from_env
-        from backend.app.storage.types import StorageOperationError
         require_permissions(user, {"inspection.edit", "document.read"})
-        try:
-            storage = create_storage_service_from_env()
-        except (StorageOperationError, ValueError) as exc:
+        # A binary audit must inspect through the same storage adapter that
+        # startup validated and document read routes use. Reconstructing an
+        # adapter from process env could silently switch the evidence source.
+        storage = getattr(request.app.state, "storage_service", None)
+        if storage is None:
             raise HTTPException(
                 status_code=503, detail="QDKT_ISSUED_BINARY_STORAGE_UNAVAILABLE",
-            ) from exc
+            )
         return QdKtIssuedPdfBinaryEvidenceRead(**service.audit_qdkt_issued_pdf_binary(
             session, case_id=case_id, decision_id=str(decision_id),
             storage=storage, user=user,

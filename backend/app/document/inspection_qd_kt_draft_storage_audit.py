@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO
 from re import fullmatch
-from unicodedata import category, normalize
 from sqlalchemy import select
 from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding
 
@@ -21,6 +20,7 @@ from backend.app.document.inspection_qd_kt_draft_provenance import (
     QdKtDraftProvenance, read_qdkt_draft_provenance,
 )
 from backend.app.document.inspection_qd_kt_team_snapshot_review import DraftTeamSnapshot
+from backend.app.document.inspection_qd_kt_storage_locator_policy import is_safe_qdkt_relative_path
 from backend.app.storage.types import StorageServiceProtocol
 
 MAX_BINARY_BYTES = 32 * 1024 * 1024
@@ -51,7 +51,7 @@ def audit_qdkt_draft_storage_binary(
         or locator.case_id != provenance.case_id
         or locator.document_version_id != provenance.document_version_id
         or locator.storage_root != "inspection"
-        or not _safe_inspection_relative_path(locator.storage_relative_path)
+        or not is_safe_qdkt_relative_path(locator.storage_relative_path)
     ):
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_LOCATOR_UNPROVEN")
     # Invalid evidence metadata must never trigger a storage read.
@@ -115,8 +115,8 @@ def resolve_qdkt_draft_storage_locator(
         or not isinstance(path, str)
         or not isinstance(folder, str)
         or not folder
-        or not _safe_inspection_relative_path(folder)
-        or not _safe_inspection_relative_path(path)
+        or not is_safe_qdkt_relative_path(folder)
+        or not is_safe_qdkt_relative_path(path)
         or not path.startswith(folder + "/")
     ):
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_OWNER_MISMATCH")
@@ -129,38 +129,6 @@ def resolve_qdkt_draft_storage_locator(
     )
     return locator
 
-
-def _safe_inspection_relative_path(value: str) -> bool:
-    return (
-        isinstance(value, str) and bool(value)
-        and "\\" not in value and not value.startswith("/")
-        and ":" not in value
-        # Disallow invisible control/format characters (including C1 and bidi
-        # overrides) and non-canonical Unicode aliases before adapter access.
-        and normalize("NFC", value) == value
-        and not any(category(char) in ("Cc", "Cf", "Cs") for char in value)
-        and all(_safe_storage_component(part) for part in value.split("/"))
-    )
-
-
-
-# SMB/Windows clients may interpret trailing dots/spaces and DOS device names
-# as aliases rather than distinct objects. Refuse them for audit locators.
-_WINDOWS_DEVICE_NAMES = frozenset(
-    ("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$")
-    + tuple(f"COM{i}" for i in range(1, 10))
-    + tuple(f"LPT{i}" for i in range(1, 10))
-    # Windows also reserves device aliases with superscript 1/2/3.
-    + tuple(f"{prefix}{digit}" for prefix in ("COM", "LPT") for digit in ("¹", "²", "³"))
-)
-
-
-def _safe_storage_component(part: str) -> bool:
-    return (
-        part not in ("", ".", "..")
-        and not part.endswith((" ", "."))
-        and part.split(".", 1)[0].upper() not in _WINDOWS_DEVICE_NAMES
-    )
 
 def audit_case_qdkt_draft_binary_readonly(
     session, storage: StorageServiceProtocol, *, case_id: str,

@@ -165,14 +165,15 @@ jobs:
             tests/test_qdkt_precommit_rollback_http_postgres.py \
             tests/test_qdkt_tcp_reset_recovery_http_postgres.py \
             tests/test_qdkt_process_crash_recovery_http_postgres.py \
+            tests/test_qdkt_postgres_backend_termination_http_postgres.py \
             | tee "${RUNNER_TEMP}/qdkt-recovery-postgres-gate.log"
           python - <<'PY'
           from pathlib import Path
           import os
           import re
           log = (Path(os.environ["RUNNER_TEMP"]) / "qdkt-recovery-postgres-gate.log").read_text()
-          assert re.search(r"(?m)^5 passed in [0-9.]+s\s*$", log), (
-              "Recovery gate did not execute all five PostgreSQL tests"
+          assert re.search(r"(?m)^7 passed in [0-9.]+s\s*$", log), (
+              "Recovery gate did not execute all seven PostgreSQL tests"
           )
           assert not re.search(r"(?mi)^\d+ (skipped|deselected|failed|errors?)\b", log), (
               "Recovery gate was incomplete"

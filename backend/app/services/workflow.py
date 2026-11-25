@@ -6859,7 +6859,11 @@ class CaseWorkflowService:
                 "case_id": first[0], "inspection_plan_id": first[1],
                 "decision_id": first[2], "ordinal": first[3],
                 "reference": first[4], "decision_on": first[5],
-                "source_text": first[6], "relation_type": first[7],
+                # Process B persists INITIAL as SQL NULL. For a verified
+                # operator-attested row, recover the original canonical
+                # request meaning; never reclassify unverified legacy NULLs.
+                "source_text": first[6],
+                "relation_type": "INITIAL" if recorded and first[7] is None else first[7],
                 "related_decision_id": first[8], "roster_id": first[9],
                 "roster_source": first[10], "roster_sha256": first[11],
                 "members": [{

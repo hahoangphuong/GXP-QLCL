@@ -6685,6 +6685,21 @@ def test_qdkt_issued_decision_owner_record_and_replace_are_atomic(pg_engine):
     assert replacement["ordinal"] == 2
     assert replacement["related_decision_id"] == first_id
     assert replacement["plan_row_version"] > first["plan_row_version"]
+    # An old decision can still be recovered by its UUID after a successor
+    # changes the InspectionPlan projection/version.
+    with Session(pg_engine) as recovery_session:
+        original = SERVICE.get_qdkt_issued_decision(
+            recovery_session, case_id=case_id, decision_id=first_id, user=USER,
+        )
+        successor = SERVICE.get_qdkt_issued_decision(
+            recovery_session, case_id=case_id, decision_id=second_id, user=USER,
+        )
+        assert original["relation_type"] == "INITIAL"
+        assert original["related_decision_id"] is None
+        assert original["reference"] == first["reference"]
+        assert successor["relation_type"] == "REPLACES"
+        assert successor["related_decision_id"] == first_id
+        assert successor["reference"] == replacement["reference"]
     with Session(pg_engine) as db:
         plan_row = db.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
         assert plan_row.decision_reference == "121/QDKT"
@@ -6848,6 +6863,12 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
                 session, case_id=case_id, decision_id=decision_id, user=USER,
             )
             assert item["decision_id"] == decision_id
+            # Unknown-outcome POST recovery must expose the original INITIAL
+            # command, not the SQL NULL used to persist its first relation.
+            assert result["relation_type"] == "INITIAL"
+            assert item["relation_type"] == result["relation_type"]
+            assert item["related_decision_id"] is None
+            assert item["source_text"] == "Verbatim external decision"
             assert item["roster_id"] == result["roster_id"]
             assert [row["position"] for row in item["members"]] == [1, 2]
             assert [row["display_name"] for row in item["members"]] == ["Leader", "Secretary"]
@@ -6890,6 +6911,9 @@ def test_qdkt_issued_roster_readback_is_case_owned_and_no_autoflush(pg_engine):
         assert item["roster_id"] is None
         assert item["members"] == []
         assert item["operator_attestation_recorded"] is False
+        # Unverified legacy SQL NULL cannot be elevated to Process B INITIAL.
+        assert item["relation_type"] is None
+        assert item["related_decision_id"] is None
         assert item["legal_issuance_verified"] is False
 
 

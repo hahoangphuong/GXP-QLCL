@@ -7161,7 +7161,6 @@ def test_qdkt_issued_pdf_binding_exact_version_and_case_readback(pg_engine):
     # Link recovery GET must also verify the operator audit belonging to this
     # specific binding, before declaring the metadata or binary healthy.
     from sqlalchemy import delete
-    from backend.app.db.models.phase1 import AuditEvent
     link_audit = select(AuditEvent.id).where(
         AuditEvent.entity_type == "qdkt_issued_document_binding",
         AuditEvent.entity_id == candidate_id,

@@ -17,6 +17,8 @@ from backend.app.document.inspection_qd_kt_provenance_gate import (
 )
 from backend.app.document.inspection_qd_kt_template_asset_contract import load_inspection_qd_kt_template_assets
 from backend.app.document.inspection_qd_kt_vba_bookmark_series import reconcile_qdkt_i2_bookmarks
+from backend.app.document.inspection_qd_kt_runtime_provenance import load_runtime_source_evidence, RUNTIME_EVIDENCE_SHA256
+from backend.app.document.inspection_qd_kt_runtime_identity import runtime_identity_chain
 
 ROOT = Path(__file__).resolve().parents[3]
 OBSERVATION = ROOT / "tests/fixtures/inspection_qd_kt_observed_template_binaries.json"
@@ -219,6 +221,8 @@ _SPECS = {
 }
 
 _BACKEND_FILES = [
+    "inspection_qd_kt_runtime_identity.py",
+    "inspection_qd_kt_vba_bookmark_series.py", "inspection_qd_kt_runtime_provenance.py",
     "inspection_qd_kt_case_readiness.py", "inspection_qd_kt_case_source_bundle.py",
     "inspection_qd_kt_registered_site.py", "inspection_qd_kt_team_source.py",
     "inspection_qd_kt_decision_source.py", "inspection_qd_kt_vkn_authority.py",
@@ -250,6 +254,7 @@ _REGRESSIONS = [
 def build_qdkt_transformation_audit(*, source_path: Path = SOURCE, observation_path: Path = OBSERVATION, helper_path: Path = HELPERS) -> dict:
     """Repository evidence only. No Case queries, clock defaults or render calls."""
     inventory = load_qdkt_source_provenance(source_path)
+    runtime = load_runtime_source_evidence()
     helpers = read_provenance_json(helper_path)
     if semantic_sha256(helpers) != HELPERS_SHA256:
         raise QdKtTransformationAuditBlocked("QDKT_AUDIT_HELPER_SOURCE_DRIFT")
@@ -296,6 +301,7 @@ def build_qdkt_transformation_audit(*, source_path: Path = SOURCE, observation_p
             "differences": spec["difference"], "status": spec["status"], "groups": spec["groups"],
             "blocker_codes": sorted(spec["blockers"]), "owner_evidence_needed": spec["needed"],
             "evidence_refs": sorted(set(source_refs + spec["refs"])), "physical_targets": physical,
+            "runtime_source_reference": runtime["operation_source_lines"][name],
             "ready_to_render": False,
         })
     groups, blockers = defaultdict(list), defaultdict(list)
@@ -315,6 +321,10 @@ def build_qdkt_transformation_audit(*, source_path: Path = SOURCE, observation_p
         "inventory_semantic_sha256": INVENTORY_SEMANTIC_SHA256, "trace_semantic_sha256": TRACE_SEMANTIC_SHA256,
         "source_zip_sha256": inventory["source_zip_sha256"], "physical_observation_semantic_sha256": OBSERVATION_SHA256,
         "supplementary_helper_evidence": {"path": "tests/fixtures/inspection_qd_kt_transform_helper_evidence.json", "semantic_sha256": HELPERS_SHA256, "source_binary_sha256": helpers["source_binary_sha256"], "limitation": helpers["limitation"]},
+        "runtime_source_provenance": {"evidence_class": "PINNED_STATIC_PRIMARY_CAPTURE_NOT_CURRENT_LOCAL_VERIFICATION",
+            "path": "tests/fixtures/inspection_qd_kt_runtime_source_evidence.json", "semantic_sha256": RUNTIME_EVIDENCE_SHA256,
+            "capture": runtime},
+        "runtime_identity_chain": runtime_identity_chain(),
         "call_chain": inventory["call_chain"], "logical_operation_count": len(result),
         "physical_evidence_kind": "COMMITTED_PRIMARY_BINARY_OBSERVATION_NOT_FRESH_BINARY_OR_WORD_EXECUTION",
         "backend_source_utf8_lf_sha256": module_hashes,
@@ -349,6 +359,51 @@ def transformation_audit_markdown(report: dict) -> str:
     for row in report["fields"]:
         targets = [", ".join(r["effective_targets"]) if r["branch_reachable"] else "N/A (branch)" for r in row["physical_targets"]]
         lines.append(f"| {row['logical_operation']} | {row['status']} | {' / '.join(t or 'absent' for t in targets)} |")
+    runtime = report["runtime_source_provenance"]["capture"]
+    chain = report["runtime_identity_chain"]
+    lines.extend(["", "## Runtime identity chain and operator protocol", "",
+        "This extends the captured facts without changing any original semantic pin. UNVERIFIED_VERSION_BINDING remains a blocker; no live Excel observation has been supplied or performed by the agent.", "",
+        "| Stage | Category | Scope |", "|---|---|---|"])
+    for stage in chain["stages"]:
+        lines.append(f"| {stage['stage']} | {stage['category']} | {stage['scope']} |")
+    lines.extend(["", "Acceptance dimensions (not approvals):", "", "| Dimension | Category |", "|---|---|"])
+    for dimension, category in sorted(chain["acceptance_matrix"].items()):
+        lines.append(f"| {dimension} | {category} |")
+    lines.extend(["", "Detailed operator-only protocol: `docs/QDKT_RUNTIME_OBSERVATION_PROTOCOL.md`. It separates observed COM path, on-disk snapshot, in-memory executed code and reviewed source. Unsigned, even internally consistent, PID/path/hash metadata never authenticates a collector or closes runtime identity.", "",
+        "Encoding evidence: `tests/fixtures/inspection_qd_kt_runtime_identity_evidence.json` records original line hex/SHA, cp1258 and cp1252 codepoints, and exact ZIP/add-in lines. Get_Tpl has nine differing lines in Cases 7/8/11/12/13, outside Case 2. Get_TTV2 has one differing error-message line in its Fail handler: this CAN be reached on the i=2 call's failure path, not proven executed, and is not a direct Word text write. Neither ambiguity is silently normalized or treated as an approved export encoding.", "",
+        "The add-in docProps/app.xml records producer Application=Microsoft Excel and AppVersion=16.0300, with no custom properties or manifest/build/release/version-named member observed. This is Office producer metadata, not a VBA build/distribution mapping or the version of an observed Excel session. The byte-anchored companion records the metadata XML SHA without collecting author/private core properties.", "",
+        "Verifier boundary review: changed bytes and changed expected metadata cannot pass the independent capture pin; symlink/alternate-root acquisition is delegated to the existing bounded evidence reader. Known binary pins are checked before ZIP/VBA parsing. Malformed foreign projects or case-colliding module attacks are not reachable past unchanged byte pins; parser defense tests do not claim such a bypass was found. Static capture never substitutes for requested fresh extraction. Repository-code/dependency compromise is outside this input-only trust claim.", "",
+        "New demonstrated gap: escaped lone UTF-16 surrogates were accepted by the JSON reader and failed only during later UTF-8 canonicalization. They now fail at the shared parser owner, including nested values/keys; valid Unicode and all old pins remain unchanged. The observation assessor is a diagnostic contract, not an approval or memory-attestation API.",
+    ])
+    lines.extend(["", "## Runtime/source evidence hardening", "",
+        "Evidence classes remain separate: approved business policy; reviewed ZIP source; captured add-in source; exact original binary bytes; Word output/legal acceptance. The new capture is pinned static evidence, not a claim that local files were freshly verified by the normal audit.", "",
+        "### Artifact and acquisition inventory", "",
+        "All six inputs were supplied in the local workspace. Original acquisition/build/distribution chain is not attested. No timestamp, filename, excerpt or matching JSON hash field proves version identity.", "",
+        "| Artifact | Exact byte SHA-256 |", "|---|---|"])
+    for record in runtime["artifact_inputs"].values():
+        lines.append(f"| `{record['location']}` | `{record['sha256']}` |")
+    lines.extend(["", "Extraction: " + runtime["extraction"] + ". Normalization is LF only; no trim, case-fold, NFC/NFD or punctuation changes.", "",
+        "The add-in physically contains `xl/vbaProject.bin`, SHA `" + runtime["addin_project_embedding"]["sha256"] + "`. BYTE_IDENTICAL_BINDING_PROVEN applies only to that embedded binary member and its containing add-in bytes. It does not prove the ZIP exports came from that binary, that Excel loaded it, or that compiled p-code matches extracted source.", "",
+        "The reviewed ZIP has 51 exports/FRX entries and no WinAPI module or runtime add-in. The add-in contains QĐKT source procedures and all three uniquely declared WinAPI helpers in the same captured project. Static call references resolve in that source snapshot, not in a proven live execution.", "",
+        "PROJECTCODEPAGE in the add-in is 1252. The historic ZIP trace uses `_decode` with cp1258 fallback; the ZIP does not attest its export codepage. Full Get_Tpl and Get_TTV2 text differs under the reviewed decoder in non-i2/error-message literals; cp1252 comparison matches. This is an encoding ambiguity, not proof of an actual changed business implementation. Existing reviewed source and semantic pins are preserved.", "",
+        "| Procedure | ZIP lines | Add-in source lines | Reviewed-decoder comparison |", "|---|---|---|---|"])
+    for proc in runtime["procedures"]:
+        location = proc["module"] + "!" + proc["procedure"]
+        comparison = proc.get("reviewed_decoder_comparison", {}).get("comparison", "ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT")
+        lines.append(f"| `{location}` | {proc.get('zip_lines', 'absent')} | {proc['addin_lines']} | {comparison} |")
+    lines.extend(["", "All 14 operation source lines match in the captured writer (ZIP 739–818 versus add-in 732–811). Each field's `runtime_source_reference` records exact paired line numbers and LF source hashes. Business ownership, variable initialization and actual values remain unproven by this source match.", "",
+        "Supplementary workbook observed separately: `legacy/Danh sách Kiểm tra GPs.xlsb`, exact SHA `c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d`. Static oletools extraction of `Module1.Load_Lib`, lines 20–40, shows reuse of an already-open workbook named GPs.xlam, then local Addins and configured fallback opening at 32–33. Module1:73 invokes `Application.Run` by add-in name. No checksum/build identity is checked on this path. An already-loaded or different path copy is a competing explanation; this supplementary workbook is not one of the six fresh-verifier inputs. No workbook/add-in was opened in Excel.", "",
+        "### Unresolved evidence matrix", "",
+        "| Relationship | Result | Still needed |", "|---|---|---|",
+        "| Add-in to embedded project bytes | BYTE_IDENTICAL_BINDING_PROVEN (container-member scope only) | Loaded-runtime and p-code/source attestation |",
+        "| Reviewed ZIP to captured QĐKT source lines | CONTENT_EQUIVALENT_VERSION_UNPROVEN | Attested export/build/distribution manifest, including codepage |",
+        "| WinAPI helper to ZIP | ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT | Original helper export/runtime-package provenance; no invented ZIP body |",
+        "| Full Get_Tpl/Get_TTV2 reviewed-decoder text | IMPLEMENTATION_DIFFERS as text, encoding cause unresolved | Export codepage evidence; do not infer active i=2 change |",
+        "| Template filename formula to original bytes selected at runtime | UNVERIFIED_VERSION_BINDING | Resolved Template_Path/version capture and actual Word UAT |",
+        "| All source evidence to legal/business equivalence | Not established | Existing owner decisions/date/timezone/Word acceptance |", "",
+        "Fresh local reproduction: with the reviewed optional analyst tool `oletools==0.60.2`, run `python -m tools.audit_qdkt_source_transformations --verify-local-artifacts --format json`. The flag reads the six fixed local inputs through the existing bounded offline evidence reader, checks actual immutable bytes before extraction, re-extracts source and scans every word/*.xml (including notes), then compares the entire capture with the independent pin. Missing/substituted bytes, extractor absence/version change or metadata drift blocks; there is no fallback to captured evidence labelled as fresh. Stdout only and exit 2 remain intentional because render readiness is blocked.", "",
+        "New RED→GREEN cases reject foreign GxP objects, duplicate/malformed physical names, bool/float numbered bounds and JSON exponent overflow. Valid target ordering/missing-target no-op behavior is preserved; Unicode, casing and punctuation are not normalized away. No renderer or business source owner was added.",
+    ])
     lines.extend([
         "", "## New findings and validation boundary", "",
         "Last-correct: operation line/reachability and the 8/6 ownership set were already checked. First-incorrect: assignment, formatting, candidate-owner and invariant metadata could change without rejection; matching edits to both archive hashes could substitute the reviewed source. Full semantic pins now reject those changes while allowing JSON whitespace/key ordering differences.", "",

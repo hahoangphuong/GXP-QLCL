@@ -31,18 +31,10 @@ def open_source_binary_stream(
     if requirement.exact_storage_root is None or requirement.exact_storage_relative_path is None:
         raise SourceBinaryAccessError("Source binary locator is incomplete.")
     registered_checksum = requirement.checksum_sha256
-    if registered_checksum is None:
-        # Only SQL NULL means a legacy source never registered a checksum.
-        # A persisted blank or malformed digest is corrupt metadata, not
-        # evidence that this source is exempt from integrity verification.
-        with storage.read_stream(
-            requirement.exact_storage_relative_path,
-            root=requirement.exact_storage_root,
-        ) as stream:
-            yield stream
-        return
-
-    if (
+    # Only SQL NULL is a legacy source with no registered digest; it remains
+    # *unverified*, but must obey the same bounded byte-stream contract.
+    # A blank/malformed persisted digest is corruption, not an exemption.
+    if registered_checksum is not None and (
         not isinstance(registered_checksum, str)
         or len(registered_checksum) != 64
         or any(char not in "0123456789abcdefABCDEF" for char in registered_checksum)
@@ -50,10 +42,13 @@ def open_source_binary_stream(
         raise SourceBinaryAccessError(
             "Persisted source checksum is not a valid SHA-256 hex digest."
         )
-    expected_checksum = registered_checksum.lower()
+    expected_checksum = (
+        registered_checksum.lower() if registered_checksum is not None else None
+    )
 
-    # Consume the full source once and verify the exact snapshot that will
-    # be read by copy-forward. Never yield unverified or partially read bytes.
+    # Snapshot the complete bounded source before yielding it to copy-forward.
+    # Verify the digest when one is registered; legacy SQL-NULL sources still
+    # have no integrity proof and must never be described as checksum-verified.
     with SpooledTemporaryFile(max_size=8 * 1024 * 1024) as verified:
         digest = sha256()
         total_bytes = 0
@@ -76,7 +71,7 @@ def open_source_binary_stream(
                     )
                 digest.update(chunk)
                 verified.write(chunk)
-        if digest.hexdigest() != expected_checksum:
+        if expected_checksum is not None and digest.hexdigest() != expected_checksum:
             raise SourceBinaryAccessError(
                 "Source binary checksum does not match the persisted document version."
             )

@@ -119,7 +119,7 @@ def test_template_binary_checksum_mismatch_blocks_read_with_no_bytes_yielded(tmp
     storage = FilesystemStorageService(StorageConfig(
         inspection_root=tmp_path, template_root=root,
     ))
-    with pytest.raises(TemplateBinaryError, match="checksum does not match"):
+    with pytest.raises(TemplateBinaryError, match="checksum mismatch"):
         with open_template_binary_stream(
             storage, _requirement(sha256(b"expected source").hexdigest()),
         ):

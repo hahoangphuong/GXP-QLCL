@@ -158,3 +158,69 @@ def test_checksum_source_snapshot_rejects_nonbytes_or_overlong_storage_chunks(
         ) as stream:
             pytest.fail("Untrusted storage data must not be yielded")
     assert closed == [True]
+
+
+def test_legacy_null_checksum_source_uses_bounded_snapshot_without_claiming_integrity(
+    tmp_path, monkeypatch,
+):
+    """SQL NULL remains allowed, but no unbounded direct storage stream escapes."""
+    import backend.app.document.source_binary_access as source_access
+
+    source = tmp_path / "2026" / "source" / "document.docx"
+    source.parent.mkdir(parents=True)
+    payload = b"legacy-no-checksum"
+    source.write_bytes(payload)
+    storage = FilesystemStorageService(StorageConfig(inspection_root=tmp_path))
+
+    monkeypatch.setattr(source_access, "MAX_SOURCE_BINARY_BYTES", len(payload))
+    with open_source_binary_stream(storage, _requirement(None)) as stream:
+        # A bounded legacy snapshot is stable even if storage is replaced
+        # after opening. There is no SHA-256 proof for the legacy source.
+        source.write_bytes(b"changed after opening")
+        assert stream.read() == payload
+
+    source.write_bytes(payload)
+    monkeypatch.setattr(source_access, "MAX_SOURCE_BINARY_BYTES", len(payload) - 1)
+    with pytest.raises(SourceBinaryAccessError, match="size limit"):
+        with open_source_binary_stream(storage, _requirement(None)):
+            pytest.fail("Oversized unchecksummed source must not reach copy-forward")
+
+
+@pytest.mark.parametrize("bad_chunk", [
+    "not-bytes", memoryview(b"byte-view"), b"x" * (1024 * 1024 + 1),
+])
+def test_legacy_null_checksum_source_rejects_invalid_storage_chunks(bad_chunk):
+    from contextlib import contextmanager
+
+    closed = []
+
+    class UntrustedStorage:
+        @contextmanager
+        def read_stream(self, path, *, root):
+            assert (root, path) == ("inspection", "2026/source/document.docx")
+
+            class Stream:
+                def read(self, size):
+                    assert size == 1024 * 1024
+                    return bad_chunk
+
+            try:
+                yield Stream()
+            finally:
+                closed.append(True)
+
+    with pytest.raises(SourceBinaryAccessError, match="invalid binary chunk"):
+        with open_source_binary_stream(UntrustedStorage(), _requirement(None)):
+            pytest.fail("Malformed legacy source must not be yielded")
+    assert closed == [True]
+
+
+def test_legacy_source_snapshot_is_not_a_checksum_recovery_path(tmp_path):
+    """Malformed digests are refused even when legacy SQL NULL remains valid."""
+    source = tmp_path / "2026" / "source" / "document.docx"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"legacy-source")
+    storage = FilesystemStorageService(StorageConfig(inspection_root=tmp_path))
+    with pytest.raises(SourceBinaryAccessError, match="not a valid SHA-256"):
+        with open_source_binary_stream(storage, _requirement("")):
+            pytest.fail("Blank digest must not get legacy exemption")

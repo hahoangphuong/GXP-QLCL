@@ -407,7 +407,7 @@ def open_template_binary_stream(
 
         if checksum is not None and digest.hexdigest() != checksum.lower():
             raise TemplateBinaryError(
-                "Template binary checksum does not match the registered asset."
+                "Template binary checksum mismatch for registered asset."
             )
 
         payload.seek(0)

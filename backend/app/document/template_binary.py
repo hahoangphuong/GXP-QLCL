@@ -40,6 +40,13 @@ class TemplateBinaryError(RuntimeError):
     pass
 
 
+# Template binaries are consumed into memory by the renderer. Validate the
+# stream incrementally and stop before a stale/malicious object can exhaust
+# the worker. This bound applies with and without a registered checksum.
+MAX_TEMPLATE_BINARY_BYTES = 64 * 1024 * 1024
+TEMPLATE_READ_CHUNK_BYTES = 1024 * 1024
+
+
 _EXACT_GXP_ASSET_LOADERS = {
     CERTIFICATE_DETAIL_FAMILY: (
         get_certificate_destination_asset,
@@ -373,16 +380,37 @@ def open_template_binary_stream(
     if requirement.storage_root is None or requirement.storage_relative_path is None:
         raise TemplateBinaryError("Template binary locator is incomplete.")
 
-    with storage.read_stream(requirement.storage_relative_path, root=requirement.storage_root) as stream:
-        payload = stream.read()
+    checksum = requirement.checksum_sha256
+    if checksum is not None and (
+        not isinstance(checksum, str)
+        or len(checksum) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in checksum)
+    ):
+        raise TemplateBinaryError("Persisted template checksum is not a valid SHA-256 hex digest.")
 
-    if requirement.checksum_sha256 is not None:
-        expected = requirement.checksum_sha256.strip().lower()
-        actual = hashlib.sha256(payload).hexdigest()
-        if actual != expected:
+    digest = hashlib.sha256()
+    payload = BytesIO()
+    total_bytes = 0
+    try:
+        with storage.read_stream(requirement.storage_relative_path, root=requirement.storage_root) as stream:
+            while True:
+                chunk = stream.read(TEMPLATE_READ_CHUNK_BYTES)
+                if type(chunk) is not bytes or len(chunk) > TEMPLATE_READ_CHUNK_BYTES:
+                    raise TemplateBinaryError("Template storage returned an invalid binary chunk.")
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_TEMPLATE_BINARY_BYTES:
+                    raise TemplateBinaryError("Template binary exceeds the render size limit.")
+                digest.update(chunk)
+                payload.write(chunk)
+
+        if checksum is not None and digest.hexdigest() != checksum.lower():
             raise TemplateBinaryError(
-                "Template binary checksum mismatch: "
-                f"expected={expected}, actual={actual}, path={requirement.storage_relative_path!r}."
+                "Template binary checksum does not match the registered asset."
             )
 
-    yield BytesIO(payload)
+        payload.seek(0)
+        yield payload
+    finally:
+        payload.close()
